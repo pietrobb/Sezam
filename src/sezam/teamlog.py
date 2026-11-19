@@ -690,10 +690,20 @@ def envelope_valid(
     state: TeamState, signer_id: str, target_id: str, dek_id: str, level: Optional[str],
     target_encryption_pk: str,
 ) -> bool:
-    """An envelope giving ``target_id`` the key ``dek_id`` (design §4.3.5)."""
-    if not is_admin(state, signer_id) or not may_hold_key(state, target_id, dek_id):
+    """An envelope giving ``target_id`` the key ``dek_id`` (design §4.3.5).
+
+    Sealed by the admin, or by an admin who handed the role over while that
+    key was the folder's current one (``former_admins``; review c78fd19
+    R13-8: the members kept the key until the new admin's re-key).
+    """
+    if not may_hold_key(state, target_id, dek_id):
         return False
     folder, _ = state.dek_index[dek_id]
+    signer = state.members.get(signer_id)
+    if not is_admin(state, signer_id) and not (
+        signer is not None and signer.active and signer_id in state.former_admins.get(folder, ())
+    ):
+        return False
     if state.members[target_id].encryption_pk != target_encryption_pk:
         return False
     return state.access.get(folder, {}).get(target_id) == level

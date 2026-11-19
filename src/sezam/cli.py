@@ -2898,6 +2898,10 @@ def push(server: Optional[str]):
             click.echo(f"Warning: the re-key of revoked user {user_id} waits: {reason}", err=True)
         for user_id, count in rekeyed.items():
             click.echo(f"Re-keyed {count} folder(s) after revoking user {user_id}.")
+        from .vault.revocation import finish_handover_rekeys
+
+        for user_id, count in finish_handover_rekeys(vault, client).items():
+            click.echo(f"Re-keyed {count} folder(s) the former admin {user_id} held.")
         if conflicts:
             for c in result["conflicts"]:
                 click.echo(f"  Conflict: {c['id']} — {c.get('error', '')}", err=True)

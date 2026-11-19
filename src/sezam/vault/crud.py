@@ -2970,7 +2970,41 @@ class Vault:
         return pending_states.key_change_pending(self._db)
 
     @oplock.held
-    def rekey_after_revocation(self, revoked_user_id: str) -> int:
+    def rekey_after_handover(self, former_admin_id: str) -> int:
+        """New admin: re-key the team folders a former admin held only as admin.
+
+        Review c78fd19 (R13-8): after ``member.role`` admin -> member the
+        former admin kept every folder key they made and the log took their
+        copies under it (``former_admins``) until a re-key nobody made. Every
+        folder that names them there and whose current key this vault opens
+        gets a new key, sealed to the log's recipients (the former admin only
+        with an ``access.set`` of their own). A folder they may write anyway is
+        left alone. Returns the folders re-keyed (the batch is pending).
+        """
+        return self.rekey_after_revocation(former_admin_id, handover=True)
+
+    def _handover_rekey_rows(self, team, former_admin_id: str) -> list[dict]:
+        from nacl.exceptions import CryptoError
+
+        rows = []
+        for folder in sorted(team.folders):
+            if former_admin_id not in team.former_admins.get(folder, ()):
+                continue
+            if teamlog.may_write(team, folder, former_admin_id):
+                continue
+            dek_id = teamlog.current_key(team, folder)
+            if not self._db.fetchone(
+                "SELECT 1 FROM nodes WHERE id = ? AND dek_id = ?", (folder, dek_id)
+            ):
+                continue  # not pulled here yet: the next push re-keys it
+            try:
+                self._dek_mgr.unlock_dek(dek_id)
+            except (KeyError, CryptoError, ValueError):
+                continue  # the handover grant has not reached this device
+            rows.append({"dek_id": dek_id, "sealed_here": 1})
+        return rows
+
+    def rekey_after_revocation(self, revoked_user_id: str, handover: bool = False) -> int:
         """Re-key all folders where a revoked user had access.
 
         After revoking a user's access, this method:
@@ -2992,6 +3026,14 @@ class Vault:
         assert self._user_id is not None
 
         pending_states.refuse_if_blocked(self._db, pending_states.REKEY)
+
+        if handover:
+            team = local_team_state(self._db)
+            rows = self._handover_rekey_rows(team, revoked_user_id) if team is not None else []
+            # The former admin stays a member: only the members queued for
+            # removal are withheld, and the archive names nobody as removed.
+            withheld = queued_for_removal(self._db)
+            return self._rekey_rows(rows, revoked_user_id, team, withheld, handover=True)
 
         # Find all DEKs where the revoked user has access_envelopes
         rows = self._db.fetchall(
@@ -3028,7 +3070,11 @@ class Vault:
                     ):
                         rows.append({"dek_id": dek_id, "sealed_here": 1})
                         listed.add(dek_id)
+        return self._rekey_rows(rows, revoked_user_id, team, withheld)
 
+    def _rekey_rows(
+        self, rows: list, revoked_user_id: str, team, withheld: set, handover: bool = False,
+    ) -> int:
         if not rows:
             return 0
         self._refuse_rekey_over_conflicts([r["dek_id"] for r in rows])
@@ -3096,7 +3142,7 @@ class Vault:
 
                 # Generate new DEK for this folder
                 new_dek_id, new_dek = self._dek_mgr.rekey_folder(
-                    old_dek_id, node_id, removed_user_id=revoked_user_id
+                    old_dek_id, node_id, removed_user_id=None if handover else revoked_user_id
                 )
                 new_dek_ids.append(new_dek_id)
                 dek_map[old_dek_id] = new_dek_id
@@ -3324,7 +3370,7 @@ class Vault:
                 action="rekey",
                 signing_key=self._keypair.to_nacl_signing_key(),
                 detail_plaintext=json.dumps({
-                    "revoked_user": revoked_user_id,
+                    ("former_admin" if handover else "revoked_user"): revoked_user_id,
                     "folders_rekeyed": rekey_count,
                 }).encode(),
                 audit_dek=audit_dek,
@@ -3341,7 +3387,11 @@ class Vault:
                 + [audit_id]
             )
             # Review 526419e #1: refused here, not by a 422 on every sync.
-            self._require_one_sync_unit(object_ids, "Removing this member (the folder re-key)")
+            self._require_one_sync_unit(
+                object_ids,
+                "The re-key after the admin handover" if handover
+                else "Removing this member (the folder re-key)",
+            )
             rekeyed_versions: dict[str, int] = {}
             for table, ids in (("nodes", changed_node_ids), ("entries", changed_entry_ids)):
                 for object_id in set(ids) - edited_before:
@@ -3350,7 +3400,10 @@ class Vault:
                     )
                     rekeyed_versions[object_id] = version_row["version"]
             pending_states.set_rekey_batch(self._db, {
-                "revoked_user_id": revoked_user_id,
+                # A handover re-key removes nobody (the former admin stays a
+                # member): nothing may take them as queued for removal.
+                "revoked_user_id": None if handover else revoked_user_id,
+                **({"handover_from": revoked_user_id} if handover else {}),
                 "folders_rekeyed": rekey_count,
                 # Old → new DEK: lets the sync client carry the batch over
                 # edits other devices push before it lands.

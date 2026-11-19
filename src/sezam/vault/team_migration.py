@@ -219,7 +219,8 @@ def hand_over_admin(
     Review 8595ec1 #3: one admin per organisation (TL7), and nothing let the
     role move, so losing that admin froze the team. Both member.role records
     go in one append: the head never has two admins. Only to a member whose
-    key in the log has its fingerprint confirmed here (asked once).
+    key in the log has its fingerprint confirmed here (asked once). Folders
+    whose key the member lacks are shared with them (write) before.
     """
     from ..crypto.keys import compute_fingerprint
 
@@ -244,6 +245,16 @@ def hand_over_admin(
             raise ValueError(f"The key fingerprint of {user_id} was not confirmed: {fingerprint}")
         confirmed[user_id] = fingerprint
         vault.db.set_meta_json(CONFIRMED_MEMBER_KEYS_META, confirmed)
+    # Review c78fd19 (R13-8): the new admin re-keys every folder this account
+    # held only as admin (revocation.finish_handover_rekeys), so it needs each
+    # current key first: write access with the envelope, where it had none.
+    from .revocation import grant_member
+
+    for folder in sorted(state.folders):
+        if teamlog.may_hold_key(state, user_id, teamlog.current_key(state, folder)):
+            continue
+        if vault.db.fetchone("SELECT 1 FROM nodes WHERE id = ? AND is_deleted = 0", (folder,)):
+            grant_member(vault, client, user_id, folder, "write")
     client.append_team_log([
         ("member.role", {"user_id": user_id, "role": "admin"}),
         ("member.role", {"user_id": me, "role": "member"}),

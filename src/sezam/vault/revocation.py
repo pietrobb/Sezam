@@ -395,16 +395,52 @@ def finish_queued_into(
         too_large.update(exc.too_large)
 
 
+def finish_handover_rekeys(vault: Vault, client: SyncClient) -> dict[str, int]:
+    """Admin: re-key the folders a former admin still holds only as admin.
+
+    Review c78fd19 (R13-8): handing the role over left the former admin with
+    every folder key they made and the log's write exception for them
+    (``former_admins``) until a re-key nobody made. The new admin's push makes
+    it, one former admin at a time, after the queued removals; folders with
+    open conflicts or too large to send wait for a later push. Returns folders
+    re-keyed per former admin.
+    """
+    from .. import teamlog
+
+    done: dict[str, int] = {}
+    team = local_team_state(vault.db)
+    me = vault.db.get_meta("user_id")
+    if team is None or not teamlog.is_admin(team, me) or not client.team_log_trusted(team):
+        return done
+    for former in sorted({u for users in team.former_admins.values() for u in users} - {me}):
+        if pending_states.rekey_batch(vault.db) or vault.key_change_unpushed():
+            break  # one batch at a time; after a password change lands
+        try:
+            count = vault.rekey_after_handover(former)
+        except (RekeyBlockedByConflicts, SyncUnitTooLarge) as exc:
+            logger.warning("Re-key after the handover of %s waits: %s", former, exc)
+            continue
+        if count:
+            client.push()
+            if pending_states.rekey_batch(vault.db):
+                break  # not landed: the next push sends it again
+            done[former] = count
+    return done
+
+
 def push_with_queued_revocations(vault: Vault, client: SyncClient) -> dict:
     """A push that also finishes the revocation queue, as 'sezam push' does
-    (review 526419e S4: the GUI never did). Returns the push result plus
-    ``rekeyed`` (member -> folders) and ``blocked`` (member -> conflict ids)."""
+    (review 526419e S4: the GUI never did), and the re-key after an admin
+    handover. Returns the push result plus ``rekeyed`` (member -> folders),
+    ``blocked`` (member -> conflict ids) and ``handover_rekeyed`` (former
+    admin -> folders)."""
     rekeyed: dict[str, int] = {}
     blocked: dict[str, list[str]] = {}
     too_large: dict[str, str] = {}
     finish_queued_into(vault, client, rekeyed, blocked, too_large)
     result = dict(client.push())
     finish_queued_into(vault, client, rekeyed, blocked, too_large)
+    result["handover_rekeyed"] = finish_handover_rekeys(vault, client)
     result["rekeyed"] = rekeyed
     result["blocked"] = blocked
     result["too_large"] = too_large

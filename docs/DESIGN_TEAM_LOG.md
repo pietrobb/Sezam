@@ -691,9 +691,14 @@ prijme len na aktívny účet, ktorý sa prihlasuje kľúčmi z denníka (R11 #5
 Mimo tímových priečinkov sú admini všetky aktívne účty, ktoré denník kedy urobil adminom (desktop
 `log_admins`, web `webLogAdmins`, mobil `logAdmins`), nie podpisovatelia ani `is_admin` zo servera. V tímovom
 priečinku jadro drží `former_admins` (priečinok → admini odovzdaní počas jeho aktuálneho kľúča): stiahnutá kópia
-(`item_refusal(..., sealing=False)`) zapečatená aktuálnym kľúčom je platná, nový zápis nie. Re-key priečinka,
-odobratie člena alebo priečinok založený neskôr to končí (vektory `handover_*`). Pole nie je v `to_json`,
-staré vektory ostali bajt po bajte.
+(`item_refusal(..., sealing=False)`) zapečatená aktuálnym kľúčom je platná, nový zápis nie; platí aj obálka,
+ktorú starý admin zapečatil na ten kľúč (`envelope_valid`). Re-key priečinka, odobratie člena alebo priečinok
+založený neskôr to končí (vektory `handover_*`). Pole nie je v `to_json`, staré vektory ostali bajt po bajte.
+Re-key robí nový admin (review c78fd19 R13-8, inak by starý admin kľúče a výnimku držal navždy): desktop
+`hand_over_admin` pred `member.role` dá novému adminovi zápis s obálkou do každého priečinka, ktorého kľúč
+nemá, a jeho najbližší push (`finish_handover_rekeys`, `sezam push` aj GUI) re-keyuje každý priečinok, kde je
+starý admin vo `former_admins` a nemá zápis z `access.set`. Nový kľúč dostanú príjemcovia z denníka, starý
+admin len so svojím `access.set`; archív nemení nikoho za odobratého.
 
 **Strom mimo tímových priečinkov s denníkom (review 1141a20 H5/H6):** neplatí nepodpísaný `access_level` ani
 admin podľa podpisov; uzol najvyššej úrovne je adminov (koreň organizácie) alebo osobný strom podpisovateľa

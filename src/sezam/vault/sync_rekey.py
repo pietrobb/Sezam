@@ -691,7 +691,13 @@ class RekeyMixin:
                 if found[0] not in replaced:
                     replaced[found[0]] = self._dek_mgr.successor_of(found[0]) is not None
                 return found if replaced[found[0]] else None
-            return successor(blob, folder_id)
+            try:
+                return successor(blob, folder_id)
+            except (CryptoError, KeyError, ValueError):
+                # Review c78fd19 (R13-8): a new admin's handover re-key moves a
+                # folder whose name the former admin sealed with the root key
+                # of theirs (unbound here). Nothing of this device's is under it.
+                return None
 
         resealed: list[str] = []
         self._db.begin()

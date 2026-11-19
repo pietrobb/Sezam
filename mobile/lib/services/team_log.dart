@@ -662,8 +662,14 @@ class TeamLog {
 
   static bool envelopeValid(TeamState s, String signerId, String targetId,
       String dekId, String? level, String targetEncryptionPk) {
-    if (!isAdmin(s, signerId) || !mayHoldKey(s, targetId, dekId)) return false;
+    if (!mayHoldKey(s, targetId, dekId)) return false;
     final folder = s.dekIndex[dekId]![0] as String;
+    // Or an admin who handed the role over while this key was current (R13-8).
+    final signer = s.members[signerId];
+    final handedOver = signer != null &&
+        signer.active &&
+        (s.formerAdmins[folder]?.contains(signerId) ?? false);
+    if (!isAdmin(s, signerId) && !handedOver) return false;
     if (s.members[targetId]!.encryptionPk != targetEncryptionPk) return false;
     return s.access[folder]?[targetId] == level;
   }

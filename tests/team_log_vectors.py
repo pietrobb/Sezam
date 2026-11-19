@@ -380,6 +380,24 @@ def build_vectors() -> dict:
         _q("item_refusal", A.uid, ITEM, F2, K[3], False, False, answer=NO_WRITE),
         _q("item_refusal", A.uid, ITEM, F1, K[1], False, False, answer=None),
     ]))
+    # Review c78fd19 (R13-8): the members keep the key the former admin sealed
+    # to them until the new admin's re-key (which seals the next one itself).
+    s.append(_good("handover_keeps_the_former_admins_envelopes", copy.deepcopy(handed), [
+        _q("envelope_valid", A.uid, C.uid, K[1], "read", C.epk, answer=True),
+        _q("envelope_valid", A.uid, C.uid, K[1], "write", C.epk, answer=False),
+        _q("envelope_valid", B.uid, C.uid, K[1], "read", C.epk, answer=True),
+        _q("envelope_valid", C.uid, B.uid, K[1], "write", B.epk, answer=False),
+    ]))
+    s.append(_good("handover_rekey_ends_the_former_admins_envelopes",
+                   copy.deepcopy(handed).key(F1, 1, K[2], K[1], by=B), [
+        _q("envelope_valid", A.uid, C.uid, K[2], "read", C.epk, answer=False),
+        _q("envelope_valid", B.uid, C.uid, K[2], "read", C.epk, answer=True),
+        _q("may_hold_key", A.uid, K[2], answer=False),
+    ]))
+    s.append(_good("handover_then_remove_ends_the_former_admins_envelopes",
+                   copy.deepcopy(handed).remove(A, by=B), [
+        _q("envelope_valid", A.uid, C.uid, K[1], "read", C.epk, answer=False),
+    ]))
     # TL7: a head with two active admins (records may pass through one).
     s.append(_good("two_admins_at_the_head", basic().add("member.role", A, {"user_id": B.uid, "role": "admin"}), [
         _q("admin_policy_refusal", answer="more than one admin"),

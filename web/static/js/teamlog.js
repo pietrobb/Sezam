@@ -462,8 +462,13 @@ const SezamTeamLog = (() => {
   }
 
   function envelopeValid(state, signerId, targetId, dekId, level, targetEncryptionPk) {
-    if (!isAdmin(state, signerId) || !mayHoldKey(state, targetId, dekId)) return false;
+    if (!mayHoldKey(state, targetId, dekId)) return false;
     const folder = state.dekIndex[dekId][0];
+    // Or an admin who handed the role over while this key was current (R13-8).
+    const signer = memberOf(state, signerId);
+    const former = state.formerAdmins || {};
+    const handedOver = signer !== null && signer.active && own(former, folder) && own(former[folder], signerId);
+    if (!isAdmin(state, signerId) && !handedOver) return false;
     if (state.members[targetId].encryptionPk !== targetEncryptionPk) return false;
     return accessOf(state, folder, targetId) === level;
   }
