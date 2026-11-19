@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 
 import pytest
 from click.testing import CliRunner
@@ -59,6 +60,9 @@ def _setup(vault):
     plain = _entry(vault, "web", host="web.example", username="ai")
     ca = _entry(vault, "ca", host="db.example", username="ai", ssh_ca="yes")
     _signed(vault, plain, "old.example", "ai")  # before AI access was turned on again
+    # A login in the same millisecond as 'ai on' counts as after it (the
+    # safe side); a fast runner (CI) must not put the old one there.
+    time.sleep(0.005)
     ai_access.disable(vault, "cli")
     ai_access.enable(vault, "cli")
     _signed(vault, plain, "web.example", "ai")
