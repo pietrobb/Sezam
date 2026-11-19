@@ -1,0 +1,24 @@
+{
+  "about": "The ref shares T with bob; the client revokes bob (the member's folders re-keyed) and keeps writing in T; nobody loses a password, bob holds no key to anything live.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "T"},
+    {"on": "ref", "do": "create_entry", "name": "t1", "folder": "T", "password": "a"},
+    {"on": "ref", "do": "sync"},
+    {"on": "ref", "do": "invite", "member": "bob"},
+    {"on": "ref", "do": "grant", "member": "bob", "folder": "T"},
+    {"on": "ref", "do": "sync"},
+    {"on": "bob", "do": "reads", "expect": {"T": null, "T/t1": "a"}},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "edit_entry", "name": "t1", "password": "b"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "revoke", "member": "bob"},
+    {"on": "client", "do": "sync"},
+    {"on": "bob", "do": "sync"},
+    {"on": "ref", "do": "create_entry", "name": "t2", "folder": "T", "password": "c"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "create_entry", "name": "t3", "folder": "T", "password": "d"},
+    {"on": "client", "do": "sync"}
+  ],
+  "expect": {"T": null, "T/t1": "b", "T/t2": "c", "T/t3": "d"},
+  "revoked": ["bob"]
+}

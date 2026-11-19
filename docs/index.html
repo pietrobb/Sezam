@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sezam — Encrypted Credential Vault Documentation</title>
+<style>
+:root {
+    --bg: #ffffff; --bg-sidebar: #f8f9fa; --bg-code: #f4f5f7; --bg-code-block: #1e1e2e;
+    --text: #1a1a2e; --text-muted: #6b7280; --text-code: #cdd6f4;
+    --border: #e5e7eb; --accent: #00BCD4; --accent-light: #e0f7fa;
+    --green: #059669; --red: #dc2626; --orange: #d97706; --purple: #7c3aed;
+    --tag-get: #059669; --tag-post: #00BCD4; --tag-put: #d97706; --tag-patch: #7c3aed; --tag-delete: #dc2626;
+    --sidebar-w: 260px; --header-h: 56px;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #1a1a2e; --bg-sidebar: #16162a; --bg-code: #252540; --bg-code-block: #0f0f1a;
+        --text: #e2e8f0; --text-muted: #94a3b8; --text-code: #cdd6f4;
+        --border: #334155; --accent: #4dd0e1; --accent-light: #1a3a3f;
+        --tag-get: #34d399; --tag-post: #4dd0e1; --tag-put: #fbbf24; --tag-patch: #a78bfa; --tag-delete: #f87171;
+    }
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Header */
+.header { position: fixed; top: 0; left: 0; right: 0; height: var(--header-h); background: var(--bg-sidebar); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; z-index: 100; }
+.header h1 { font-size: 1.1rem; font-weight: 700; }
+.header h1 span { color: var(--accent); }
+.header .ver { font-size: 0.75rem; color: var(--text-muted); margin-left: 12px; background: var(--bg-code); padding: 2px 8px; border-radius: 4px; }
+
+/* Sidebar */
+.sidebar { position: fixed; top: var(--header-h); left: 0; bottom: 0; width: var(--sidebar-w); background: var(--bg-sidebar); border-right: 1px solid var(--border); overflow-y: auto; padding: 16px 0; z-index: 90; }
+.sidebar a { display: block; padding: 6px 20px; font-size: 0.85rem; color: var(--text-muted); }
+.sidebar a:hover { color: var(--accent); background: var(--accent-light); text-decoration: none; }
+.sidebar .group { padding: 12px 20px 4px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; color: var(--text-muted); }
+
+/* Content */
+.content { margin-left: var(--sidebar-w); margin-top: var(--header-h); padding: 32px 48px 80px; max-width: 900px; }
+.content h2 { font-size: 1.5rem; margin: 48px 0 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.content h2:first-child { margin-top: 0; border-top: none; padding-top: 0; }
+.content h3 { font-size: 1.15rem; margin: 32px 0 12px; }
+.content h4 { font-size: 1rem; margin: 24px 0 8px; }
+.content p { margin: 8px 0; }
+.content ul, .content ol { margin: 8px 0 8px 24px; }
+.content li { margin: 4px 0; }
+
+/* Inline code */
+code { font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.88em; background: var(--bg-code); padding: 2px 6px; border-radius: 3px; }
+
+/* Code blocks */
+.code-block { position: relative; background: var(--bg-code-block); color: var(--text-code); border-radius: 8px; margin: 12px 0; overflow: hidden; }
+.code-block pre { padding: 16px 20px; overflow-x: auto; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.82rem; line-height: 1.5; white-space: pre; }
+.code-block .copy-btn { position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,0.1); border: none; color: #94a3b8; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+.code-block .copy-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.88rem; }
+th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+th { background: var(--bg-sidebar); font-weight: 600; white-space: nowrap; }
+td code { font-size: 0.82em; }
+
+/* Method tags */
+.method { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; color: #fff; margin-right: 8px; font-family: monospace; }
+.method.get { background: var(--tag-get); }
+.method.post { background: var(--tag-post); }
+.method.put { background: var(--tag-put); }
+.method.patch { background: var(--tag-patch); }
+.method.delete { background: var(--tag-delete); }
+
+/* Endpoint path */
+.ep-path { font-family: monospace; font-size: 1rem; font-weight: 600; }
+
+/* Callout boxes */
+.callout { padding: 12px 16px; border-radius: 6px; margin: 12px 0; border-left: 4px solid; font-size: 0.9rem; }
+.callout.info { background: var(--accent-light); border-color: var(--accent); }
+.callout.warn { background: #fef3c7; border-color: var(--orange); }
+.callout.error { background: #fee2e2; border-color: var(--red); }
+.callout.success { background: #d1fae5; border-color: var(--green); }
+@media (prefers-color-scheme: dark) {
+    .callout.warn { background: #422006; }
+    .callout.error { background: #450a0a; }
+    .callout.success { background: #052e16; }
+}
+.callout strong { display: block; margin-bottom: 4px; }
+
+/* Collapsible */
+details { margin: 8px 0; }
+details summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--accent); }
+details summary:hover { text-decoration: underline; }
+
+/* Hamburger button (mobile only) */
+.menu-btn { display: none; background: none; border: none; color: var(--text); font-size: 1.5rem; cursor: pointer; padding: 4px 8px; margin-right: 8px; line-height: 1; }
+
+/* Sidebar overlay backdrop (mobile) */
+.sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 85; }
+.sidebar-overlay.open { display: block; }
+
+/* Key hierarchy diagram */
+.diagram { background: var(--bg-code); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin: 12px 0; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.82rem; line-height: 1.6; white-space: pre; overflow-x: auto; }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .menu-btn { display: block; }
+    .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
+    .sidebar.open { transform: translateX(0); }
+    .content { margin-left: 0; padding: 24px 16px 60px; }
+    .header { padding: 0 12px; }
+    .header h1 { font-size: 0.95rem; }
+    .header .ver { display: none; }
+    .content h2 { font-size: 1.25rem; }
+    .content h3 { font-size: 1.05rem; }
+    table { font-size: 0.8rem; display: block; overflow-x: auto; }
+    .code-block pre { font-size: 0.75rem; padding: 12px; }
+    .ep-path { font-size: 0.85rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <button class="menu-btn" id="menu-btn" onclick="toggleMenu()">&#9776;</button>
+    <h1>Sezam <span>Docs</span></h1>
+    <span class="ver">v1.0</span>
+</div>
+
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleMenu()"></div>
+<nav class="sidebar" id="sidebar">
+    <div class="group">Getting Started</div>
+    <a href="#introduction">Introduction</a>
+    <a href="#quickstart">Quick Start</a>
+    <a href="#desktop-gui">Desktop GUI</a>
+
+    <div class="group">Security</div>
+    <a href="#security-model">Security Model</a>
+    <a href="#security-best-practices">Best Practices</a>
+
+    <div class="group">CLI &amp; Server</div>
+    <a href="#cli-reference">CLI Reference</a>
+    <a href="#server-setup">Server Setup</a>
+    <a href="#api-reference">API Reference</a>
+
+    <div class="group">Multi-user</div>
+    <a href="#multi-user">Multi-user &amp; Sharing</a>
+    <a href="#sync-protocol">Sync Protocol</a>
+
+    <div class="group">Integrations</div>
+    <a href="#mcp-integration">MCP Integration</a>
+    <a href="#mobile-app">Mobile App (Flutter)</a>
+
+    <div class="group">Features</div>
+    <a href="#i18n">Internationalization</a>
+    <a href="#import-export">Import / Export</a>
+    <a href="#watchtower">Watchtower</a>
+</nav>
+
+<main class="content">
+
+<!-- ============================================================ -->
+<h2 id="introduction">Introduction</h2>
+
+<p><strong>Sezam</strong> is an encrypted personal and corporate credential vault for passwords, access credentials, SSH keys, API tokens, and sensitive notes. It features a hierarchical tree structure, granular access control (personal, corporate, and AI agents), full-text search, and a self-hosted server for team sharing.</p>
+
+<h3>What it solves</h3>
+<ul>
+    <li><strong>Personal use</strong> &mdash; replaces plain text files. One vault, one master password, instant access.</li>
+    <li><strong>Corporate use</strong> &mdash; replaces credential sharing over messaging apps. Admin sets access, colleagues see only what they should, via web. The server never sees content.</li>
+    <li><strong>AI agents</strong> &mdash; Claude Code and other agents access credentials via MCP with an approval flow. The agent never receives raw keys &mdash; the desktop broker performs the operation on its behalf.</li>
+</ul>
+
+<h3>What it is NOT</h3>
+<ul>
+    <li>Not a cloud subscription service</li>
+    <li>Not an enterprise solution for thousands of users (handles teams of 2&ndash;100 people)</li>
+    <li><strong>Forgotten password = data loss</strong> (by design, no password reset for personal vaults)</li>
+    <li>Device loss does not mean data loss &mdash; password-based recovery can download keys from the server</li>
+    <li>Corporate vaults have an org-level break-glass mechanism (Shamir's Secret Sharing)</li>
+</ul>
+
+<h3>Technology Stack</h3>
+<table>
+    <tr><th>Component</th><th>Technology</th><th>Notes</th></tr>
+    <tr><td>Desktop GUI</td><td>PySide6</td><td>System tray, global hotkey</td></tr>
+    <tr><td>Encryption</td><td><code>pynacl</code> / <code>pysodium</code></td><td>libsodium AEAD (XChaCha20-Poly1305-IETF), crypto_box, Ed25519</td></tr>
+    <tr><td>KDF</td><td><code>argon2-cffi</code></td><td>Argon2id</td></tr>
+    <tr><td>Local storage</td><td>SQLite (WAL)</td><td>ACID, concurrent reads</td></tr>
+    <tr><td>Server</td><td>FastAPI</td><td>Async Python</td></tr>
+    <tr><td>Server DB</td><td>MariaDB (InnoDB)</td><td></td></tr>
+    <tr><td>Web crypto</td><td><code>libsodium-wrappers</code></td><td>~120KB, same primitives as desktop</td></tr>
+    <tr><td>Web KDF</td><td><code>argon2-browser</code> WASM</td><td>~80KB, runs in Web Worker</td></tr>
+    <tr><td>MCP</td><td>Python MCP SDK</td><td>Broker pattern</td></tr>
+    <tr><td>IDs</td><td>ULID (internal), random base64url (share links)</td><td></td></tr>
+    <tr><td>Search</td><td>FTS5 <code>:memory:</code> / JS normalization</td><td></td></tr>
+</table>
+
+
+<!-- ============================================================ -->
+<h2 id="quickstart">Quick Start</h2>
+
+<p>Get up and running in under a minute.</p>
+
+<h3>1. Install</h3>
+<p>There are no release packages yet, and the names <code>sezam</code> and
+<code>sezam-sync-core</code> on PyPI are not ours: install from a clone
+(Python 3.11+ and a Rust toolchain for the shared sync core).</p>
+<div class="code-block"><pre>git clone https://github.com/pietrobb/Sezam.git
+cd Sezam
+python -m pip install ./core/py
+python -m pip install -e .</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>For GUI support (PySide6):</p>
+<div class="code-block"><pre>python -m pip install -e ".[gui]"</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>For KeePass import support:</p>
+<div class="code-block"><pre>python -m pip install -e ".[import]"</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>2. Create a vault</h3>
+<div class="code-block"><pre>sezam init</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>This runs the first-run wizard:</p>
+<ol>
+    <li>Prompts for a master password (with strength indicator)</li>
+    <li>Benchmarks Argon2id for ~1 second on your hardware</li>
+    <li>Generates Ed25519 + X25519 key pairs</li>
+    <li>Creates the vault at <code>~/.sezam/sezam.db</code></li>
+</ol>
+
+<div class="callout warn">
+    <strong>WARNING: Forgotten password = permanent data loss</strong>
+    There is no password recovery for personal vaults. Write down your master password and store it in a safe place.
+</div>
+
+<h3>3. Basic usage</h3>
+<div class="code-block"><pre># Unlock vault (starts a session)
+sezam unlock
+
+# Create an entry
+sezam set servers/hetzner/ssh -f host -v 192.168.1.1
+sezam set servers/hetzner/ssh -f password -v 's3cret!' -s
+
+# Retrieve a password (copy to clipboard, auto-clear 15s)
+sezam get servers/hetzner/ssh -f password --clip
+
+# Search entries
+sezam search "hetzner"
+
+# List vault tree
+sezam list
+
+# Generate a strong password
+sezam generate --length 24 --symbols
+
+# Lock when done
+sezam lock</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>4. Custom vault path</h3>
+<p>By default the vault lives at <code>~/.sezam</code>. Override with the <code>SEZAM_VAULT</code> environment variable:</p>
+<div class="code-block"><pre>export SEZAM_VAULT=/path/to/my/vault
+sezam init --path /path/to/my/vault</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+
+<!-- ============================================================ -->
+<h2 id="desktop-gui">Desktop GUI</h2>
+
+<h3>Launching</h3>
+<div class="code-block"><pre>sezam-gui</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>The desktop application is built with PySide6 and provides a full graphical interface for managing your vault.</p>
+
+<h3>First run wizard</h3>
+<ol>
+    <li>&ldquo;Welcome to Sezam. Create your master password.&rdquo; + data loss warning</li>
+    <li>Argon2id benchmark (~1s on your hardware), suggests parameters</li>
+    <li>Generates Ed25519 + X25519 key pairs</li>
+    <li>Creates <code>sezam.db</code></li>
+    <li>Optionally: configure server URL, print recovery sheet</li>
+</ol>
+
+<h3>Daily workflow</h3>
+<p>System tray icon &rarr; <code>Ctrl+Alt+V</code> &rarr; master password &rarr; spinner (~1s) &rarr; search bar is active &rarr; find entry &rarr; copy &rarr; auto-clear clipboard in 15s (visual countdown in tray).</p>
+
+<h3>Features</h3>
+<ul>
+    <li><strong>Tree view</strong> &mdash; hierarchical folder/entry tree with drag &amp; drop (triggers re-key transaction)</li>
+    <li><strong>Full-text search</strong> &mdash; <code>Ctrl+F</code>, searches names, field keys, and tags. Optional deep search includes values</li>
+    <li><strong>Entry detail panel</strong> &mdash; view/edit fields, copy individual values, show/hide sensitive fields</li>
+    <li><strong>Password generator</strong> &mdash; integrated into the entry form, shows strength indicator</li>
+    <li><strong>Tier management</strong> &mdash; set access tiers (0/1/2) per folder or entry</li>
+    <li><strong>Import wizard</strong> &mdash; CSV, KeePass, Bitwarden with preview and conflict handling</li>
+    <li><strong>Auto-lock</strong> &mdash; after 15 minutes of inactivity (configurable)</li>
+    <li><strong>Clipboard discipline</strong> &mdash; auto-clear after 15 seconds with visual countdown</li>
+    <li><strong>System tray</strong> &mdash; minimize to tray, global hotkey access</li>
+</ul>
+
+<h3>Admin features</h3>
+<ul>
+    <li><strong>Team menu</strong> &mdash; list of colleagues (name, status, fingerprint, assigned branches)</li>
+    <li><strong>Invitation</strong> &mdash; generate invitation links (128-bit random, 72h expiry, one-time)</li>
+    <li><strong>Access control</strong> &mdash; tree-based checkbox selection of branches to share</li>
+    <li><strong>Audit log viewer</strong> &mdash; filters by actor, action, date; verifies Ed25519 signatures</li>
+    <li><strong>Share dashboard</strong> &mdash; active share links, revoke</li>
+</ul>
+
+<h3>Keyboard shortcuts</h3>
+<table>
+    <tr><th>Shortcut</th><th>Action</th></tr>
+    <tr><td><code>Ctrl+Alt+V</code></td><td>Show window / focus (global hotkey)</td></tr>
+    <tr><td><code>Ctrl+F</code></td><td>Focus search bar</td></tr>
+    <tr><td><code>Ctrl+N</code></td><td>New entry</td></tr>
+    <tr><td><code>Ctrl+L</code></td><td>Lock vault</td></tr>
+    <tr><td><code>Ctrl+C</code></td><td>Copy selected field value</td></tr>
+    <tr><td><code>Delete</code></td><td>Delete selected entry (with confirmation)</td></tr>
+    <tr><td><code>Escape</code></td><td>Clear search / deselect</td></tr>
+</table>
+
+
+<!-- ============================================================ -->
+<h2 id="security-model">Security Model</h2>
+
+<h3>Content-blind server</h3>
+<p>The server is <strong>content-blind</strong> &mdash; it stores only encrypted blobs and never sees plaintext content.</p>
+
+<table>
+    <tr><th>Server sees (plain text)</th><th>Server does NOT see (encrypted)</th></tr>
+    <tr><td>Number of objects</td><td>Node and entry names</td></tr>
+    <tr><td>Object type (node/entry/dek/envelope)</td><td>Tier values</td></tr>
+    <tr><td>Tree topology (<code>parent_ref</code>)</td><td>Content timestamps</td></tr>
+    <tr><td>Object ownership (<code>owner_id</code>)</td><td>Field values (passwords, keys)</td></tr>
+    <tr><td>Sync timestamps (<code>modified_at</code>)</td><td>Field keys (&ldquo;username&rdquo;, &ldquo;password&rdquo;)</td></tr>
+    <tr><td>Encrypted blob sizes</td><td>Tags</td></tr>
+    <tr><td></td><td>Audit record contents</td></tr>
+</table>
+
+<div class="callout info">
+    <strong>Not &ldquo;zero-knowledge&rdquo;</strong>
+    The server sees graph topology and activity patterns. This is a deliberate compromise for efficient synchronization. The term &ldquo;content-blind&rdquo; accurately describes what the server cannot see: content, names, tiers, and sensitive metadata.
+</div>
+
+<h3>Identity and keys &mdash; two pairs per user</h3>
+<p>Each user has <strong>two separate key pairs</strong>:</p>
+
+<div class="diagram">Ed25519 &mdash; SIGNING pair (auth + audit)
+  Private: signing_sk (encrypted with master password)
+  Public:  signing_pk (stored on server)
+  Usage:   server auth (challenge-response), audit log signatures, sync integrity
+
+X25519 &mdash; ENCRYPTION pair (envelope encryption)
+  Private: encryption_sk (encrypted with master password)
+  Public:  encryption_pk (stored on server)
+  Usage:   NaCl crypto_box for DEK envelopes</div>
+
+<p><strong>Why two pairs:</strong> X25519 is Diffie-Hellman key agreement &mdash; cannot sign. Ed25519 is a signature scheme &mdash; cannot encrypt. Separate pairs eliminate cross-protocol risk.</p>
+
+<p><strong>Fingerprint:</strong> <code>SHA-256(signing_pk || encryption_pk)</code>. The GUI displays three modes:</p>
+<ul>
+    <li><strong>Visual</strong> (daily use): identicon generated from fingerprint hash</li>
+    <li><strong>Word-based</strong> (TOFU onboarding): 4 BIP39-style words covering 44 bits of entropy</li>
+    <li><strong>Full hex</strong> (technical): all 64 hex characters for complete verification</li>
+</ul>
+
+<h3>KEK/DEK key hierarchy</h3>
+
+<div class="diagram">Master Password (UTF-8)
+        |
+        v
+   Argon2id(password, salt, time=3, mem=256MB, par=4)
+        |
+        v
+   Root KEK (Key Encryption Key) &mdash; 256-bit
+        |
+        +-- Root DEK (scope='root')   -- encrypts root node and top-level nodes
+        +-- Folder DEK "servers"      -- encrypts entries in servers/
+        +-- Folder DEK "financial"    -- encrypts entries in financial/
+        +-- Audit DEK (scope='audit') -- encrypts audit log details (separate)
+        +-- ...</div>
+
+<p><strong>Rules:</strong></p>
+<ul>
+    <li>Root KEK unlocks individual DEKs. It <strong>never</strong> encrypts data directly.</li>
+    <li>Granularity is <strong>per-folder</strong>. Entry metadata is encrypted with its parent folder's DEK.</li>
+    <li>Tier 2 entries have a <strong>separate DEK</strong> that MCP agents physically cannot access.</li>
+    <li>Audit DEK is independently versioned &mdash; master password changes do not affect the audit chain.</li>
+    <li>Key material in Python uses <code>bytearray</code> with explicit zeroing after lock (best-effort, documented Python GC limitation).</li>
+</ul>
+
+<h3>Envelope encryption (multi-user)</h3>
+<p>When granting access to a folder, the admin wraps the folder's DEK using NaCl <code>crypto_box</code> (authenticated) with the recipient's X25519 public key:</p>
+
+<div class="code-block"><pre>Folder DEK for "clients/auto-moto"
+    +-- wrapped via crypto_box(admin_encryption_pk, admin_encryption_sk -> recipient) -> envelope
+    |   (authenticated: recipient knows who created the envelope)</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><strong>Access revocation</strong> triggers a mandatory re-key:</p>
+<ol>
+    <li>Admin revokes user access</li>
+    <li>New DEK is generated for the affected branch</li>
+    <li>All entries re-encrypted with the new DEK (single SQLite transaction)</li>
+    <li>New envelopes created for remaining users</li>
+    <li>Old DEK archived, wrapped by the new DEK (chain wrapping)</li>
+</ol>
+
+<h3>Encryption specification</h3>
+<table>
+    <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+    <tr><td>KDF</td><td>Argon2id</td><td>salt=16B, default: time=3, mem=256MB, par=4</td></tr>
+    <tr><td>Symmetric (content)</td><td><code>crypto_aead_xchacha20poly1305_ietf</code></td><td>nonce=24B, tag=16B, native AAD support</td></tr>
+    <tr><td>Symmetric (envelopes)</td><td>NaCl <code>crypto_box</code></td><td>X25519 + XSalsa20-Poly1305</td></tr>
+    <tr><td>Signatures</td><td>Ed25519</td><td>Server auth, audit log, sync integrity</td></tr>
+    <tr><td>Nonce</td><td>Random: <code>os.urandom(24)</code></td><td>Stored in envelope. 24B = collision-safe</td></tr>
+    <tr><td>AAD</td><td>Canonical format</td><td><code>alg || schema_version || blob_kind || dek_id || object_id || version</code> (59 bytes)</td></tr>
+</table>
+
+<h3>Ciphertext envelope format</h3>
+<div class="code-block"><pre>+--------------------------------------------------+
+| HEADER (plain text, authenticated via AAD)        |
+|   alg: u8              (1 = xchacha20poly1305)    |
+|   schema_version: u8                              |
+|   blob_kind: u8        (1-7)                      |
+|   dek_id: 26 bytes     (ULID)                     |
+|   nonce: 24 bytes      (os.urandom(24))           |
++--------------------------------------------------+
+| AEAD OUTPUT                                       |
+|   ciphertext: variable                            |
+|   tag: 16 bytes (Poly1305)                        |
++--------------------------------------------------+</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><strong>Blob kinds:</strong></p>
+<table>
+    <tr><th>Kind</th><th>Value</th><th>Description</th></tr>
+    <tr><td><code>1</code></td><td><code>node_meta</code></td><td>Node metadata (name, tier, timestamps)</td></tr>
+    <tr><td><code>2</code></td><td><code>entry_meta</code></td><td>Entry metadata (name, tier, timestamps)</td></tr>
+    <tr><td><code>3</code></td><td><code>entry_data</code></td><td>Entry fields (key/value pairs)</td></tr>
+    <tr><td><code>4</code></td><td><code>history_snapshot</code></td><td>Historical entry version</td></tr>
+    <tr><td><code>5</code></td><td><code>audit_details</code></td><td>Audit log encrypted details</td></tr>
+    <tr><td><code>6</code></td><td><code>dek_wrap</code></td><td>DEK wrapping (archive chain)</td></tr>
+    <tr><td><code>7</code></td><td><code>keypair_wrap</code></td><td>Private keypair wrapping</td></tr>
+</table>
+
+<h3>Server authentication &mdash; Ed25519 challenge-response</h3>
+<div class="code-block"><pre>1. Client -> Server: username
+2. Server -> Client: challenge = random(32B) + server_timestamp
+3. Client: refuses a challenge that is not 40 bytes;
+   signature = Ed25519_sign(signing_sk, "sezam-auth-challenge-signature-v1" || challenge)
+4. Client -> Server: signature
+5. Server: Ed25519_verify(signing_pk, "sezam-auth-challenge-signature-v1" || challenge, signature)
+6. Server: verify timestamp is max 30s old (replay protection)
+7. Server: mark challenge as "spent" (nonce tracking)
+8. Server -> Client: JWT (alg=EdDSA, expiry=1h)</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Access tiers</h3>
+<table>
+    <tr><th>Tier</th><th>Human access</th><th>AI access</th></tr>
+    <tr><td><strong>0</strong> Free</td><td>Full after unlock</td><td>Broker executes without approval</td></tr>
+    <tr><td><strong>1</strong> On request</td><td>Full after unlock</td><td>Broker executes after approval</td></tr>
+    <tr><td><strong>2</strong> Secret</td><td>Full after unlock</td><td>Cannot see existence (separate DEK)</td></tr>
+</table>
+
+<h3>Security guarantees</h3>
+<ol>
+    <li><strong>Content-blind server</strong> &mdash; no content, names, tiers, or values visible to server</li>
+    <li><strong>No plain text on disk</strong> &mdash; never, not even temp files or search indexes</li>
+    <li><strong>Memory hygiene</strong> &mdash; best-effort zeroing (<code>bytearray</code> + explicit wipe)</li>
+    <li><strong>Atomic writes</strong> &mdash; write to tmp, then rename</li>
+    <li><strong>Clipboard discipline</strong> &mdash; auto-clear after 15s with warning about clipboard managers</li>
+    <li><strong>Fail closed</strong> &mdash; on error: lock, reveal nothing</li>
+    <li><strong>Tamper-evident audit</strong> &mdash; Ed25519 signatures, Merkle DAG for offline fork handling</li>
+    <li><strong>No telemetry</strong></li>
+    <li><strong>No personal recovery by design</strong> &mdash; org break-glass exists for corporate vaults</li>
+    <li><strong>Padding</strong> &mdash; blobs padded to nearest power of 2 (random fill, not zero)</li>
+</ol>
+
+
+<!-- ============================================================ -->
+<h2 id="cli-reference">CLI Reference</h2>
+
+<p>All commands are invoked via the <code>sezam</code> entry point. The vault path defaults to <code>~/.sezam</code> (override with <code>SEZAM_VAULT</code> env var).</p>
+
+<h3><code>sezam init</code></h3>
+<p>Create a new vault. Runs the first-run wizard: prompts for master password, benchmarks Argon2id, generates key pairs, creates <code>sezam.db</code>.</p>
+<div class="code-block"><pre>sezam init [--path /custom/path]</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3><code>sezam unlock</code></h3>
+<p>Unlock the vault and start a session. The session persists until <code>sezam lock</code> is called.</p>
+<div class="code-block"><pre>sezam unlock</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3><code>sezam lock</code></h3>
+<p>Lock the vault and end the current session. Zeroes key material from memory.</p>
+<div class="code-block"><pre>sezam lock</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3><code>sezam get</code></h3>
+<p>Retrieve an entry or a specific field value.</p>
+<div class="code-block"><pre>sezam get &lt;path&gt; [--field|-f &lt;key&gt;] [--clip]</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<table>
+    <tr><th>Option</th><th>Description</th></tr>
+    <tr><td><code>--field, -f</code></td><td>Get a specific field value instead of the whole entry</td></tr>
+    <tr><td><code>--clip</code></td><td>Copy value to clipboard (auto-clear after 15 seconds)</td></tr>
+</table>
+
+<h3><code>sezam set</code></h3>
+<p>Create or update an entry. Creates intermediate folders automatically.</p>
+<div class="code-block"><pre>sezam set &lt;path&gt; [--field|-f &lt;key&gt;] [--value|-v &lt;val&gt;] [--sensitive|-s]</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<table>
+    <tr><th>Option</th><th>Description</th></tr>
+    <tr><td><code>--field, -f</code></td><td>Field key to set</td></tr>
+    <tr><td><code>--value, -v</code></td><td>Field value (prompted interactively if omitted)</td></tr>
+    <tr><td><code>--sensitive, -s</code></td><td>Mark the field as sensitive (masked in output)</td></tr>
+</table>
+
+<h3><code>sezam list</code></h3>
+<p>Display the vault tree or contents of a specific folder.</p>
+<div class="code-block"><pre>sezam list [path]</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3><code>sezam search</code></h3>
+<p>Full-text search across entry names, field keys, and tags.</p>
+<div class="code-block"><pre>sezam search &lt;query&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3><code>sezam generate</code></h3>
+<p>Generate a random password or passphrase.</p>
+<div class="code-block"><pre>sezam generate [--length|-l 20] [--symbols|-s] [--no-symbols] [--passphrase|-p] [--words|-w 5] [--clip]</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<table>
+    <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>--length, -l</code></td><td>20</td><td>Password length</td></tr>
+    <tr><td><code>--symbols, -s</code></td><td>on</td><td>Include symbols</td></tr>
+    <tr><td><code>--no-symbols</code></td><td></td><td>Exclude symbols</td></tr>
+    <tr><td><code>--passphrase, -p</code></td><td></td><td>Generate a passphrase instead</td></tr>
+    <tr><td><code>--words, -w</code></td><td>5</td><td>Number of words (passphrase mode)</td></tr>
+    <tr><td><code>--clip</code></td><td></td><td>Copy to clipboard</td></tr>
+</table>
+
+<h3><code>sezam change-password</code></h3>
+<p>Change the master password. Re-derives KEK with new Argon2id salt, re-wraps all DEKs, re-encrypts keypair, uploads new recovery data to server.</p>
+<div class="code-block"><pre>sezam change-password</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3><code>sezam push</code></h3>
+<p>Push dirty (modified) objects to the server. Delta sync &mdash; only changed objects are sent.</p>
+<div class="code-block"><pre>sezam push</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3><code>sezam pull</code></h3>
+<p>Pull new objects from the server. Delta sync based on <code>commit_seq</code>.</p>
+<div class="code-block"><pre>sezam pull</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3><code>sezam share</code></h3>
+<p>Create a secure share link for an entry.</p>
+<div class="code-block"><pre>sezam share &lt;path&gt; [--expires 24h] [--views 3]</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3><code>sezam import</code></h3>
+<p>Import entries from external formats.</p>
+<div class="code-block"><pre>sezam import &lt;source&gt; --format csv|keepass|bitwarden</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3><code>sezam export</code></h3>
+<p>Export an encrypted backup (copy of <code>sezam.db</code>).</p>
+<div class="code-block"><pre>sezam export &lt;destination&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+
+<!-- ============================================================ -->
+<h2 id="server-setup">Server Setup</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+    <li>Python 3.11+</li>
+    <li>MariaDB 10.6+ (InnoDB engine)</li>
+</ul>
+
+<h3>MariaDB setup</h3>
+<div class="code-block"><pre>CREATE DATABASE sezam CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'sezam'@'localhost' IDENTIFIED BY 'your_strong_password';
+GRANT ALL PRIVILEGES ON sezam.* TO 'sezam'@'localhost';
+FLUSH PRIVILEGES;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<div class="callout info">
+    <strong>Auto-schema</strong>
+    The server automatically creates all tables on first startup via <code>db.create_schema()</code>. No manual migration is needed.
+</div>
+
+<h3>Install server dependencies</h3>
+<div class="code-block"><pre>cd server/
+pip install -r requirements.txt</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Server dependencies:</p>
+<table>
+    <tr><th>Package</th><th>Purpose</th></tr>
+    <tr><td><code>fastapi>=0.110.0</code></td><td>Web framework</td></tr>
+    <tr><td><code>uvicorn[standard]>=0.27.0</code></td><td>ASGI server</td></tr>
+    <tr><td><code>aiomysql>=0.2.0</code></td><td>Async MariaDB driver</td></tr>
+    <tr><td><code>PyNaCl>=1.5.0</code></td><td>libsodium bindings</td></tr>
+    <tr><td><code>PyJWT>=2.8.0</code></td><td>JWT encoding/decoding</td></tr>
+    <tr><td><code>python-ulid>=2.2.0</code></td><td>ULID generation</td></tr>
+    <tr><td><code>argon2-cffi>=23.1.0</code></td><td>Argon2id verification</td></tr>
+    <tr><td><code>pydantic>=2.5.0</code></td><td>Request/response validation</td></tr>
+</table>
+
+<h3>Environment variables</h3>
+<table>
+    <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>SEZAM_DB_HOST</code></td><td><code>localhost</code></td><td>MariaDB host</td></tr>
+    <tr><td><code>SEZAM_DB_PORT</code></td><td><code>3306</code></td><td>MariaDB port</td></tr>
+    <tr><td><code>SEZAM_DB_USER</code></td><td><code>sezam</code></td><td>MariaDB user</td></tr>
+    <tr><td><code>SEZAM_DB_PASSWORD</code></td><td>(empty)</td><td>MariaDB password</td></tr>
+    <tr><td><code>SEZAM_DB_NAME</code></td><td><code>sezam</code></td><td>Database name</td></tr>
+    <tr><td><code>SEZAM_JWT_KEY_PATH</code></td><td><code>jwt_key.bin</code></td><td>Path to Ed25519 JWT signing key file</td></tr>
+    <tr><td><code>SEZAM_HOST</code></td><td><code>0.0.0.0</code></td><td>Server bind host</td></tr>
+    <tr><td><code>SEZAM_PORT</code></td><td><code>8000</code></td><td>Server bind port</td></tr>
+    <tr><td><code>SEZAM_BASE_URL</code></td><td><code>http://localhost:8000</code></td><td>Public base URL</td></tr>
+    <tr><td><code>SEZAM_HMAC_SECRET</code></td><td>(empty)</td><td>HMAC secret for IP hashing and fake salt generation</td></tr>
+    <tr><td><code>SEZAM_CORS_ORIGINS</code></td><td>(empty)</td><td>Allowed CORS origins (comma-separated)</td></tr>
+</table>
+
+<h3>Running the server</h3>
+<div class="code-block"><pre># Development
+uvicorn server.app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Production
+uvicorn server.app.main:app --host 0.0.0.0 --port 8000 --workers 4</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<div class="callout warn">
+    <strong>JWT signing key</strong>
+    The server generates an Ed25519 key pair on first start and stores it at <code>SEZAM_JWT_KEY_PATH</code>. This key is <strong>never stored in the database</strong>. Protect this file. Server restart with a different key invalidates all existing JWTs.
+</div>
+
+<h3>Security headers</h3>
+<p>The server automatically adds security headers to all responses:</p>
+<div class="code-block"><pre>Referrer-Policy: no-referrer
+Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'
+Strict-Transport-Security: max-age=63072000; includeSubDomains
+X-Content-Type-Options: nosniff</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+
+<!-- ============================================================ -->
+<h2 id="api-reference">API Reference</h2>
+
+<p>All endpoints are prefixed with <code>/api</code>. Authentication uses JWT Bearer tokens obtained via the challenge-response flow, except where noted.</p>
+
+<h3>Authentication</h3>
+
+<h4><span class="method post">POST</span> <span class="ep-path">/api/auth/challenge</span></h4>
+<p>Step 1 of login. Client sends username, server returns a random challenge.</p>
+<table>
+    <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>username</code></td><td>string</td><td>User's username</td></tr>
+</table>
+<p><strong>Response:</strong> <code>{"challenge": "hex...", "timestamp": 1234567890}</code></p>
+<div class="callout info">
+    <strong>User enumeration protection</strong>
+    The server returns a valid-looking challenge even for non-existent users, with constant response time.
+</div>
+
+<h4><span class="method post">POST</span> <span class="ep-path">/api/auth/verify</span></h4>
+<p>Step 2 of login. Client sends the Ed25519 signature of the challenge. Server verifies and returns JWT.</p>
+<table>
+    <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>username</code></td><td>string</td><td>User's username</td></tr>
+    <tr><td><code>challenge</code></td><td>string (hex)</td><td>Challenge from step 1</td></tr>
+    <tr><td><code>signature</code></td><td>string (hex)</td><td>Ed25519 signature of <code>"sezam-auth-challenge-signature-v1" || challenge</code></td></tr>
+</table>
+<p><strong>Response:</strong> <code>{"access_token": "jwt...", "token_type": "bearer", "expires_in": 3600}</code></p>
+
+<h4><span class="method post">POST</span> <span class="ep-path">/api/auth/refresh</span></h4>
+<p>Refresh an existing JWT before it expires. Requires valid JWT in header.</p>
+
+<h4><span class="method post">POST</span> <span class="ep-path">/api/auth/logout</span></h4>
+<p>Invalidate the current JWT. Adds token hash to <code>revoked_tokens</code> table.</p>
+
+<h4><span class="method post">POST</span> <span class="ep-path">/api/auth/provision</span></h4>
+<p>Device provisioning. Download encrypted keypair to a new device using a provisioning token. <strong>No JWT required.</strong></p>
+<table>
+    <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>token</code></td><td>string</td><td>128-bit provisioning token (10min, one-time)</td></tr>
+    <tr><td><code>username</code></td><td>string</td><td>Username</td></tr>
+</table>
+<p><strong>Response:</strong> <code>{"encrypted_keypair": "...", "argon2_salt": "hex..."}</code></p>
+
+<h4><span class="method post">POST</span> <span class="ep-path">/api/auth/recover</span></h4>
+<p>Password-based recovery for total device loss. <strong>No JWT required.</strong> Rate limited: max 3 attempts/hour per username, 10 total before lockout.</p>
+<table>
+    <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>username</code></td><td>string</td><td>Username</td></tr>
+    <tr><td><code>auth_proof</code></td><td>string (hex)</td><td>Argon2id(password, auth_salt) output</td></tr>
+</table>
+<p><strong>Response:</strong> <code>{"encrypted_keypair": "...", "argon2_salt": "hex..."}</code></p>
+
+<h4><span class="method put">PUT</span> <span class="ep-path">/api/me/keypair</span></h4>
+<p>Upload or update the encrypted keypair. Accepts both full JWT and onboarding JWT (scope=keypair_upload).</p>
+<table>
+    <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>encrypted_keypair</code></td><td>string (base64)</td><td>Keypair encrypted with KEK</td></tr>
+    <tr><td><code>argon2_salt</code></td><td>string (hex)</td><td>16B encryption salt</td></tr>
+    <tr><td><code>auth_salt</code></td><td>string (hex)</td><td>16B auth salt (different from argon2_salt)</td></tr>
+    <tr><td><code>auth_proof</code></td><td>string (hex)</td><td>Argon2id output for recovery verification</td></tr>
+</table>
+
+<h3>User Management</h3>
+
+<h4><span class="method post">POST</span> <span class="ep-path">/api/users/invite</span></h4>
+<p>Admin only. Generate a one-time invitation token (128-bit, 72-hour expiry).</p>
+<p><strong>Response:</strong> <code>{"invitation_token": "hex...", "expires_at": 1234567890}</code></p>
+
+<h4><span class="method post">POST</span> <span class="ep-path">/api/users/register</span></h4>
+<p>Register a new user via invitation token. Returns an onboarding JWT (15-minute TTL, limited scope).</p>
+<table>
+    <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>invitation_token</code></td><td>string</td><td>Token from admin invitation</td></tr>
+    <tr><td><code>username</code></td><td>string</td><td>Desired username</td></tr>
+    <tr><td><code>signing_pk</code></td><td>string (hex)</td><td>Ed25519 public key</td></tr>
+    <tr><td><code>encryption_pk</code></td><td>string (hex)</td><td>X25519 public key</td></tr>
+</table>
+
+<h4><span class="method get">GET</span> <span class="ep-path">/api/users</span></h4>
+<p>Admin only. List all users including pending registrations.</p>
+
+<h4><span class="method patch">PATCH</span> <span class="ep-path">/api/users/:id/approve</span></h4>
+<p>Admin only. Approve a pending user, setting their status to <code>active</code>.</p>
+
+<h4><span class="method patch">PATCH</span> <span class="ep-path">/api/users/:id/rotate-keys</span></h4>
+<p>Upload new public keys (in-place update). Used for key rotation after compromise.</p>
+<table>
+    <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>new_signing_pk</code></td><td>string (hex)</td><td>New Ed25519 public key</td></tr>
+    <tr><td><code>new_encryption_pk</code></td><td>string (hex)</td><td>New X25519 public key</td></tr>
+</table>
+
+<h4><span class="method delete">DELETE</span> <span class="ep-path">/api/users/:id</span></h4>
+<p>Admin only. Revoke a user (sets <code>status='revoked'</code>). Triggers re-key of all branches the user had access to.</p>
+
+<h3>Sync</h3>
+
+<h4><span class="method post">POST</span> <span class="ep-path">/api/sync</span></h4>
+<p>Delta push. Send dirty objects from client. Server assigns <code>commit_seq</code>, checks write ACL, verifies Ed25519 signatures.</p>
+<table>
+    <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>objects</code></td><td>array</td><td>List of <code>{id, object_type, version, payload, payload_hash, parent_ref, target_user_id, is_deleted, signature}</code></td></tr>
+    <tr><td><code>atomic_batch</code></td><td>boolean</td><td>If <code>true</code>, all objects in the batch are processed atomically (for re-key operations)</td></tr>
+</table>
+<p><strong>Response:</strong> <code>{"accepted": [{id, commit_seq}], "conflicts": [{id, server_version, server_payload_hash}]}</code></p>
+
+<h4><span class="method get">GET</span> <span class="ep-path">/api/sync?since_commit_seq=X</span></h4>
+<p>Delta pull. Returns all objects with <code>commit_seq > X</code>. Supports <code>ETag</code> / <code>If-None-Match</code> for efficient polling (returns <code>304 Not Modified</code> when nothing changed).</p>
+<p>If <code>since_commit_seq &lt; gc_floor_seq</code>, the server returns <code>410 Gone</code> (full resync required).</p>
+
+<h3>Metadata</h3>
+
+<h4><span class="method get">GET</span> <span class="ep-path">/api/meta</span></h4>
+<p>Public metadata (no auth required). Returns server version, timestamp, and Argon2id web parameters.</p>
+
+<h4><span class="method get">GET</span> <span class="ep-path">/api/meta?username=X</span></h4>
+<p>Per-user public metadata. Returns <code>argon2_salt</code> and <code>auth_salt</code> for provisioning/recovery. For non-existent users, returns deterministic fake salts (user enumeration protection).</p>
+
+<h3>Secure Share</h3>
+
+<h4><span class="method post">POST</span> <span class="ep-path">/api/share</span></h4>
+<p>Create a share link. The encrypted blob is uploaded; the share key stays in the URL fragment (never sent to server).</p>
+<table>
+    <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>id</code></td><td>string</td><td>256-bit random, base64url encoded</td></tr>
+    <tr><td><code>encrypted_blob</code></td><td>string (base64)</td><td>Entry encrypted with one-time share key</td></tr>
+    <tr><td><code>expires_at</code></td><td>integer</td><td>Unix ms expiry timestamp</td></tr>
+    <tr><td><code>max_views</code></td><td>integer</td><td>Maximum view count (default: 1)</td></tr>
+    <tr><td><code>pin_hash</code></td><td>string?</td><td>Optional Argon2id PIN hash</td></tr>
+</table>
+
+<h4><span class="method get">GET</span> <span class="ep-path">/api/share/:id</span></h4>
+<p>Consume a share link. Atomic <code>SELECT FOR UPDATE</code> ensures no race conditions. <strong>No auth required</strong> (public endpoint). Constant response time for all error states.</p>
+
+<h4><span class="method patch">PATCH</span> <span class="ep-path">/api/share/:id</span></h4>
+<p>Admin only. Unlock a locked share link or manually deactivate one.</p>
+
+<h4><span class="method delete">DELETE</span> <span class="ep-path">/api/share/:id</span></h4>
+<p>Revoke and permanently delete a share link and its encrypted blob.</p>
+
+<h4><span class="method get">GET</span> <span class="ep-path">/api/shares</span></h4>
+<p>Admin only. List all active share links.</p>
+
+
+<!-- ============================================================ -->
+<h2 id="multi-user">Multi-user &amp; Sharing</h2>
+
+<h3>Invitation and onboarding flow</h3>
+<ol>
+    <li><strong>Admin creates invitation</strong> &mdash; desktop app generates a 128-bit random token (72h expiry, one-time use)</li>
+    <li><strong>Colleague opens link</strong> &mdash; &ldquo;Set up your Sezam password&rdquo;</li>
+    <li><strong>Browser generates key pairs</strong> &mdash; Ed25519 + X25519 (or desktop client generates them)</li>
+    <li><strong>Registration</strong> &mdash; <code>POST /api/users/register</code> with invitation token + public keys. Returns onboarding JWT (15min)</li>
+    <li><strong>Keypair upload</strong> &mdash; <code>PUT /api/me/keypair</code> with encrypted private keys (wrapped by KEK from Argon2id)</li>
+    <li><strong>Optional backup</strong> &mdash; download <code>.sezam-key</code> file as offline fallback</li>
+    <li><strong>Waiting for approval</strong> &mdash; &ldquo;Waiting for administrator approval&rdquo; (polling or SSE)</li>
+    <li><strong>Admin verification</strong> &mdash; admin verifies the colleague's fingerprint (in person or by phone), approves, assigns branches</li>
+    <li><strong>Access granted</strong> &mdash; colleague receives notification and can see assigned branches</li>
+</ol>
+
+<h3>TOFU (Trust On First Use)</h3>
+<p>Public key authenticity uses the TOFU model (like SSH <code>known_hosts</code>):</p>
+<ul>
+    <li>When adding a colleague, the admin verifies the fingerprint displayed in the GUI</li>
+    <li>The server cannot substitute a public key without the admin seeing the fingerprint change</li>
+    <li>GUI shows a warning if a key changes (MITM detection)</li>
+    <li>Local key cache stores <code>{user_id: (signing_pk, encryption_pk, fingerprint)}</code> &mdash; eliminates server dependency for crypto_box operations</li>
+</ul>
+
+<h3>Access levels</h3>
+<table>
+    <tr><th>Level</th><th>Can read</th><th>Can write</th><th>How it works</th></tr>
+    <tr><td><code>read</code></td><td>Yes</td><td>No</td><td>Receives DEK envelope but no <code>write_acl</code> entry</td></tr>
+    <tr><td><code>write</code></td><td>Yes</td><td>Yes</td><td>Receives DEK envelope + server adds <code>write_acl</code></td></tr>
+</table>
+
+<h3>Pull model</h3>
+<p>The server sends <strong>all vault_objects</strong> to every client (the entire vault). Each client locally filters by which DEKs it can unlock via its envelopes. Objects without a matching DEK are unusable encrypted blobs.</p>
+
+<div class="callout info">
+    <strong>Why full pull?</strong>
+    This makes the server truly content-blind &mdash; it does not need to know who has access to what (except for write ACL). For 2&ndash;15 users with thousands of entries, the bandwidth is hundreds of KB, which is negligible.
+</div>
+
+<h3>Secure share</h3>
+<p>Share links use a one-time symmetric key that lives only in the URL fragment (never sent to the server):</p>
+<div class="code-block"><pre>https://sezam.company.com/s/Kx7mP9...qR2#share_key_base64
+                             ^                    ^
+                      256-bit random       never hits server</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<table>
+    <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>expires_at</code></td><td>24h</td><td>1h / 24h / 7d / custom</td></tr>
+    <tr><td><code>max_views</code></td><td>1</td><td>Security default. Can be set to 3/10</td></tr>
+    <tr><td><code>require_pin</code></td><td>no</td><td>Rate limited: 3 attempts/15min/IP. Locked after 10 total failures</td></tr>
+    <tr><td><code>notify_on_view</code></td><td>yes</td><td>Desktop notification when viewed</td></tr>
+</table>
+
+
+<!-- ============================================================ -->
+<h2 id="sync-protocol">Sync Protocol</h2>
+
+<h3>Overview</h3>
+<p>Sezam uses an <strong>offline-first, explicit push/pull</strong> model. The local vault is the primary source. Synchronization is delta-based (only changed objects).</p>
+
+<h3>Delta push</h3>
+<div class="code-block"><pre>1. Client collects objects where is_dirty = 1
+2. POST /api/sync {objects: [{id, version, payload, payload_hash, signature}]}
+   - signature = Ed25519_sign(signing_sk, canonical_signed_data)
+3. Server processes each object in a transaction:
+   a) Check write_acl (admin exempt)
+   b) server.version &lt; client.version -> accept, assign commit_seq
+   c) Same version + same payload_hash -> accept (idempotent retry)
+   d) Same version + different payload_hash -> 409 Conflict
+   e) server.version &gt; client.version -> 409 Conflict
+4. Response: {accepted: [{id, commit_seq}], conflicts: [{id, ...}]}
+5. Client: accepted -> is_dirty = 0. Conflicts -> stay dirty, GUI shows diff</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Delta pull</h3>
+<div class="code-block"><pre>1. GET /api/sync?since_commit_seq={last_known_commit_seq}
+2. Server returns objects where commit_seq > since_commit_seq
+3. Client for each object:
+   a) Verify client_signature via author's signing_pk
+      (invalid signature = REJECTED, fabricated by server)
+   b) server.version > local.version -> accept (newer)
+   c) Same version + different payload_hash -> ERROR (equivocation)
+   d) server.version &lt; local.version -> ignore (stale)
+4. Tombstones: verify signature + author had write_acl -> mark deleted
+5. Update last_known_commit_seq = max(commit_seq from response)</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Conflict resolution</h3>
+<p>When a conflict occurs (same version, different content), the recommended merge strategy is:</p>
+<ul>
+    <li>Download the server version and decrypt both local and remote</li>
+    <li>Compare at the individual field level (not the entire blob)</li>
+    <li>If different fields were changed, auto-merge by taking the newer value for each field</li>
+    <li>If the same field was changed, prompt the user for manual resolution</li>
+</ul>
+
+<h3>Rollback protection</h3>
+<p>The client maintains a <strong>sync checkpoint</strong> (encrypted, in <code>vault_meta</code>):</p>
+<div class="code-block"><pre>{
+  "last_sync_seq": 42,
+  "state_hash": "SHA-256(sorted_objects(id || version || SHA-256(payload)))",
+  "timestamp": 1710764400000
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Detects: rollback (lower commit_seq), silent payload changes, equivocation (same version, different payload).</p>
+
+<h3>Tombstone GC</h3>
+<p>Deleted objects (<code>is_deleted=1</code>) are physically removed after <strong>90 days</strong>. The audit log retains a signed record of the deletion.</p>
+<p>If a client comes back after 90+ days offline with <code>since_commit_seq &lt; gc_floor_seq</code>, the server returns <code>410 Gone</code>, requiring a full resync. The GUI warns the user and offers to export unsynchronized changes before overwriting.</p>
+
+<h3>Idempotent retry</h3>
+<p>On push retry, the client sends the <strong>exact same encrypted blob</strong> (from push cache), not a re-encryption. Re-encrypting would produce a different nonce, different ciphertext, different <code>payload_hash</code>, and the server would return 409 instead of OK.</p>
+
+<h3>Atomic re-key batches</h3>
+<p>When a push contains re-key objects (new DEK + re-encrypted entries + new envelopes + tombstoned old envelopes), the client sets <code>atomic_batch: true</code>. The server processes the entire batch in a <strong>single database transaction</strong> (all-or-nothing).</p>
+
+
+<!-- ============================================================ -->
+<h2 id="mcp-integration">MCP Integration</h2>
+
+<p>Sezam exposes vault tools via the <strong>Model Context Protocol (MCP)</strong> for AI agents like Claude Code. The MCP server runs as part of the desktop app process.</p>
+
+<div class="callout warn">
+    <strong>MCP never gets raw keys or secrets</strong>
+    The desktop vault process acts as a broker. It decrypts, performs the operation, returns only the result, and zeroes the key material.
+</div>
+
+<h3>Architecture</h3>
+<div class="code-block"><pre>AI agent calls vault_use("servers/hetzner/ssh", "ssh_connect")
+        |
+        v
+MCP server (Python, same process as desktop app)
+        |
+        v
+Tier check: tier 1 -> requires approval
+        |
+        v
+GUI notification: "Claude Code requests use_secret for Hetzner SSH"
+        |
+Admin clicks "Approve"
+        |
+        v
+Desktop broker: decrypt DEK -> decrypt field -> USE secret -> return result
+        |
+Agent receives: {"status": "ok", "output": "Connected. ls output: ..."}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>MCP Tools</h3>
+
+<h4><code>vault_list</code></h4>
+<p>List folders and entries at a vault path. Tier 2 entries are hidden from agents.</p>
+<div class="code-block"><pre>vault_list(path: str = "") -> {"nodes": [...], "entries": [...]}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<table>
+    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>path</code></td><td>string</td><td>Vault path (e.g., <code>"Servers/Hetzner"</code>). Empty = root</td></tr>
+</table>
+
+<h4><code>vault_read</code></h4>
+<p>Read entry metadata or a specific field value. Tier 1 entries require admin approval.</p>
+<div class="code-block"><pre>vault_read(path: str, field: str?) -> {"status": "ok"|"pending"|"denied"|"timeout"|"not_found", ...}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<table>
+    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>path</code></td><td>string (required)</td><td>Full path to entry (e.g., <code>"Servers/Hetzner/SSH Root"</code>)</td></tr>
+    <tr><td><code>field</code></td><td>string (optional)</td><td>Field key to read. Omit for metadata only</td></tr>
+</table>
+
+<h4><code>vault_search</code></h4>
+<p>Search vault entries by name, field keys, or tags.</p>
+<div class="code-block"><pre>vault_search(query: str) -> {"results": [...]}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h4><code>vault_use</code></h4>
+<p>Use a secret without seeing it. The broker performs the operation and returns only the result. Agent never sees raw credentials.</p>
+<div class="code-block"><pre>vault_use(path: str, action: str, params: dict?) -> {"status": "ok", "output": "..."}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<table>
+    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>path</code></td><td>string (required)</td><td>Full path to entry</td></tr>
+    <tr><td><code>action</code></td><td>string (required)</td><td>Action to perform (e.g., <code>"totp_code"</code>)</td></tr>
+    <tr><td><code>params</code></td><td>object (optional)</td><td>Action-specific parameters</td></tr>
+</table>
+
+<h3>Tier enforcement</h3>
+<table>
+    <tr><th>Tier</th><th>vault_list</th><th>vault_read</th><th>vault_use</th></tr>
+    <tr><td>0 (Free)</td><td>Visible</td><td>Auto (if <code>ai_read_secret</code> enabled)</td><td>Auto</td></tr>
+    <tr><td>1 (On request)</td><td>Visible</td><td>Requires approval</td><td>Requires approval</td></tr>
+    <tr><td>2 (Secret)</td><td>Hidden</td><td>Denied (no DEK)</td><td>Denied (no DEK)</td></tr>
+</table>
+
+<h3>Approval flow</h3>
+<ul>
+    <li>Approvals are <strong>in-memory only</strong> (not persisted). Process restart clears all approvals</li>
+    <li>Default TTL: 5 minutes per approval</li>
+    <li>Single-use: one read, then the approval expires</li>
+    <li>Timeout: 60 seconds to get approval, then denied</li>
+</ul>
+
+<h3>Authentication</h3>
+<p>The MCP server communicates via Unix socket / named pipe with filesystem permissions. Only processes with socket access can call tools. Optionally, a per-session API token is generated at startup.</p>
+
+<h3>When vault is locked</h3>
+<p>All tool calls return <code>{"status": "vault_locked"}</code>. The agent should instruct the user to unlock the vault in the desktop app.</p>
+
+
+<!-- ============================================================ -->
+<h2 id="mobile-app">Mobile App (Flutter)</h2>
+
+<h3>Overview</h3>
+<p>The Sezam mobile app is built with <strong>Flutter</strong> (Dart SDK ^3.10.7) targeting both Android and iOS.</p>
+
+<h3>Building</h3>
+<div class="code-block"><pre># Clone the repository
+cd mobile/
+
+# Install dependencies
+flutter pub get
+
+# Run on connected device
+flutter run
+
+# Build release APK
+flutter build apk --release
+
+# Build release iOS
+flutter build ios --release</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Features</h3>
+<ul>
+    <li>Browse vault tree with read-only access (Phase 2)</li>
+    <li>Search entries by name and tags</li>
+    <li>Copy credentials to clipboard (auto-clear)</li>
+    <li>TOTP code generation with countdown indicator</li>
+    <li>Biometric unlock (fingerprint / Face ID)</li>
+    <li>Server sync (pull)</li>
+</ul>
+
+<h3>Crypto on mobile</h3>
+<p>The mobile app uses the same cryptographic primitives as desktop:</p>
+<ul>
+    <li><strong>Argon2id</strong> with mobile-adapted parameters: <code>time=2, mem=128MB</code> (auto-detected based on available memory)</li>
+    <li><strong>libsodium</strong> via native bindings for AEAD, crypto_box, and Ed25519</li>
+</ul>
+
+<div class="callout info">
+    <strong>Hard floor</strong>
+    The mobile client never accepts Argon2id parameters lower than <code>time=2, mem=64MB</code>, even if the server sends weaker parameters.
+</div>
+
+
+<!-- ============================================================ -->
+<h2 id="i18n">Internationalization</h2>
+
+<h3>Supported languages</h3>
+<table>
+    <tr><th>Code</th><th>Language</th><th>Status</th></tr>
+    <tr><td><code>en</code></td><td>English</td><td>Complete (base / fallback)</td></tr>
+    <tr><td><code>sk</code></td><td>Slovak</td><td>Complete</td></tr>
+</table>
+
+<h3>Setting the language</h3>
+<p>Use the <code>SEZAM_LANG</code> environment variable:</p>
+<div class="code-block"><pre>export SEZAM_LANG=sk
+sezam-gui</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>The GUI also provides a language selector in the Settings dialog.</p>
+
+<h3>Translation coverage</h3>
+<p>All user-facing strings are externalized in <code>src/sezam/i18n/strings.py</code>. Categories covered:</p>
+<ul>
+    <li>Application titles and subtitles</li>
+    <li>Unlock / wizard dialogs</li>
+    <li>Main window (search, toolbar, status bar)</li>
+    <li>Tree context menus</li>
+    <li>Entry detail panel (edit, copy, show/hide, timestamps)</li>
+    <li>Entry and folder dialogs</li>
+    <li>Confirmation dialogs</li>
+    <li>Settings panel</li>
+    <li>Password strength labels</li>
+    <li>System tray menu</li>
+    <li>CLI messages</li>
+</ul>
+
+<h3>Adding a new language</h3>
+<p>Add a new <code>STRINGS_xx</code> dictionary in <code>src/sezam/i18n/strings.py</code> following the structure of <code>STRINGS_en</code>. English is always the fallback for missing keys.</p>
+
+
+<!-- ============================================================ -->
+<h2 id="import-export">Import / Export</h2>
+
+<h3>Supported import formats</h3>
+<table>
+    <tr><th>Format</th><th>Module</th><th>Notes</th></tr>
+    <tr><td>CSV (Sezam format)</td><td><code>sezam.importers.csv_import</code></td><td>Folder/name/field structure</td></tr>
+    <tr><td>KeePass <code>.kdbx</code></td><td><code>sezam.importers.keepass</code></td><td>Requires <code>pykeepass>=4.0.0</code> (install with <code>python -m pip install -e ".[import]"</code> in the clone)</td></tr>
+    <tr><td>Bitwarden JSON</td><td><code>sezam.importers.bitwarden</code></td><td>Standard Bitwarden export format</td></tr>
+</table>
+
+<h3>CSV format</h3>
+<div class="code-block"><pre>folder,name,field_key,field_value,sensitive,tier
+servers/hetzner,SSH Access,host,192.168.1.1,false,0
+servers/hetzner,SSH Access,password,tajne123,true,0
+clients/acme,API Token,token,abc123xyz,true,1</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>CLI import</h3>
+<div class="code-block"><pre># Import from CSV
+sezam import data.csv --format csv
+
+# Import from KeePass
+sezam import vault.kdbx --format keepass
+
+# Import from Bitwarden
+sezam import export.json --format bitwarden</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>GUI import wizard</h3>
+<p>The desktop GUI provides an import wizard with:</p>
+<ol>
+    <li>Format selection (CSV, KeePass, Bitwarden)</li>
+    <li>Preview before import</li>
+    <li>Tier assignment for imported entries</li>
+    <li>Conflict handling: skip, overwrite, or duplicate</li>
+    <li>Progress bar and summary</li>
+</ol>
+
+<h3>Export</h3>
+<table>
+    <tr><th>Format</th><th>Command</th><th>Notes</th></tr>
+    <tr><td>Encrypted backup</td><td><code>sezam export backup.db</code></td><td>Direct copy of <code>sezam.db</code> (still encrypted)</td></tr>
+    <tr><td>CSV (plain text)</td><td>GUI only</td><td>Requires explicit confirmation + security warning</td></tr>
+    <tr><td>Bitwarden JSON</td><td>GUI only</td><td>For migration to Bitwarden</td></tr>
+</table>
+
+<div class="callout error">
+    <strong>Plain text export warning</strong>
+    CSV and Bitwarden JSON exports produce <strong>unencrypted files</strong> containing all your credentials. These exports are intended for migration only. Delete the exported file immediately after use.
+</div>
+
+<h3>TOTP support</h3>
+<p>TOTP seeds are stored as a field with type <code>totp</code> in entry data:</p>
+<div class="code-block"><pre>{"key": "totp_secret", "value": "JBSWY3DPEHPK3PXP", "sensitive": true, "field_type": "totp"}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>The GUI shows a countdown circular indicator (30s). If less than 5 seconds remain, it waits for the next code before copying. KeePass and Bitwarden imports automatically detect TOTP seeds.</p>
+
+
+<!-- ============================================================ -->
+<h2 id="watchtower">Watchtower</h2>
+
+<p>Watchtower scans your vault and reports password security issues. It runs locally &mdash; no data leaves your device.</p>
+
+<h3>Issue types</h3>
+<table>
+    <tr><th>Type</th><th>Severity</th><th>Description</th></tr>
+    <tr><td><code>weak</code></td><td>Critical</td><td>Password scores 0&ndash;1 on strength meter (low entropy)</td></tr>
+    <tr><td><code>weak</code></td><td>Warning</td><td>Password scores 2 (moderate) &mdash; consider strengthening</td></tr>
+    <tr><td><code>duplicate</code></td><td>Warning</td><td>Same password used across multiple entries</td></tr>
+    <tr><td><code>old</code></td><td>Info</td><td>Password not changed for more than 365 days</td></tr>
+</table>
+
+<h3>How it works</h3>
+<ul>
+    <li>Scans all entries with <code>sensitive: true</code> fields</li>
+    <li>Checks password strength using entropy estimation</li>
+    <li>Detects duplicates via <code>SHA-256</code> comparison (never logs actual passwords)</li>
+    <li>Flags passwords older than 1 year based on <code>modified_at</code> timestamp</li>
+    <li>Results are sorted by severity: critical first, then warning, then info</li>
+</ul>
+
+<h3>Summary output</h3>
+<div class="code-block"><pre>{
+  "total": 12,
+  "critical": 3,
+  "warning": 5,
+  "info": 4,
+  "by_type": {
+    "weak": 5,
+    "duplicate": 4,
+    "old": 3
+  }
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<div class="callout info">
+    <strong>Privacy</strong>
+    Watchtower runs entirely offline. Password values are hashed in memory for duplicate detection and immediately discarded. No data is sent to external services.
+</div>
+
+
+<!-- ============================================================ -->
+<h2 id="security-best-practices">Security Best Practices</h2>
+
+<h3>Master password</h3>
+<ul>
+    <li>Use a strong master password with at least 80 bits of entropy (the generator's &ldquo;Strong&rdquo; rating)</li>
+    <li>Consider a 5-word passphrase: <code>sezam generate --passphrase --words 5</code></li>
+    <li>Never reuse your master password for any other service</li>
+    <li>Write it down and store the paper in a physical safe (for personal vaults)</li>
+    <li>For corporate vaults, set up Shamir's Secret Sharing recovery (3-of-5 recommended)</li>
+</ul>
+
+<h3>Backup</h3>
+<ul>
+    <li>Regularly export encrypted backups: <code>sezam export backup.db</code></li>
+    <li>Store backups in a separate physical location</li>
+    <li>The backup is a copy of <code>sezam.db</code> &mdash; it is still encrypted with your master password</li>
+    <li>Test your backups periodically by restoring to a temporary location</li>
+</ul>
+
+<h3>The <code>.sezam-key</code> file</h3>
+<ul>
+    <li>This file is an <strong>offline fallback</strong> for recovering your private keys</li>
+    <li>It is encrypted with your KEK (derived from your master password)</li>
+    <li>Store it on a USB drive in a safe, or print the recovery sheet</li>
+    <li>If you lose all devices and do not have this file, you can still recover via password-based recovery (Path B) if the server has your encrypted keypair</li>
+    <li>Never store <code>.sezam-key</code> on the same device as your vault &mdash; that defeats the purpose</li>
+</ul>
+
+<h3>Device provisioning</h3>
+<p>When setting up a new device, you have three recovery paths:</p>
+<table>
+    <tr><th>Path</th><th>Requires</th><th>How</th></tr>
+    <tr><td><strong>A</strong> Provisioning token</td><td>Existing device available</td><td>Generate token on old device, enter on new device</td></tr>
+    <tr><td><strong>B</strong> Password recovery</td><td>Know current password, server online</td><td><code>POST /api/auth/recover</code> with auth_proof</td></tr>
+    <tr><td><strong>C</strong> Offline fallback</td><td><code>.sezam-key</code> file</td><td>Import the key file, decrypt with password</td></tr>
+</table>
+
+<h3>General recommendations</h3>
+<ul>
+    <li>Keep the desktop app updated for the latest security patches</li>
+    <li>Use auto-lock (default: 15 minutes of inactivity)</li>
+    <li>Be aware that clipboard managers may retain copied passwords &mdash; the auto-clear protects the system clipboard only</li>
+    <li>Verify colleague fingerprints in person during onboarding (TOFU)</li>
+    <li>Run Watchtower periodically to find weak, duplicate, or old passwords</li>
+    <li>Review the audit log for unexpected access patterns</li>
+    <li>For the server: use HTTPS in production, set strong <code>SEZAM_HMAC_SECRET</code>, restrict CORS origins</li>
+</ul>
+
+</main>
+
+<script>
+function toggleMenu() {
+    var sb = document.getElementById('sidebar');
+    var ov = document.getElementById('sidebar-overlay');
+    var open = sb.classList.toggle('open');
+    ov.classList.toggle('open', open);
+}
+
+/* Close menu when clicking a sidebar link on mobile */
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.sidebar a')) {
+        var sb = document.getElementById('sidebar');
+        var ov = document.getElementById('sidebar-overlay');
+        if (sb.classList.contains('open')) {
+            sb.classList.remove('open');
+            ov.classList.remove('open');
+        }
+    }
+});
+
+function copyCode(btn) {
+    var block = btn.closest('.code-block');
+    var pre = block.querySelector('pre');
+    if (!pre) return;
+    navigator.clipboard.writeText(pre.textContent).then(function() {
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+    });
+}
+
+/* Smooth scroll offset for fixed header */
+document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+        var id = this.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) {
+            e.preventDefault();
+            var y = el.getBoundingClientRect().top + window.pageYOffset - 72;
+            window.scrollTo({ top: y, behavior: 'smooth' });
+            history.pushState(null, null, '#' + id);
+        }
+    });
+});
+
+/* Highlight active sidebar link on scroll */
+(function() {
+    var sections = [];
+    document.querySelectorAll('.content h2[id]').forEach(function(h) {
+        sections.push({ id: h.id, top: 0 });
+    });
+    function updateTops() {
+        sections.forEach(function(s) {
+            var el = document.getElementById(s.id);
+            if (el) s.top = el.offsetTop - 80;
+        });
+    }
+    updateTops();
+    window.addEventListener('resize', updateTops);
+    window.addEventListener('scroll', function() {
+        var scrollY = window.pageYOffset;
+        var active = '';
+        for (var i = sections.length - 1; i >= 0; i--) {
+            if (scrollY >= sections[i].top) { active = sections[i].id; break; }
+        }
+        document.querySelectorAll('.sidebar a').forEach(function(a) {
+            var isActive = a.getAttribute('href') === '#' + active;
+            a.style.color = isActive ? 'var(--accent)' : '';
+            a.style.fontWeight = isActive ? '600' : '';
+            a.style.background = isActive ? 'var(--accent-light)' : '';
+        });
+    });
+})();
+</script>
+
+</body>
+</html>

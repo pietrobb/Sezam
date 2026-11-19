@@ -1,0 +1,17 @@
+{
+  "about": "Stateful seed (run 44281542877): a client that has synced before; the server leaves two new folders out of its next pull and moves the checkpoint back before them. The next pull must bring them (no pull state kept from the incomplete reply).",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "P"},
+    {"on": "ref", "do": "create_entry", "name": "p1", "folder": "P", "password": "1"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "ref", "do": "create_folder", "name": "Q1", "folder": "P"},
+    {"on": "ref", "do": "create_folder", "name": "Q2", "folder": "P"},
+    {"on": "ref", "do": "sync"},
+    {"on": "server", "do": "withhold_next_pull", "kind": "node"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "create_entry", "name": "q", "folder": "Q1", "password": "5"}
+  ],
+  "expect": {"P": null, "P/p1": "1", "P/Q1": null, "P/Q2": null, "P/Q1/q": "5"}
+}

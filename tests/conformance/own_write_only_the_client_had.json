@@ -1,0 +1,18 @@
+{
+  "about": "The server is restored from a backup older than writes only the client sent (no other device pulled them): a new item, a new folder with an item, an edit. After the restore is accepted the client sends them again.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "R"},
+    {"on": "ref", "do": "create_entry", "name": "r1", "folder": "R", "password": "1"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "server", "do": "backup"},
+    {"on": "client", "do": "create_entry", "name": "c1", "folder": "R", "password": "c"},
+    {"on": "client", "do": "create_folder", "name": "F"},
+    {"on": "client", "do": "create_entry", "name": "f1", "folder": "F", "password": "f"},
+    {"on": "client", "do": "edit_entry", "name": "r1", "password": "2"},
+    {"on": "client", "do": "sync"},
+    {"on": "server", "do": "restore"},
+    {"on": "client", "do": "accept_restore"}
+  ],
+  "expect": {"R": null, "R/r1": "2", "R/c1": "c", "F": null, "F/f1": "f"}
+}

@@ -1,0 +1,54 @@
+"""The shared sync core (core/, docs/SYNC_SINGLE_SOURCE.md point 4b).
+
+The desktop, web and phone ask the same Rust crate for their sync decisions;
+this is the desktop's door to it (the PyO3 binding in core/py).
+"""
+
+import json
+from typing import Any, Optional
+
+import sezam_sync_core
+
+# The rules this client was written for (core/Cargo.toml). Review 782dde8:
+# the rules changed under one version, so a stale installed core went on
+# answering by the old ones; another version is refused.
+CORE_VERSION = "0.2.0"
+
+
+def _run(op: str, arguments: dict) -> Any:
+    out = json.loads(sezam_sync_core.call(op, json.dumps(arguments)))
+    if "error" in out:
+        raise ValueError(f"sync core {op}: {out['error']}")
+    return out["ok"]
+
+
+def _installed_version() -> str:
+    try:
+        return _run("version", {})
+    except ValueError:
+        return "0.1.0"  # no version operation yet
+
+
+if (_installed := _installed_version()) != CORE_VERSION:
+    raise ImportError(
+        f"sezam-sync-core {_installed} is installed, this Sezam needs {CORE_VERSION}: "
+        "pip install ./core/py"
+    )
+
+
+def call(op: str, **arguments: Any) -> Any:
+    """Run one core operation; a refused input raises ValueError."""
+    return _run(op, arguments)
+
+
+def team_input(team: Any, user_id: Optional[str]) -> Optional[dict]:
+    """The verified team log as the core reads it: each folder's keys, oldest
+    first, and the keys the log lets ``user_id`` hold."""
+    if team is None:
+        return None
+    from .. import teamlog
+
+    return {
+        "folders": {folder: [gen[0] for gen in gens] for folder, gens in team.folders.items()},
+        "may_hold": [key for key in team.dek_index if user_id and teamlog.may_hold_key(team, user_id, key)],
+    }

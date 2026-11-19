@@ -1,0 +1,8 @@
+# One toolchain for the core and its bindings (review c78fd19): the web's
+# module is rebuilt from source in CI and must come out byte for byte as
+# committed, which only the same compiler guarantees.
+[toolchain]
+channel = "1.94.1"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

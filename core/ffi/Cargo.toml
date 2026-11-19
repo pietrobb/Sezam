@@ -1,0 +1,20 @@
+[package]
+name = "sezam-sync-core-ffi"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+
+# The phone's binding (dart:ffi): built by mobile/hook/build.dart.
+[lib]
+name = "sezam_sync_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+sync_core = { package = "sezam-sync-core", path = ".." }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

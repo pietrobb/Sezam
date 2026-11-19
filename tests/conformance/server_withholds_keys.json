@@ -1,0 +1,13 @@
+{
+  "about": "A pull leaves out the folder keys and sends the folders and items sealed under them; the next honest pull brings the keys. Nothing is lost and nothing stays unreadable.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "K"},
+    {"on": "ref", "do": "create_entry", "name": "k1", "folder": "K", "password": "1"},
+    {"on": "ref", "do": "sync"},
+    {"on": "server", "do": "withhold_next_pull", "kind": "dek"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "edit_entry", "name": "k1", "password": "2"}
+  ],
+  "expect": {"K": null, "K/k1": "2"}
+}

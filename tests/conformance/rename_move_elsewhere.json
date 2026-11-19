@@ -1,0 +1,18 @@
+{
+  "about": "While the client edits offline, the other device renames the folder and moves another entry out of it.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "A"},
+    {"on": "ref", "do": "create_folder", "name": "B"},
+    {"on": "ref", "do": "create_entry", "name": "e1", "folder": "A", "password": "x1"},
+    {"on": "ref", "do": "create_entry", "name": "e2", "folder": "A", "password": "y1"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "edit_entry", "name": "e1", "password": "x2"},
+    {"on": "client", "do": "create_entry", "name": "e3", "folder": "A", "password": "z1"},
+    {"on": "ref", "do": "rename_folder", "name": "A", "to": "A2"},
+    {"on": "ref", "do": "move_entry", "name": "e2", "folder": "B"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"}
+  ],
+  "expect": {"A2": null, "B": null, "A2/e1": "x2", "A2/e3": "z1", "B/e2": "y1"}
+}

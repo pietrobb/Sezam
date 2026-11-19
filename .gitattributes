@@ -1,0 +1,6 @@
+# index.html pins these with SRI (sha384): they must stay byte-exact on every
+# checkout, also on Windows with core.autocrlf=true, or the browser refuses them.
+web/static/js/vendor/** -text
+
+# Run on Linux; a CRLF shebang line does not execute.
+*.sh text eol=lf

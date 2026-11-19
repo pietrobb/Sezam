@@ -1,0 +1,336 @@
+// Review d615826 (mobile): desktop A rotated the account's identity keys
+// while this phone had an edit it had not sent. The phone took the rotation
+// over with the password, but the edit kept the signature of the retired key
+// and the server refused it on every push.
+// tests/test_review6_phone_identity_rotation_offline.py starts the server,
+// plays desktop A and runs this file with SEZAM_X3_* set; without them the
+// test is skipped.
+
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:sezam_mobile/models/vault_models.dart';
+import 'package:sezam_mobile/services/auth_service.dart';
+import 'package:sezam_mobile/services/sync_service.dart';
+import 'package:sezam_mobile/services/team_log_client.dart';
+import 'package:sezam_mobile/services/database_service.dart';
+import 'package:sezam_mobile/services/crypto_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:sezam_mobile/services/vault_service.dart';
+
+import 'support/real_server_phone.dart';
+
+void main() {
+  final serverUrl = env['SEZAM_X3_SERVER'];
+  final dir = env['SEZAM_X3_DIR'];
+
+  test(
+    'an offline edit syncs after the phone takes over an identity rotation',
+    () async {
+      final cfg =
+          jsonDecode(File('$dir/config.json').readAsStringSync())
+              as Map<String, dynamic>;
+      final password = cfg['password'] as String;
+      final currentPassword = cfg['current_password'] as String? ?? password;
+      await setUpPhone('$dir/app');
+      final net = Net();
+      await http.runWithClient(() async {
+        final auth = AuthService();
+        final sync = SyncService();
+        final vault = VaultService();
+        initPhoneCrypto();
+        await vault.init();
+
+        final c = await auth.connectToServer(
+          serverUrl: serverUrl!,
+          password: password,
+          username: cfg['username'] as String,
+        );
+        expect(c.outcome, ConnectOutcome.connected, reason: c.message);
+        await net.settle();
+        await auth.lock();
+        await net.settle();
+
+        // Offline: an edit the phone has not sent yet.
+        var r = await auth.unlockOffline(password: password);
+        expect(r.success, isTrue, reason: r.error);
+        await net.settle();
+        final servers = vault.allNodes.firstWhere((n) => n.name == 'Servers');
+        await vault.createEntry(
+          parentRef: servers.id,
+          name: 'offline',
+          fields: const [
+            EntryField(key: 'password', value: 'o1', sensitive: true),
+          ],
+        );
+
+        var qrAttempt = 0;
+        Future<AuthResult> takeOver() async {
+          if (cfg['qr'] == true) {
+            if (qrAttempt == 0) await handshake(dir!, 'qr_token');
+            return auth.provisionFromQR(
+              provisionToken: File(
+                '$dir/qr-token.txt',
+              ).readAsLinesSync()[qrAttempt++],
+              serverUrl: serverUrl,
+              username: cfg['username'] as String,
+              password: currentPassword,
+            );
+          }
+          if (cfg['reconnect'] != true) {
+            return auth.adoptPasswordChangedElsewhere(
+              currentPassword: currentPassword,
+            );
+          }
+          final result = await auth.connectToServer(
+            serverUrl: serverUrl,
+            username: cfg['username'] as String,
+            password: currentPassword,
+          );
+          return result.outcome == ConnectOutcome.connected
+              ? AuthResult.success(userId: vault.userId!)
+              : AuthResult.failure(result.message);
+        }
+
+        await handshake(dir!, 'rotated'); // A rotates the account keys/KEK
+
+        await expectLater(sync.sync(), throwsA(isA<KeyEpochStaleException>()));
+        if (cfg['qr'] == true) {
+          await auth.lock();
+          await net.settle();
+          const storage = FlutterSecureStorage();
+          final beforeSecure = await storage.readAll();
+          final beforeObjects = await DatabaseService().getAllObjects();
+          r = await takeOver();
+          expect(
+            r.success,
+            isFalse,
+            reason: 'locked QR must require the local KEK',
+          );
+          expect(await storage.readAll(), beforeSecure);
+          expect(await DatabaseService().getAllObjects(), beforeObjects);
+          final db = await DatabaseService().database;
+          final deks = await db.query(
+            'vault_objects',
+            where: 'object_type = ?',
+            whereArgs: ['dek'],
+          );
+          expect(deks, isNotEmpty);
+          await db.delete(
+            'vault_objects',
+            where: 'object_type = ?',
+            whereArgs: ['dek'],
+          );
+          final withoutDeks = await DatabaseService().getAllObjects();
+          try {
+            r = await takeOver();
+            expect(
+              r.success,
+              isFalse,
+              reason: 'locked anchor continuity is independent of DEKs',
+            );
+            expect(await storage.readAll(), beforeSecure);
+            expect(await DatabaseService().getAllObjects(), withoutDeks);
+          } finally {
+            for (final dek in deks) {
+              await db.insert('vault_objects', dek);
+            }
+          }
+          r = await auth.unlockOffline(password: password);
+          expect(r.success, isTrue, reason: r.error);
+          expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
+        }
+        if (cfg['locked'] == true) {
+          await auth.lock();
+          await net.settle();
+          const storage = FlutterSecureStorage();
+          final beforeSecure = await storage.readAll();
+          final beforeObjects = await DatabaseService().getAllObjects();
+          if (cfg['recover'] == true) {
+            r = await auth.recoverFromServer(
+              password: currentPassword,
+              username: cfg['username'] as String,
+              serverUrl: serverUrl,
+            );
+            expect(r.success, isFalse);
+            expect(await storage.readAll(), beforeSecure);
+            expect(await DatabaseService().getAllObjects(), beforeObjects);
+          }
+          for (final oldPassword in <String?>[null, 'incorrect-old-password']) {
+            r = await auth.unlockWithPassword(
+              password: currentPassword,
+              previousPassword: oldPassword,
+              username: cfg['username'] as String,
+              serverUrl: serverUrl,
+            );
+            expect(r.success, isFalse);
+            expect(vault.isUnlocked, isFalse);
+            expect(await storage.readAll(), beforeSecure);
+            expect(await DatabaseService().getAllObjects(), beforeObjects);
+          }
+        }
+        if (cfg['refuse'] == true) {
+          const storage = FlutterSecureStorage();
+          final beforeSecure = await storage.readAll();
+          final beforeObjects = await DatabaseService().getAllObjects();
+          if (cfg['locked'] != true) {
+            final reconnect = await auth.connectToServer(
+              serverUrl: serverUrl,
+              username: cfg['username'] as String,
+              password: currentPassword,
+            );
+            expect(reconnect.outcome, isNot(ConnectOutcome.connected));
+            expect(await storage.readAll(), beforeSecure);
+            expect(await DatabaseService().getAllObjects(), beforeObjects);
+          }
+          r = cfg['qr'] == true
+              ? await takeOver()
+              : cfg['locked'] == true
+              ? await auth.unlockWithPassword(
+                  password: currentPassword,
+                  previousPassword: password,
+                  username: cfg['username'] as String,
+                  serverUrl: serverUrl,
+                )
+              : await auth.adoptPasswordChangedElsewhere(
+                  currentPassword: password,
+                );
+          expect(
+            r.success,
+            isFalse,
+            reason: 'replacement removed or changed the account anchor',
+          );
+          expect(await storage.readAll(), beforeSecure);
+          expect(await DatabaseService().getAllObjects(), beforeObjects);
+          if (cfg['locked'] != true) {
+            expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
+          } else {
+            final db = await DatabaseService().database;
+            final deks = await db.query(
+              'vault_objects',
+              where: 'object_type = ?',
+              whereArgs: ['dek'],
+            );
+            expect(deks, isNotEmpty);
+            await db.delete(
+              'vault_objects',
+              where: 'object_type = ?',
+              whereArgs: ['dek'],
+            );
+            final withoutDeks = await DatabaseService().getAllObjects();
+            try {
+              r = await auth.unlockWithPassword(
+                password: currentPassword,
+                previousPassword: password,
+                username: cfg['username'] as String,
+                serverUrl: serverUrl,
+              );
+              expect(
+                r.success,
+                isFalse,
+                reason: 'anchor continuity must not depend on DEKs',
+              );
+              expect(await storage.readAll(), beforeSecure);
+              expect(await DatabaseService().getAllObjects(), withoutDeks);
+            } finally {
+              for (final dek in deks) {
+                await db.insert('vault_objects', dek);
+              }
+            }
+          }
+          await auth.lock();
+          r = await auth.unlockOffline(password: password);
+          expect(r.success, isTrue, reason: r.error);
+          expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
+          // The test server's rollback restores its whole storage: a refused
+          // background sync still in flight would undo the restored bundle.
+          await net.settle();
+          await handshake(dir, 'restore_bundle');
+        }
+        if (cfg['authfail'] == true) {
+          await net.settle();
+          const storage = FlutterSecureStorage();
+          final beforeSecure = await storage.readAll();
+          final beforeObjects = await DatabaseService().getAllObjects();
+          net.failPath = '/api/auth/verify';
+          r = await takeOver();
+          expect(r.success, isFalse);
+          expect(await storage.readAll(), beforeSecure);
+          expect(await DatabaseService().getAllObjects(), beforeObjects);
+          expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
+          await auth.lock();
+          r = await auth.unlockOffline(password: password);
+          expect(r.success, isTrue, reason: r.error);
+        }
+        if (cfg['autolock'] == true) {
+          await net.settle();
+          net.onSend = (path) {
+            if (path == '/api/auth/verify') {
+              net.onSend = null;
+              vault.lock();
+            }
+          };
+          r = await takeOver();
+          expect(r.success, isFalse);
+          expect(vault.isUnlocked, isFalse);
+          await DatabaseService().close();
+          r = await auth.unlockOffline(password: currentPassword);
+          expect(r.success, isTrue, reason: r.error);
+          expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
+        }
+        if (cfg['crash'] == true) {
+          secureWriteKillsApp = 'sezam_encrypted_keypair';
+        }
+        if (cfg['locked'] == true) await auth.lock();
+        r = cfg['locked'] == true
+            ? await auth.unlockWithPassword(
+                password: currentPassword,
+                previousPassword: password,
+                username: cfg['username'] as String,
+                serverUrl: serverUrl,
+              )
+            : await takeOver();
+        if (cfg['crash'] == true) {
+          expect(r.success, isFalse);
+          await auth.lock();
+          await net.settle();
+          await DatabaseService().close();
+          r = await auth.unlockOffline(password: currentPassword);
+          expect(r.success, isTrue, reason: r.error);
+          expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
+          await net.settle();
+          r = await takeOver();
+        }
+        expect(r.success, isTrue, reason: r.error);
+        await net.settle();
+
+        final result = await sync.sync();
+        expect(result.push.errors, isEmpty);
+        expect(result.push.conflicts, 0);
+        expect(await sync.getDirtyObjectCount(), 0);
+        expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
+        if (cfg['genesis'] != null) {
+          expect(await readConfirmedTeamGenesis(vault.userId!), cfg['genesis']);
+          final encoded = await const FlutterSecureStorage().read(
+            key: 'sezam_encrypted_keypair',
+          );
+          final account = CryptoService().openAccountKeypair(
+            hexToBytes(encoded!),
+            vault.currentKek!,
+            vault.userId!,
+          );
+          expect(account.confirmedGenesis, cfg['genesis']);
+          CryptoService().zeroize(account.keypairData);
+        }
+        await auth.lock();
+        await net.settle();
+      }, () => net);
+    },
+    skip: serverUrl == null || dir == null
+        ? 'run by tests/test_review6_phone_identity_rotation_offline.py'
+        : false,
+    timeout: const Timeout(Duration(minutes: 5)),
+  );
+}

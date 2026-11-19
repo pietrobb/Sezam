@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sezam vault data (never commit!)
+sezam.db
+sezam.db-wal
+sezam.db-shm
+# except the test vault of the public release (test password, tests/fixtures/make_vault_d14d368.py)
+!tests/fixtures/vault_d14d368/sezam.db
+.sezam-key
+.session
+jwt_key.bin
+.env*
+*.key
+*.pem
+*.p8
+*.p12
+*.pfx
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Claude Code
+.claude/
+
+# Tool caches and local work files
+.hypothesis/
+.ruff_cache/
+.worktrees/
+.playwright-mcp/
+*.log
+/*.png
+/*.exe
+/*.spec
+/models.yaml
+/skills/
+tests/_probe_*.py
+tests/_repro_*.py
+
+# Local deployment scripts with plaintext credentials (never commit!)
+scripts/deploy_access_tracking.py
+scripts/deploy_code_review_fixes.py

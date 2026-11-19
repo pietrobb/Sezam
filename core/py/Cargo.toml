@@ -1,0 +1,14 @@
+[package]
+name = "sezam-sync-core-py"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+name = "sezam_sync_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.30.1", features = ["extension-module", "abi3-py311"] }
+sync_core = { package = "sezam-sync-core", path = ".." }

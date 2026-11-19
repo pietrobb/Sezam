@@ -1,0 +1,18 @@
+{
+  "about": "Tombstone GC collects an entry the client saw deleted; the client's later writes still converge.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "T"},
+    {"on": "ref", "do": "create_entry", "name": "t1", "folder": "T", "password": "a"},
+    {"on": "ref", "do": "create_entry", "name": "t2", "folder": "T", "password": "b"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "ref", "do": "delete_entry", "name": "t1"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "server", "do": "gc"},
+    {"on": "client", "do": "edit_entry", "name": "t2", "password": "c"},
+    {"on": "client", "do": "create_entry", "name": "t3", "folder": "T", "password": "d"},
+    {"on": "client", "do": "sync"}
+  ],
+  "expect": {"T": null, "T/t2": "c", "T/t3": "d"}
+}

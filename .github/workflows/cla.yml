@@ -1,0 +1,33 @@
+name: CLA
+
+# Review c78fd19: the job holds a token that can write to the repository, so
+# it runs only for the two signing comments on a pull request (no
+# pull_request_target, no comment on a plain issue). A new contributor posts
+# 'recheck' to get the CLA status. The action never checks out or runs code
+# from the pull request.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write       # signatures/version1/cla.json on the cla-signatures branch
+  pull-requests: write  # the CLA comment on the pull request
+  statuses: write       # the CLA status of the pull request
+
+jobs:
+  cla:
+    if: >-
+      github.event.issue.pull_request &&
+      (github.event.comment.body == 'recheck' ||
+       github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')
+    runs-on: ubuntu-latest
+    steps:
+      - name: CLA Assistant Lite
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: https://github.com/pietrobb/Sezam/blob/main/CLA.md
+          path-to-signatures: signatures/version1/cla.json
+          branch: cla-signatures
+          allowlist: pietrobb,dependabot[bot],github-actions[bot]

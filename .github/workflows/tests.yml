@@ -1,0 +1,161 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Nightly: the stateful sync test with 300 examples per machine (the per-push
+  # run is short and misses what only long sequences reach).
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    services:
+      # Server tests that need real row/gap locks (concurrent pushes,
+      # deadlock retry, STRICT mode) run against this instead of the mock DB.
+      mariadb:
+        # The image compose.yaml deploys (tests/test_review10_mariadb_collation.py).
+        image: mariadb:11.8.3
+        env:
+          MARIADB_ROOT_PASSWORD: sezamtest
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      SEZAM_TEST_MARIADB: root:sezamtest@127.0.0.1:3306
+      SEZAM_REQUIRE_MARIADB: "1"
+      # Desktop GUI tests run headless.
+      QT_QPA_PLATFORM: offscreen
+      # X3 (desktop/web -> phone) runs `flutter test` against the test server;
+      # a missing flutter fails instead of skipping.
+      SEZAM_REQUIRE_FLUTTER: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # The web tests run app.js in node; its Argon2id is crypto.argon2Sync
+      # (node >= 24.7), the runner's preinstalled node is older.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.38.6
+          channel: stable
+      - run: flutter pub get
+        working-directory: mobile
+      # libsodium/sqlite: the phone harness loads them directly (no plugins).
+      - run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libsodium-dev libsqlite3-dev
+      # pytest-qt only here: without a Qt binding it fails at pytest configure.
+      # The shared sync core (Rust, PyO3) before the package that needs it.
+      - run: python -m pip install ./core/py
+      - run: python -m pip install -e ".[dev,import,gui]" pytest-qt==4.5.0
+      - run: python -m ruff check
+      # Syntax of every first-party web script (vendored bundles excluded).
+      - run: git ls-files 'web/*.js' ':!:web/static/js/vendor/*' | xargs -n1 node --check
+      - run: python -m pytest -q
+
+  # Tests that run a real sshd and the printed host setup script as root
+  # (they skip elsewhere); SEZAM_REQUIRE_HOST_SETUP turns a skip into a failure.
+  host:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.11
+      # PID 1 of a job container is 'tail -f /dev/null', which reaps nothing:
+      # killed AI processes stayed as zombies and pgrep still listed them.
+      # docker-init reaps them, as init does on a real host.
+      options: --init
+    env:
+      SEZAM_TEST_HOST_SETUP: "1"
+      SEZAM_REQUIRE_HOST_SETUP: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server openssh-client procps sudo
+      # The checkout belongs to the runner user, the container runs as root:
+      # without this git refuses the repo and setuptools-scm cannot read the version.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      # The image has no Rust; the sync core is built from core/py.
+      - run: curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - run: python -m pip install ./core/py
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest -q -rs tests/test_review7_terminate_remote_openssh.py tests/test_ai_s3b_host_setup.py
+
+  stateful-deep:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      SEZAM_STATEFUL_EXAMPLES: "300"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: python -m pip install ./core/py
+      - run: python -m pip install -e ".[dev]"
+      # A failure prints its seed; rerun it with --hypothesis-seed=<seed>.
+      - run: python -m pytest -q -p no:cacheprovider tests/test_sync_state_machine.py --hypothesis-show-statistics
+
+  # The shared sync core (docs/SYNC_SINGLE_SOURCE.md point 4b).
+  core:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+      - run: cargo fmt --check --manifest-path py/Cargo.toml
+      - run: cargo clippy --locked --manifest-path py/Cargo.toml -- -D warnings
+      # The web binding (web/static/js/vendor/sezam-sync-core.js is built from
+      # it by core/build_web.py; tests/test_sync_core_web.py checks it is
+      # current) and the phone's (mobile/hook/build.dart builds it).
+      - run: cargo fmt --check --manifest-path wasm/Cargo.toml
+      - run: cargo clippy --locked --manifest-path wasm/Cargo.toml -- -D warnings
+      # Reproducible: the committed module is what these sources build, byte
+      # for byte (in the pinned toolchain's container, as build_web.py runs).
+      - run: python3 build_web.py
+      - run: git diff --exit-code -- ../web/static/js/vendor/sezam-sync-core.js ../web/templates/index.html
+      - run: cargo fmt --check --manifest-path ffi/Cargo.toml
+      - run: cargo clippy --all-targets --locked --manifest-path ffi/Cargo.toml -- -D warnings
+      - run: cargo test --locked --manifest-path ffi/Cargo.toml
+
+  mobile:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.38.6
+          channel: stable
+      - run: sudo apt-get update && sudo apt-get install -y libsodium-dev libsqlite3-dev
+      - run: flutter pub get
+      # Errors and warnings fail the build; style infos do not (yet).
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test

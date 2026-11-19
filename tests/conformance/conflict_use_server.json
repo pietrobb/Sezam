@@ -1,0 +1,17 @@
+{
+  "about": "Both devices edit one entry; the client's sync meets the other's version and the user keeps the server's.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "C"},
+    {"on": "ref", "do": "create_entry", "name": "c1", "folder": "C", "password": "a"},
+    {"on": "ref", "do": "create_entry", "name": "c2", "folder": "C", "password": "x"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "edit_entry", "name": "c1", "password": "b"},
+    {"on": "client", "do": "edit_entry", "name": "c2", "password": "y"},
+    {"on": "ref", "do": "edit_entry", "name": "c1", "password": "c"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "resolve", "keep": "server"}
+  ],
+  "expect": {"C": null, "C/c1": "c", "C/c2": "y"}
+}

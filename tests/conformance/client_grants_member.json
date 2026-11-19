@@ -1,0 +1,19 @@
+{
+  "about": "The client shares its folder T with bob; bob reads what the client and the ref write there.",
+  "steps": [
+    {"on": "ref", "do": "invite", "member": "bob"},
+    {"on": "client", "do": "create_folder", "name": "T"},
+    {"on": "client", "do": "create_entry", "name": "t1", "folder": "T", "password": "a"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "grant", "member": "bob", "folder": "T"},
+    {"on": "client", "do": "sync"},
+    {"on": "ref", "do": "sync"},
+    {"on": "bob", "do": "reads", "expect": {"T": null, "T/t1": "a"}},
+    {"on": "ref", "do": "edit_entry", "name": "t1", "password": "b"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "create_entry", "name": "t2", "folder": "T", "password": "c"},
+    {"on": "client", "do": "sync"},
+    {"on": "bob", "do": "reads", "expect": {"T": null, "T/t1": "b", "T/t2": "c"}}
+  ],
+  "expect": {"T": null, "T/t1": "b", "T/t2": "c"}
+}

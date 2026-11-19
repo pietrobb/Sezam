@@ -1,0 +1,19 @@
+{
+  "about": "The server is restored from a backup older than both devices' last writes; once each user accepts the restore, what the devices sent after the backup is sent again and nothing is lost.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "R"},
+    {"on": "ref", "do": "create_entry", "name": "r1", "folder": "R", "password": "1"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "server", "do": "backup"},
+    {"on": "client", "do": "create_entry", "name": "c1", "folder": "R", "password": "c"},
+    {"on": "client", "do": "sync"},
+    {"on": "ref", "do": "edit_entry", "name": "r1", "password": "2"},
+    {"on": "ref", "do": "sync"},
+    {"on": "server", "do": "restore"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "accept_restore"},
+    {"on": "ref", "do": "accept_restore"}
+  ],
+  "expect": {"R": null, "R/r1": "2", "R/c1": "c"}
+}

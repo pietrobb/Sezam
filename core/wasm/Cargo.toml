@@ -1,0 +1,19 @@
+[package]
+name = "sezam-sync-core-wasm"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+sync_core = { package = "sezam-sync-core", path = ".." }
+wasm-bindgen = "=0.2.126"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -1,0 +1,20 @@
+{
+  "about": "Another device of the account rotates its identity while T is shared with bob and the client holds an unsent edit in T; the client takes the new keys over, nothing is lost, bob still reads T.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "T"},
+    {"on": "ref", "do": "create_entry", "name": "t1", "folder": "T", "password": "a"},
+    {"on": "ref", "do": "sync"},
+    {"on": "ref", "do": "invite", "member": "bob"},
+    {"on": "ref", "do": "grant", "member": "bob", "folder": "T"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "edit_entry", "name": "t1", "password": "b"},
+    {"on": "ref", "do": "rotate_identity"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "create_entry", "name": "t2", "folder": "T", "password": "c"},
+    {"on": "client", "do": "sync"},
+    {"on": "bob", "do": "reads", "expect": {"T": null, "T/t1": "b", "T/t2": "c"}}
+  ],
+  "expect": {"T": null, "T/t1": "b", "T/t2": "c"}
+}

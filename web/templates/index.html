@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Sezam</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Crimson+Text:ital@0;1&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/app.css?v=20261109-1">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1a1c16">
+</head>
+<body>
+    <div id="app">
+        <div class="language-picker">
+            <label for="language-select" data-i18n="language.label">Jazyk</label>
+            <select id="language-select" aria-label="Jazyk" data-i18n-aria-label="language.label"></select>
+        </div>
+
+        <!-- Login screen -->
+        <div id="login-screen" class="screen active">
+            <div class="login-box">
+                <div class="panel-inner">
+                    <div class="logo-wrap">
+                        <img src="/static/img/logo.png" alt="Sezam" class="logo">
+                    </div>
+                    <p class="auth-intro" data-i18n="login.intro">Zadajte svoje existujúce používateľské meno a hlavné heslo.</p>
+                    <form id="login-form" action="about:blank" method="post" autocomplete="on">
+                        <div class="input-group">
+                            <label for="username" data-i18n="username.label">Používateľské meno</label>
+                            <input type="text" id="username" name="username" placeholder="Zadajte používateľské meno" data-i18n-placeholder="username.existing_placeholder" autocomplete="username" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="password" data-i18n="password.label">Hlavné heslo</label>
+                            <input type="password" id="password" name="password" placeholder="Zadajte hlavné heslo" data-i18n-placeholder="password.existing_placeholder" autocomplete="current-password" required>
+                        </div>
+                        <details class="backup-import">
+                            <summary data-i18n="login.backup_summary">Obnoviť prístup zo zálohy .sezam-key</summary>
+                            <p data-i18n="login.backup_help">Použite iba šifrovaný záložný súbor, ktorý ste si predtým stiahli zo Sezamu. Pri bežnom prihlásení túto možnosť nepotrebujete.</p>
+                            <div class="input-group">
+                                <label for="sezam-key-import" data-i18n="login.backup_file">Záložný súbor (voliteľné)</label>
+                                <input type="file" id="sezam-key-import" accept=".sezam-key,application/octet-stream">
+                            </div>
+                        </details>
+                        <button type="submit" id="login-btn"><span data-i18n="login.submit">Prihlásiť a odomknúť</span></button>
+                        <div id="login-spinner" class="spinner hidden" data-i18n="login.unlocking">Odomykám...</div>
+                        <div id="login-error" class="error hidden"></div>
+                    </form>
+                    <div class="login-recovery-link">
+                        <button type="button" id="org-recovery-btn" class="link-btn" data-i18n="login.org_recovery">Obnova organizácie</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bootstrap screen (first admin setup) -->
+        <div id="bootstrap-screen" class="screen">
+            <div class="login-box">
+                <div class="panel-inner">
+                    <div class="logo-wrap">
+                        <img src="/static/img/logo.png" alt="Sezam" class="logo">
+                    </div>
+                    <p class="subtitle" data-i18n="bootstrap.intro">Vytvorte prvého administrátora Sezamu</p>
+                    <form id="bootstrap-form" action="about:blank" method="post" autocomplete="on">
+                        <div class="input-group">
+                            <label for="bootstrap-username" data-i18n="username.admin_label">Meno administrátora</label>
+                            <input type="text" id="bootstrap-username" name="username" placeholder="Zvoľte meno administrátora" data-i18n-placeholder="username.admin_placeholder" autocomplete="username" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="bootstrap-password" data-i18n="password.label">Hlavné heslo</label>
+                            <input type="password" id="bootstrap-password" name="password" placeholder="Zvoľte hlavné heslo" data-i18n-placeholder="password.new_placeholder" minlength="14" aria-describedby="bootstrap-password-requirements" autocomplete="new-password" required>
+                        </div>
+                        <p id="bootstrap-password-requirements" class="password-requirements" data-i18n="password.requirements">Minimálne 14 znakov, malé aj veľké písmeno a aspoň jeden špeciálny znak.</p>
+                        <div id="bootstrap-password-strength" class="password-strength hidden">
+                            <div class="strength-bar"><div id="bootstrap-strength-fill" class="strength-fill"></div></div>
+                            <div class="strength-info">
+                                <span id="bootstrap-strength-label"></span>
+                                <span id="bootstrap-strength-entropy"></span>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label for="bootstrap-confirm" data-i18n="password.confirm_label">Potvrďte heslo</label>
+                            <input type="password" id="bootstrap-confirm" name="password-confirmation" placeholder="Zopakujte hlavné heslo" data-i18n-placeholder="password.confirm_placeholder" minlength="14" autocomplete="new-password" required>
+                        </div>
+                        <button type="submit" id="bootstrap-btn"><span data-i18n="bootstrap.submit">Vytvoriť administrátora a odomknúť</span></button>
+                        <div id="bootstrap-spinner" class="spinner hidden" data-i18n="bootstrap.setting_up">Nastavujem...</div>
+                        <div id="bootstrap-error" class="error hidden"></div>
+                        <div id="bootstrap-status" class="info hidden"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Onboarding screen (new user via invitation) -->
+        <div id="onboarding-screen" class="screen">
+            <div class="login-box">
+                <div class="panel-inner">
+                    <div class="logo-wrap">
+                        <img src="/static/img/logo.png" alt="Sezam" class="logo">
+                    </div>
+                    <!-- subtitle removed, logo is enough -->
+                    <div id="onboard-invite-info" class="info hidden onboard-invite-info"></div>
+                    <form id="onboard-form" action="about:blank" method="post" autocomplete="on">
+                        <div class="input-group">
+                            <label for="onboard-username" data-i18n="username.label">Používateľské meno</label>
+                            <input type="text" id="onboard-username" name="username" placeholder="Zvoľte používateľské meno" data-i18n-placeholder="username.new_placeholder" autocomplete="username" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="onboard-password" data-i18n="password.label">Hlavné heslo</label>
+                            <input type="password" id="onboard-password" name="password" placeholder="Zvoľte hlavné heslo" data-i18n-placeholder="password.new_placeholder" minlength="14" aria-describedby="onboard-password-requirements" autocomplete="new-password" required>
+                        </div>
+                        <p id="onboard-password-requirements" class="password-requirements" data-i18n="password.requirements">Minimálne 14 znakov, malé aj veľké písmeno a aspoň jeden špeciálny znak.</p>
+                        <div id="password-strength" class="password-strength hidden">
+                            <div class="strength-bar"><div id="strength-fill" class="strength-fill"></div></div>
+                            <div class="strength-info">
+                                <span id="strength-label"></span>
+                                <span id="strength-entropy"></span>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label for="onboard-confirm" data-i18n="password.confirm_label">Potvrďte heslo</label>
+                            <input type="password" id="onboard-confirm" name="password-confirmation" placeholder="Zopakujte hlavné heslo" data-i18n-placeholder="password.confirm_placeholder" minlength="14" autocomplete="new-password" required>
+                        </div>
+                        <button type="submit" id="onboard-btn"><span data-i18n="onboard.submit">Vytvoriť účet</span></button>
+                        <button type="button" id="onboard-backup-btn" class="hidden" data-i18n="onboard.backup_download">Stiahnuť šifrovanú zálohu .sezam-key</button>
+                        <div id="onboard-backup-warning" class="info hidden" data-i18n="onboard.backup_warning">Uložte tento šifrovaný súbor offline. Budete ho potrebovať, ak nebude dostupná obnova cez prehliadač ani server.</div>
+                        <div id="onboard-spinner" class="spinner hidden" data-i18n="bootstrap.setting_up">Nastavujem...</div>
+                        <div id="onboard-error" class="error hidden"></div>
+                        <div id="onboard-status" class="info hidden"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main vault screen -->
+        <div id="vault-screen" class="screen">
+            <header>
+                <div class="header-left">
+                    <img src="/static/img/logo.png" alt="Sezam" class="header-logo">
+                </div>
+                <div class="header-center">
+                    <input type="search" id="search-input" placeholder="Hľadať v trezore..." data-i18n-placeholder="vault.search_placeholder" autocomplete="off">
+                    <label id="deep-search-label" class="deep-search-label">
+                        <input type="checkbox" id="deep-search-toggle" class="deep-search-toggle"><span data-i18n="vault.deep_search">aj v hodnotách</span>
+                    </label>
+                </div>
+                <div class="header-right">
+                    <span id="user-info" title="Kliknutím zobrazíte podrobnosti odtlačku kľúča" data-i18n-title="vault.fingerprint_title"></span>
+                    <button id="audit-btn" class="header-btn hidden" title="Auditný záznam" data-i18n="vault.audit" data-i18n-title="vault.audit_title">Audit</button>
+                    <button id="team-trust-btn" class="header-btn" data-i18n="team.title">Dôvera tímu</button>
+                    <button id="lock-btn" title="Zamknúť" data-i18n="vault.lock" data-i18n-title="vault.lock">Zamknúť</button>
+                </div>
+            </header>
+
+            <div class="main-content">
+                <!-- Tree sidebar -->
+                <nav id="tree-panel">
+                    <div class="tree-actions">
+                        <button id="new-folder-btn" class="tree-action-btn" title="Nový priečinok" data-i18n="vault.new_folder" data-i18n-title="vault.new_folder_title">+ Priečinok</button>
+                        <button id="new-personal-btn" class="tree-action-btn" title="Nový osobný priečinok" data-i18n="vault.new_personal" data-i18n-title="vault.new_personal_title">+ Osobný</button>
+                        <button id="new-entry-btn" class="tree-action-btn" title="Nový záznam" data-i18n="vault.new_entry" data-i18n-title="vault.new_entry_title">+ Záznam</button>
+                    </div>
+                    <div id="tree-container"></div>
+                </nav>
+
+                <div id="tree-splitter" class="tree-splitter" role="separator" tabindex="0"
+                     aria-orientation="vertical" aria-controls="tree-panel" aria-valuemin="240"
+                     aria-valuenow="280" data-i18n-aria-label="vault.resize_tree_panel"
+                     data-i18n-title="vault.resize_tree_panel"></div>
+
+                <!-- Entry detail -->
+                <main id="detail-panel">
+                    <div id="no-selection">
+                        <p data-i18n="vault.no_selection">Vyberte záznam zo stromu alebo z výsledkov vyhľadávania.</p>
+                    </div>
+                    <div id="entry-detail" class="hidden">
+                        <div class="entry-header">
+                            <h2 id="entry-name"></h2>
+                            <div class="entry-actions">
+                                <span id="entry-readonly-badge" class="readonly-badge hidden" title="Tento záznam môže upravovať iba vlastník alebo oprávnený používateľ." data-i18n="vault.read_only" data-i18n-title="vault.read_only_title">Len na čítanie</span>
+                                <button id="edit-entry-btn" class="entry-action-btn" data-i18n="common.edit">Upraviť</button>
+                                <button id="delete-entry-btn" class="entry-action-btn danger" data-i18n="common.delete">Odstrániť</button>
+                            </div>
+                        </div>
+                        <div id="entry-tags"></div>
+                        <div id="entry-fields"></div>
+                    </div>
+                </main>
+            </div>
+
+            <!-- Search results overlay -->
+            <div id="search-results" class="hidden">
+                <ul id="search-list"></ul>
+            </div>
+
+            <!-- Audit Log full-page view (inside vault-screen, positioned below header) -->
+            <div id="audit-panel" class="audit-fullpage hidden">
+                <div class="audit-header">
+                    <div class="audit-header-left">
+                        <button type="button" id="audit-back-btn" class="audit-back-btn" title="Späť do trezora" data-i18n="audit.back" data-i18n-title="audit.back_title">&larr; Trezor</button>
+                        <h2 class="audit-title" data-i18n="audit.title">Auditný záznam</h2>
+                    </div>
+                    <div class="audit-header-right">
+                        <button type="button" id="audit-refresh-btn" class="audit-toolbar-btn" data-i18n="audit.refresh">&#8635; Obnoviť</button>
+                    </div>
+                </div>
+                <div class="audit-filters">
+                    <div class="audit-filter-row">
+                        <div class="audit-filter-group">
+                            <label for="audit-ip-filter" data-i18n="audit.ip">IP adresa</label>
+                            <input type="text" id="audit-ip-filter" placeholder="napr. 92.245" data-i18n-placeholder="audit.ip_placeholder" autocomplete="off">
+                        </div>
+                        <div class="audit-filter-group">
+                            <label for="audit-user-filter" data-i18n="audit.user">Používateľ</label>
+                            <input type="text" id="audit-user-filter" placeholder="meno..." data-i18n-placeholder="audit.user_placeholder" autocomplete="off">
+                        </div>
+                        <div class="audit-filter-group">
+                            <label for="audit-action-filter" data-i18n="audit.action">Akcia</label>
+                            <select id="audit-action-filter">
+                                <option value="" data-i18n="audit.action.all">Všetky akcie</option>
+                                <option value="login" data-i18n="audit.action.login">Prihlásenie</option>
+                                <option value="sync_push" data-i18n="audit.action.sync_push">Synchronizácia — odoslanie</option>
+                                <option value="sync_pull" data-i18n="audit.action.sync_pull">Synchronizácia — stiahnutie</option>
+                                <option value="field_show" data-i18n="audit.action.field_show">Zobrazenie poľa</option>
+                                <option value="field_copy" data-i18n="audit.action.field_copy">Kopírovanie poľa</option>
+                                <option value="entry_view" data-i18n="audit.action.entry_view">Zobrazenie záznamu</option>
+                                <option value="entry_create" data-i18n="audit.action.entry_create">Vytvorenie záznamu</option>
+                                <option value="entry_edit" data-i18n="audit.action.entry_edit">Úprava záznamu</option>
+                                <option value="entry_delete" data-i18n="audit.action.entry_delete">Odstránenie záznamu</option>
+                                <option value="folder_create" data-i18n="audit.action.folder_create">Vytvorenie priečinka</option>
+                                <option value="share_create" data-i18n="audit.action.share_create">Vytvorenie zdieľania</option>
+                                <option value="share_view" data-i18n="audit.action.share_view">Zobrazenie zdieľania</option>
+                            </select>
+                        </div>
+                        <div class="audit-filter-group">
+                            <label for="audit-time-filter" data-i18n="audit.range">Časový rozsah</label>
+                            <select id="audit-time-filter">
+                                <option value="3600000" data-i18n="audit.range.hour">Posledná hodina</option>
+                                <option value="86400000" selected data-i18n="audit.range.day">Posledných 24 hodín</option>
+                                <option value="604800000" data-i18n="audit.range.week">Posledných 7 dní</option>
+                                <option value="2592000000" data-i18n="audit.range.month">Posledných 30 dní</option>
+                                <option value="" data-i18n="audit.range.all">Všetko</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="audit-filter-actions">
+                        <button type="button" id="audit-apply-btn" class="audit-toolbar-btn audit-btn-primary" data-i18n="audit.filter">Filtrovať</button>
+                        <button type="button" id="audit-reset-btn" class="audit-toolbar-btn" data-i18n="common.reset">Obnoviť</button>
+                        <button type="button" id="audit-csv-btn" class="audit-toolbar-btn audit-btn-export" data-i18n="audit.export_csv">Exportovať CSV</button>
+                    </div>
+                </div>
+                <div id="audit-table-wrap" class="audit-table-wrap">
+                    <table class="audit-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="audit.time">Čas</th>
+                                <th data-i18n="audit.action">Akcia</th>
+                                <th data-i18n="audit.user">Používateľ</th>
+                                <th data-i18n="audit.ip">IP adresa</th>
+                                <th data-i18n="audit.details">Podrobnosti</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-table-body">
+                            <tr><td colspan="5" class="audit-empty" data-i18n="audit.loading">Načítavam...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="audit-pagination">
+                    <span id="audit-pagination-info">...</span>
+                    <div class="audit-pagination-btns">
+                        <button type="button" id="audit-prev-btn" class="audit-toolbar-btn" disabled data-i18n="audit.previous">&lsaquo; Predchádzajúce</button>
+                        <button type="button" id="audit-next-btn" class="audit-toolbar-btn" data-i18n="audit.next">Ďalšie &rsaquo;</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="team-trust-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="team-trust-title">
+            <div class="modal-panel">
+                <div class="modal-inner">
+                    <h2 id="team-trust-title" class="modal-title" data-i18n="team.title">Dôvera tímu</h2>
+                    <p data-i18n="team.help">Odtlačok získajte priamo od zakladateľa cez nezávislý kanál. Nekopírujte ho z tejto stránky: údaje servera samy osebe nie sú dôveryhodné.</p>
+                    <pre id="team-trust-details"></pre>
+                    <form id="team-trust-form" autocomplete="off">
+                        <div class="modal-input-group">
+                            <label for="team-founder-fingerprint" data-i18n="team.fingerprint">Nezávisle overený odtlačok zakladateľa (64 hex znakov)</label>
+                            <input id="team-founder-fingerprint" type="text" autocomplete="off" spellcheck="false" maxlength="64" required>
+                        </div>
+                        <div class="modal-input-group">
+                            <label for="team-publish-password" data-i18n="team.publish_password">Voliteľné, so zmenou hesla: nové zariadenia tohto účtu budú dôverovať rovnakému tímu. Súčasné heslo účtu</label>
+                            <input id="team-publish-password" type="password" autocomplete="current-password">
+                        </div>
+                        <div class="modal-input-group">
+                            <label for="team-publish-new-password" data-i18n="team.publish_new_password">Nové heslo účtu</label>
+                            <input id="team-publish-new-password" type="password" autocomplete="new-password">
+                        </div>
+                        <div class="modal-input-group">
+                            <label for="team-publish-confirm-password" data-i18n="team.publish_confirm_password">Nové heslo znova</label>
+                            <input id="team-publish-confirm-password" type="password" autocomplete="new-password">
+                        </div>
+                        <div class="modal-buttons">
+                            <button id="team-trust-cancel" type="button" class="modal-btn cancel" data-i18n="common.cancel">Zrušiť</button>
+                            <button id="team-trust-confirm" type="submit" class="modal-btn save" data-i18n="team.confirm">Potvrdiť zakladateľa</button>
+                        </div>
+                        <div id="team-trust-error" class="error hidden" role="alert"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Entry/Folder modal -->
+        <div id="entry-modal" class="modal-overlay hidden">
+            <div class="modal-panel">
+                <div class="modal-inner">
+                    <h2 id="modal-title" class="modal-title" data-i18n="entry.modal.new">Nový záznam</h2>
+                    <form id="entry-form" autocomplete="off">
+                        <input type="hidden" id="modal-entry-id" value="">
+                        <input type="hidden" id="modal-mode" value="entry">
+                        <div class="modal-input-group">
+                            <label for="modal-name" data-i18n="entry.modal.name">Názov</label>
+                            <input type="text" id="modal-name" placeholder="Názov záznamu" data-i18n-placeholder="entry.modal.name_placeholder" autocomplete="off" required>
+                        </div>
+                        <div id="modal-tags-group" class="modal-input-group">
+                            <label for="modal-tags"><span data-i18n="entry.modal.tags">Značky</span> <span class="label-hint" data-i18n="entry.modal.tags_hint">(oddelené čiarkou)</span></label>
+                            <input type="text" id="modal-tags" placeholder="napr. práca, e-mail, osobné" data-i18n-placeholder="entry.modal.tags_placeholder" autocomplete="off">
+                        </div>
+                        <div id="modal-fields-section">
+                            <div class="modal-fields-header">
+                                <label data-i18n="entry.modal.fields">Polia</label>
+                                <button type="button" id="add-field-btn" class="modal-small-btn" data-i18n="entry.modal.add_field">+ Pridať pole</button>
+                            </div>
+                            <div id="modal-fields-list"></div>
+                        </div>
+                        <div id="modal-parent-group" class="modal-input-group">
+                            <label for="modal-parent" data-i18n="entry.modal.parent">Nadradený priečinok</label>
+                            <select id="modal-parent"></select>
+                        </div>
+                        <div id="modal-shared-group" class="modal-input-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="modal-shared">
+                                <span data-i18n="entry.modal.shared">Zdieľané na úpravy</span> <span class="label-hint" data-i18n="entry.modal.shared_hint">(inak môže upravovať iba autor)</span>
+                            </label>
+                        </div>
+                        <div class="modal-buttons">
+                            <button type="button" id="modal-cancel-btn" class="modal-btn cancel" data-i18n="common.cancel">Zrušiť</button>
+                            <button type="submit" id="modal-save-btn" class="modal-btn save" data-i18n="common.save">Uložiť</button>
+                        </div>
+                        <div id="modal-error" class="error hidden"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete confirmation modal -->
+        <div id="delete-modal" class="modal-overlay hidden">
+            <div class="modal-panel modal-panel-small">
+                <div class="modal-inner">
+                    <h2 class="modal-title" data-i18n="entry.delete_title">Potvrdenie odstránenia</h2>
+                    <p id="delete-message" class="modal-message" data-i18n="entry.delete_default">Naozaj chcete odstrániť tento záznam?</p>
+                    <div class="modal-buttons">
+                        <button type="button" id="delete-cancel-btn" class="modal-btn cancel" data-i18n="common.cancel">Zrušiť</button>
+                        <button type="button" id="delete-confirm-btn" class="modal-btn danger" data-i18n="common.delete">Odstrániť</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crypto libraries (SRI required per spec 2.9). Self-hosted: jsDelivr
+         builds these minified files on demand and does not promise the same
+         bytes forever, so a CDN-side rebuild would break the pinned hashes. -->
+    <script src="/static/js/vendor/libsodium-sumo.min.js"
+            integrity="sha384-OE6+whEyuXbEYaZCCGMluyrf5v4BnwvtCSrY3RqjQypLbYs5No6VLH2dJklvNYk6"></script>
+    <script src="/static/js/vendor/libsodium-wrappers.min.js"
+            integrity="sha384-3LV107J9IFqZ1YkR2RZVJBIHQHiZcdjN4lY/Co60hcZWlKp4xw56TfBBmo2Lqb+9"></script>
+    <script src="/static/js/vendor/argon2-bundled.min.js"
+            integrity="sha384-XOR3aNvHciLPIf6r+2glkrmbBbLmIJ1EChMXjw8eBKBf8gE0rDq1TyUNuRdorOqi"></script>
+    <!-- The shared sync core (core/, built by core/build_web.py). -->
+    <script src="/static/js/vendor/sezam-sync-core.js"
+            integrity="sha384-sMLCFn1zpH5MzBI1wopYLW/U20r3jLxA9+uP/3kmrFtQ2XJnuuE14yu07ge7sGoc"></script>
+    <script src="/static/js/i18n.js?v=20261115-1"></script>
+    <script src="/static/js/teamlog.js?v=20261113-1"></script>
+    <script src="/static/js/app.js?v=20261115-1"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "about": "Stateful seed (run 44260509986): the ref moves an entry (version 2) and later deletes it, and tombstone GC collects it; a third device's older edit (made on version 1) then comes back after its full resync (410). The client's edit was made on the ref's version 2; it must be told about the other write (a conflict), not overwrite it.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "G"},
+    {"on": "ref", "do": "create_folder", "name": "H"},
+    {"on": "ref", "do": "create_entry", "name": "g1", "folder": "G", "password": "a"},
+    {"on": "ref", "do": "sync"},
+    {"on": "ref2", "do": "sync"},
+    {"on": "ref", "do": "move_entry", "name": "g1", "folder": "H"},
+    {"on": "ref", "do": "sync"},
+    {"on": "ref2", "do": "edit_entry", "name": "g1", "password": "b"},
+    {"on": "client", "do": "sync"},
+    {"on": "ref", "do": "delete_entry", "name": "g1"},
+    {"on": "ref", "do": "sync"},
+    {"on": "server", "do": "gc"},
+    {"on": "ref2", "do": "accept_restore"},
+    {"on": "ref2", "do": "sync"},
+    {"on": "client", "do": "edit_entry", "name": "g1", "password": "c"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "accept_restore"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "resolve", "keep": "server"}
+  ],
+  "expect": {"G": null, "H": null, "G/g1": "b"}
+}

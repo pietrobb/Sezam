@@ -1,0 +1,86 @@
+services:
+  sezam-db:
+    image: mariadb:11.8.3
+    container_name: ${SEZAM_DB_CONTAINER_NAME:-sezam-db}
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: sezam
+      MARIADB_USER: sezam
+      MARIADB_PASSWORD: ${SEZAM_DB_PASSWORD:?SEZAM_DB_PASSWORD must be set}
+      MARIADB_ROOT_PASSWORD: ${SEZAM_DB_ROOT_PASSWORD:?SEZAM_DB_ROOT_PASSWORD must be set}
+    volumes:
+      - sezam-db-data:/var/lib/mysql
+    networks:
+      - sezam-net
+    healthcheck:
+      test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  sezam-api-data-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: root
+    command: ["sh", "-c", "chown -R sezam:sezam /app/data && chmod 700 /app/data"]
+    volumes:
+      - sezam-api-data:/app/data
+    restart: "no"
+
+  sezam-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${SEZAM_API_CONTAINER_NAME:-sezam-api}
+    restart: unless-stopped
+    depends_on:
+      sezam-db:
+        condition: service_healthy
+      sezam-api-data-init:
+        condition: service_completed_successfully
+    environment:
+      SEZAM_DB_HOST: sezam-db
+      SEZAM_DB_PORT: "3306"
+      SEZAM_DB_USER: sezam
+      SEZAM_DB_PASSWORD: ${SEZAM_DB_PASSWORD:?SEZAM_DB_PASSWORD must be set}
+      SEZAM_DB_NAME: sezam
+      SEZAM_HMAC_SECRET: ${SEZAM_HMAC_SECRET:?SEZAM_HMAC_SECRET must be set}
+      SEZAM_JWT_KEY_PATH: /app/data/jwt_key.bin
+      SEZAM_BASE_URL: ${SEZAM_BASE_URL:-http://localhost:8000}
+      SEZAM_CORS_ORIGINS: ${SEZAM_CORS_ORIGINS:-}
+      # The host reverse proxy reaches the published port through the gateway
+      # of sezam-net; trust X-Forwarded-For only from that one address. A
+      # range like 172.16.0.0/12 also trusted every other container, which
+      # could then fake any client IP (PIN limits, audit).
+      FORWARDED_ALLOW_IPS: ${SEZAM_FORWARDED_ALLOW_IPS:-172.30.231.1}
+    networks:
+      - sezam-net
+    volumes:
+      - sezam-api-data:/app/data
+    ports:
+      - "${SEZAM_BIND_ADDRESS:-127.0.0.1}:${SEZAM_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+networks:
+  sezam-net:
+    ipam:
+      config:
+        # If this subnet collides with a local network, change it together
+        # with SEZAM_FORWARDED_ALLOW_IPS (= the gateway).
+        - subnet: 172.30.231.0/28
+          gateway: 172.30.231.1
+
+volumes:
+  sezam-db-data:
+  sezam-api-data:

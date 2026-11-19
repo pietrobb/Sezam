@@ -1,0 +1,16 @@
+{
+  "about": "The client creates, the other device edits and deletes; both converge.",
+  "steps": [
+    {"on": "client", "do": "create_folder", "name": "Work"},
+    {"on": "client", "do": "create_entry", "name": "vpn", "folder": "Work", "password": "p1"},
+    {"on": "client", "do": "create_entry", "name": "mail", "folder": "Work", "password": "m1"},
+    {"on": "client", "do": "sync"},
+    {"on": "ref", "do": "sync"},
+    {"on": "ref", "do": "edit_entry", "name": "vpn", "password": "p2"},
+    {"on": "ref", "do": "delete_entry", "name": "mail"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "edit_entry", "name": "vpn", "password": "p3"}
+  ],
+  "expect": {"Work": null, "Work/vpn": "p3"}
+}

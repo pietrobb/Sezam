@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>Sezam — bezpečné zdieľanie</title>
+    <link rel="stylesheet" href="/static/css/app.css?v=20261109-1">
+</head>
+<body>
+    <div class="language-picker">
+        <label for="language-select" data-i18n="language.label">Jazyk</label>
+        <select id="language-select" aria-label="Jazyk" data-i18n-aria-label="language.label"></select>
+    </div>
+    <main id="share-screen" class="screen active">
+        <section class="share-card" aria-labelledby="share-title">
+            <h1 id="share-title" data-i18n="share.title">Bezpečné zdieľanie</h1>
+            <p id="share-instructions" data-i18n="share.instructions">Kľúč zostáva iba v tomto prehliadači. Odkaz otvoríte jedným kliknutím.</p>
+            <form id="share-form" autocomplete="off">
+                <div class="input-group">
+                    <label for="share-pin" data-i18n="share.pin_label">PIN, ak ho odosielateľ nastavil</label>
+                    <input id="share-pin" name="pin" type="password" maxlength="128" autocomplete="off">
+                </div>
+                <button id="share-open" type="submit" data-i18n="share.open">Otvoriť zdieľaný záznam</button>
+            </form>
+            <p id="share-status" class="info" role="status" aria-live="polite"></p>
+            <section id="share-result" class="hidden" aria-labelledby="share-entry-title">
+                <h2 id="share-entry-title"></h2>
+                <pre id="share-entry-data"></pre>
+            </section>
+        </section>
+    </main>
+    <script src="/static/js/vendor/libsodium-sumo.min.js"></script>
+    <script src="/static/js/vendor/libsodium-wrappers.min.js"></script>
+    <script src="/static/js/i18n.js?v=20260724-3"></script>
+    <script src="/static/js/share.js?v=20260724-1"></script>
+</body>
+</html>

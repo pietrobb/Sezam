@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools==83.0.0", "setuptools-scm==10.2.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sezam"
+version = "0.1.0"
+description = "Encrypted personal and corporate credential vault"
+readme = "README.md"
+license = "AGPL-3.0-only"  # tests/test_open_source_docs.py
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "PyNaCl==1.6.2",
+    "argon2-cffi==25.1.0",
+    "click==8.1.3",
+    "keyring==25.7.0",
+    "paramiko==4.0.0",
+    "python-ulid==3.1.0",
+    # The shared sync core, built from core/py: `pip install ./core/py` first.
+    # Never from an index: neither sezam nor sezam-sync-core is ours on PyPI,
+    # so pip would take whatever someone registered under the name (review
+    # c78fd19). uv reads [tool.uv.sources]; tests/test_tooling.py checks the
+    # CI installs core/py before the package.
+    "sezam-sync-core==0.2.0",
+    "typing-extensions==4.15.0",
+]
+
+[project.optional-dependencies]
+gui = [
+    "PySide6==6.10.1",
+]
+import = [
+    "pykeepass==4.1.1.post1",
+]
+# Everything `pytest tests` and `ruff check` need on a fresh checkout: the
+# async server tests (pytest-asyncio, httpx ASGI transport) import the server
+# app, so its pins from server/requirements.in are repeated here
+# (tests/test_tooling.py keeps the two lists in step).
+dev = [
+    "pytest==9.0.3",
+    "pytest-cov==7.0.0",
+    "pytest-asyncio==1.3.0",
+    "pytest-xdist==3.8.0",
+    # Stateful sync test (tests/test_sync_state_machine.py).
+    "hypothesis==6.170.15",
+    "httpx==0.28.1",
+    "ruff==0.15.6",
+    "fastapi==0.135.1",
+    "uvicorn[standard]==0.34.3",
+    "aiomysql==0.3.2",
+    # Same as server/requirements.txt; aiomysql 0.3.2 breaks on PyMySQL >= 1.2.3
+    # (escape_bytes_prefixed became a str).
+    "PyMySQL==1.2.0",
+    "PyJWT[crypto]==2.15.1",
+    # Local FTPS server for the MCP FTP tool tests (TLS_FTPHandler needs pyOpenSSL).
+    "pyftpdlib==2.2.0",
+    "pyOpenSSL==26.4.0",
+    "pydantic==2.12.5",
+]
+
+[project.scripts]
+sezam = "sezam.cli:main"
+sezam-gui = "sezam.gui.app:run_gui"
+
+[tool.uv.sources]
+sezam-sync-core = { path = "core/py" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+# Shipped code only; tests and one-off scripts are not linted yet.
+include = ["src/**/*.py", "server/**/*.py"]
+
+[tool.ruff.lint]
+# pyflakes + syntax/import errors, plus no silently swallowed exceptions.
+select = ["E4", "E7", "E9", "F", "S110"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: integration tests against the real deployed server",
+    "e2e_server: end-to-end tests requiring a live server (destructive - cleans DB)",
+]

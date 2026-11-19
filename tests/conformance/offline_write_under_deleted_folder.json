@@ -1,0 +1,14 @@
+{
+  "about": "The client saves an entry in a folder the other device deletes meanwhile: the folder comes back with the new entry, the deleted entry stays deleted.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "Old"},
+    {"on": "ref", "do": "create_entry", "name": "o1", "folder": "Old", "password": "a"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "create_entry", "name": "n1", "folder": "Old", "password": "b"},
+    {"on": "ref", "do": "delete_folder", "name": "Old"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"}
+  ],
+  "expect": {"Old": null, "Old/n1": "b"}
+}

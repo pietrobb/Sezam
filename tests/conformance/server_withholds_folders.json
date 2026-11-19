@@ -1,0 +1,15 @@
+{
+  "about": "Review 7c10379 as a server fault: a pull leaves out the folders and sends their keys and items (an item before its folder); the client may refuse that pull, the next honest one brings the rest. Nothing is lost.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "W"},
+    {"on": "ref", "do": "create_entry", "name": "w1", "folder": "W", "password": "1"},
+    {"on": "ref", "do": "create_folder", "name": "V", "folder": "W"},
+    {"on": "ref", "do": "create_entry", "name": "v1", "folder": "V", "password": "2"},
+    {"on": "ref", "do": "sync"},
+    {"on": "server", "do": "withhold_next_pull", "kind": "node"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "edit_entry", "name": "v1", "password": "3"}
+  ],
+  "expect": {"W": null, "W/w1": "1", "W/V": null, "W/V/v1": "3"}
+}
