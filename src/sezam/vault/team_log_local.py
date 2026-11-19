@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 GENESIS_META = "team_log_genesis_hash"
 CONFIRMED_GENESIS_META = "team_log_confirmed_genesis_hash"
+# Genesis hashes the user left ('sezam team-log forget-pin', team_log_forget.py).
+FORGOTTEN_GENESIS_META = "team_log_forgotten_genesis"
 # Outbox rows (vault/outbox.py):
 # - team_change, queued: a team change made here that the server does not hold
 #   yet, body [type, data], in queue order. Rebuilt onto the current head at
@@ -47,6 +49,13 @@ TEAM_LOG_APPEND_MAX = 1000  # records per append the server takes (TeamLogAppend
 
 class TeamLogMismatch(RuntimeError):
     """The server's team log is not a continuation of this device's copy."""
+
+
+# Review c78fd19: the way out once the team's log is lost for good.
+LOST_LOG_HINT = (
+    " If the team's log is lost for good (another server, a reseed), "
+    "'sezam team-log forget-pin' leaves it on this device."
+)
 
 
 def queued_changes(db) -> list[list]:
@@ -182,6 +191,10 @@ def import_account_anchor(db, keypair) -> None:
     genesis = keypair.confirmed_genesis
     if genesis is None:
         return  # Legacy account keys convey no trust, even after a successful login.
+    if genesis in (db.get_meta_json(FORGOTTEN_GENESIS_META) or []):
+        # The user left this log here; the server's bundle still names it.
+        keypair.confirmed_genesis, keypair.pre_anchor = None, b""
+        return
     state = local_team_state(db)
     for existing in (db.get_meta(CONFIRMED_GENESIS_META), db.get_meta(GENESIS_META),
                      state.genesis_hash if state is not None else None):
@@ -450,16 +463,20 @@ class TeamLogMixin:
             if restored is not False:
                 server_head = restored
         if confirmed is not None and (server_head is None or server_head.get("genesis_hash") != confirmed):
-            raise TeamLogMismatch("The server's team log differs from the independently confirmed genesis.")
+            raise TeamLogMismatch(
+                "The server's team log differs from the independently confirmed genesis." + LOST_LOG_HINT
+            )
         if server_head is None:
             if local is not None or pinned:
                 raise TeamLogMismatch(
                     "The server no longer has the team log this device holds "
-                    "(restored from a backup, or another server)."
+                    "(restored from a backup, or another server)." + LOST_LOG_HINT
                 )
             return None
         if pinned and server_head.get("genesis_hash") != pinned:
-            raise TeamLogMismatch("The server's team log starts with another genesis than this device pinned.")
+            raise TeamLogMismatch(
+                "The server's team log starts with another genesis than this device pinned." + LOST_LOG_HINT
+            )
         local_seq = local.head_seq if local is not None else -1
         if server_head.get("seq", -1) < local_seq:
             raise TeamLogMismatch(

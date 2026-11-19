@@ -114,7 +114,9 @@ def team_log_confirm_genesis(anchor: str):
     """Pin ANCHOR: a genesis hash or invitation URL received from a trusted admin, not the server."""
     import re
     from urllib.parse import parse_qs, urlsplit
-    from .vault.team_log_local import CONFIRMED_GENESIS_META, GENESIS_META, local_team_state
+    from .vault.team_log_local import (
+        CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, local_team_state,
+    )
 
     if "://" in anchor:
         values = parse_qs(urlsplit(anchor).fragment, keep_blank_values=True).get("g", [])
@@ -129,9 +131,54 @@ def team_log_confirm_genesis(anchor: str):
             pins = [vault.db.get_meta(CONFIRMED_GENESIS_META), vault.db.get_meta(GENESIS_META),
                     state.genesis_hash if state is not None else None]
             if any(pin is not None and pin != anchor for pin in pins):
-                raise click.ClickException("The anchor conflicts with this device's existing pin. Nothing was changed.")
+                raise click.ClickException(
+                    "The anchor conflicts with this device's existing pin. Nothing was changed. "
+                    "(A team log lost for good: 'sezam team-log forget-pin' first.)"
+                )
             vault.db.set_meta(CONFIRMED_GENESIS_META, anchor)
+            forgotten = vault.db.get_meta_json(FORGOTTEN_GENESIS_META) or []
+            if anchor in forgotten:
+                vault.db.set_meta_json(FORGOTTEN_GENESIS_META, [g for g in forgotten if g != anchor])
         click.echo("Genesis anchor confirmed on this device; the next pull must match it.")
+    finally:
+        vault.lock()
+
+
+@team_log_group.command("forget-pin")
+@click.argument("genesis", required=False)
+def team_log_forget_pin(genesis: Optional[str]):
+    """Leave the team log this device pins: GENESIS is its genesis hash (16+ characters).
+
+    Only for a team log lost for good (the server moved, was reseeded, or kept
+    no restore): the device drops its pin and its copy of that log, and follows
+    the server's log once its founder is confirmed again. Without GENESIS it
+    shows the pinned one.
+    """
+    from .vault.team_log_forget import forget_team_log_pin, pinned_genesis
+
+    vault = cli._open_vault()
+    cli._unlock_vault_fresh(vault)
+    try:
+        pins = pinned_genesis(vault)
+        if not pins:
+            click.echo("This device pins no team log.")
+            return
+        if genesis is None:
+            click.echo("Pinned genesis: " + ", ".join(sorted(pins)))
+            click.echo("To leave it for good: 'sezam team-log forget-pin GENESIS'.")
+            return
+        click.echo(
+            "This device then no longer insists on that team log: whatever log the server has next is "
+            "new to it, and nothing from it is trusted until you confirm its founder's fingerprint."
+        )
+        if not click.confirm("Forget the pinned team log on this device?", default=False):
+            raise click.ClickException("Nothing was changed.")
+        try:
+            left = forget_team_log_pin(vault, genesis)
+        except (ValueError, RuntimeError) as exc:
+            raise click.ClickException(str(exc)) from exc
+        click.echo("Forgot " + ", ".join(sorted(left)) + ". Next: 'sezam pull', then "
+                   "'sezam team-log status' and 'sezam team-log confirm-founder FINGERPRINT'.")
     finally:
         vault.lock()
 
