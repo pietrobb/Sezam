@@ -8,6 +8,7 @@ import '../widgets/entry_card.dart';
 import '../widgets/folder_chip.dart';
 import '../widgets/password_prompt.dart';
 import '../widgets/search_bar.dart';
+import '../widgets/team_log_errors.dart';
 import '../widgets/unsent_changes_dialog.dart';
 import '../models/vault_models.dart';
 import '../services/vault_service.dart';
@@ -220,9 +221,10 @@ class _VaultScreenState extends State<VaultScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Sync failed: ${e.toString().split(':').last.trim()}',
+              teamLogErrorText(e) ??
+                  'Sync failed: ${e.toString().split(':').last.trim()}',
             ),
-            duration: const Duration(seconds: 3),
+            duration: Duration(seconds: teamLogErrorText(e) == null ? 3 : 6),
           ),
         );
       }
@@ -416,7 +418,8 @@ class _VaultScreenState extends State<VaultScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Full resync failed: ${e.toString().split(':').last.trim()}',
+            teamLogErrorText(e) ??
+                'Full resync failed: ${e.toString().split(':').last.trim()}',
           ),
           duration: const Duration(seconds: 4),
         ),
@@ -640,12 +643,16 @@ class _VaultScreenState extends State<VaultScreen>
                     .toList();
 
                 try {
-                  await _vault.createEntry(
-                    parentRef: parentId!,
-                    name: nameCtrl.text,
-                    fields: entryFields,
-                    writePolicy: shared ? 'shared' : 'owner_only',
+                  final saved = await runTeamLogWrite(
+                    context,
+                    () => _vault.createEntry(
+                      parentRef: parentId!,
+                      name: nameCtrl.text,
+                      fields: entryFields,
+                      writePolicy: shared ? 'shared' : 'owner_only',
+                    ),
                   );
+                  if (!saved) return;
                 } on SyncObjectTooLargeException catch (e) {
                   // Review d150605 N1: not saved, and the user is told why.
                   if (mounted) {
@@ -691,11 +698,14 @@ class _VaultScreenState extends State<VaultScreen>
           ElevatedButton(
             onPressed: () async {
               if (nameCtrl.text.isEmpty) return;
-              await _vault.createNode(
-                name: nameCtrl.text,
-                parentRef: parentRef,
+              final saved = await runTeamLogWrite(
+                context,
+                () => _vault.createNode(
+                  name: nameCtrl.text,
+                  parentRef: parentRef,
+                ),
               );
-              if (mounted) {
+              if (saved && mounted) {
                 Navigator.pop(ctx);
                 setState(() {});
               }
@@ -736,8 +746,11 @@ class _VaultScreenState extends State<VaultScreen>
           ElevatedButton(
             onPressed: () async {
               if (nameCtrl.text.isEmpty) return;
-              await _vault.createPersonalFolder(name: nameCtrl.text);
-              if (mounted) {
+              final saved = await runTeamLogWrite(
+                context,
+                () => _vault.createPersonalFolder(name: nameCtrl.text),
+              );
+              if (saved && mounted) {
                 Navigator.pop(ctx);
                 setState(() {});
               }

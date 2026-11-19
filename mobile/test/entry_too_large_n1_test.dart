@@ -29,7 +29,7 @@ void main() {
 
   test('the new-entry dialog tells the user and stays open', () {
     final screen = File('lib/screens/vault_screen.dart').readAsStringSync();
-    final create = _between(screen, 'await _vault.createEntry(', 'Navigator.pop(ctx)');
+    final create = _between(screen, '() => _vault.createEntry(', 'Navigator.pop(ctx)');
     expect(create, contains('on SyncObjectTooLargeException catch (e)'));
     expect(create, contains('SnackBar(content: Text(e.toString()))'));
     expect(create, contains('return;'));
@@ -40,7 +40,7 @@ void main() {
         File('lib/screens/entry_detail_screen.dart').readAsStringSync();
     final update = _between(
       screen,
-      'await _vault.updateEntry(',
+      '() => _vault.updateEntry(',
       'on StaleEntryEditException',
     );
     expect(update, contains('on SyncObjectTooLargeException catch (e)'));

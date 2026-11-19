@@ -10,6 +10,7 @@ import '../services/sync_limits.dart';
 import '../services/totp_service.dart';
 import '../services/share_service.dart';
 import '../services/clipboard_service.dart';
+import '../widgets/team_log_errors.dart';
 
 class EntryDetailScreen extends StatefulWidget {
   final Map<String, dynamic> entryArgs;
@@ -242,13 +243,17 @@ class _EntryDetailScreenState extends State<EntryDetailScreen>
                     .toList();
 
                 try {
-                  await _vault.updateEntry(
-                    entryId: _entry!.id,
-                    name: nameCtrl.text,
-                    fields: updatedFields,
-                    writePolicy: shared ? 'shared' : 'owner_only',
-                    expectedVersion: baseVersion,
+                  final saved = await runTeamLogWrite(
+                    context,
+                    () => _vault.updateEntry(
+                      entryId: _entry!.id,
+                      name: nameCtrl.text,
+                      fields: updatedFields,
+                      writePolicy: shared ? 'shared' : 'owner_only',
+                      expectedVersion: baseVersion,
+                    ),
                   );
+                  if (!saved) return;
                 } on SyncObjectTooLargeException catch (e) {
                   // Review d150605 N1: not saved, and the user is told why.
                   if (mounted) {
@@ -695,7 +700,14 @@ class _EntryDetailScreenState extends State<EntryDetailScreen>
           TextButton(
             onPressed: () async {
               if (_entry != null) {
-                await _vault.deleteEntry(_entry!.id);
+                final deleted = await runTeamLogWrite(
+                  context,
+                  () => _vault.deleteEntry(_entry!.id),
+                );
+                if (!deleted) {
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  return;
+                }
                 // Push the deletion
                 try {
                   await _sync.push();
