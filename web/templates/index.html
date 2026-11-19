@@ -305,6 +305,19 @@
                         </div>
                         <div id="team-trust-error" class="error hidden" role="alert"></div>
                     </form>
+                    <details>
+                        <summary data-i18n="team.forget_title">Zabudnúť pripnutý tímový denník</summary>
+                        <p data-i18n="team.forget_help">Len ak je denník tímu stratený natrvalo (iný server, nové založenie). Prehliadač potom nasleduje denník servera ako nový a dôveruje mu až po novom potvrdení zakladateľa.</p>
+                        <form id="team-forget-form" autocomplete="off">
+                            <div class="modal-input-group">
+                                <label for="team-forget-genesis" data-i18n="team.forget_genesis">Pripnutý genesis (aspoň prvých 16 znakov)</label>
+                                <input id="team-forget-genesis" type="text" autocomplete="off" spellcheck="false" maxlength="64" required>
+                            </div>
+                            <div class="modal-buttons">
+                                <button id="team-forget-submit" type="submit" class="modal-btn danger" data-i18n="team.forget_button">Zabudnúť</button>
+                            </div>
+                        </form>
+                    </details>
                 </div>
             </div>
         </div>

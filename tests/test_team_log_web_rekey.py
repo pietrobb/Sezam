@@ -30,6 +30,7 @@ FUNCTIONS = [
     "webLogAdmins", "removalArchiveId", "hexToBytes", "bytesToHex", "pushWebRekeyBatch", "handleInviteUser",
     "handleOnboarding", "normalizeUsername", "syncCheckpointKey", "idbKeysRequest",
     "invitationTeamGenesis", "loadConfirmedTeamGenesis", "saveConfirmedTeamGenesis",
+    "forgottenTeamGenesisAad", "loadForgottenTeamGenesis", "saveForgottenTeamGenesis", "importAccountTeamAnchor",
     "openTeamTrustModal", "closeTeamTrustModal", "handleConfirmTeamFounder",
     "syncWebTeamLog", "restoreWebTeamLog", "teamLogPin", "assertTeamLogAllowsWrite", "pushEncryptedVaultObjectLocked", "webBase", "withWebBase",
     "encryptAccountKeypair", "encodeAccountKeypair", "decodeAccountKeypair", "parsePreAnchor",

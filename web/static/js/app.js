@@ -1186,6 +1186,7 @@ function setupEventListeners() {
     document.getElementById('team-trust-btn')?.addEventListener('click', openTeamTrustModal);
     document.getElementById('team-trust-form')?.addEventListener('submit', handleConfirmTeamFounder);
     document.getElementById('team-trust-cancel')?.addEventListener('click', closeTeamTrustModal);
+    document.getElementById('team-forget-form')?.addEventListener('submit', handleForgetTeamPin);
     document.getElementById('org-recovery-btn')?.addEventListener('click', openOrgRecoveryModal);
     document.getElementById('audit-btn')?.addEventListener('click', openAuditPanel);
     document.getElementById('audit-back-btn')?.addEventListener('click', closeAuditPanel);
@@ -1713,9 +1714,7 @@ async function handleLogin(e) {
         }
 
         // Import only the anchor authenticated inside this account's keypair wrap.
-        if (state.keypair.confirmedGenesis) {
-            await saveConfirmedTeamGenesis(state.keypair.confirmedGenesis, _sodium);
-        }
+        if (state.keypair.confirmedGenesis) await importAccountTeamAnchor(_sodium);
         // 8. Pull vault and build tree
         await pullAndBuildTree();
         await settleUnfinishedKekRotation(unfinishedRotation, meta);
@@ -7408,6 +7407,124 @@ async function saveConfirmedTeamGenesis(genesis, _sodium) {
     }));
     if (userId !== state.userId || session !== state.sessionSerial) throw new Error('The anchor session has ended');
     state.confirmedTeamGenesis = genesis;
+    const forgotten = await loadForgottenTeamGenesis(_sodium);
+    if (forgotten.includes(genesis)) await saveForgottenTeamGenesis(forgotten.filter(g => g !== genesis), _sodium);
+}
+
+// Review c78fd19 (medium): a browser pinned to a team log the server lost for
+// good (moved, reseeded, no restore) had no way out of TEAM LOG MISMATCH. The
+// user types the pinned genesis; the browser drops its pin and its copy, and
+// follows the server's log as a new one, trusted only once its founder is
+// confirmed again. The account bundle may still name the old genesis: this
+// browser remembers it left it and does not take it back from there.
+const FORGET_PIN_MIN_CHARS = 16;
+
+function forgottenTeamGenesisAad(userId) {
+    return new TextEncoder().encode(`sezam-team-genesis-forgotten-v1:${userId}`);
+}
+
+async function loadForgottenTeamGenesis(_sodium) {
+    const userId = state.userId;
+    const stored = await idbKeysRequest('readonly', store => store.get(`forgotten_team_genesis:${userId}`));
+    if (!stored) return [];
+    const packed = hexToBytes(stored.encrypted_list);
+    const nonceLen = _sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES;
+    const list = JSON.parse(new TextDecoder().decode(_sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+        null, packed.slice(nonceLen), forgottenTeamGenesisAad(userId), packed.slice(0, nonceLen),
+        await syncCheckpointKey('device-v2', _sodium),
+    )));
+    if (!Array.isArray(list) || !list.every(g => /^[0-9a-f]{64}$/.test(g))) throw new Error('Invalid forgotten team anchors');
+    return list;
+}
+
+async function saveForgottenTeamGenesis(list, _sodium) {
+    const userId = state.userId;
+    const id = `forgotten_team_genesis:${userId}`;
+    if (!list.length) {
+        await idbKeysRequest('readwrite', store => store.delete(id));
+        return;
+    }
+    const nonce = _sodium.randombytes_buf(_sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
+    const ciphertext = _sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
+        new TextEncoder().encode(JSON.stringify([...new Set(list)].sort())), forgottenTeamGenesisAad(userId),
+        null, nonce, await syncCheckpointKey('device-v2', _sodium, true),
+    );
+    await idbKeysRequest('readwrite', store => store.put({
+        id, encrypted_list: bytesToHex(new Uint8Array([...nonce, ...ciphertext])),
+    }));
+}
+
+/** The genesis an account bundle names, unless this browser left that log. */
+async function importAccountTeamAnchor(_sodium) {
+    const genesis = state.keypair?.confirmedGenesis;
+    if (!genesis) return;
+    if ((await loadForgottenTeamGenesis(_sodium)).includes(genesis)) {
+        state.keypair.confirmedGenesis = null;
+        return;
+    }
+    await saveConfirmedTeamGenesis(genesis, _sodium);
+}
+
+function webPinnedTeamGenesis() {
+    return [...new Set([
+        state.confirmedTeamGenesis, state.teamLog?.team.genesisHash,
+        state.syncCheckpoint?.team_log?.genesis_hash, state.keypair?.confirmedGenesis,
+    ].filter(Boolean))].sort();
+}
+
+/** Drop this browser's team log pin; call with the sync lock held. */
+async function forgetWebTeamLogPinLocked(typed, session, _sodium) {
+    const ended = () => session !== state.sessionSerial || !state.kek;
+    if (ended()) throw new Error(t('team.stale'));
+    if (!state.syncCheckpointLoaded) {
+        state.confirmedTeamGenesis = await loadConfirmedTeamGenesis(_sodium);
+        state.syncCheckpoint = await loadSyncCheckpoint(_sodium);
+        state.syncCheckpointLoaded = true;
+    }
+    const pins = webPinnedTeamGenesis();
+    if (!pins.length) throw new Error(t('team.forget_none'));
+    typed = (typed || '').trim().toLowerCase();
+    if (typed.length < FORGET_PIN_MIN_CHARS || !pins.every(pin => pin.startsWith(typed))) {
+        throw new Error(t('team.forget_typed', { pins: pins.join(', ') }));
+    }
+    if (Object.keys(state.outbox || {}).length || Object.keys(state.syncConflicts || {}).length ||
+            (state.outboxOps || []).length) {
+        throw new Error(t('team.forget_unsent'));
+    }
+    if (ended()) throw new Error(t('team.stale'));
+    await saveForgottenTeamGenesis([...await loadForgottenTeamGenesis(_sodium), ...pins], _sodium);
+    await idbKeysRequest('readwrite', store => store.delete(`confirmed_team_genesis:${state.userId}`));
+    state.confirmedTeamGenesis = null;
+    if (state.syncCheckpoint?.team_log) {
+        const checkpoint = { ...state.syncCheckpoint, team_log: null };
+        await saveSyncCheckpoint(checkpoint, _sodium);
+        state.syncCheckpoint = checkpoint;
+    }
+    state.teamLog = null;
+    if (state.keypair) state.keypair.confirmedGenesis = null;
+    return pins;
+}
+
+async function handleForgetTeamPin(event) {
+    event.preventDefault();
+    const input = document.getElementById('team-forget-genesis');
+    const error = document.getElementById('team-trust-error');
+    const typed = input.value;
+    error.classList.add('hidden');
+    try {
+        if (!window.confirm(t('team.forget_confirm'))) return;
+        const _sodium = await ensureSodium();
+        const session = state.sessionSerial;
+        await withWebSyncLock(async () => {
+            await forgetWebTeamLogPinLocked(typed, session, _sodium);
+            await pullAndBuildTreeLocked(session);
+        });
+        input.value = '';
+        await openTeamTrustModal();
+    } catch (err) {
+        error.textContent = err.message;
+        error.classList.remove('hidden');
+    }
 }
 
 // Review 1141a20 H2: the pin this browser holds independently (invitation
@@ -7608,15 +7725,18 @@ async function syncWebTeamLog(head, local, pin, _sodium) {
         const restored = await restoreWebTeamLog(head, local, pin, _sodium);
         if (restored !== false) head = restored;
     }
+    // Review c78fd19: the way out once the team's log is lost for good.
+    const lost = '. If the team\'s log is lost for good (another server, a reseed), ' +
+        '"Team trust → Forget the pinned team log" leaves it in this browser';
     if (confirmed && (!head || head.genesis_hash !== confirmed)) {
-        fail('does not match the externally confirmed genesis');
+        fail('does not match the externally confirmed genesis' + lost);
     }
     if (!head) {
-        if (local || pin) fail('is gone (a server restored from a backup, or another server)');
+        if (local || pin) fail('is gone (a server restored from a backup, or another server)' + lost);
         return null;
     }
     const pinned = local?.team.genesisHash || pin?.genesis_hash || null;
-    if (pinned && head.genesis_hash !== pinned) fail('starts with another genesis than this browser saw');
+    if (pinned && head.genesis_hash !== pinned) fail('starts with another genesis than this browser saw' + lost);
     const seen = Math.max(localSeq, Number.isSafeInteger(pin?.seq) ? pin.seq : -1);
     if (!Number.isSafeInteger(head.seq) || head.seq < seen) fail(`went back (head ${head.seq} < ${seen})`);
     if (local && head.seq === localSeq) {
@@ -10059,7 +10179,7 @@ async function handleOrgRecovery(threshold, totalShares) {
         state.keypair = { signingSk, signingPk, encryptionSk, confirmedGenesis, preAnchor };
         state.kek = recoveredKek;
         _sodium.memzero(keypairBytes);
-        if (confirmedGenesis) await saveConfirmedTeamGenesis(confirmedGenesis, _sodium);
+        if (confirmedGenesis) await importAccountTeamAnchor(_sodium);
 
         // Recovery must first unlock every active DEK with the old KEK (§9.4).
         await pullAndBuildTree();
