@@ -18,9 +18,9 @@ dependencies = [
     "paramiko==4.0.0",
     "python-ulid==3.1.0",
     # The shared sync core, built from core/py: `pip install ./core/py` first.
-    # Never from an index: neither sezam nor sezam-sync-core is ours on PyPI,
-    # so pip would take whatever someone registered under the name (review
-    # c78fd19). uv reads [tool.uv.sources]; tests/test_tooling.py checks the
+    # Never from an index: on PyPI both sezam and sezam-sync-core are only
+    # empty 0.0.1 name reservations, so the ==0.2.0 pin can never resolve
+    # there (review c78fd19). uv reads [tool.uv.sources]; tests/test_tooling.py checks the
     # CI installs core/py before the package.
     "sezam-sync-core==0.2.0",
     "typing-extensions==4.15.0",

@@ -11,7 +11,7 @@ git ls-files -z --cached --others --exclude-standard \
   | while IFS= read -r -d '' f; do [ -e "$f" ] && cp --parents "$f" /src; done
 cd /src
 command -v cargo >/dev/null || { curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal >/dev/null; export PATH="$HOME/.cargo/bin:$PATH"; }
-# The sync core from its source first: the name sezam-sync-core is not ours on PyPI.
+# The sync core from its source first: PyPI only holds an empty sezam-sync-core name reservation.
 python -m pip install -q ./core/py 2>&1 | tail -n 3
 python -m pip install -q -e ".[dev,import]" 2>&1 | tail -n 3
 python -m pytest -q -rs -p no:cacheprovider \

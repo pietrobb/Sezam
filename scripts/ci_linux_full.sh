@@ -36,7 +36,7 @@ echo "== mobile job"
 (cd mobile && flutter pub get >/dev/null && flutter analyze --no-fatal-infos && flutter test --reporter expanded 2>&1 | tail -n 40)
 echo "== python job"
 command -v cargo >/dev/null || { curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal >/dev/null; export PATH="$HOME/.cargo/bin:$PATH"; }
-# The sync core from its source first: the name sezam-sync-core is not ours on PyPI.
+# The sync core from its source first: PyPI only holds an empty sezam-sync-core name reservation.
 python -m pip install -q ./core/py 2>&1 | tail -n 3
 python -m pip install -q -e ".[dev,import,gui]" pytest-qt==4.5.0 2>&1 | tail -n 3
 python -m ruff check
