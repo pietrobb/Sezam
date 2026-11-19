@@ -167,6 +167,20 @@ const tabActions = {
     await page('confirmRevokeUser')(step.user_id);
     return alerts.length > before ? alerts.slice(before).join('; ') : null;
   },
+  // The key-change dialog of a periodic pull, answered "accept" (the user
+  // checked the member's new fingerprint with them).
+  async accept_key_change() {
+    const shown = [];
+    const dialog = context.showMITMWarning;
+    context.showMITMWarning = (...args) => { shown.push(args); };
+    try { await page('pullAndBuildTree')(); } catch (err) { /* the dialog's error */ } finally {
+      context.showMITMWarning = dialog;
+    }
+    for (const [, userId, signingPk, encryptionPk] of shown) {
+      await page('acceptChangedKey')(userId, signingPk, encryptionPk);
+    }
+    return shown.length ? null : 'no key change to accept';
+  },
   async view() { return null; },
   async select_entry(step) {
     page('renderEntry')(page('state').entries[step.id]);

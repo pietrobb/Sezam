@@ -15,6 +15,7 @@ import 'package:sezam_mobile/models/vault_models.dart';
 import 'package:sezam_mobile/services/auth_service.dart';
 import 'package:sezam_mobile/services/database_service.dart';
 import 'package:sezam_mobile/services/sync_service.dart';
+import 'package:sezam_mobile/services/team_log_client.dart';
 import 'package:sezam_mobile/services/vault_service.dart';
 
 import 'support/real_server_phone.dart';
@@ -82,6 +83,11 @@ void main() {
               ..clear()
               ..add('$e');
             return false;
+          } on TeamLogMismatch catch (e) {
+            said
+              ..clear()
+              ..add('$e');
+            return false;
           }
           said
             ..clear()
@@ -120,6 +126,13 @@ void main() {
               await vault.deleteEntry(entry(step['name'] as String));
             case 'sync':
               await syncOnce();
+            case 'sync_refused':
+              // A log the pin does not lead to: nothing goes out, the phone
+              // names the team log.
+              expect(await syncOnce(), isFalse,
+                  reason: 'the sync took a team log of another genesis');
+              expect(said.join(' ').toLowerCase(), contains('team log'),
+                  reason: 'the sync did not name the team log: $said');
             case 'resolve':
               expect(step['keep'], 'server');
               final conflicts = await DatabaseService().getSyncConflicts();

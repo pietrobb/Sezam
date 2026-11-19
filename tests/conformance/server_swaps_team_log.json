@@ -1,0 +1,24 @@
+{
+  "about": "Review c78fd19 (anchoring): the server serves a team log of another genesis in place of the team's. Every device anchored to the team's genesis refuses it and sends nothing; what the client wrote meanwhile waits, and once the server serves the team's log again everything goes out and bob reads it.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "T"},
+    {"on": "ref", "do": "create_entry", "name": "t1", "folder": "T", "password": "a"},
+    {"on": "ref", "do": "sync"},
+    {"on": "ref", "do": "invite", "member": "bob"},
+    {"on": "ref", "do": "grant", "member": "bob", "folder": "T"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "bob", "do": "reads", "expect": {"T": null, "T/t1": "a"}},
+    {"on": "server", "do": "swap_team_log"},
+    {"on": "client", "do": "create_entry", "name": "t2", "folder": "T", "password": "c"},
+    {"on": "client", "do": "sync_refused"},
+    {"on": "ref", "do": "sync_refused"},
+    {"on": "bob", "do": "sync_refused"},
+    {"on": "server", "do": "put_back_team_log"},
+    {"on": "client", "do": "sync"},
+    {"on": "ref", "do": "sync"},
+    {"on": "bob", "do": "reads", "expect": {"T": null, "T/t1": "a", "T/t2": "c"}}
+  ],
+  "expect": {"T": null, "T/t1": "a", "T/t2": "c"}
+}

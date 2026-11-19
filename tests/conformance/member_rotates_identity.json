@@ -1,0 +1,30 @@
+{
+  "about": "Review c78fd19: member bob rotates his identity (member.keys in the team log) while T is shared with him for writing. Once an admin device pulled the rotation and sealed T's key to his new key (docs/DESIGN_TEAM_LOG.md, R9-A), every device of the admin reads what he writes under the new keys and bob reads T.",
+  "steps": [
+    {"on": "ref", "do": "create_folder", "name": "T"},
+    {"on": "ref", "do": "create_entry", "name": "t1", "folder": "T", "password": "a"},
+    {"on": "ref", "do": "sync"},
+    {"on": "ref", "do": "invite", "member": "bob"},
+    {"on": "ref", "do": "grant", "member": "bob", "folder": "T", "access": "write"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "bob", "do": "reads", "expect": {"T": null, "T/t1": "a"}},
+    {"on": "bob", "do": "rotate_identity"},
+    {"on": "bob", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "ref", "do": "sync"},
+    {"on": "ref", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "bob", "do": "sync"},
+    {"on": "bob", "do": "create_entry", "name": "b1", "folder": "T", "password": "x"},
+    {"on": "bob", "do": "sync"},
+    {"on": "client", "do": "sync"},
+    {"on": "client", "do": "edit_entry", "name": "t1", "password": "b"},
+    {"on": "client", "do": "sync"},
+    {"on": "ref", "do": "sync"},
+    {"on": "ref", "do": "create_entry", "name": "t2", "folder": "T", "password": "c"},
+    {"on": "ref", "do": "sync"},
+    {"on": "bob", "do": "reads", "expect": {"T": null, "T/t1": "b", "T/b1": "x", "T/t2": "c"}}
+  ],
+  "expect": {"T": null, "T/t1": "b", "T/b1": "x", "T/t2": "c"}
+}

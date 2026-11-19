@@ -36,15 +36,20 @@ from urllib.parse import parse_qs
 
 import pytest
 
+from nacl.public import PrivateKey
+from nacl.signing import SigningKey
+
 from sezam import cli
+from sezam import teamlog as tl
 from sezam.crypto.aead import parse_envelope
-from sezam.models import bytes_to_ulid
+from sezam.models import bytes_to_ulid, new_ulid
 from sezam.vault import revocation
 from sezam.vault.sync_common import CONFIRMED_MEMBER_KEYS_META, KeyEpochStale, TofuKeyChangeError
-from sezam.vault.team_log_local import CONFIRMED_GENESIS_META
+from sezam.vault.team_log_local import CONFIRMED_GENESIS_META, TeamLogMismatch
 from sezam.vault.team_migration import add_member, found_team_log
 from sezam.vault.crud import Vault
 from sezam.vault.sync_client import SyncClient
+from server.app import team_log
 from tests.node_support import node_problem
 from tests.test_cross_client_password_change import _phone
 from tests.test_integration_client_server import PARAMS, PASSWORD
@@ -54,8 +59,8 @@ from tests.web_tab import WebTab
 SCENARIOS = sorted((Path(__file__).parent / "conformance").glob("*.json"))
 PHONE_TEST = "test/sync_conformance_test.dart"
 CLIENT_STEPS = {
-    "create_folder", "create_entry", "edit_entry", "delete_entry", "sync", "resolve", "accept_restore",
-    "grant", "revoke", "rotate_identity",
+    "create_folder", "create_entry", "edit_entry", "delete_entry", "sync", "sync_refused", "resolve",
+    "accept_restore", "grant", "revoke", "rotate_identity",
 }
 # What a client has no way to do (docs/SYNC_SINGLE_SOURCE.md 4a, exceptions):
 # a scenario with such a client step is skipped for it, by name. Every one of
@@ -150,6 +155,8 @@ class Desktop:
             v.move_entry(self._entry(step["name"]), self._folder(step["folder"]))
         elif do == "sync":
             self.sync()
+        elif do == "sync_refused":
+            _refused(self)
         elif do == "resolve":
             client = self._client()
             conflicts = client.get_pull_conflicts()
@@ -182,16 +189,30 @@ class Desktop:
         queued operation, no open conflict."""
         client = self._client()
         try:
-            pushed = revocation.push_with_queued_revocations(self.vault, client)
-        except KeyEpochStale:
-            # Another device rotated the account keys: the user types the
-            # password and this one takes them over (as 'sezam sync' asks).
-            client.adopt_rotated_key_material(self.vault, PASSWORD)
-            client = self._client()
-            pushed = revocation.push_with_queued_revocations(self.vault, client)
+            try:
+                pushed = revocation.push_with_queued_revocations(self.vault, client)
+            except KeyEpochStale:
+                # Another device rotated the account keys: the user types the
+                # password and this one takes them over (as 'sezam sync' asks).
+                client.adopt_rotated_key_material(self.vault, PASSWORD)
+                client = self._client()
+                pushed = revocation.push_with_queued_revocations(self.vault, client)
+        except TeamLogMismatch as mismatch:  # 'sezam sync' names it and stops
+            self.said = [str(mismatch)]
+            return False
         self.said = [c.get("error") for c in pushed.get("conflicts") or []]
         try:
-            pulled = client.pull()
+            try:
+                pulled = client.pull()
+            except TeamLogMismatch as mismatch:
+                self.said.append(str(mismatch))
+                return False
+            except TofuKeyChangeError as change:
+                # A member rotated their identity: the user checks the new
+                # fingerprint with them, as 'sezam pull' asks, and accepts it.
+                self.said.append(f"{change.user_id} rotated: fingerprint confirmed")
+                client.confirm_tofu_key_change(change, change.new_fingerprint)
+                pulled = client.pull()
         except RuntimeError as e:  # 410: below the GC floor, as the page and the phone report it
             if "explicit full resync" not in str(e):
                 raise
@@ -233,7 +254,12 @@ class Web:
         if fired:
             # The page shows what it queued after its next periodic pull
             # (a pull only: the queue waits for the sync step's Retry).
-            return self._do("refresh")
+            shown = self.tab.do("refresh", confirm=True)
+            if (shown["error"] or "").startswith("TEAM LOG MISMATCH"):
+                shown["error"] = None  # what the pull reports; the next sync step checks it
+            assert not shown["rejections"] and shown["error"] is None, f"refresh: {shown['error']}"
+            self.last = shown
+            return shown
         return result
 
     def _id(self, kind: str, name: str) -> str:
@@ -253,6 +279,8 @@ class Web:
             self._do("delete_entry", True, id=self._id("entries", step["name"]))
         elif do == "sync":
             self.sync()
+        elif do == "sync_refused":
+            _refused(self)
         elif do == "resolve":
             assert step["keep"] == "server", "the page offers only the server's version"
             assert self.last["view"]["conflicts"], "nothing to resolve"
@@ -269,6 +297,13 @@ class Web:
         # A rollback question is answered no: only accept_restore says yes.
         self.said = [self.tab.do("retry", confirm=False)["error"]]
         result = self.tab.do("refresh", confirm=False)
+        if (result["error"] or "").startswith("TOFU key change rejected"):
+            # A member rotated their identity: the key-change dialog, accepted
+            # once the user checked the new fingerprint (as on the desktop).
+            self.said.append(result["error"])
+            accepted = self.tab.do("accept_key_change")
+            assert accepted["error"] is None, accepted["error"]
+            result = self.tab.do("refresh", confirm=False)
         if not result["view"]["unlocked"]:
             # Another device rotated the account keys and the server ended
             # this session: the user logs in again (the desktop's
@@ -356,6 +391,7 @@ class Server:
         self.db = server.reset()
         self.url = server.url
         self.backup = None
+        self.team_log = None
         self.faults: PullFault = server.faults
         self.faults.hook, self.faults.fired = None, 0
 
@@ -375,8 +411,36 @@ class Server:
             self.db._storage.update(copy.deepcopy(self.backup))
         elif do == "withhold_next_pull":
             self.faults.hook = _withhold(step["kind"])
+        elif do == "swap_team_log":
+            # Whoever runs the server serves a log of its own making in place
+            # of the team's (another genesis, its own admin key).
+            self.team_log = self.db._storage["team_log"]
+            self.db._storage["team_log"] = _foreign_team_log()
+            team_log.forget_cache()
+        elif do == "put_back_team_log":
+            self.db._storage["team_log"] = self.team_log
+            team_log.forget_cache()
         else:
             raise AssertionError(f"unknown step {step}")
+
+
+def _foreign_team_log() -> list[dict]:
+    sk, uid = SigningKey.generate(), new_ulid()
+    body = tl.next_body(tl.TeamState(), "genesis", uid, {
+        "org": new_ulid(), "user_id": uid, "signing_pk": sk.verify_key.encode().hex(),
+        "encryption_pk": PrivateKey.generate().public_key.encode().hex(),
+    })
+    record = tl.sign_record(body, sk)
+    return [{"seq": 0, "prev": tl.ZERO_HASH, "hash": tl.record_hash(record), "body": record["body"],
+             "sig": record["sig"], "author": uid, "created_at": 0}]
+
+
+def _refused(device) -> None:
+    """A sync on a log the device's pin does not lead to: nothing goes out,
+    and the device says it is the team log."""
+    assert not device.sync(), "the sync took a team log of another genesis"
+    said = " ".join(str(s) for s in device.said if s)
+    assert "team log" in said.lower(), f"the sync did not name the team log: {device.said}"
 
 
 @pytest.fixture(scope="module")
@@ -452,6 +516,8 @@ class Member(Desktop):
             self.sync()
             view = self.view()
             assert view == step["expect"], f"{self.vault.db.get_meta('username')} reads {view}, expected {step['expect']} (its sync said {self.said})"
+        elif step["do"] in ("rotate_identity", "create_entry", "edit_entry", "sync_refused"):
+            super().step(step)  # in a folder shared with it for writing
         else:
             raise AssertionError(f"unknown member step {step}")
 
