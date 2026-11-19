@@ -640,6 +640,10 @@ class OrgRecoveryStoreRequest(BaseModel):
     # password needs the recovery key's signature over
     # routers.recovery.org_recovery_rewrap_message.
     recovery_signature: Optional[str] = Field(default=None, pattern=HEX_SIGNATURE)
+    # Review c78fd19 R13-10: a registration sent later (desktop offline or
+    # before unlock) names the recovery key it replaces (null: none). Sent at
+    # all, the server stores it only while that is still the current one.
+    expected_signing_pk: Optional[str] = Field(default=None, pattern=HEX_KEY)
 
 class OrgRecoveryStatusResponse(BaseModel):
     configured: bool

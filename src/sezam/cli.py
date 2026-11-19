@@ -2876,6 +2876,10 @@ def push(server: Optional[str]):
             _echo_pull_warnings({"rollback_warning": result["rollback_warning"]})
         if result.get("org_recovery_rewrap_pending"):
             click.echo(_ORG_RECOVERY_REWRAP_WARNING, err=True)
+        if result.get("org_recovery_superseded"):
+            from .vault.org_recovery_server import SUPERSEDED_NOTE
+
+            click.echo(f"Warning: {SUPERSEDED_NOTE}", err=True)
         from .vault.personal_root import PERSONAL_ROOTS_WAITING_META
 
         if vault.db.get_meta_json(PERSONAL_ROOTS_WAITING_META):
@@ -2946,6 +2950,7 @@ def _check_org_recovery_registration(vault: Vault) -> None:
     recovery key only after forgetting the password. Checked after a push,
     while the password can still be asked for."""
     from .vault.org_recovery_server import (
+        SUPERSEDED_NOTE,
         UNREGISTERED_HINT,
         register_while_password_known,
         registration_issue,
@@ -2959,6 +2964,8 @@ def _check_org_recovery_registration(vault: Vault) -> None:
         return
     if issue == "unregistered":
         click.echo(f"Warning: {UNREGISTERED_HINT}", err=True)
+    elif issue == "superseded":
+        click.echo(f"Warning: {SUPERSEDED_NOTE}", err=True)
     elif issue == "pending":
         if not sys.stdin.isatty():
             click.echo(

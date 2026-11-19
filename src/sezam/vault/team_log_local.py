@@ -765,6 +765,27 @@ class TeamLogMixin:
         self.team_log_records(pending)  # TeamLogError: nothing is queued
         _set_queued_changes(self._db, pending)
 
+    def drop_superseded_org_recovery(self) -> bool:
+        """Review c78fd19 R13-10: a setup saved here (offline, or before the
+        unlock registered it) and replaced by a newer one on the web is
+        forgotten before the push names its key in the log again. True when
+        it was (org_recovery_server.SUPERSEDED_NOTE)."""
+        from . import pending_states
+        from .org_recovery_server import drop_superseded_setup, superseded_by
+
+        registration = pending_states.org_recovery_registration(self._db)
+        if not isinstance(registration, dict) or "expected_signing_pk" not in registration:
+            return False
+        try:
+            status = self._request("GET", "/api/org-recovery/status") or {}
+        except RuntimeError as exc:
+            logger.warning("Org recovery status not known: %s", exc)
+            return False
+        if not superseded_by(self._db, status):
+            return False
+        drop_superseded_setup(self._db)
+        return True
+
     def adopt_logged_org_recovery(self) -> None:
         """Admin: keep a local KEK wrap of a recovery set up on another client.
 

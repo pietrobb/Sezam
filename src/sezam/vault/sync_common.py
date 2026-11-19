@@ -147,6 +147,7 @@ REVOKED_ENVELOPE = "revoked_envelope"
 COLLECTED_OBJECT = "collected_object"
 ACCOUNT_EXISTS = "account_exists"
 USERNAME_TAKEN = "username_taken"
+ORG_RECOVERY_SUPERSEDED = "org_recovery_superseded"
 # SHA-256 of the server's encrypted keypair at the key epoch this device holds:
 # what its key-change push sent, or what it took over (stateful test SM30).
 SERVER_KEY_MATERIAL_META = "server_key_material_hash"

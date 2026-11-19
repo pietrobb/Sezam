@@ -2532,7 +2532,8 @@ class Vault:
     # in the gap left the recovery key wrapping the old KEK, marked current.
     @oplock.held
     def setup_org_recovery(
-        self, threshold: int = 3, shares: int = 5, *, replace: bool = False
+        self, threshold: int = 3, shares: int = 5, *, replace: bool = False,
+        replaces: Optional[str] = ...,
     ) -> list[tuple[int, bytes]]:
         """Set up organizational recovery using Shamir's Secret Sharing.
 
@@ -2582,7 +2583,14 @@ class Vault:
             "total_shares": shares,
             "key_epoch": int(self._db.get_meta("key_epoch") or "0"),
         }
-        pending_states.set_org_recovery_registration(self._db, server_blob)
+        # Review c78fd19 R13-10: the registration names the recovery key it
+        # replaces (``replaces``: the server's current one; by default the one
+        # set up here before), so a newer setup on the web is not voided by it.
+        if replaces is ...:
+            replaces = self._db.get_meta("org_recovery_signing_pk") or None
+        pending_states.set_org_recovery_registration(
+            self._db, {**server_blob, "expected_signing_pk": replaces}
+        )
         # Capability run 316: kept for the team log (org.recovery.wrap), so a
         # server restored from before the registration still serves it.
         self._db.set_meta_json("org_recovery_server_wrap", server_blob)

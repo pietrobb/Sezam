@@ -300,6 +300,9 @@ class PushMixin:
                 ) from exc
         if not self.retry_org_recovery_rewrap():
             result = {**result, "org_recovery_rewrap_pending": True}
+        if getattr(self, "_org_recovery_superseded", False):
+            self._org_recovery_superseded = False
+            result = {**result, "org_recovery_superseded": True}
         return result
 
     def _push_once(self) -> dict:
@@ -316,6 +319,8 @@ class PushMixin:
             self.close_rekey_if_pulled_back()
         # Team changes first (docs/DESIGN_TEAM_LOG.md §5): an access the
         # objects below rely on is in the log before they land.
+        if self.drop_superseded_org_recovery():
+            self._org_recovery_superseded = True
         self.adopt_logged_org_recovery()
         self.anchor_org_recovery()
         self.flush_team_log()

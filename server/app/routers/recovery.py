@@ -30,7 +30,7 @@ from ..auth import (
 from ..config import ServerConfig
 from ..database import Database, run_transaction
 from ..dependencies import get_config, get_current_user, get_db
-from ..errors import WRONG_CURRENT_PASSWORD, ApiError
+from ..errors import ORG_RECOVERY_SUPERSEDED, WRONG_CURRENT_PASSWORD, ApiError
 from ..models.schemas import (
     ChallengeResponse,
     OrgRecoveryBlobResponse,
@@ -205,6 +205,18 @@ async def _store_recovery_blob_in(
                     "voids every share they handed out"
                 ),
             )
+        if "expected_signing_pk" in req.model_fields_set:
+            # Review c78fd19 R13-10: an older setup saved on a desktop replaced
+            # the newer one set up on the web meanwhile, voiding its shares.
+            current = await _current_blob(cur)
+            current_pk = current["recovery_signing_pk"] if current else None
+            expected = (req.expected_signing_pk or "").lower() or None
+            if current_pk not in (None, expected, recovery_signing_pk.hex()):
+                raise ApiError(
+                    status.HTTP_409_CONFLICT, ORG_RECOVERY_SUPERSEDED,
+                    "A newer org recovery was set up after this one (on the web or "
+                    "another device); it is kept",
+                )
         # Re-storing the same recovery key (the KEK it wraps after a
         # recovery changed the password) grants no new key, but the blob
         # it replaces is what the shares open: a stolen identity key alone

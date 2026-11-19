@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Optional
 
 from . import oplock, pending_states
 from .sync_client import SyncClient
-from .sync_common import ServerError
+from .sync_common import ORG_RECOVERY_SUPERSEDED, ServerError, server_error
 
 if TYPE_CHECKING:
     from .crud import Vault
@@ -64,6 +64,51 @@ _SETUP_META = (
     "org_recovery_threshold", "org_recovery_shares", "org_recovery_signing_pk",
     "org_recovery_server_wrap",
 )
+
+
+SUPERSEDED_NOTE = (
+    "A newer org recovery of this account was set up on the web or another device "
+    "after the one saved on this device, which the server had not taken yet. The "
+    "newer one is kept; the shares of this device's setup open nothing, destroy them."
+)
+
+
+def superseded_by(db, status: dict) -> bool:
+    """Review c78fd19 R13-10: whether the registration waiting here is older
+    than the org recovery the server reports (``status``): set up on the web
+    after this device's setup, which names the key it replaced."""
+    registration = pending_states.org_recovery_registration(db)
+    if not isinstance(registration, dict) or "expected_signing_pk" not in registration:
+        return False  # saved before R13-10: the server decides as before
+    if not status.get("configured") or status.get("created_by") != db.get_meta("user_id"):
+        return False
+    current = status.get("recovery_signing_pk")
+    return current not in (
+        None, registration["expected_signing_pk"], registration.get("recovery_signing_pk"),
+    )
+
+
+def drop_superseded_setup(db) -> None:
+    """Forget this device's org recovery setup that a newer one replaced: its
+    registration, its queued team-log records and its local key, so neither
+    the next push nor an unlock names it again. A key the log names for the
+    newer setup is then adopted (adopt_logged_org_recovery)."""
+    from .team_log_local import _set_queued_changes, queued_changes
+
+    pk = db.get_meta("org_recovery_signing_pk")
+    wrap = db.get_meta_json("org_recovery_server_wrap") or {}
+    with db.transaction(immediate=True):
+        rest = [
+            change for change in queued_changes(db)
+            if not (change[0] == "org.recovery" and change[1].get("recovery_pk") == pk)
+            and not (change[0] == "org.recovery.wrap" and wrap
+                     and change[1].get("wrapped_kek") == wrap.get("wrapped_kek"))
+        ]
+        _set_queued_changes(db, rest)
+        for key in _SETUP_META:
+            db.execute("DELETE FROM vault_meta WHERE key = ?", (key,))
+        pending_states.clear_org_recovery_registration(db)
+        pending_states.clear_org_recovery_rewrap(db)
 
 
 class OrgRecoveryNotReplaced(RuntimeError):
@@ -127,7 +172,9 @@ def _client(vault: "Vault") -> SyncClient:
 def registration_issue(vault: "Vault") -> Optional[str]:
     """``'pending'`` (a saved registration waits for the password),
     ``'unregistered'`` (the server holds no recovery key of this account),
-    ``'other_admin'`` (the server holds another admin's recovery) or None.
+    ``'other_admin'`` (the server holds another admin's recovery),
+    ``'superseded'`` (a newer setup replaced the one waiting here, which is
+    then forgotten: SUPERSEDED_NOTE) or None.
     Raises RuntimeError when the server cannot be asked."""
     if not vault.org_recovery_configured() or not vault.db.get_meta("server_url"):
         return None
@@ -137,6 +184,9 @@ def registration_issue(vault: "Vault") -> Optional[str]:
     owner = status.get("created_by") if status.get("configured") else None
     if owner and owner != vault.db.get_meta("user_id"):
         return "other_admin"  # a saved registration would only get a 409
+    if superseded_by(vault.db, status):
+        drop_superseded_setup(vault.db)
+        return "superseded"
     if pending_states.org_recovery_registration(vault.db) is not None:
         return "pending"
     return None if owner else "unregistered"
@@ -157,8 +207,13 @@ def register_while_password_known(vault: "Vault", password: str) -> Optional[str
         try:
             SyncClient.register_org_recovery(vault, password)
         except (RuntimeError, ValueError) as exc:
+            if server_error(exc, 409, ORG_RECOVERY_SUPERSEDED):
+                drop_superseded_setup(vault.db)  # set up on the web just now
+                return SUPERSEDED_NOTE
             return f"Warning: the server did not take this vault's org recovery ({exc})."
         return REGISTERED_NOTICE
+    if issue == "superseded":
+        return SUPERSEDED_NOTE
     if issue == "unregistered":
         return UNREGISTERED_HINT
     if issue == "other_admin":
@@ -239,6 +294,7 @@ def _setup_and_register(
     """
     connected = bool(vault.db.get_meta("server_url"))
     unpushed = connected and vault.key_change_unpushed()
+    replaces = ...  # unknown: the setup this vault had (crud.setup_org_recovery)
     if replace and unpushed:
         raise OrgRecoveryNotReplaced(
             "this device's password change has not reached the server yet; run "
@@ -254,9 +310,13 @@ def _setup_and_register(
             raise OrgRecoveryOnServer(None)
         if owner:
             replace = True  # refused by the server: roll back, keep the old one
+        if status:
+            replaces = status.get("recovery_signing_pk") if status.get("configured") else None
     old = {key: vault.db.get_meta(key) for key in _SETUP_META}
     old_registration = pending_states.org_recovery_registration(vault.db)
-    new_shares = vault.setup_org_recovery(threshold=threshold, shares=shares, replace=replace)
+    new_shares = vault.setup_org_recovery(
+        threshold=threshold, shares=shares, replace=replace, replaces=replaces,
+    )
     if not connected:
         return OrgRecoverySetup(new_shares, None)
     if unpushed:
