@@ -1648,6 +1648,9 @@ class SyncService {
 
   Future<PullResult> _pull({required bool fullResync}) async {
     _ensureAuthenticated();
+    // Review c78fd19 (medium): a re-key this pull brings drops the envelope
+    // a member's unsent rows were sealed with; their key is kept first.
+    if (_vault.isUnlocked) await _vault.keepKeysOfUnsent();
 
     final checkpoint = await _loadSyncCheckpoint();
     final storedSeq = await _db.getLastCommitSeq();
@@ -2259,9 +2262,6 @@ class SyncService {
     }
     final conflicts = conflictRows.map(PullConflict.fromMap).toList();
     _vault.teamLog = teamLog;
-    // A folder deleted elsewhere that holds work this phone has not sent
-    // comes back (the server refuses the work below a deleted folder).
-    if (_vault.isUnlocked) await _vault.reviveFoldersOfUnsent();
     // After the commit: a revived copy lost to a crash here is judged again.
     if (noWriteAccess.isEmpty) {
       await _db.deleteSetting(teamLogNoWriteAccessSetting);
@@ -2273,6 +2273,18 @@ class SyncService {
     }
     if (adoptKeyEpoch) {
       await _db.setSetting('key_epoch', serverKeyEpoch.toString());
+    }
+    // A folder deleted elsewhere that holds work this phone has not sent
+    // comes back (the server refuses the work below a deleted folder).
+    // Review c78fd19 (medium): the pull is committed by now; a revive that
+    // fails is retried by the next pull and does not fail this one (it
+    // failed every pull, with the rest of the pull's bookkeeping left out).
+    if (_vault.isUnlocked) {
+      try {
+        await _vault.reviveFoldersOfUnsent();
+      } catch (_) {
+        // The item stays queued; the push reports it.
+      }
     }
 
     return PullResult(

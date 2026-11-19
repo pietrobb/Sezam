@@ -1773,28 +1773,67 @@ class VaultService {
           if (!refused.contains(row['id'])) row,
       ];
       if (rows.isEmpty) break;
+      // Runs right after the pull's commit: the keys it brought (a re-key's
+      // new generation) are not loaded yet.
+      if (level == 0) await _loadDEKs();
       for (final row in rows) {
         final id = row['id'] as String;
         final payload = row['payload'] as Uint8List;
         final parentRef = row['parent_ref'] as String?;
         final tombstone = row['version'] as int;
-        final dekId = _crypto.envelopeDekId(payload);
+        // Review c78fd19 (medium): runs after the pull's checkpoint is
+        // stored, so a folder this phone could not open threw on every later
+        // pull too. It stays deleted now; the push reports the item.
+        if (!_crypto.isEncryptedEnvelope(payload)) {
+          refused.add(id);
+          continue;
+        }
+        final sealedWith = _crypto.envelopeDekId(payload);
+        // A tombstone sealed with a key a re-key replaced since (kept for
+        // the unsent work below it, as in _resealUnsent): the folder comes
+        // back under the folder's current key.
+        final team = teamLog?.team;
+        final replaced = _deks[sealedWith] == null
+            ? await _ownWrappedDek(sealedWith) ??
+                  await _keptUnsentDek(sealedWith) ??
+                  (team == null ? null : await _ownEnvelopeDek(sealedWith, team))
+            : null;
+        final opening = replaced ?? _deks[sealedWith];
+        var dekId = sealedWith;
+        if (opening != null && team != null) {
+          final to =
+              (syncCore('reseal_targets', {
+                            'team': syncCoreTeam(team, _userId ?? ''),
+                            'held': _deks.keys.toList(),
+                            'keys': [sealedWith],
+                          })
+                          as List)
+                      .first
+                  as Map;
+          if (to['send'] == 'reseal') dekId = to['key'] as String;
+        }
         final dek = _deks[dekId];
-        if (dek == null) throw StateError('No DEK for id: $dekId');
         Map<String, dynamic>? meta;
         for (
-          var sealedAt = tombstone - 1;
-          sealedAt >= 0 && sealedAt > tombstone - 256;
+          var sealedAt = tombstone;
+          opening != null && dek != null && sealedAt >= 0 &&
+              sealedAt > tombstone - 256;
           sealedAt--
         ) {
           try {
-            meta = _crypto.decryptEnvelope(payload, id, sealedAt, _deks);
+            meta = _crypto.decryptEnvelope(payload, id, sealedAt, {
+              sealedWith: opening,
+            });
             break;
           } catch (_) {
             continue;
           }
         }
-        meta ??= _crypto.decryptEnvelope(payload, id, tombstone, _deks);
+        if (replaced != null) _crypto.zeroize(replaced);
+        if (meta == null || dek == null) {
+          refused.add(id);
+          continue;
+        }
         final version = tombstone + 1;
         final sealed = _crypto.encryptEnvelope(
           meta,
@@ -2071,6 +2110,103 @@ class VaultService {
     }
   }
 
+  static const _unsentKeysSetting = 'unsent_team_keys';
+
+  /// Review c78fd19 (medium): a member holds a team folder's key only through
+  /// the admin's access envelope, never under its own KEK (the admin's case),
+  /// and the pull that brings a re-key drops that envelope. Its unsent rows
+  /// under the replaced key could then not be sealed again and stayed on the
+  /// phone for good. So each key sealing an unsent row that this account does
+  /// not wrap itself is kept here, under the KEK, until no unsent row needs it.
+  Future<void> keepKeysOfUnsent() => whileKekFixed(() async {
+    if (!isUnlocked || _kekDekId == null) return;
+    final needed = <String>{};
+    for (final row in await _db.getDirtyObjects()) {
+      final type = row['object_type'] as String;
+      if ((type != 'node' && type != 'entry') || row['is_deleted'] == 1) {
+        continue;
+      }
+      final payload = row['payload'] as Uint8List;
+      if (type == 'entry' && _crypto.isCanonicalEntryPayload(payload)) {
+        needed.add(_crypto.entryPayloadDekId(payload));
+      } else if (type == 'node' && _crypto.isEncryptedEnvelope(payload)) {
+        needed.add(_crypto.envelopeDekId(payload));
+      }
+    }
+    final raw = await _db.getSetting(_unsentKeysSetting);
+    final kept = raw == null
+        ? <String, dynamic>{}
+        : jsonDecode(raw) as Map<String, dynamic>;
+    final before = jsonEncode(kept);
+    kept.removeWhere((dekId, _) => !needed.contains(dekId));
+    for (final dekId in needed) {
+      final key = _deks[dekId];
+      if (key == null || kept.containsKey(dekId)) continue;
+      // The key row of the folder is its admin's: this account's KEK opens
+      // it only when this account is that admin.
+      final own = await _ownWrappedDek(dekId);
+      if (own != null) {
+        _crypto.zeroize(own);
+        continue;
+      }
+      kept[dekId] = base64Encode(_crypto.wrapDEK(key, dekId, _kek!, _kekDekId!));
+    }
+    final after = jsonEncode(kept);
+    if (after != before) await _db.setSetting(_unsentKeysSetting, after);
+  });
+
+  /// [dekId] kept by [keepKeysOfUnsent], or null (a KEK changed since).
+  Future<Uint8List?> _keptUnsentDek(String dekId) async {
+    final raw = await _db.getSetting(_unsentKeysSetting);
+    final wrapped = raw == null ? null : (jsonDecode(raw) as Map)[dekId];
+    if (wrapped is! String || _kek == null) return null;
+    try {
+      return _crypto.unwrapDEK(base64Decode(wrapped), _kek!, dekId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// [dekId] opened from an access envelope addressed to this account, while
+  /// the phone still holds it (the log moved on before the objects were
+  /// pulled), or null. Only for this account's own unsent ciphertext: the
+  /// caller decrypts with it, which fails for any other key.
+  Future<Uint8List?> _ownEnvelopeDek(String dekId, TeamState team) async {
+    final sk = _encryptionSecretKey;
+    if (sk == null || _userId == null) return null;
+    for (final row in await _db.getObjectsByType('envelope')) {
+      if (row['parent_ref'] != dekId || row['target_user_id'] != _userId) continue;
+      final sender = team.members[row['signer_id'] as String? ?? ''];
+      if (sender == null) continue;
+      final payload = row['payload'] as Uint8List;
+      try {
+        if (!_crypto.verifyDetached(
+          signature: row['client_signature'] as Uint8List,
+          message: _crypto.buildSyncSignatureData(
+            id: row['id'] as String,
+            objectType: 'envelope',
+            parentRef: dekId,
+            targetUserId: _userId,
+            isDeleted: 0,
+            version: row['version'] as int,
+            payloadHashHex: _crypto.sha256Hex(payload),
+          ),
+          publicKey: hexToBytes(sender.signingPk),
+        )) {
+          continue;
+        }
+        return _crypto.openAccessEnvelope(
+          payload,
+          sk,
+          hexToBytes(sender.encryptionPk),
+        );
+      } catch (_) {
+        continue; // A damaged or old-identity envelope supplies no key.
+      }
+    }
+    return null;
+  }
+
   Future<void> _resealUnsent() async {
     final team = teamLog?.team;
     if (team == null || _signingSecretKey == null) return;
@@ -2107,9 +2243,13 @@ class VaultService {
       if (to['send'] != 'reseal') continue;
       final current = to['key'] as String;
       // The log lets no one hold a replaced generation, so it is not in
-      // _deks: opened here, from this account's own wrap, for its own
-      // unsent ciphertext only.
-      final old = _deks[sealed] == null ? await _ownWrappedDek(sealed) : null;
+      // _deks: opened here, from this account's own wrap (the admin) or the
+      // envelope it was given (a member), for its own unsent ciphertext only.
+      final old = _deks[sealed] == null
+          ? await _ownWrappedDek(sealed) ??
+                await _keptUnsentDek(sealed) ??
+                await _ownEnvelopeDek(sealed, team)
+          : null;
       final key = old ?? _deks[sealed];
       if (key == null) continue;
       final keys = {sealed: key};
