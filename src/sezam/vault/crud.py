@@ -2851,6 +2851,11 @@ class Vault:
         """
         self._require_unlocked()
         assert self._keypair is not None
+        # Review c78fd19 R13-10: checked only by the audit record after the
+        # envelope, a process another one had re-keyed or rebound reported the
+        # grant as failed while its envelope stayed queued for the next push.
+        self.dek_mgr.require_current_kek()
+        self._require_current_identity()
         if access_level not in ("read", "write"):
             raise ValueError("access_level must be 'read' or 'write'")
         if not user_id or user_id == self._user_id:
@@ -2913,7 +2918,10 @@ class Vault:
             bytes(recipient_encryption_pk),
         )
         envelope_id = new_ulid()
-        with self._db.transaction():
+        with self._db.transaction(immediate=True):
+            # Again in the write lock: a change elsewhere since the check above.
+            self.dek_mgr.require_current_kek()
+            self._require_current_identity()
             self._db.execute(
                 "INSERT INTO access_envelopes "
                 "(id, dek_id, user_id, created_by, access_level, encrypted_dek) "
@@ -2937,12 +2945,12 @@ class Vault:
                 })
             # Envelopes are pushed with their folder.
             outbox.queue_write(self._db, node_id)
-        self._audit_log(
-            "grant",
-            json.dumps({
-                "target": node_id, "user": user_id, "access_level": access_level,
-            }).encode(),
-        )
+            self._audit_log(
+                "grant",
+                json.dumps({
+                    "target": node_id, "user": user_id, "access_level": access_level,
+                }).encode(),
+            )
         return envelope_id
 
     def withdraw_unsent_grant(self, envelope_id: str) -> None:
