@@ -30,7 +30,7 @@ Telo je JSON objekt v **obmedzenom kanonickom tvare** (§3.3):
 
 | Pole | Typ | Význam |
 |---|---|---|
-| `v` | int | verzia pravidiel, podľa ktorých sa záznam posudzuje: `1` (do review 1141a20: člen mohol dostať späť vyradený kľúč — `member.remove`→`member.add` alebo rotácia späť), `2` (vyradený kľúč ostáva vyradený). Nové záznamy nesú najnovšiu verziu; pozdĺž denníka verzia neklesá (`rules_downgrade`). Denník uložený podľa starších pravidiel sa tak po ich sprísnení stále prehrá (review 8595ec1, R10-B); server, ktorému uložený denník naozaj neprejde, odpovie 503 `team_log_unreadable` s `seq`, nie 500. |
+| `v` | int | verzia pravidiel, podľa ktorých sa záznam posudzuje: `1` (do review 1141a20: člen mohol dostať späť vyradený kľúč — `member.remove`→`member.add` alebo rotácia späť), `2` (vyradený kľúč ostáva vyradený). Nové záznamy nesú najnovšiu verziu; pozdĺž denníka verzia neklesá (`rules_downgrade`). Server nový záznam (append, aj v pushi) prijme len s najnovšou verziou (`rules_outdated`, review c78fd19): predtým denník, ktorý ešte neprešiel za verziu 1, bral aj nové záznamy podľa pravidiel 1. Staršie verzie sú len pre uložené záznamy (prehratie, obnova). Denník uložený podľa starších pravidiel sa tak po ich sprísnení stále prehrá (review 8595ec1, R10-B); server, ktorému uložený denník naozaj neprejde, odpovie 503 `team_log_unreadable` s `seq`, nie 500. |
 | `seq` | int | poradie v reťazi, genesis = 0 |
 | `prev` | hex64 | SHA-256 hash predchádzajúceho záznamu; genesis 64× `0` |
 | `type` | string | typ záznamu (§3.2) |

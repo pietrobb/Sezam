@@ -362,6 +362,15 @@ async def append(
         })
     if any(b.get("author") != user_id for b in bodies):
         raise ApiError(403, TEAM_LOG_REFUSED, {"message": "team log records must be your own"})
+    # Review c78fd19 (medium): a log still at rules 1 took new records under
+    # rules 1 too (a member could get a retired key back). Older rules are for
+    # records stored earlier (replay, restore); a new one is today's.
+    old = next((b for b in bodies if b.get("v") != core.FORMAT_VERSION), None)
+    if old is not None:
+        raise ApiError(400, TEAM_LOG_REFUSED, {
+            "message": f"new team log records follow rules {core.FORMAT_VERSION}",
+            "team_log_code": "rules_outdated", "seq": old.get("seq"),
+        })
     current, steps = await _replayed(state, records, bodies)
     now_ms = int(time.time() * 1000)
     for record, body, step in zip(records, bodies, steps):

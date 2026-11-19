@@ -96,7 +96,38 @@ async def test_a_log_stored_under_older_rules_still_serves_and_signs_in(app_clie
     back["v"] = 1
     resp = await _append(app_client, team, ADMIN, tl.sign_record(back, team.sk[ADMIN]))
     assert resp.status_code == 400, resp.text
-    assert resp.json()["detail"]["team_log_code"] == "rules_downgrade"
+    assert resp.json()["detail"]["team_log_code"] == "rules_outdated"
+    # The rules themselves refuse it as well (every client replays by them).
+    with pytest.raises(tl.TeamLogError) as refused:
+        tl.apply_record(team.state, tl.sign_record(back, team.sk[ADMIN]))
+    assert refused.value.code == "rules_downgrade"
+
+
+@pytest.mark.asyncio
+async def test_a_log_still_at_rules_1_takes_no_new_rules_1_record(app_client, mock_db):  # noqa: F811
+    """Review c78fd19 (medium): the server accepted records under the old rules
+    v1 while the stored log had not moved past them. Bob's retired key back,
+    signed as rules 1, replays (the rules of that record allow it), but no new
+    record follows the old rules: the server refuses it and nothing is stored."""
+    team = Team(mock_db)
+    records = _rules_1_log(team)[:5]  # bob rotated and was removed, still rules 1
+    _store(mock_db, records)
+    state = tl.replay(records)
+    readd = {"user_id": BOB, **team.keys(BOB), "role": "member"}
+    old = tl.next_body(state, "member.add", ADMIN, readd)
+    old["v"] = 1
+    back = tl.sign_record(old, team.sk[ADMIN])
+    assert tl.apply_record(state, back).members[BOB].active  # rules 1 allow it
+    resp = await _append(app_client, team, ADMIN, back)
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["detail"]["team_log_code"] == "rules_outdated"
+    assert len(mock_db._storage["team_log"]) == 5
+
+    # Under today's rules the same re-add is a retired key reused.
+    today = tl.sign_record(tl.next_body(state, "member.add", ADMIN, readd), team.sk[ADMIN])
+    resp = await _append(app_client, team, ADMIN, today)
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["detail"]["team_log_code"] == "key_reused"
 
 
 @pytest.mark.asyncio
