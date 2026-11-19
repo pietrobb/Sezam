@@ -2276,8 +2276,11 @@ class AuthService {
       String? registrationGenesis;
       try {
         final pinned = await readConfirmedTeamGenesis(localUserId);
-        registrationGenesis = invitation.genesis ?? account.confirmedGenesis ?? pinned;
-        if ([account.confirmedGenesis, pinned].any(
+        // An anchor this phone left (forgetTeamLogPin) is no anchor any more.
+        final anchor = (await readForgottenTeamGenesis(localUserId)).contains(account.confirmedGenesis)
+            ? null : account.confirmedGenesis;
+        registrationGenesis = invitation.genesis ?? anchor ?? pinned;
+        if ([anchor, pinned].any(
           (anchor) => anchor != null && anchor != registrationGenesis,
         )) {
           throw const FormatException('Account anchor changed or removed');
@@ -2566,7 +2569,9 @@ class AuthService {
     if (encoded == null) throw StateError('Local keypair state is incomplete');
     final previous = _crypto.openAccountKeypair(hexToBytes(encoded), previousKek, userId);
     try {
-      if (previous.confirmedGenesis != null && previous.confirmedGenesis != genesis) {
+      final anchor = previous.confirmedGenesis;
+      if (anchor != null && anchor != genesis &&
+          !(await readForgottenTeamGenesis(userId)).contains(anchor)) {
         throw const FormatException('Account anchor changed or removed');
       }
     } finally {
@@ -2585,7 +2590,7 @@ class AuthService {
       }
       final oldKek = previousKek ?? _vault.currentKek;
       if (oldKek != null) await _requireAccountAnchorContinuity(userId, genesis, oldKek);
-      if (genesis != null) await confirmTeamGenesis(userId, genesis);
+      if (genesis != null) await importAccountTeamGenesis(userId, genesis);
       return expandDesktopKeypair(
         account.keypairData,
         _crypto.signingPublicKeyFromSeed(Uint8List.sublistView(account.keypairData, 0, 32)),
@@ -2786,7 +2791,7 @@ class AuthService {
     }
     await _requireAccountAnchorContinuity(userObjectId, confirmedGenesis, currentKek);
     if (confirmedGenesis != null) {
-      await confirmTeamGenesis(userObjectId, confirmedGenesis);
+      await importAccountTeamGenesis(userObjectId, confirmedGenesis);
     }
     if ((await _sync.unreadableOwnDeks(backupKek, localUserId)).isEmpty) {
       return _vault.kekMatchesServer && _bytesEqual(currentKek, backupKek);

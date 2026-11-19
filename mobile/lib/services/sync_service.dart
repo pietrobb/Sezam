@@ -2364,6 +2364,79 @@ class SyncService {
     await _db.setSetting(teamLogRecordsSetting, jsonEncode(verified!.records));
   });
 
+  /// Every genesis this phone holds on to: its confirmed pin, its copy of
+  /// the log, the head its checkpoint pins.
+  Future<List<String>> pinnedTeamGenesis() => _exclusive(_pinnedTeamGenesis);
+
+  Future<List<String>> _pinnedTeamGenesis() async {
+    final userId = _vault.userId;
+    if (userId == null || _vault.currentKek == null) throw StateError('Vault must be unlocked');
+    final pin = (await _loadSyncCheckpoint())?['team_log'] as Map<String, dynamic>?;
+    final forgotten = await readForgottenTeamGenesis(userId);
+    final anchor = await _storedKeypairAnchor(userId);
+    return ({
+      if (anchor != null && !forgotten.contains(anchor)) anchor,
+      ?await readConfirmedTeamGenesis(userId),
+      ?_vault.teamLog?.team.genesisHash,
+      ?pin?['genesis_hash'] as String?,
+    }.toList()..sort());
+  }
+
+  /// The genesis the keypair stored on this phone is anchored to, if any.
+  Future<String?> _storedKeypairAnchor(String userId) async {
+    const storage = FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true),
+      iOptions: IOSOptions(
+        accessibility: KeychainAccessibility.first_unlock_this_device,
+      ),
+    );
+    if (await storage.read(key: 'sezam_user_object_id') != userId) return null;
+    final local = await storage.read(key: 'sezam_encrypted_keypair');
+    if (local == null || local.isEmpty) return null;
+    final account = _crypto.openAccountKeypair(hexToBytes(local), _vault.currentKek!, userId);
+    _crypto.zeroize(account.keypairData);
+    return account.confirmedGenesis;
+  }
+
+  /// Review c78fd19 (medium): leave a team log the server lost for good
+  /// (moved, reseeded, no restore), which otherwise left the phone with TEAM
+  /// LOG MISMATCH for good. [typed] is the pinned genesis, at least its first
+  /// [forgetPinMinChars] characters. The phone drops its pin, its copy and its
+  /// checkpoint's head, and the next pull follows the server's log as a new
+  /// one, trusted only once its founder is confirmed again. Refused while a
+  /// change of this phone is not sent yet. Returns the genesis hashes left.
+  Future<List<String>> forgetTeamLogPin(String typed) => _exclusive(() async {
+    final userId = _vault.userId!;
+    final pins = await _pinnedTeamGenesis();
+    if (pins.isEmpty) throw StateError('This phone pins no team log; nothing to forget.');
+    final prefix = typed.trim().toLowerCase();
+    if (prefix.length < forgetPinMinChars || !pins.every((pin) => pin.startsWith(prefix))) {
+      throw FormatException('Type the pinned genesis (at least its first $forgetPinMinChars '
+          'characters) to forget it: ${pins.join(', ')}');
+    }
+    if ((await _db.getDirtyObjects()).isNotEmpty) {
+      throw StateError('Send or resolve the unsent changes first; nothing was changed.');
+    }
+    final checkpoint = await _loadSyncCheckpoint();
+    // Left first: a crash below never takes it back from the account bundle.
+    await forgetConfirmedTeamGenesis(userId, pins);
+    await _db.leaveTeamLog(
+      recordsSetting: teamLogRecordsSetting,
+      checkpointKey: _checkpointKey(),
+      encryptedCheckpoint: checkpoint == null
+          ? null
+          : _encryptSyncCheckpoint(
+              checkpoint['last_sync_seq'] as int,
+              checkpoint['state_hash'] as String,
+              commitToken: checkpoint['commit_token'] as String?,
+              commitTokenSeq: _commitTokenSeq(checkpoint),
+            ),
+    );
+    _vault.teamLog = null;
+    await _vault.reloadData();
+    return pins;
+  });
+
   /// Full sync cycle: push dirty, then pull new.
   Future<SyncResult> sync() => _exclusive(_sync);
 

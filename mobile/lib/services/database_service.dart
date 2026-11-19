@@ -1160,6 +1160,23 @@ class DatabaseService {
     await db.delete('settings', where: 'key = ?', whereArgs: [key]);
   }
 
+  /// Review c78fd19: drop the team log copy ([recordsSetting]) and the
+  /// checkpoint's pin of it ([encryptedCheckpoint]) together.
+  Future<void> leaveTeamLog({
+    required String recordsSetting,
+    required String checkpointKey,
+    required String? encryptedCheckpoint,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('settings', where: 'key = ?', whereArgs: [recordsSetting]);
+      if (encryptedCheckpoint != null) {
+        await txn.insert('sync_state', {'key': checkpointKey, 'value': encryptedCheckpoint},
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
   /// Delete the entire database (for logout/wipe).
   Future<void> deleteDatabase() async {
     final path = await vaultDbPath();

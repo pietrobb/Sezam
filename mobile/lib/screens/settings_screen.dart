@@ -14,6 +14,7 @@ import '../services/document_service.dart';
 import '../services/unsent_changes.dart';
 import '../widgets/unsent_changes_dialog.dart';
 import '../widgets/team_anchor_publish_dialog.dart';
+import '../widgets/team_forget_pin_dialog.dart';
 import '../widgets/team_trust_dialog.dart';
 import 'server_connect_screen.dart';
 
@@ -181,6 +182,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
         context: context,
         barrierDismissible: false,
         builder: (_) => TeamTrustDialog(review: review),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  Future<void> _forgetTeamPin() async {
+    try {
+      final pinned = await _sync.pinnedTeamGenesis();
+      if (!mounted) return;
+      if (pinned.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Telefón nemá pripnutý žiadny tímový denník.')));
+        return;
+      }
+      await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => TeamForgetPinDialog(pinned: pinned),
       );
     } catch (e) {
       if (mounted) {
@@ -700,6 +722,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           title: 'Dôvera tímu',
           subtitle: 'Potvrdiť nezávislý odtlačok zakladateľa',
           onTap: _confirmTeamFounder,
+        ),
+        _settingsTile(
+          icon: Icons.link_off_rounded,
+          title: 'Zabudnúť pripnutý tímový denník',
+          subtitle: 'Len pre denník stratený natrvalo (TEAM LOG MISMATCH)',
+          onTap: _forgetTeamPin,
         ),
         _settingsTile(
           icon: Icons.devices_outlined,

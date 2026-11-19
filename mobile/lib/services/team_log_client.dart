@@ -16,6 +16,7 @@ import 'team_log.dart';
 
 const teamLogRecordsSetting = 'team_log_records';
 const teamLogPages = 1000;
+const forgetPinMinChars = 16;
 
 // Independent of the replaceable vault DB and password/identity keys. This is
 // device-local trust, not the portable encrypted account anchor.
@@ -89,7 +90,53 @@ Future<void> confirmTeamGenesis(String userId, String genesis, {void Function()?
     key: 'sezam_confirmed_team_genesis:$userId',
     value: jsonEncode({'user_id': userId, 'genesis_hash': genesis}),
   );
+  // Confirmed again on purpose (invitation, QR, founder): no longer left.
+  final forgotten = await readForgottenTeamGenesis(userId);
+  if (forgotten.contains(genesis)) {
+    await _writeForgottenTeamGenesis(userId, forgotten.where((g) => g != genesis));
+  }
 }
+
+// Review c78fd19 (medium): genesis hashes this phone left on purpose
+// (SyncService.forgetTeamLogPin). The account bundle on the server may still
+// name one; it is then not pinned again from there.
+Future<List<String>> readForgottenTeamGenesis(String userId) async {
+  final raw = await _trustStorage.read(key: 'sezam_forgotten_team_genesis:$userId');
+  if (raw == null) return const [];
+  try {
+    final value = jsonDecode(raw) as Map<String, dynamic>;
+    if (value['user_id'] != userId) throw const FormatException('another account');
+    return [for (final g in value['genesis'] as List) _genesisHash(g)];
+  } catch (e) {
+    throw TeamLogMismatch('forgotten genesis cannot be read: $e');
+  }
+}
+
+Future<void> _writeForgottenTeamGenesis(String userId, Iterable<String> genesis) async {
+  final key = 'sezam_forgotten_team_genesis:$userId';
+  final list = genesis.toSet().toList()..sort();
+  if (list.isEmpty) {
+    await _trustStorage.delete(key: key);
+  } else {
+    await _trustStorage.write(key: key, value: jsonEncode({'user_id': userId, 'genesis': list}));
+  }
+}
+
+/// Leave [genesis]: remembered as left, the confirmed pin removed.
+Future<void> forgetConfirmedTeamGenesis(String userId, Iterable<String> genesis) async {
+  await _writeForgottenTeamGenesis(userId, [...await readForgottenTeamGenesis(userId), ...genesis]);
+  await _trustStorage.delete(key: 'sezam_confirmed_team_genesis:$userId');
+}
+
+/// The genesis an account bundle names, unless this phone left that log.
+Future<void> importAccountTeamGenesis(String userId, String genesis) async {
+  if ((await readForgottenTeamGenesis(userId)).contains(genesis)) return;
+  await confirmTeamGenesis(userId, genesis);
+}
+
+// Review c78fd19: the way out once the team's log is lost for good.
+const lostTeamLogHint = '. If the team\'s log is lost for good (another server, a reseed), '
+    'Settings → "Zabudnúť pripnutý tímový denník" leaves it on this phone';
 
 void requireConfirmedGenesis(String? confirmed, String? actual) {
   if (confirmed != null && confirmed != actual) {
@@ -219,16 +266,18 @@ Future<LocalTeamLog?> syncTeamLog({
     // mismatch below.
     head = await _restoreTeamLog(head, local, pin, restore);
   }
-  requireConfirmedGenesis(confirmedGenesis, head?['genesis_hash'] as String?);
+  if (confirmedGenesis != null && confirmedGenesis != head?['genesis_hash']) {
+    fail('does not match the confirmed genesis$lostTeamLogHint');
+  }
   if (head == null) {
     if (local != null || pin != null) {
-      fail('is gone (a server restored from a backup, or another server)');
+      fail('is gone (a server restored from a backup, or another server)$lostTeamLogHint');
     }
     return null;
   }
   final pinned = local?.team.genesisHash ?? pin?['genesis_hash'] as String?;
   if (pinned != null && head['genesis_hash'] != pinned) {
-    fail('starts with another genesis than this device saw');
+    fail('starts with another genesis than this device saw$lostTeamLogHint');
   }
   final pinSeq = pin?['seq'] as int? ?? -1;
   final seen = localSeq > pinSeq ? localSeq : pinSeq;
