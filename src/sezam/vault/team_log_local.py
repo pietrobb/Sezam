@@ -770,11 +770,9 @@ class TeamLogMixin:
         unlock registered it) and replaced by a newer one on the web is
         forgotten before the push names its key in the log again. True when
         it was (org_recovery_server.SUPERSEDED_NOTE)."""
-        from . import pending_states
-        from .org_recovery_server import drop_superseded_setup, superseded_by
+        from .org_recovery_server import drop_superseded_setup, superseded_by, waiting_setup
 
-        registration = pending_states.org_recovery_registration(self._db)
-        if not isinstance(registration, dict) or "expected_signing_pk" not in registration:
+        if waiting_setup(self._db) is None:  # registration or log record (capability run 378)
             return False
         try:
             status = self._request("GET", "/api/org-recovery/status") or {}

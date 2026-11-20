@@ -62,7 +62,7 @@ def _log_admin(vault: "Vault") -> bool:
 _SETUP_META = (
     "org_recovery_pk", "org_recovery_wrapped_kek", "org_recovery_stale",
     "org_recovery_threshold", "org_recovery_shares", "org_recovery_signing_pk",
-    "org_recovery_server_wrap",
+    "org_recovery_server_wrap", "org_recovery_replaces",
 )
 
 
@@ -77,15 +77,35 @@ def superseded_by(db, status: dict) -> bool:
     """Review c78fd19 R13-10: whether the registration waiting here is older
     than the org recovery the server reports (``status``): set up on the web
     after this device's setup, which names the key it replaced."""
-    registration = pending_states.org_recovery_registration(db)
-    if not isinstance(registration, dict) or "expected_signing_pk" not in registration:
+    setup = waiting_setup(db)
+    if setup is None:
         return False  # saved before R13-10: the server decides as before
     if not status.get("configured") or status.get("created_by") != db.get_meta("user_id"):
         return False
     current = status.get("recovery_signing_pk")
-    return current not in (
-        None, registration["expected_signing_pk"], registration.get("recovery_signing_pk"),
+    return current not in (None, setup["expected_signing_pk"], setup.get("recovery_signing_pk"))
+
+
+def waiting_setup(db) -> Optional[dict]:
+    """This device's setup the server or the team log has yet to take:
+    ``{"recovery_signing_pk", "expected_signing_pk"}`` or None.
+
+    Its registration waiting, or (capability run 378) registered with its
+    org.recovery record still queued: a push would name the key in the log
+    after a newer web setup and make it the current one again."""
+    from .team_log_local import queued_changes
+
+    registration = pending_states.org_recovery_registration(db)
+    if isinstance(registration, dict) and "expected_signing_pk" in registration:
+        return registration
+    pk = db.get_meta("org_recovery_signing_pk")
+    replaces = db.get_meta_json("org_recovery_replaces")
+    if not pk or not isinstance(replaces, dict) or replaces.get("recovery_signing_pk") != pk:
+        return None
+    queued = any(
+        kind == "org.recovery" and data.get("recovery_pk") == pk for kind, data in queued_changes(db)
     )
+    return replaces if queued else None
 
 
 def drop_superseded_setup(db) -> None:

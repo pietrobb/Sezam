@@ -2591,6 +2591,11 @@ class Vault:
         pending_states.set_org_recovery_registration(
             self._db, {**server_blob, "expected_signing_pk": replaces}
         )
+        # Capability run 378: kept after the registration, until the team log
+        # names the key (org_recovery_server.waiting_setup).
+        self._db.set_meta_json("org_recovery_replaces", {
+            "recovery_signing_pk": signing_pk.hex(), "expected_signing_pk": replaces,
+        })
         # Capability run 316: kept for the team log (org.recovery.wrap), so a
         # server restored from before the registration still serves it.
         self._db.set_meta_json("org_recovery_server_wrap", server_blob)
