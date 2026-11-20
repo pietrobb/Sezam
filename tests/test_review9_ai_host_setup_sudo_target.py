@@ -84,7 +84,8 @@ def _run(function: str, body: str) -> subprocess.CompletedProcess:
 
 @pytest.mark.skipif(not (SH or _wsl_sh()), reason="needs a POSIX sh with GNU stat (or WSL)")
 def test_the_check_refuses_a_program_the_account_owns_and_passes_a_system_one(ca_pem):
-    function, _ = _check(host_setup_script(_entry(ca_pem), "p", sudo_command="/usr/bin/env"))
+    # (/usr/bin/env itself is no longer accepted as the command: R13-11.)
+    function, _ = _check(host_setup_script(_entry(ca_pem), "p", sudo_command="/usr/bin/id"))
 
     system = _run(function, "sezam_root_only /usr/bin/env")
     assert system.returncode == 0, system.stdout + system.stderr

@@ -44,24 +44,59 @@ def _sudoers_command(command: str) -> str:
 _WRITABLE_TOPS = ("/home", "/tmp", "/var/tmp", "/dev/shm", "/run/user", "/var/www")
 
 
-def _sudo_program(command: str, web_root: Optional[str]) -> str:
-    """The program of a --sudo-command, refused where the AI may rewrite it.
+# Programs that run code named by their arguments (or a shell when given
+# none): as a sudo command they are only safe with a fixed script file.
+_INTERPRETER = re.compile(
+    r"(ba|da|k|z|a|c|tc|fi|mk|r)?sh|busybox|env|python[0-9.]*|pypy[0-9.]*|perl[0-9.]*"
+    r"|ruby[0-9.]*|node(js)?|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|wish[0-9.]*|[gmn]?awk"
+    r"|sudo|su|doas|runuser|xargs|nohup|timeout|nice|ionice|setsid|stdbuf|chroot"
+    r"|script|expect|pwsh|rscript|julia|guile|sbcl|ghci?|runghc|deno|bun"
+)
+
+
+def _root_only_path(path: str, what: str, web_root: Optional[str]) -> None:
+    parts = path.split("/")[1:]
+    if any(p in ("", ".", "..") for p in parts):
+        raise HostSetupError(f"--sudo-command must name {what} by a plain absolute path (no '.', '..' or '//').")
+    under = [*_WRITABLE_TOPS, *([web_root] if web_root else [])]
+    if any(path == top or path.startswith(top + "/") for top in under):
+        raise HostSetupError(
+            f"--sudo-command must use {what} only root can change, not one in the web root, "
+            "a home or a temporary directory."
+        )
+
+
+def _sudo_paths(command: str, web_root: Optional[str]) -> list[str]:
+    """The program of a --sudo-command and every path among its arguments,
+    refused where the AI may rewrite them; the printed script checks each
+    of them on the host as well (_ROOT_ONLY).
 
     Review 1141a20: '--web-root /var/www/site --sudo-command
     /var/www/site/deploy.sh' gave root to whatever the AI wrote into
-    deploy.sh. The printed script checks ownership on the host as well
-    (_ROOT_ONLY); this refuses the evident cases already here."""
-    program = command.split(" ", 1)[0]
-    parts = program.split("/")[1:]
-    if any(p in ("", ".", "..") for p in parts):
-        raise HostSetupError("--sudo-command must name the program by a plain absolute path (no '.', '..' or '//').")
-    under = [*_WRITABLE_TOPS, *([web_root] if web_root else [])]
-    if any(program == top or program.startswith(top + "/") for top in under):
+    deploy.sh. Review c78fd19 R13-11: only the program was checked, so
+    '/bin/sh /var/www/site/deploy.sh' did the same through an argument,
+    '/bin/bash' alone was a root shell and 'python3 -m x' or 'sh deploy.sh'
+    ran code from the directory the AI starts sudo in."""
+    program, *args = command.split(" ")
+    _root_only_path(program, "the program", web_root)
+    paths = [program]
+    for arg in args:
+        if arg.startswith("/"):
+            _root_only_path(arg, "a file", web_root)
+            paths.append(arg)
+        elif "/" in arg:
+            raise HostSetupError(
+                "--sudo-command arguments that name files must be absolute paths "
+                "(a relative one is resolved where the AI runs sudo)."
+            )
+    if _INTERPRETER.fullmatch(program.rsplit("/", 1)[1].lower()) and not (
+        args and args[0].startswith("/")
+    ):
         raise HostSetupError(
-            "--sudo-command must be a program only root can change, not one in the web root, "
-            "a home or a temporary directory."
+            "--sudo-command may run a shell or interpreter only with a script given "
+            "by an absolute path as its first argument (e.g. /bin/sh /usr/local/sbin/deploy)."
         )
-    return program
+    return paths
 
 
 # Shell check run on the host before the sudoers rule is installed: the
@@ -211,7 +246,7 @@ def host_setup_script(
             "(no wildcards, quotes or sudoers syntax)."
         )
     root = _web_root(web_root) if web_root is not None else None
-    program = _sudo_program(sudo_command, root) if sudo_command is not None else None
+    sudo_paths = _sudo_paths(sudo_command, root) if sudo_command is not None else []
 
     q = shlex.quote
     ca_file = f"/etc/ssh/sezam_ai_ca_{user}.pub"
@@ -268,9 +303,10 @@ def host_setup_script(
         staged = f"/etc/sudoers.d/.sezam-ai-{user}.tmp"  # names with '.' are ignored by sudo
         out += [
             "# 4. Exactly one command as root, checked before it takes effect: only",
-            "#    root may change the program, or the AI could rewrite it.",
+            "#    root may change the program and the files it is given, or the AI",
+            "#    could rewrite them.",
             _ROOT_ONLY,
-            f"sezam_root_only {q(program)}",
+            *(f"sezam_root_only {q(p)}" for p in sudo_paths),
             f"printf '%s\\n' {q(f'{user} ALL=(root) NOPASSWD: {_sudoers_command(sudo_command)}')} > {staged}",
             f"visudo -cf {staged}",
             f"chmod 0440 {staged}",
