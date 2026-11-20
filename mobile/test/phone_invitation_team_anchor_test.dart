@@ -407,17 +407,22 @@ void main() {
           } else {
             await db.setSetting(teamLogRecordsSetting, damaged);
           }
+          // INV-7: the copy only caches what the pins bind. The sign-in
+          // fetches the log again under them (before, it refused with no way
+          // out); a server that lies is refused there
+          // (team_log_copy_lost_vectors_test.dart).
           final requests = net.paths.length;
-          final rejected = await auth.unlockWithPassword(password: cfg['password'] as String,
+          final opened = await auth.unlockWithPassword(password: cfg['password'] as String,
               username: 'invited-phone', serverUrl: server);
-          expect(rejected.success, isFalse);
-          expect(rejected.error, contains('TEAM LOG MISMATCH'));
-          expect(vault.isUnlocked, isFalse);
-          expect(net.paths.skip(requests), isNot(contains('/api/team-log')));
-          expect(await db.getAllObjects(), rows);
-          expect(await db.getSyncState('sync_checkpoint:$userId'), checkpoint);
-          expect(await db.getSetting(teamLogRecordsSetting), damaged);
+          expect(opened.success, isTrue, reason: opened.error);
+          expect(net.paths.skip(requests), contains('/api/team-log'));
+          expect(jsonDecode((await db.getSetting(teamLogRecordsSetting))!), jsonDecode(cached));
+          expect(vault.teamLog!.team.genesisHash, genesis);
+          expect(passwords(vault)['vpn'], 'ops-pw');
           expect(await readConfirmedTeamGenesis(userId), genesis);
+          await auth.lock();
+          await net.settle();
+          expect(await db.getAllObjects(), rows);
         }
         await db.setSetting(teamLogRecordsSetting, cached);
         final restored = await auth.unlockOffline(password: cfg['password'] as String);

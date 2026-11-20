@@ -679,6 +679,8 @@ class AuthService {
       _syncInBackground();
 
       return AuthResult.success(userId: userId);
+    } on TeamLogMismatch catch (e) {
+      return AuthResult.teamLogRefused(e);
     } catch (e) {
       return AuthResult.failure(e.toString());
     } finally {
@@ -810,6 +812,8 @@ class AuthService {
       }
 
       return AuthResult.success(userId: offlineUserId);
+    } on TeamLogMismatch catch (e) {
+      return AuthResult.teamLogRefused(e);
     } catch (e) {
       return AuthResult.failure(e.toString());
     }
@@ -929,6 +933,8 @@ class AuthService {
       _syncInBackground();
 
       return AuthResult.success(userId: userId);
+    } on TeamLogMismatch catch (e) {
+      return AuthResult.teamLogRefused(e);
     } catch (e) {
       return AuthResult.failure(e.toString());
     }
@@ -3529,6 +3535,10 @@ class AuthResult {
   /// low): ask for another name and call `rejoinServer` with it.
   final bool usernameTaken;
 
+  /// The unlock refused this phone's team log (INV-7): the lock screen leads
+  /// on to the server sign-in, which fetches the log under its pins.
+  final TeamLogMismatch? teamLog;
+
   const AuthResult._({
     required this.success,
     this.userId,
@@ -3536,6 +3546,7 @@ class AuthResult {
     this.needsPreviousPassword = false,
     this.recoveryLimited = false,
     this.usernameTaken = false,
+    this.teamLog,
   });
 
   factory AuthResult.success({String? userId}) =>
@@ -3543,6 +3554,9 @@ class AuthResult {
 
   factory AuthResult.failure(String error) =>
       AuthResult._(success: false, error: error);
+
+  factory AuthResult.teamLogRefused(TeamLogMismatch refusal) =>
+      AuthResult._(success: false, error: '$refusal', teamLog: refusal);
 
   /// Failure of a `/api/auth/recover` call (lockout review #7).
   factory AuthResult.recoverFailure(Object error) => AuthResult._(

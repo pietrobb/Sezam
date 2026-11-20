@@ -767,30 +767,11 @@ class VaultService {
         if (checkpoint?['team_log'] != null)
           checkpoint!['team_log'] as Map<String, dynamic>,
       ];
-      if (raw == null) {
-        if (pins.isNotEmpty ||
-            confirmed != null && (await _db.getAllObjects()).isNotEmpty) {
-          throw const FormatException('cached log is missing');
-        }
+      if (raw == null && pins.isEmpty &&
+          (confirmed == null || (await _db.getAllObjects()).isEmpty)) {
         return null;
       }
-      final records = [
-        for (final r in jsonDecode(raw) as List)
-          Map<String, dynamic>.from(r as Map),
-      ];
-      if (records.isEmpty) throw const FormatException('cached log is empty');
-      final team = TeamLog(verifyEd25519).replay(records);
-      requireConfirmedGenesis(confirmed, team.genesisHash);
-      for (final pin in pins) {
-        final seq = pin['seq'] as int;
-        if (seq < 0 ||
-            team.headSeq < seq ||
-            team.genesisHash != pin['genesis_hash'] ||
-            TeamLog.recordHash(records[seq]) != pin['hash']) {
-          throw const FormatException('cached log differs from the saved head');
-        }
-      }
-      return LocalTeamLog(records, team);
+      return verifiedTeamLogCopy(raw, confirmed, pins, verifyEd25519);
     } catch (e) {
       throw TeamLogMismatch('cached copy cannot be verified: $e');
     }

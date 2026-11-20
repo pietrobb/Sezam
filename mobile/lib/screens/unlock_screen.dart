@@ -120,12 +120,13 @@ class _UnlockScreenState extends State<UnlockScreen>
       password: _passwordController.text,
     );
     if (!result.success &&
-        result.error == 'Wrong password' &&
+        (result.error == 'Wrong password' || result.teamLog != null) &&
         _storedUsername != null &&
         _storedServerUrl != null &&
         mounted) {
       // Maybe the password was changed on another device: the server derives
-      // the current one and the local vault is taken over.
+      // the current one and the local vault is taken over. INV-7: a team log
+      // copy this phone cannot use is fetched there under its pins.
       setState(() => _isUnlocking = false);
       return _unlockWithServer(fallbackError: result.error);
     }

@@ -270,6 +270,37 @@ Future<Map<String, dynamic>?> _restoreTeamLog(
   }
 }
 
+/// INV-7: this phone's cached copy of the team log ([raw], the stored records)
+/// as it may be used: it replays, starts with [confirmed] (when set) and holds
+/// every head in [pins]. The pins bind the log; the copy only caches it, as
+/// the page keeps none and fetches it under its checkpoint pin each sign-in.
+/// A copy that is missing or fails here is fetched again under the same pins
+/// (SyncService.prepareInitialTeamLog), never trusted, never an end.
+LocalTeamLog verifiedTeamLogCopy(
+  String? raw,
+  String? confirmed,
+  List<Map<String, dynamic>> pins,
+  Ed25519Verify verify,
+) {
+  if (raw == null) throw const FormatException('cached log is missing');
+  final records = [
+    for (final r in jsonDecode(raw) as List) Map<String, dynamic>.from(r as Map),
+  ];
+  if (records.isEmpty) throw const FormatException('cached log is empty');
+  final team = TeamLog(verify).replay(records);
+  requireConfirmedGenesis(confirmed, team.genesisHash);
+  for (final pin in pins) {
+    final seq = pin['seq'] as int;
+    if (seq < 0 ||
+        team.headSeq < seq ||
+        team.genesisHash != pin['genesis_hash'] ||
+        TeamLog.recordHash(records[seq]) != pin['hash']) {
+      throw const FormatException('cached log differs from the saved head');
+    }
+  }
+  return LocalTeamLog(records, team);
+}
+
 /// Bring [local] (this phone's copy, or null) up to [head] (the pull's
 /// team_log_head). [pin] is the head an earlier pull saw. Null while the
 /// organisation has no log. [fetchPage] returns the records after a seq.

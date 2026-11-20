@@ -2366,25 +2366,33 @@ class SyncService {
     return null;
   }
 
-  /// Fetch the externally anchored log when no copy is cached yet. An
-  /// existing cache, or a checkpoint that pins a log (or cannot be read
-  /// here), stays on the normal fail-closed unlock path. Review 8595ec1 #6: a
-  /// phone that last pulled before the log was founded has a checkpoint
-  /// without a pin, and taking an anchor password over must bring the log.
-  /// Review c78fd19 #4: [kek] is the KEK the unlock about to run derived. A
-  /// locked phone has no current KEK; it skipped the fetch and the unlock
-  /// then failed on 'cached log is missing' for good.
+  /// Fetch the team log before an unlock when the cached copy is missing or
+  /// does not verify ([verifiedTeamLogCopy]), under every pin this phone
+  /// holds: the confirmed genesis and the head its checkpoint saw. INV-7:
+  /// before, a checkpoint that pinned a log made a lost or damaged copy a
+  /// mismatch with no way out, every unlock failed on it; the pins, not the
+  /// copy, refuse a server that went back, forked or changed its genesis.
+  /// Review 8595ec1 #6: a phone that last pulled before the log was founded
+  /// has a checkpoint without a pin, and taking an anchor password over must
+  /// bring the log. Review c78fd19 #4: [kek] is the KEK the unlock about to
+  /// run derived; without one the checkpoint is not read and the unlock decides.
   Future<void> prepareInitialTeamLog(String userId, {Uint8List? kek}) => _exclusive(() async {
     final genesis = await readConfirmedTeamGenesis(userId);
-    if (genesis == null || _vault.teamLog != null ||
-        await _db.getSetting(teamLogRecordsSetting) != null) {
-      return;
-    }
+    if (_vault.teamLog != null) return;
+    Map<String, dynamic>? pin;
     if (await _db.getSyncState(_checkpointKey(userId)) != null) {
       final key = kek ?? _vault.currentKek;
       if (key == null) return;
       final checkpoint = await _loadSyncCheckpoint(kek: key, userId: userId);
-      if (checkpoint?['team_log'] != null) return; // a lost cache is a mismatch
+      pin = checkpoint?['team_log'] as Map<String, dynamic>?;
+    }
+    if (genesis == null && pin == null) return;
+    try {
+      verifiedTeamLogCopy(await _db.getSetting(teamLogRecordsSetting), genesis,
+          [?pin], _vault.verifyEd25519);
+      return;
+    } catch (_) {
+      // Missing or not verified: fetched again below under the same pins.
     }
     Future<Map<String, dynamic>> page(int since) async {
       final response = await _http.get(
@@ -2396,7 +2404,7 @@ class SyncService {
     final verified = await syncTeamLog(
       log: TeamLog(_vault.verifyEd25519),
       head: first['head'] as Map<String, dynamic>?,
-      local: null, pin: null, confirmedGenesis: genesis,
+      local: null, pin: pin, confirmedGenesis: genesis,
       fetchPage: (since) async {
         final body = since == -1 ? first : await page(since);
         return [for (final r in body['records'] as List) Map<String, dynamic>.from(r as Map)];
