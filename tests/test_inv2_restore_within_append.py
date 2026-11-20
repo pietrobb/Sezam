@@ -17,7 +17,10 @@ what the oracle refuses breaks INV-2.
 
 Review 8bc70f7 H2 (a forged genesis under the admin's id) and capability run
 385 (the same, hidden by re-adding the admin on its real keys) are instances:
-this test finds both by itself on the code before 0e96ca2 and before 7a57501.
+this test finds both by itself. On the 8bc70f7 server the default run fails
+with B restoring a genesis signed as A; on 0e96ca2 the default run misses it
+but a deep run (3000 examples) finds the same, and the kept counterexample
+below fails. The helpers drive both server versions (prepare_* came in 0e96ca2).
 
 Default run is derandomized and short; for a deep random run:
 
@@ -100,6 +103,9 @@ def append(db, records: list, uid: str, pending=None) -> bool:
     team_log.forget_cache()
 
     async def go():
+        if not hasattr(team_log, "prepare_append"):  # the server before 0e96ca2 (M6)
+            return await _locked(db, lambda cur: team_log.append(
+                cur, records, uid, pending_identity=pending))
         async with db.acquire() as conn:
             async with conn.cursor() as cur:
                 prepared = await team_log.prepare_append(cur, records, uid)
@@ -124,6 +130,8 @@ def restore(db, records: list, uid: str) -> bool:
     team_log.forget_cache()
 
     async def go():
+        if not hasattr(team_log, "prepare_restore"):  # the server before 0e96ca2 (M6)
+            return await _locked(db, lambda cur: team_log.restore(cur, records, uid))
         async with db.acquire() as conn:
             async with conn.cursor() as cur:
                 prepared = await team_log.prepare_restore(cur, records, uid)
@@ -460,7 +468,7 @@ class NormalPath:
 
 
 @settings(
-    max_examples=EXAMPLES or 150, deadline=None, derandomize=not EXAMPLES,
+    max_examples=EXAMPLES or 300, deadline=None, derandomize=not EXAMPLES,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
 @given(data=st.data())
