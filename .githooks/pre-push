@@ -1,0 +1,14 @@
+#!/bin/sh
+# INV-10 (docs/ROOT_CAUSE_PLAN.md): scan everything this push publishes, history
+# included, before it leaves. Enable once per clone:
+#   git config core.hooksPath .githooks
+# Private values: SEZAM_PRIVATE_DENYLIST or ~/.sezam-private-denylist.
+root=$(git rev-parse --show-toplevel) || exit 1
+for py in python3 python; do
+    # A Windows "python3" may be the Store stub that runs nothing.
+    if "$py" -c "import sys" >/dev/null 2>&1; then
+        exec "$py" "$root/scripts/public_hygiene.py"
+    fi
+done
+echo "pre-push: no python found, refusing to push unscanned" >&2
+exit 1

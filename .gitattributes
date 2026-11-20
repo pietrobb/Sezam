@@ -4,3 +4,4 @@ web/static/js/vendor/** -text
 
 # Run on Linux; a CRLF shebang line does not execute.
 *.sh text eol=lf
+.githooks/* text eol=lf

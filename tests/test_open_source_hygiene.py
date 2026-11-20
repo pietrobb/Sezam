@@ -23,10 +23,6 @@ and the test also looks for those.
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import ipaddress
-import os
 import re
 import shutil
 import subprocess
@@ -34,37 +30,11 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-WEB_CORE = "web/static/js/vendor/sezam-sync-core.js"
+from scripts import public_hygiene as hygiene
+from scripts.public_hygiene import WEB_CORE
 
-_IPV4 = re.compile(rb"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])")
-_PLACEHOLDER_IPS = {"1.1.1.1", "1.2.3.4", "5.6.7.8"}
-_DOCUMENTATION_NETS = [
-    ipaddress.ip_network(n) for n in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24")
-]
-# A user's home directory: C:\Users\name\, /home/name/, /Users/name/.
-_HOME_PATH = re.compile(
-    rb"(?i:[a-z]:(?:\\\\|\\|/)users(?:\\\\|\\|/))(?P<win>[^\\/\s\"'<>|:*?]+)"
-    rb"|/home/(?P<linux>[a-z_][\w.-]*)/"
-    rb"|/Users/(?P<mac>[A-Za-z_][\w.-]*)/"
-)
-# Placeholder accounts the tests and docs name on purpose.
-_PLACEHOLDER_HOMES = {
-    "public", "default", "name", "user", "username", "someone", "u", "ai-web", "runner", "alice", "bob",
-}
-_TOKEN = re.compile(r"[\w.@-]+")
-# Review 8bc70f7 #1: tests/test_deployment.py asserted the production host's
-# dynamic-DNS name was absent and so carried it. A name under a dynamic-DNS
-# provider is always someone's own machine. Assembled at run time.
-_DYNAMIC_DNS = re.compile(
-    rb"(?i)[a-z0-9-]+\.(?:" + b"|".join(
-        re.escape(p.encode()) for p in (
-            "duck" + "dns.org", "no-" + "ip.org", "no-" + "ip.com", "ddns" + ".net",
-            "dyn" + "u.net", "dyn" + "dns.org", "free" + "dns.afraid.org", "hopto" + ".org",
-            "zap" + "to.org", "sytes" + ".net", "ddns" + "free.com", "my" + "fritz.net",
-        )
-    ) + rb")"
-)
+ROOT = Path(__file__).resolve().parents[1]
+_public_ips, _home_paths, _dynamic_dns = hygiene.public_ips, hygiene.home_paths, hygiene.dynamic_dns
 
 
 def _tracked_files() -> list[str]:
@@ -83,38 +53,8 @@ def _contents() -> list[tuple[str, bytes]]:
             data = (ROOT / name).read_bytes()
         except OSError:
             continue
-        out.append((name, data))
-        if name == WEB_CORE:
-            for blob in re.findall(rb"[A-Za-z0-9+/]{2000,}={0,2}", data):
-                out.append((f"{name} (inlined module)", base64.b64decode(blob)))
+        out.extend(hygiene.expand(name, data))
     return out
-
-
-def _public_ips(data: bytes) -> set[str]:
-    found = set()
-    for match in _IPV4.finditer(data):
-        text = match.group(0).decode()
-        try:
-            ip = ipaddress.ip_address(text)
-        except ValueError:
-            continue  # a version number such as 1.2.300.4
-        if (
-            ip.is_private or ip.is_loopback or ip.is_unspecified or ip.is_link_local
-            or text in _PLACEHOLDER_IPS
-            or any(ip in net for net in _DOCUMENTATION_NETS)
-        ):
-            continue
-        found.add(text)
-    return found
-
-
-def _home_paths(data: bytes) -> set[str]:
-    found = set()
-    for match in _HOME_PATH.finditer(data):
-        account = next(g for g in match.groups() if g is not None).decode(errors="replace")
-        if account.lower() not in _PLACEHOLDER_HOMES:
-            found.add(match.group(0).decode(errors="replace"))
-    return found
 
 
 def test_the_checks_catch_what_they_are_for():
@@ -135,14 +75,22 @@ def test_the_checks_catch_what_they_are_for():
     assert _dynamic_dns(b"server " + host + b" and sezam.example.org") == {host.decode()}
 
 
-def _dynamic_dns(data: bytes) -> set[str]:
-    return {m.group(0).decode(errors="replace") for m in _DYNAMIC_DNS.finditer(data)}
+def test_the_denylist_matches_any_part_of_a_name():
+    """Review 8bc70f7 #1: a denylisted first label, local part or domain
+    matches inside the full name, plain or hashed."""
+    import hashlib
+
+    host = b"jana-nas.example.org"
+    for denied in ("jana-nas", "jana", "example.org", "sha256:" + hashlib.sha256(b"jana-nas").hexdigest()):
+        assert hygiene.denied_in(b"see " + host, {denied}), denied
+    assert hygiene.denied_in(b"mail jana.k@example.net", {"jana.k"})
+    assert not hygiene.denied_in(b"see " + host, {"janak"})
 
 
 def test_no_public_address_or_home_directory_in_tracked_files():
     hits = {}
     for name, data in _contents():
-        found = _public_ips(data) | _home_paths(data) | _dynamic_dns(data)
+        found = hygiene.always_found(data)
         if found:
             hits[name] = sorted(found)
     assert hits == {}
@@ -153,36 +101,13 @@ def test_the_web_core_module_is_scanned():
     assert f"{WEB_CORE} (inlined module)" in names
 
 
-def _private_denylist() -> set[str]:
-    path = os.environ.get("SEZAM_PRIVATE_DENYLIST")
-    if not path:
-        pytest.skip("SEZAM_PRIVATE_DENYLIST is not set (maintainer-only check)")
-    values = set()
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        value = line.split("#", 1)[0].strip().lower()
-        if value:
-            values.add(value)
-    assert values, f"{path} lists no values"
-    return values
-
-
-def _variants(token: str):
-    token = token.strip(".-@").lower()
-    yield token
-    if "@" in token:
-        yield token.split("@", 1)[0]
-
-
 def test_no_value_of_the_private_denylist_in_tracked_files():
-    denied = _private_denylist()
-    digests = {d[len("sha256:"):] for d in denied if d.startswith("sha256:")}
-    hits = []
-    for name, data in _contents():
-        text = data.decode("utf-8", errors="ignore")
-        tokens = {v for t in set(_TOKEN.findall(text)) for v in _variants(t)}
-        hashed = {hashlib.sha256(t.encode()).hexdigest() for t in tokens} if digests else set()
-        if tokens & denied or hashed & digests or any(" " in d and d in text.lower() for d in denied):
-            hits.append(name)
+    path = hygiene.denylist_path()
+    if path is None:
+        pytest.skip("no private denylist (maintainer-only check)")
+    denied = hygiene.read_denylist(path)
+    assert denied, f"{path} lists no values"
+    hits = [name for name, data in _contents() if hygiene.denied_in(data, denied)]
     assert hits == []
 
 
