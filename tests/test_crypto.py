@@ -261,7 +261,7 @@ for (const path of process.argv.slice(1, 4)) {
         vendor = root / "web" / "static" / "js" / "vendor"
         result = subprocess.run(
             [
-                "node",
+                node_cmd(),
                 "-e",
                 harness,
                 str(vendor / "libsodium-sumo.min.js"),
@@ -540,7 +540,7 @@ for (const path of process.argv.slice(1, 4)) {
         vendor = root / "web" / "static" / "js" / "vendor"
         result = subprocess.run(
             [
-                "node",
+                node_cmd(),
                 "-e",
                 harness,
                 str(vendor / "libsodium-sumo.min.js"),
@@ -2429,7 +2429,7 @@ for (const path of process.argv.slice(1, 5)) {
         vendor = root / "web" / "static" / "js" / "vendor"
         result = subprocess.run(
             [
-                "node",
+                node_cmd(),
                 "-e",
                 harness,
                 str(vendor / "libsodium-sumo.min.js"),
@@ -3373,7 +3373,7 @@ vm.runInContext(Buffer.from(process.argv[3], 'base64').toString('utf8'), context
         vendor = root / "web" / "static" / "js" / "vendor"
         subprocess.run(
             [
-                "node",
+                node_cmd(),
                 "-e",
                 harness,
                 str(vendor / "libsodium-sumo.min.js"),

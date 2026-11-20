@@ -225,7 +225,9 @@ def test_malformed_genesis_anchor_never_opens_vault(monkeypatch, anchor):
 @pytest.mark.parametrize("genesis", [None, "a" * 64])
 def test_desktop_invitation_dialog_copies_anchor_fragment(monkeypatch, genesis):
     from unittest.mock import MagicMock
-    from PySide6 import QtWidgets
+
+    # Review c78fd19 R13-12: PySide6 is the optional gui extra.
+    QtWidgets = pytest.importorskip("PySide6.QtWidgets")
     from sezam.gui import team_dialog
 
     message = MagicMock()

@@ -187,7 +187,25 @@ def test_group_writable_run_dir_is_still_refused(tmp_path):
 
 
 def _nobody_child(code: str, extra_groups: list, env: dict) -> dict:
-    out = subprocess.run(
+    out = _run_as_nobody(code, extra_groups, env)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+def _skip_unless_nobody_runs_sezam() -> None:
+    """Review c78fd19 R13-12: run as root from a checkout or venv under a
+    0700 home (a container's /root), 'nobody' cannot even start this
+    Python: that is the environment, not the brake endpoint."""
+    try:
+        out = _run_as_nobody("from sezam.mcp import control", [], {})
+    except PermissionError as exc:
+        pytest.skip(f"user 65534 cannot run this Python: {exc}")
+    if out.returncode != 0:
+        pytest.skip(f"user 65534 cannot import sezam here: {out.stderr.strip()[-200:]}")
+
+
+def _run_as_nobody(code: str, extra_groups: list, env: dict) -> subprocess.CompletedProcess:
+    return subprocess.run(
         [sys.executable, "-c", code],
         user=65534,
         group=65534,
@@ -197,8 +215,6 @@ def _nobody_child(code: str, extra_groups: list, env: dict) -> dict:
         text=True,
         timeout=60,
     )
-    assert out.returncode == 0, out.stderr
-    return json.loads(out.stdout)
 
 
 _PROBE = """
@@ -225,6 +241,7 @@ def test_another_user_in_the_group_gets_only_the_brake(monkeypatch):
         group = grp.getgrnam("users")
     except KeyError:
         pytest.skip("no 'users' group")
+    _skip_unless_nobody_runs_sezam()
     base = Path(tempfile.mkdtemp(prefix="sezam-l2-", dir="/tmp"))
     os.chmod(base, 0o755)
     run = base / "run"

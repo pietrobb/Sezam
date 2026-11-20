@@ -29,6 +29,8 @@ GUI_TESTS = [
     "tests/test_review2_desktop_crit.py",
     "tests/test_ai_r1_snapshots.py::test_gui_server_connect_snapshots_first_and_fails_closed",
     "tests/test_ai_r1_snapshots.py::test_gui_import_snapshots_first_and_fails_closed",
+    # Review c78fd19 R13-12: imported PySide6 in the test body.
+    "tests/test_team_log_desktop.py::test_desktop_invitation_dialog_copies_anchor_fragment",
 ]
 
 
