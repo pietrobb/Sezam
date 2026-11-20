@@ -2346,7 +2346,10 @@ class SyncService {
   }
 
   /// Why this phone refuses the server's team log now (the pull's own
-  /// judgment), or null: it follows it. INV-8: forgetting the pin asks this.
+  /// judgment), or null: it follows it. INV-8: forgetting the pin asks this;
+  /// INV-7: settings offer the forget only where [TeamLogMismatch.offersForget].
+  Future<TeamLogMismatch?> teamLogRefusal() => _exclusive(_teamLogRefusal);
+
   Future<TeamLogMismatch?> _teamLogRefusal() async {
     final response = await _http.get(
       Uri.parse('$_serverUrl/api/team-log?since=${_vault.teamLog?.team.headSeq ?? -1}'),

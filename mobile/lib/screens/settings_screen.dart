@@ -40,6 +40,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _clipboardTimeout = 15; // seconds
   String? _fingerprint;
   List<KeptAsideVault> _keptAside = const [];
+  // INV-7: the forget tile shows only where this phone, judging the server's
+  // log now, refuses it as lost for good (teamLogMismatchForget).
+  bool _teamLogLost = false;
 
   @override
   void initState() {
@@ -75,6 +78,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _keptAside = keptAside;
       });
     }
+    if (!_vault.isUnlocked || serverUrl == null) return;
+    var lost = false;
+    try {
+      lost = (await _sync.teamLogRefusal())?.offersForget ?? false;
+    } catch (_) {
+      // Offline or the server refused: nothing judged, nothing offered.
+    }
+    if (mounted) setState(() => _teamLogLost = lost);
   }
 
   Future<void> _toggleBiometric(bool value) async {
@@ -723,12 +734,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           subtitle: 'Potvrdiť nezávislý odtlačok zakladateľa',
           onTap: _confirmTeamFounder,
         ),
-        _settingsTile(
-          icon: Icons.link_off_rounded,
-          title: 'Zabudnúť pripnutý tímový denník',
-          subtitle: 'Len pre denník stratený natrvalo (TEAM LOG MISMATCH)',
-          onTap: _forgetTeamPin,
-        ),
+        if (_teamLogLost)
+          _settingsTile(
+            icon: Icons.link_off_rounded,
+            title: 'Zabudnúť pripnutý tímový denník',
+            subtitle: 'Len pre denník stratený natrvalo (TEAM LOG MISMATCH)',
+            onTap: _forgetTeamPin,
+          ),
         _settingsTile(
           icon: Icons.devices_outlined,
           title: 'Dôvera tímu pre nové zariadenia',

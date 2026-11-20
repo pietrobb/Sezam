@@ -71,7 +71,7 @@ void main() {
     await appDir.delete(recursive: true);
   });
 
-  Future<bool> forgets(Map<String, dynamic> c) async {
+  Future<void> prepare(Map<String, dynamic> c) async {
     final device = c['device'] as Map<String, dynamic>;
     served = c['server'] as Map<String, dynamic>;
     const storage = FlutterSecureStorage();
@@ -83,7 +83,10 @@ void main() {
     if (confirmed != null) await confirmTeamGenesis(uid, confirmed);
     final held = device['records'] == null ? null : recordsOf(device['records']);
     vault.teamLog = held == null ? null : LocalTeamLog(held, TeamLog(vault.verifyEd25519).replay(held));
+  }
 
+  Future<bool> forgets(Map<String, dynamic> c) async {
+    await prepare(c);
     final pins = await sync.pinnedTeamGenesis();
     var typed = pins.isEmpty ? '0' * 16 : pins.first;
     for (final pin in pins) {
@@ -108,5 +111,23 @@ void main() {
       want[c['name'] as String] = (c['expect'] as Map)['forget'] == true;
     }
     expect(got, want);
+  });
+
+  // INV-7 on the phone: the settings tile is offered from the same judgment,
+  // never shown for a log the phone follows or a server that lies. Before,
+  // the tile was always there.
+  test('settings offer the forget exactly where the team log is lost for good', () async {
+    final got = <String, bool>{};
+    final want = <String, bool>{};
+    for (final c in cases) {
+      await prepare(c);
+      got[c['name'] as String] = (await sync.teamLogRefusal())?.offersForget ?? false;
+      want[c['name'] as String] = (c['expect'] as Map)['forget'] == true;
+    }
+    expect(got, want);
+    final screen = File('lib/screens/settings_screen.dart').readAsStringSync();
+    final tile = screen.indexOf("title: 'Zabudnúť pripnutý tímový denník'");
+    expect(screen.lastIndexOf('if (_teamLogLost)', tile), greaterThan(screen.lastIndexOf('_settingsTile(', tile) - 40));
+    expect(screen, contains('lost = (await _sync.teamLogRefusal())?.offersForget ?? false;'));
   });
 }
