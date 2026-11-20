@@ -46,6 +46,7 @@ from .ssh import (
 logger = logging.getLogger(__name__)
 
 APPROVAL_TIMEOUT = 60  # seconds to wait for approval
+ANCHOR_WAIT_SECONDS = 10  # first call after an unlock: the server's AI anchor
 
 FTP_OPS = ("list", "upload", "download", "delete", "mkdir", "rename")
 FTP_ENCRYPTION = {
@@ -169,6 +170,62 @@ class MCPBroker:
         self._brake_lock = threading.Lock()
         # mcp-serve attaches its remote_policy.RemotePolicyPoller here.
         self.remote_policy = None
+        # Review c78fd19 R13-11: the floor is also anchored on the sync
+        # server (the poller), and after every unlock a call waits for one
+        # check of it, so an 'on' written back while this broker was down
+        # does not count. A round ends at each lock.
+        self._anchor_round = 0
+        self._anchor_checked_round = -1
+        self._anchor_event = threading.Event()
+
+    def anchor_round(self) -> int:
+        with self._brake_lock:
+            return self._anchor_round
+
+    def anchor_checked(self, round_: int) -> None:
+        """The poller checked the server's anchor (or could not reach it)."""
+        with self._brake_lock:
+            if round_ == self._anchor_round:
+                self._anchor_checked_round = round_
+                self._anchor_event.set()
+
+    def _new_anchor_round(self) -> None:
+        with self._brake_lock:
+            self._anchor_round += 1
+            self._anchor_event.clear()
+
+    def raise_floor(self, epoch: int) -> None:
+        """An 'off' epoch anchored on the server: nothing below it is on."""
+        with self._brake_lock:
+            rose = epoch > self._off_floor
+            self._off_floor = max(self._off_floor, epoch)
+        if rose:
+            try:
+                ai_access.raise_floor(self._vault, epoch)
+            except Exception:
+                logger.warning("Could not keep the AI access floor in the vault", exc_info=True)
+
+    def off_floor(self) -> int:
+        """The highest epoch seen off, the current switch included."""
+        self._ai_is_off()
+        with self._brake_lock:
+            return self._off_floor
+
+    def _await_anchor(self) -> bool:
+        """First call after an unlock of a synced vault: wait for one check
+        of the server's anchor (a server that does not answer in time is
+        not waited for again). True if it waited."""
+        poller = self.remote_policy
+        if poller is None or not self._vault.db.get_meta("server_url"):
+            return False
+        with self._brake_lock:
+            if self._anchor_checked_round == self._anchor_round:
+                return False
+            round_ = self._anchor_round
+        poller.wake()
+        self._anchor_event.wait(ANCHOR_WAIT_SECONDS)
+        self.anchor_checked(round_)
+        return True
 
     def disable_ai(
         self, source: str, extra: dict | None = None
@@ -217,6 +274,8 @@ class MCPBroker:
     def enforce_kill_switch(self) -> bool:
         """Periodic backstop: if AI access is off (in memory or persisted),
         close every SSH session. Returns True while it is off."""
+        if not self._vault.is_unlocked:
+            self._new_anchor_round()
         if self._ai_is_off():
             self._close_connections()
             return True
@@ -233,7 +292,10 @@ class MCPBroker:
         # and the brake is released only against the epoch it was set at.
         with self._brake_lock:
             if not state.enabled:
+                rose = state.epoch > self._off_floor
                 self._off_floor = max(self._off_floor, state.epoch)
+                if rose and self.remote_policy is not None:
+                    self.remote_policy.wake()  # anchor it now (R13-11)
                 return True
             if self._ai_off:
                 off_epoch = self._ai_off_epoch
@@ -317,6 +379,9 @@ class MCPBroker:
         if not self._vault.is_unlocked:
             self._close_connections()
             raise MCPError("vault_locked", "Unlock vault in desktop app.")
+        if self._await_anchor() and self._ai_is_off():
+            self._close_connections()
+            raise MCPError("ai_disabled", "AI access is turned off ('sezam ai on').")
 
     def _iter_node_policy(self, node_id: Optional[str]):
         """Yield decrypted folder policies from nearest folder to root."""
@@ -1081,6 +1146,7 @@ class MCPBroker:
             return failed
 
     def close(self) -> None:
+        self._new_anchor_round()
         self._close_connections()
 
     def _action_totp(self, entry: dict) -> dict:

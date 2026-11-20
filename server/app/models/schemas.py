@@ -347,6 +347,18 @@ class AIPolicyResponse(BaseModel):
     policy: Optional[AIPolicy] = None
 
 
+class AIAnchor(BaseModel):
+    """Review c78fd19 R13-11: the highest 'off' epoch one vault's broker saw,
+    opaque to the server (the id and MAC are keyed by the vault's KEK)."""
+    anchor: str = Field(pattern=HEX_KEY)
+    epoch: int = Field(ge=1, le=2**63 - 1)
+    mac: str = Field(pattern=HEX_KEY)
+
+
+class AIAnchorResponse(BaseModel):
+    anchor: Optional[AIAnchor] = None
+
+
 # ── Sync ──
 
 class SyncObject(BaseModel):

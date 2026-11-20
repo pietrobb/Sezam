@@ -186,6 +186,46 @@ def record_remote_applied(vault: "Vault", epoch: int) -> None:
         db.set_meta(REMOTE_APPLIED_MAC_KEY, _remote_mac(kek, db))
 
 
+# Review c78fd19 R13-11: an agent under the owner's OS user (L1) saved the
+# rows of a sealed 'on' and wrote them back after 'sezam ai off'. A running
+# broker refused them (its off floor), a restarted one took them. The broker
+# now anchors the highest 'off' it saw on the sync server, per vault file on
+# this machine, and an 'on' below the anchor counts as off.
+FLOOR_KEY = "ai_access_floor"
+
+
+def anchor_id(vault: "Vault") -> str | None:
+    """This vault file on this machine, keyed by the KEK so the server
+    learns neither the host nor the path (vault unlocked, else None)."""
+    kek = _vault_kek(vault)
+    if kek is None:
+        return None
+    where = f"{socket.gethostname()}\0{os.path.realpath(vault.db.path)}"
+    return _mac(kek, "ai_anchor_id", where)
+
+
+def anchor_mac(vault: "Vault", anchor: str, epoch: int) -> str | None:
+    """What a server-held anchor must carry: the server cannot raise it."""
+    kek = _vault_kek(vault)
+    return None if kek is None else _mac(kek, "ai_anchor_epoch", anchor, str(epoch))
+
+
+def _floor(db: VaultDB) -> int:
+    try:
+        return max(int(db.get_meta(FLOOR_KEY) or 0), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def raise_floor(vault: "Vault", epoch: int) -> None:
+    """Keep the anchored floor in the vault, so 'sezam ai on' turns access on
+    at an epoch the broker takes. Deleting it only keeps 'on' too low (off)."""
+    with _meta_db(vault) as db:
+        with db.transaction(immediate=True):
+            if epoch > _floor(db):
+                db.set_meta(FLOOR_KEY, str(epoch))
+
+
 def _origin(source: str) -> dict:
     try:
         user = getpass.getuser()
@@ -269,7 +309,9 @@ def enable(vault: "Vault", source: str) -> AIAccessState:
         raise PermissionError("Turning AI access on requires the master password.")
     db = vault.db
     current = read_state(vault)
-    state = AIAccessState(True, current.epoch)
+    # Not below the anchored floor (R13-11): an 'on' written back from a
+    # saved copy left the epoch there, and the broker would not take it.
+    state = AIAccessState(True, max(current.epoch, _floor(db)))
     # Audit first: if it cannot be recorded, access stays off.
     vault._audit_log(
         "ai_on",
@@ -284,9 +326,9 @@ def enable(vault: "Vault", source: str) -> AIAccessState:
     # applied meanwhile wins.
     with db.transaction(immediate=True):
         now = _parse(db.get_meta(ENABLED_KEY), db.get_meta(EPOCH_KEY))
-        if now.epoch != state.epoch:
+        if now.epoch != current.epoch:
             raise RuntimeError(
-                f"AI access was switched off meanwhile (epoch {state.epoch} -> {now.epoch}); "
+                f"AI access was switched off meanwhile (epoch {current.epoch} -> {now.epoch}); "
                 "it stays off. Run 'sezam ai on' again to turn it on."
             )
         db.set_meta(ENABLED_KEY, "1")

@@ -23,6 +23,7 @@ pinned in tests/vectors/cross_client.json)::
 
 from __future__ import annotations
 
+import hmac
 import logging
 import re
 import threading
@@ -115,8 +116,8 @@ def apply_policy(vault: "Vault", broker: "MCPBroker", policy: RemotePolicy) -> b
     return True
 
 
-def fetch_policy(vault: "Vault", token_box: dict) -> Optional[dict]:
-    """GET the account's policy; None when the vault is not on a server."""
+def _client(vault: "Vault", token_box: dict):
+    """A sync client sharing the poller's token; None when not on a server."""
     from ..vault.sync_client import SyncClient
 
     server_url = vault.db.get_meta("server_url")
@@ -125,10 +126,84 @@ def fetch_policy(vault: "Vault", token_box: dict) -> Optional[dict]:
         return None
     client = SyncClient(vault.db, server_url, vault.keypair, user_id)
     client.token = token_box.get("token")
+    return client
+
+
+def fetch_policy(vault: "Vault", token_box: dict) -> Optional[dict]:
+    """GET the account's policy; None when the vault is not on a server."""
+    client = _client(vault, token_box)
+    if client is None:
+        return None
     try:
         return client.get_ai_policy()
     finally:
         token_box["token"] = client.token
+
+
+def _authed(client, method: str, path: str, body: Optional[dict] = None):
+    from ..vault.sync_common import server_error
+
+    if not client.token:
+        client.authenticate()
+    try:
+        return client._request(method, path, body, auth=True)
+    except RuntimeError as exc:
+        if not server_error(exc, 401):
+            raise
+        client.authenticate()  # the token expired
+        return client._request(method, path, body, auth=True)
+
+
+class ServerAnchor:
+    """Review c78fd19 R13-11: the highest 'off' epoch this vault's broker
+    saw, kept on the sync server where an agent under the owner's OS user
+    cannot lower it. Writing a saved 'on' back into the vault file then
+    leaves it below the anchor, which the broker counts as off, also after
+    a restart. The id and the MAC are keyed by the KEK: the server learns
+    neither host nor path and cannot raise the anchor (only lose it)."""
+
+    def __init__(self, vault: "Vault", token_box: dict):
+        self._vault = vault
+        self._token = token_box
+
+    def _held(self, client, anchor: str) -> int:
+        raw = (_authed(client, "GET", f"/api/ai-anchor/{anchor}") or {}).get("anchor")
+        if not isinstance(raw, dict):
+            return 0
+        epoch, mac = raw.get("epoch"), raw.get("mac")
+        if not isinstance(epoch, int) or isinstance(epoch, bool) or not 1 <= epoch <= MAX_EPOCH:
+            return 0
+        expected = ai_access.anchor_mac(self._vault, anchor, epoch)
+        if not isinstance(mac, str) or expected is None or not hmac.compare_digest(mac, expected):
+            logger.warning("Ignoring the server's AI anchor: its MAC does not verify")
+            return 0
+        return epoch
+
+    def sync(self, broker: "MCPBroker") -> None:
+        """Raise the broker's floor to the anchor, then the anchor to the floor."""
+        from ..vault.sync_common import server_error
+
+        vault = self._vault
+        anchor = ai_access.anchor_id(vault)
+        client = _client(vault, self._token) if anchor is not None else None
+        if client is None:
+            return
+        try:
+            held = self._held(client, anchor)
+            broker.raise_floor(held)
+            floor = broker.off_floor()
+            if floor <= held:
+                return
+            body = {"anchor": anchor, "epoch": floor,
+                    "mac": ai_access.anchor_mac(vault, anchor, floor)}
+            try:
+                _authed(client, "PUT", "/api/ai-anchor", body)
+            except RuntimeError as exc:
+                if not server_error(exc, 409):
+                    raise
+                broker.raise_floor(self._held(client, anchor))  # another broker went higher
+        finally:
+            self._token["token"] = client.token
 
 
 class RemotePolicyPoller:
@@ -140,20 +215,45 @@ class RemotePolicyPoller:
         broker: "MCPBroker",
         interval: float = POLL_SECONDS,
         fetch: Optional[Callable[[], Optional[dict]]] = None,
+        anchor: Optional[ServerAnchor] = None,
     ):
         self._vault = vault
         self._broker = broker
         self._interval = interval
         self._token: dict = {}
         self._fetch = fetch or (lambda: fetch_policy(self._vault, self._token))
+        # The real anchor goes with the real fetch; an injected fetch (tests)
+        # brings its own or none.
+        self._anchor = anchor or (ServerAnchor(vault, self._token) if fetch is None else None)
         self._stop = threading.Event()
+        self._wake = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.last_result = "not polled"
 
+    def wake(self) -> None:
+        """Poll now (a new 'off' to anchor, or a call waiting after an unlock)."""
+        self._wake.set()
+
     def poll_once(self) -> str:
         """One poll; returns what happened (also kept in ``last_result``)."""
+        self._wake.clear()
         self.last_result = self._poll()
+        self._sync_anchor()
         return self.last_result
+
+    def _sync_anchor(self) -> None:
+        if not self._vault.is_unlocked:
+            return
+        round_ = self._broker.anchor_round()
+        try:
+            if self._anchor is not None:
+                self._anchor.sync(self._broker)
+        except Exception:
+            logger.warning("AI anchor check on the sync server failed", exc_info=True)
+        finally:
+            # Unreachable counts as checked: the broker does not wait on a
+            # server that is down, it keeps the floor it has.
+            self._broker.anchor_checked(round_)
 
     def _poll(self) -> str:
         vault = self._vault
@@ -192,7 +292,8 @@ class RemotePolicyPoller:
                     self.poll_once()
                 except Exception:
                     logger.exception("Remote AI policy poller failed")
-                if self._stop.wait(self._interval):
+                self._wake.wait(self._interval)
+                if self._stop.is_set():
                     return
 
         self._thread = threading.Thread(target=run, name="sezam-ai-policy", daemon=True)
@@ -200,3 +301,4 @@ class RemotePolicyPoller:
 
     def stop(self) -> None:
         self._stop.set()
+        self._wake.set()

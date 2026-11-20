@@ -343,6 +343,7 @@ class MockCursor:
             "sync_state": "user_id",
             "org_recovery_blobs": "id",
             "team_log": "seq",
+            "ai_anchors": "anchor_key",
         }
         return pks.get(tname)
 

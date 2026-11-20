@@ -289,6 +289,19 @@ CREATE TABLE IF NOT EXISTS ai_policies (
     updated_at      BIGINT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
+-- Review c78fd19 R13-11: the highest 'off' epoch a vault's broker saw, so a
+-- saved 'on' written back into the vault file does not count after a
+-- restart. Opaque here: anchor_key and mac are keyed by the vault's KEK.
+CREATE TABLE IF NOT EXISTS ai_anchors (
+    anchor_key      CHAR(64) PRIMARY KEY,
+    user_id         VARCHAR(26) NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    epoch           BIGINT NOT NULL,
+    mac             CHAR(64) NOT NULL,
+    updated_at      BIGINT NOT NULL,
+    INDEX idx_ai_anchors_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
 -- Parts of an all-or-nothing push too big for one request (review d150605
 -- #3). The push that names the batch applies them and deletes them.
 CREATE TABLE IF NOT EXISTS sync_staged_objects (
