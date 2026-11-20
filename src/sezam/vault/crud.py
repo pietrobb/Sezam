@@ -2838,6 +2838,7 @@ class Vault:
 
     # ── Granting a member access to a folder (spec 2.4, tech docs 5.1) ──
 
+    @oplock.held
     def grant_folder_access(
         self,
         node_id: str,
@@ -3025,6 +3026,7 @@ class Vault:
             rows.append({"dek_id": dek_id, "sealed_here": 1})
         return rows
 
+    @oplock.held  # review 8bc70f7 #3: lost in 3975939 (tests/test_review14_oplock_coverage.py)
     def rekey_after_revocation(self, revoked_user_id: str, handover: bool = False) -> int:
         """Re-key all folders where a revoked user had access.
 

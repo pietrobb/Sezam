@@ -14,7 +14,7 @@ from nacl.exceptions import CryptoError
 
 from ..crypto.aead import BlobKind, decrypt, encrypt, parse_envelope
 from ..models import bytes_to_ulid, new_ulid, ulid_to_bytes
-from . import outbox, pending_states, sync_core
+from . import oplock, outbox, pending_states, sync_core
 from .rekey_abandon import abandon_pending_rekey, superseded_rekey
 from .schema import row_payload_hash
 
@@ -66,6 +66,7 @@ class RekeyMixin:
         self._close_landed_rekey(pending)
         return True
 
+    @oplock.held
     def close_rekey_if_pulled_back(self) -> bool:
         """Close a pending re-key whose new DEK a pull already brought back.
 

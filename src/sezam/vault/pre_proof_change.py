@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 from urllib.parse import quote
 
-from . import pending_states
+from . import oplock, pending_states
 from .sync_common import server_error
 
 if TYPE_CHECKING:
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .sync_client import SyncClient
 
 
+@oplock.held
 def finish_pending_change(client: "SyncClient", vault: "Vault", account_password: str) -> None:
     """The server checks the password first (/auth/recover, rate-limited like
     a login); nothing changes on a wrong one."""

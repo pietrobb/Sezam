@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Callable, Optional
 
-from . import outbox, pending_states, sync_core
+from . import oplock, outbox, pending_states, sync_core
 from .crud import RekeyBlockedByConflicts
 from .sync_client import CONFIRMED_MEMBER_KEYS_META
 from .sync_limits import SyncUnitTooLarge
@@ -52,6 +52,7 @@ class MemberKeyUnconfirmed(RuntimeError):
         self.fingerprint = fingerprint
 
 
+@oplock.held  # review 8bc70f7 #3: the re-grant's batch and the check before it
 def grant_member(
     vault: Vault,
     client: SyncClient,

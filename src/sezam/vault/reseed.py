@@ -16,7 +16,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..usernames import normalize_username
-from . import outbox, pending_states
+from . import oplock, outbox, pending_states
 from .onboarding import complete_bootstrap_upload
 from .snapshots import take_snapshot
 from .sync_client import (
@@ -65,6 +65,7 @@ def reseed_message(
     )
 
 
+@oplock.held
 def reseed_server(vault: Vault, server_url: str, password: str) -> dict:
     """Seed ``server_url`` with this vault's account and data.
 
@@ -96,6 +97,7 @@ def reseed_server(vault: Vault, server_url: str, password: str) -> dict:
     return _upload_and_push(vault, server_url, password, state, resumed)
 
 
+@oplock.held
 def rejoin_server(vault: Vault, server_url: str, password: str, username: str | None = None) -> dict:
     """Bring this vault's member account back on a server whose backup was
     older than the account (review 8595ec1 #1), then send what it owns.
