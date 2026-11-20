@@ -210,6 +210,7 @@ class Prepared:
     bodies: list
     current: TeamState
     steps: list
+    before: TeamState  # the log the batch continues
 
 
 async def _is_admin_here(cur, state: TeamState, user_id: str) -> bool:
@@ -243,7 +244,7 @@ async def _prepare(cur, records: list, user_id: str, *, restore: bool) -> Prepar
         if len(records) > MAX_RECORDS_FROM_MEMBER and not await _is_admin_here(cur, state, user_id):
             raise ApiError(400, TEAM_LOG_REFUSED, {"message": "too many team log records"})
     current, steps = await _replayed(state, records, bodies)
-    return Prepared(state.head_seq, state.head_hash, bodies, current, steps)
+    return Prepared(state.head_seq, state.head_hash, bodies, current, steps, state)
 
 
 def _check_head(state: TeamState, first: dict, then: str) -> None:
@@ -275,12 +276,11 @@ async def prepare_restore(cur, records: list, user_id: str) -> Prepared:
     """Everything ``restore`` checks without locking, outside the push lock: a
     refused restore never holds the lock."""
     prepared = await _prepare(cur, records, user_id, restore=True)
-    named = _named_members(prepared.bodies)
     uploader = await _user_row(cur, user_id, lock=False)
     await _refuse_restored_founder(cur, prepared.bodies, prepared.current, uploader, user_id, lock=False)
     await _refuse_restored_keys(
-        cur, prepared.current, named, _uploader_team_admin(uploader, prepared.current, user_id),
-        lock=False,
+        cur, prepared.before, prepared.bodies, prepared.current,
+        _uploader_team_admin(uploader, prepared.current, user_id), lock=False,
     )
     return prepared
 
@@ -493,28 +493,47 @@ async def _refuse_superseded_recovery(cur, bodies: list[dict], user_id: str) -> 
 def key_retired(state: Optional[TeamState], user_id: str, signing_pk: Optional[bytes]) -> bool:
     """The log rotated ``user_id`` away from ``signing_pk`` (capability run 294).
 
-    Only after a restore (``_rotation_lost_here``) does the account still sign
+    Only after a restore (``_refuse_restored_keys``, rotations the server lost) does the account still sign
     in with such a key. Its holder (a lost or stolen device the rotation was
     for) may then send nothing but the rotation to the log's keys.
     """
     return bool(signing_pk) and core.signing_key_retired(state, user_id, bytes(signing_pk).hex())
 
 
-def _rotation_lost_here(row, member_id: str, state: TeamState) -> bool:
-    """The account still signs in with keys the log itself retired for it.
+def _own_rotations(before: TeamState, bodies: list[dict], member_id: str) -> tuple[set, dict]:
+    """Every key pair the upload gives ``member_id``, and its own rotations
+    old -> new from the server's head on (whose keys the server took already).
 
-    Capability run 277: a backup from before an identity rotation lacks the
-    rotated key material and its member.keys record alike. The record (signed
-    by the old key, new_key_sig by the new one) comes back first; the
-    rotating device then pushes its rotation again from the key material the
-    server has, and the account signs in with the log's keys once more.
+    A member.keys is signed by the old key and proven by the new one
+    (new_key_sig), so only the key's holder makes that edge; a genesis or
+    member.add starts the member over on keys anyone could name.
     """
-    if row[2] is None or row[3] is None:
-        return False
-    return (
-        state.seen_keys.get(bytes(row[2]).hex()) == member_id
-        and state.seen_keys.get(bytes(row[3]).hex()) == member_id
-    )
+    member = before.members.get(member_id)
+    current = (member.signing_pk, member.encryption_pk) if member is not None else None
+    keys, rotated = set(), {}
+    for body in bodies:
+        data = body["data"]
+        if data.get("user_id") != member_id:
+            continue
+        if body["type"] in ("genesis", "member.add"):
+            current = (data["signing_pk"], data["encryption_pk"])
+        elif body["type"] == "member.keys":
+            new = (data["signing_pk"], data["encryption_pk"])
+            rotated[current] = new
+            current = new
+        else:
+            continue
+        keys.add(current)
+    return keys, rotated
+
+
+def _after(rotated: dict, start) -> list:
+    """The keys ``start`` rotated to, in order (the rules never reuse a key)."""
+    chain = []
+    while start in rotated:
+        start = rotated[start]
+        chain.append(start)
+    return chain
 
 
 def _named_members(bodies: list[dict]) -> list[str]:
@@ -535,30 +554,42 @@ def _uploader_team_admin(uploader, current: TeamState, user_id: str) -> bool:
 
 
 async def _refuse_restored_keys(
-    cur, current: TeamState, named: list[str], uploader_team_admin: bool, *, lock: bool,
+    cur, before: TeamState, bodies: list[dict], current: TeamState, uploader_team_admin: bool,
+    *, lock: bool,
 ) -> None:
-    """The last keys the restored log gives each member it names, removed or
-    not, are the ones the account signs in with (review 8bc70f7 H2: a member
-    forged a genesis under the admin's id with a key of its own, made itself
-    admin and removed the admin; a removed member's keys went unchecked).
+    """INV-2 (docs/ROOT_CAUSE_PLAN.md): every key a restored log gives a
+    member it names is one the account signs in with, or one the member's own
+    rotations link to it. Review 8bc70f7 H2 and capability run 385 (a forged
+    genesis under the admin's id, then the admin removed, or re-added on its
+    real keys) and the property test (the admin re-added a member on keys it
+    holds) each gave a member keys no rotation of its own links to the account.
+
+    Keys the member rotated to after the account's (capability run 277: a
+    backup from before an identity rotation; the rotating device pushes the
+    rotation's key material again) come back only from the team admin
+    (review c78fd19 #2: a thief of the identity key signs such a rotation too).
     ``lock``: under the push lock, after the users table took the records."""
     refuse = lambda message: ApiError(400, TEAM_LOG_REFUSED, {"message": message})  # noqa: E731
-    for member_id in named:
-        member = current.members[member_id]
+    for member_id in _named_members(bodies):
         row = await _user_row(cur, member_id, lock=lock)
-        keys = {"signing_pk": member.signing_pk, "encryption_pk": member.encryption_pk}
         if row is None:
             # Review 8595ec1 #1: the backup is older than this registration.
             # Refusing the log locked the whole organisation out; the account
             # comes back under this id with exactly these keys (POST /auth/rejoin).
             continue
-        if lock and member.active and row[0] != "active":
-            raise refuse(f"the restored team log gives {member_id} keys the account does not sign in with")
-        if _keys_match(row, keys):
-            continue
-        if not _rotation_lost_here(row, member_id, current):
-            raise refuse(f"the restored team log gives {member_id} keys the account does not sign in with")
-        if not uploader_team_admin:
+        wrong = refuse(f"the restored team log gives {member_id} keys the account does not sign in with")
+        if lock and current.members[member_id].active and row[0] != "active":
+            raise wrong
+        keys, rotated = _own_rotations(before, bodies, member_id)
+        if row[2] is None or row[3] is None:
+            raise wrong
+        account = (bytes(row[2]).hex(), bytes(row[3]).hex())
+        later = _after(rotated, account)
+        linked = {account, *later} | {k for k in keys if account in _after(rotated, k)}
+        member = current.members[member_id]
+        if not keys <= linked or (member.signing_pk, member.encryption_pk) not in {account, *later}:
+            raise wrong
+        if later and not uploader_team_admin:
             raise ApiError(403, TEAM_LOG_REFUSED, {
                 "message": f"only the team admin puts back the key rotation of {member_id} "
                            "the server lost",
@@ -568,30 +599,22 @@ async def _refuse_restored_keys(
 async def _refuse_restored_founder(
     cur, bodies: list[dict], current: TeamState, uploader, user_id: str, *, lock: bool,
 ) -> None:
-    """A restored genesis needs its founder to be an admin here whose genesis
-    keys are the account's, or reach them only by the founder's own rotations
-    (member.keys proves the new key); else the uploader must be an admin here
-    and the restored log's last admin. Capability run 385: a member forged a
-    genesis under the admin's id, removed the admin and re-added it on its real
-    keys, so the final keys matched and only the genesis itself tells."""
+    """A restored genesis needs its founder to be an admin here, else the
+    uploader must be an admin here and the restored log's last admin (the
+    genesis check of an append). The founder's genesis keys are checked with
+    every other key the upload gives a member (``_refuse_restored_keys``)."""
     genesis = next((b for b in bodies if b["type"] == "genesis"), None)
     if genesis is None:
         return
-    data = genesis["data"]
-    founder_id = data["user_id"]
-    row = await _user_row(cur, founder_id, lock=lock)
-    founder_admin = row is not None and row[0] == "active" and bool(row[1])
-    removed_later = any(
-        b["type"] == "member.remove" and b["data"]["user_id"] == founder_id for b in bodies
-    )
-    if founder_admin and (_keys_match(row, data) or not removed_later):
+    row = await _user_row(cur, genesis["data"]["user_id"], lock=lock)
+    if row is not None and row[0] == "active" and bool(row[1]):
         return
     uploader_admin = uploader is not None and uploader[0] == "active" and bool(uploader[1])
     if uploader_admin and core.is_admin(current, user_id):
         return
     raise ApiError(400, TEAM_LOG_REFUSED, {
-        "message": "a restored genesis needs its founder (on the keys the account signs in with, "
-                   "or the uploader as its last admin) to be an admin here",
+        "message": "a restored genesis needs its founder (or the uploader as its last admin) "
+                   "to be an admin here",
     })
 
 
@@ -602,10 +625,11 @@ async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepar
     A device that accepted the records uploads them again: any author's,
     as long as they continue the current head and replay (each record's own
     signature and the log's rules decide, as on every client). The users
-    table still decides keys: the last keys the log gives each member it
-    names must be the ones the account signs in with, and a genesis needs
-    its founder to be an admin here, or the uploader to be the admin the
-    restored log ends with. Same transaction and lock as ``append``;
+    table still decides keys: every key the upload gives a member is the
+    account's or linked to it by the member's own rotations, and a genesis
+    needs its founder to be an admin here, or the uploader to be the admin
+    the restored log ends with. INV-2: a restore takes nothing the main path
+    would refuse (tests/test_inv2_restore_within_append.py). Same transaction and lock as ``append``;
     ``prepared``: ``prepare_restore`` of the same records before the lock.
     """
     prepared = await _under_lock(cur, records, user_id, prepared, restore=True)
@@ -623,7 +647,7 @@ async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepar
              body["author"], now_ms),
         )
         await _apply_to_users(cur, body, step)
-    await _refuse_restored_keys(cur, current, _named_members(bodies), uploader_team_admin, lock=True)
+    await _refuse_restored_keys(cur, prepared.before, bodies, current, uploader_team_admin, lock=True)
     if core.admin_policy_refusal(current):
         raise refuse("the restored team log has more than one admin")
     return current

@@ -50,7 +50,8 @@ def test_a_member_cannot_take_a_server_without_log_over_through_restore(team):  
     records = _forged_takeover(client._user_id, bob, bob_id)
     teamlog.replay(records)  # the rules alone take it: only the users table can refuse
 
-    with pytest.raises(RuntimeError, match="genesis needs its founder"):
+    # INV-2: the forged genesis gives the admin keys the account does not sign in with.
+    with pytest.raises(RuntimeError, match=f"gives {client._user_id} keys the account does not sign in with"):
         bob_client._request("POST", "/api/team-log/restore", {"records": records}, auth=True)
     assert db._storage["team_log"] == []
     users = {u["id"]: u for u in db._storage["users"]}
@@ -74,7 +75,7 @@ def test_a_forged_genesis_cannot_be_hidden_by_re_adding_the_admin_on_its_real_ke
     records.append(readd)
     teamlog.replay(records)  # the rules alone take it
 
-    with pytest.raises(RuntimeError, match="genesis needs its founder \\(on the keys"):
+    with pytest.raises(RuntimeError, match=f"gives {admin_id} keys the account does not sign in with"):
         bob_client._request("POST", "/api/team-log/restore", {"records": records}, auth=True)
     assert lock_spy == []  # refused before the push lock (M6)
     assert db._storage["team_log"] == []
@@ -103,7 +104,7 @@ def test_a_refused_restore_never_takes_the_push_lock(team, lock_spy):  # noqa: F
     """Review 8bc70f7 M6: the replay and the key check run before the lock."""
     db, admin, client, bob, bob_client = team
     records = _forged_takeover(client._user_id, bob, bob_client._user_id)
-    with pytest.raises(RuntimeError, match="genesis needs its founder"):
+    with pytest.raises(RuntimeError, match="keys the account does not sign in with"):
         bob_client._request("POST", "/api/team-log/restore", {"records": records}, auth=True)
     assert lock_spy == []
 

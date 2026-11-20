@@ -1,0 +1,546 @@
+"""INV-2 (docs/ROOT_CAUSE_PLAN.md): no path has more power than the main path.
+
+POST /api/team-log/restore puts back records a server lost. It may be
+stricter than an append, never looser: whatever it takes must be records that
+existed once (the honest history) followed by records the uploader could have
+appended itself (POST /api/team-log, or a push carrying its own rotation).
+
+Hypothesis builds an honest team history through the normal path (the admin
+adds, removes, shares folders, grants and hands the role over; members rotate
+their identities), then a server that lost its log or came back from a backup,
+and a member who uploads a restore: a prefix of the honest history, then
+anything it can sign. That covers a genesis under any id, accounts it makes up,
+removals, re-adds on real public keys, role changes and rotations to keys of its
+own. The oracle replays the honest prefix and pushes the rest through
+``team_log.append``, record by record, as the uploader. A restore that takes
+what the oracle refuses breaks INV-2.
+
+Review 8bc70f7 H2 (a forged genesis under the admin's id) and capability run
+385 (the same, hidden by re-adding the admin on its real keys) are instances:
+this test finds both by itself on the code before 0e96ca2 and before 7a57501.
+
+Default run is derandomized and short; for a deep random run:
+
+    set SEZAM_PROPERTY_EXAMPLES=2000
+    python -m pytest -q tests/test_inv2_restore_within_append.py
+"""
+
+from __future__ import annotations
+
+import asyncio
+import copy
+import hashlib
+import itertools
+import os
+from dataclasses import dataclass
+from unittest import mock
+
+from hypothesis import HealthCheck, given, settings, target
+from hypothesis import event as coverage_event
+from hypothesis import strategies as st
+from nacl.signing import SigningKey
+
+from sezam import teamlog
+from server.app import team_log
+from server.app.errors import ApiError
+from tests.test_server_spec import MockDatabase, _create_regular_user
+
+EXAMPLES = int(os.environ.get("SEZAM_PROPERTY_EXAMPLES", "0"))
+NAMES = ("A", "B", "C")  # registered accounts; A founds the honest log
+MADE_UP = "D"  # no account on the server
+IDS = {name: f"0{name}" + "0" * 24 for name in NAMES + (MADE_UP,)}
+NAME_OF = {uid: name for name, uid in IDS.items()}
+FOLDERS = ("0F" + "0" * 23 + "1", "0F" + "0" * 23 + "2")
+
+
+@dataclass(frozen=True)
+class Key:
+    sk: SigningKey
+    enc: str
+
+    @property
+    def pk(self) -> str:
+        return bytes(self.sk.verify_key).hex()
+
+
+class Keys:
+    """Deterministic keys, so Hypothesis replays and shrinks an example exactly."""
+
+    def __init__(self):
+        self._n = itertools.count()
+
+    def new(self) -> Key:
+        seed = hashlib.sha256(b"inv2-%d" % next(self._n)).digest()
+        return Key(SigningKey(seed), hashlib.sha256(b"enc" + seed).hexdigest())
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
+async def _locked(db, fn):
+    """The endpoints' transaction: the push lock first, then ``fn(cur)``."""
+    async with db.transaction() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT next_seq FROM commit_counter WHERE id = 1 FOR UPDATE")
+            await cur.fetchone()
+            return await fn(cur)
+
+
+def _active(db, uid: str) -> bool:
+    """require_full_jwt: only an active account gets to any endpoint."""
+    row = next((u for u in db._storage["users"] if u["id"] == uid), None)
+    return row is not None and row["status"] == "active"
+
+
+def append(db, records: list, uid: str, pending=None) -> bool:
+    """POST /api/team-log (or a push with ``pending``: its own new identity)."""
+    if not _active(db, uid):
+        return False
+    team_log.forget_cache()
+
+    async def go():
+        async with db.acquire() as conn:
+            async with conn.cursor() as cur:
+                prepared = await team_log.prepare_append(cur, records, uid)
+        await _locked(db, lambda cur: team_log.append(
+            cur, records, uid, pending_identity=pending, prepared=prepared))
+
+    try:
+        _run(go())
+    except ApiError as exc:
+        REFUSALS.append(exc.detail)
+        return False
+    return True
+
+
+REFUSALS: list = []  # why the last appends were refused, for the failure report
+
+
+def restore(db, records: list, uid: str) -> bool:
+    """POST /api/team-log/restore."""
+    if not _active(db, uid):
+        return False
+    team_log.forget_cache()
+
+    async def go():
+        async with db.acquire() as conn:
+            async with conn.cursor() as cur:
+                prepared = await team_log.prepare_restore(cur, records, uid)
+        await _locked(db, lambda cur: team_log.restore(cur, records, uid, prepared=prepared))
+
+    try:
+        _run(go())
+    except ApiError:
+        return False
+    return True
+
+
+def put_back(db, records: list) -> None:
+    """Records that existed once, stored with their effects and no checks."""
+    if not records:
+        return
+    team_log.forget_cache()
+
+    async def go(cur):
+        state = await team_log.load_state(cur) or teamlog.TeamState()
+        bodies = [team_log._parse(r) for r in records]
+        _, steps = team_log._replay_batch(state, records, bodies)
+        for record, body, step in zip(records, bodies, steps):
+            await cur.execute(
+                "INSERT INTO team_log (seq, prev, hash, body, sig, author, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (step["seq"], body["prev"], step["hash"], record["body"], record["sig"],
+                 body["author"], 0),
+            )
+            await team_log._apply_to_users(cur, body, step)
+
+    _run(_locked(db, go))
+
+
+def _set_row_keys(db, uid: str, signing_pk: str, encryption_pk: str) -> None:
+    """What a push carrying the account's own new identity stores."""
+    row = next(u for u in db._storage["users"] if u["id"] == uid)
+    row["signing_pk"], row["encryption_pk"] = bytes.fromhex(signing_pk), bytes.fromhex(encryption_pk)
+
+
+def _set_keys(db, uid: str, key: Key) -> None:
+    _set_row_keys(db, uid, key.pk, key.enc)
+
+
+def _db(storage: dict) -> MockDatabase:
+    db = MockDatabase()
+    db._storage = copy.deepcopy(storage)
+    return db
+
+
+class Honest:
+    """The team's real history, built through the normal path only."""
+
+    def __init__(self, keys: Keys):
+        self.keys = keys
+        self.db = MockDatabase()
+        _run(self.db.create_schema())
+        self.account: dict[str, list[Key]] = {}  # name -> its keys, current last
+        for name in NAMES:
+            _create_regular_user(self.db._storage, IDS[name], name.lower())
+            self.account[name] = [keys.new()]
+            _set_keys(self.db, IDS[name], self.account[name][-1])
+        next(u for u in self.db._storage["users"] if u["id"] == IDS["A"])["is_admin"] = 1
+        self.state = teamlog.TeamState()
+        self.records: list[dict] = []
+        self.snapshots: list[tuple[int, dict]] = []  # (records so far, server storage)
+        assert self._commit("A", [("genesis", "A", {
+            "org": "0G" + "0" * 24, "user_id": IDS["A"],
+            "signing_pk": self.current("A").pk, "encryption_pk": self.current("A").enc,
+        })])
+
+    def current(self, name: str) -> Key:
+        return self.account[name][-1]
+
+    def admin(self) -> str:
+        return next(NAME_OF[uid] for uid, m in self.state.members.items() if m.active and m.role == "admin")
+
+    def _commit(self, by: str, changes: list, rotate: Key | None = None) -> bool:
+        state, batch = self.state, []
+        try:
+            for kind, author, data in changes:
+                record = teamlog.sign_record(teamlog.next_body(state, kind, IDS[author], data),
+                                             self.current(author).sk)
+                state = teamlog.apply_record(state, record)
+                batch.append(record)
+        except teamlog.TeamLogError:
+            return False
+        pending = (rotate.pk, rotate.enc) if rotate else None
+        if not append(self.db, batch, IDS[by], pending):
+            return False
+        if rotate:
+            _set_keys(self.db, IDS[by], rotate)
+            self.account[by].append(rotate)
+        self.state = state
+        self.records += batch
+        self.snapshots.append((len(self.records), copy.deepcopy(self.db._storage)))
+        return True
+
+    def step(self, data) -> None:
+        admin = self.admin()
+        members = self.state.members
+        active = [n for n in NAMES if IDS[n] in members and members[IDS[n]].active]
+        op = data.draw(st.sampled_from(["add", "add", "remove", "folder", "access", "rotate", "handover"]))
+        if op == "add":
+            name = data.draw(st.sampled_from(NAMES))
+            self._commit(admin, [("member.add", admin, {
+                "user_id": IDS[name], "signing_pk": self.current(name).pk,
+                "encryption_pk": self.current(name).enc, "role": "member",
+            })])
+        elif op == "remove":
+            name = data.draw(st.sampled_from(NAMES))
+            self._commit(admin, [("member.remove", admin, {"user_id": IDS[name]})])
+        elif op == "folder":
+            folder = data.draw(st.sampled_from(FOLDERS))
+            gens = self.state.folders.get(folder, [])
+            self._commit(admin, [("folder.key", admin, {
+                "folder": folder, "gen": len(gens), "dek_id": _dek(len(self.records)),
+                "prev_dek_id": gens[-1][0] if gens else None,
+            })])
+        elif op == "access":
+            folder = data.draw(st.sampled_from(FOLDERS))
+            name = data.draw(st.sampled_from(NAMES))
+            level = data.draw(st.sampled_from(["read", "write", None]))
+            self._commit(admin, [("access.set", admin, {"folder": folder, "user_id": IDS[name], "level": level})])
+        elif op == "rotate":
+            name = data.draw(st.sampled_from(active))
+            new = self.keys.new()
+            self._commit(name, [_rotation(self.state, name, new)], rotate=new)
+        else:
+            name = data.draw(st.sampled_from(active))
+            self._commit(admin, [
+                ("member.role", admin, {"user_id": IDS[name], "role": "admin"}),
+                ("member.role", admin, {"user_id": IDS[admin], "role": "member"}),
+            ])
+
+
+def _dek(n: int) -> str:
+    return "0K" + f"{n:024d}"
+
+
+def _rotation(state, name: str, new: Key) -> tuple:
+    uid = IDS[name]
+    sig = new.sk.sign(teamlog.new_key_message(state.head_hash, uid, new.pk, new.enc)).signature.hex()
+    return ("member.keys", name, {"user_id": uid, "signing_pk": new.pk, "encryption_pk": new.enc,
+                                  "new_key_sig": sig})
+
+
+class Forger:
+    """A member that signs whatever its keys allow on top of a log it chose."""
+
+    def __init__(self, honest: Honest, me: str, state):
+        self.honest, self.me, self.state = honest, me, state
+        self.held: list[Key] = list(honest.account[me])  # its own account's keys
+        self.records: list[dict] = []
+        self.labels: list[str] = []
+
+    def _key_of(self, uid: str):
+        member = self.state.members.get(uid)
+        return next((k for k in self.held if member is not None and k.pk == member.signing_pk), None)
+
+    def _try(self, kind: str, author: str, data: dict, key: Key) -> None:
+        record = teamlog.sign_record(teamlog.next_body(self.state, kind, author, data), key.sk)
+        try:
+            self.state = teamlog.apply_record(self.state, record)
+        except teamlog.TeamLogError:
+            return
+        self.records.append(record)
+        self.labels.append(f"{kind}({NAME_OF.get(author, '?')}->{NAME_OF.get(data.get('user_id'), '-')})")
+
+    def _keys_for(self, data, target: str) -> tuple[str, str]:
+        # A real account's public keys pass a check of the final keys; the
+        # forger's own keys are the ones it can sign with later.
+        choice = data.draw(st.sampled_from(["real", "real", "real", "own", "fresh"]))
+        if choice == "real" and target in self.honest.account:
+            key = self.honest.current(target)  # a real account's public keys
+        elif choice == "own":
+            key = self.held[-1]
+        else:
+            key = self.honest.keys.new()
+            self.held.append(key)
+        return key.pk, key.enc
+
+    def genesis(self, data) -> None:
+        founder = data.draw(st.sampled_from(("A",) + NAMES + (MADE_UP,)))  # A: the real admin
+        own = data.draw(st.sampled_from((False, False, True)))
+        key = self.held[-1] if own else self.honest.keys.new()
+        self.held.append(key)
+        self._try("genesis", IDS[founder], {
+            "org": "0H" + "0" * 24, "user_id": IDS[founder], "signing_pk": key.pk, "encryption_pk": key.enc,
+        }, key)
+
+    def step(self, data) -> None:
+        """One record the rules take: the draws only pick among such moves, so
+        short examples reach deep forgeries."""
+        members = self.state.members
+        mine = sorted(uid for uid, m in members.items() if m.active and self._key_of(uid))
+        if not mine:
+            return
+        admins = [uid for uid in mine if members[uid].role == "admin"]
+        kinds = ["member.keys"]
+        if admins:
+            kinds = ["member.add"] * 3 + ["member.remove"] * 3 + ["member.role"] * 2 + kinds + [
+                "folder.key", "access.set"]
+        kind = data.draw(st.sampled_from(kinds))
+        author = data.draw(st.sampled_from(mine if kind == "member.keys" else admins))
+        key = self._key_of(author)
+        everyone = NAMES + (MADE_UP,)
+        active = [n for n in everyone if IDS[n] in members and members[IDS[n]].active]
+        if kind == "member.add":
+            outside = [n for n in everyone if n not in active]
+            if not outside:
+                return
+            target = data.draw(st.sampled_from(outside))
+            pk, enc = self._keys_for(data, target)
+            role = data.draw(st.sampled_from(("admin", "admin", "member")))
+            self._try(kind, author, {"user_id": IDS[target], "signing_pk": pk, "encryption_pk": enc, "role": role}, key)
+        elif kind == "member.remove":
+            target = data.draw(st.sampled_from(active))
+            self._try(kind, author, {"user_id": IDS[target]}, key)
+        elif kind == "member.role":
+            target = data.draw(st.sampled_from(active))
+            role = "member" if members[IDS[target]].role == "admin" else "admin"
+            self._try(kind, author, {"user_id": IDS[target], "role": role}, key)
+        elif kind == "member.keys":
+            new = self.honest.keys.new()
+            self.held.append(new)
+            _, name, payload = _rotation(self.state, NAME_OF[author], new)
+            self._try(kind, author, payload, key)
+        elif kind == "folder.key":
+            folder = data.draw(st.sampled_from(FOLDERS))
+            gens = self.state.folders.get(folder, [])
+            self._try(kind, author, {
+                "folder": folder, "gen": len(gens), "dek_id": _dek(10_000 + self.state.head_seq),
+                "prev_dek_id": gens[-1][0] if gens else None,
+            }, key)
+        else:
+            folder = data.draw(st.sampled_from(FOLDERS))
+            target = data.draw(st.sampled_from(everyone))
+            level = data.draw(st.sampled_from(["read", "write", None]))
+            self._try(kind, author, {"folder": folder, "user_id": IDS[target], "level": level}, key)
+
+
+# What a restore may take that an append would refuse, and why it gives nobody
+# more than the main path (docs/ROOT_CAUSE_PLAN.md S5: an exception is a
+# recorded decision, never a special case in the code alone). The oracle
+# grants exactly these and nothing else.
+RESTORE_EXCEPTIONS = {
+    # server/app/team_log.py _refuse_restored_keys, row is None (review 8595ec1 #1):
+    # a backup older than a member's registration lost the account the log
+    # names, and refusing the log locked the whole team out.
+    "E2 member without an account": (
+        "an admin-signed member.add of an id the server has no account for. It "
+        "grants nothing until POST /auth/rejoin, which creates the account only "
+        "with the keys the log holds for that id; the log's admin, the only one "
+        "who signs a member.add, provisions accounts on the main path anyway"
+    ),
+    # server/app/team_log.py restore: admin_policy_refusal on the final log only.
+    "E3 one admin at the end": (
+        "the one-admin rule holds after the whole upload, not after each append: "
+        "a restore may begin inside a handover (two admins between its two "
+        "records), and a transient admin can only be one the uploader already "
+        "controls; the final log has exactly one admin, as after every append"
+    ),
+}
+
+
+def _no_account(db, uid: str) -> bool:
+    return not any(u["id"] == uid for u in db._storage["users"])
+
+
+class NormalPath:
+    """Would the main path get the server where the restore did?
+
+    The records shared with the honest history existed once; the rest must be
+    appends of accounts the uploader controls, in order, or one of
+    RESTORE_EXCEPTIONS. Records go in as few appends as the main path allows:
+    one author per append and one new identity per push (member.keys ends an
+    append)."""
+
+    def __init__(self, server: dict, me: str):
+        self.db = _db(server)
+        self.me = me
+        self.mine = {IDS[me]}  # accounts whose appends the uploader can make
+        self.provisioned: set[str] = set()  # E2
+        self.batch: list[tuple[int, dict]] = []
+
+    def _send(self, pending=None) -> str:
+        if not self.batch:
+            return ""
+        author = self.batch[0][1]["author"]
+        records = [record for _, _, record in self.batch]
+        done = append(self.db, records, author, pending)
+        kinds = ", ".join(f"{i} {body['type']}" for i, body, _ in self.batch)
+        self.batch.clear()
+        if not done:
+            return f"POST /api/team-log refuses records [{kinds}] from {NAME_OF[author]}: {REFUSALS[-1:]}"
+        if pending:
+            _set_row_keys(self.db, author, *pending)
+        return ""
+
+    def _provision(self, data: dict) -> None:
+        """E2, as its reason says: the admin provisions the account first, and
+        whoever holds its keys signs in as it (POST /auth/rejoin)."""
+        coverage_event("restore exception E2 member without an account")
+        if data["user_id"] not in self.provisioned:  # a re-add provisions the keys again
+            _create_regular_user(self.db._storage, data["user_id"], f"provisioned-{data['user_id'].lower()}")
+            self.provisioned.add(data["user_id"])
+            self.mine.add(data["user_id"])
+        _set_row_keys(self.db, data["user_id"], data["signing_pk"], data["encryption_pk"])
+
+    def takes(self, honest: list, upload: list) -> str:
+        """'' when it does, else why not."""
+        shared = 0
+        while shared < min(len(upload), len(honest)) and upload[shared] == honest[shared]:
+            shared += 1
+        put_back(self.db, upload[:shared])
+        with mock.patch.object(team_log.core, "admin_policy_refusal", lambda state: None):  # E3
+            for i, record in enumerate(upload[shared:], start=shared):
+                body = teamlog.parse_body(record["body"])
+                if body["author"] not in self.mine:
+                    return f"record {i} ({body['type']}) is signed as {NAME_OF.get(body['author'], '?')}, not by {self.me}"
+                if self.batch and self.batch[0][1]["author"] != body["author"] and (why := self._send()):
+                    return why
+                uid = body["data"].get("user_id")
+                if body["type"] == "member.add" and (_no_account(self.db, uid) or uid in self.provisioned):
+                    if uid in self.provisioned and (why := self._send()):  # its keys as of the record
+                        return why
+                    self._provision(body["data"])
+                self.batch.append((i, body, record))
+                if body["type"] == "member.keys":
+                    if why := self._send((body["data"]["signing_pk"], body["data"]["encryption_pk"])):
+                        return why
+            return self._send()
+
+
+@settings(
+    max_examples=EXAMPLES or 150, deadline=None, derandomize=not EXAMPLES,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
+)
+@given(data=st.data())
+def test_restore_takes_nothing_the_normal_path_refuses(data):
+    keys = Keys()
+    honest = Honest(keys)
+    for _ in range(data.draw(st.integers(0, 6), label="honest steps")):
+        honest.step(data)
+    # The server lost its log (users current) or came back from a backup.
+    lost = data.draw(st.sampled_from((True, True, False)), label="log lost")
+    if lost:
+        kept, storage = 0, copy.deepcopy(honest.snapshots[-1][1])
+        storage["team_log"] = []
+    else:
+        kept, storage = data.draw(st.sampled_from(honest.snapshots[:-1] or honest.snapshots), label="backup")
+    me = data.draw(st.sampled_from(("B", "C")), label="uploader")
+    if not _active(_db(storage), IDS[me]):
+        return
+
+    upto = data.draw(st.one_of(st.just(kept), st.integers(kept, len(honest.records))),
+                     label="honest records uploaded")
+    state = teamlog.replay(honest.records[:upto]) if upto else teamlog.TeamState()
+    forger = Forger(honest, me, state)
+    if upto == 0:
+        forger.genesis(data)
+    for _ in range(data.draw(st.integers(0, 8), label="forged attempts")):
+        forger.step(data)
+    upload = honest.records[kept:upto] + forger.records
+    if not upload:
+        return
+    coverage_event(f"forged={len(forger.records)} lost={lost}")
+
+    if not restore(_db(storage), upload, IDS[me]):
+        coverage_event("restore refused")
+        return
+    coverage_event(f"restore took forged={len(forger.records)}")
+    target(float(len(forger.records)), label="forged records a restore took")
+    why = NormalPath(storage, me).takes(honest.records[kept:], upload)
+    assert not why, (
+        f"restore by {me} took more than the normal path would: {why}\n"
+        f"honest kept on the server: {kept}, honest uploaded: {upto - kept}, "
+        f"forged: {forger.labels}"
+    )
+
+
+# Counterexamples the property found, kept as fixed regression cases.
+
+def _handed_over_to_c() -> tuple[Honest, dict]:
+    """A founds, adds C and hands the role over; then the server loses its log."""
+    honest = Honest(Keys())
+    admin = honest.admin()
+    assert honest._commit(admin, [("member.add", admin, {
+        "user_id": IDS["C"], "signing_pk": honest.current("C").pk,
+        "encryption_pk": honest.current("C").enc, "role": "member",
+    })])
+    assert honest._commit(admin, [
+        ("member.role", admin, {"user_id": IDS["C"], "role": "admin"}),
+        ("member.role", admin, {"user_id": IDS[admin], "role": "member"}),
+    ])
+    storage = copy.deepcopy(honest.snapshots[-1][1])
+    storage["team_log"] = []
+    return honest, storage
+
+
+def test_counterexample_the_admin_re_adds_a_member_on_keys_of_its_own():
+    """Found by the property on main@099d298: the admin removed A and re-added it
+    on keys it holds; the account still signs in with keys the log once gave A,
+    which the restore took for a rotation the server lost (_rotation_lost_here).
+    The admin then signs as A and reads what is sealed to A."""
+    honest, storage = _handed_over_to_c()
+    forger = Forger(honest, "C", teamlog.replay(honest.records))
+    key = forger._key_of(IDS["C"])
+    forger._try("member.remove", IDS["C"], {"user_id": IDS["A"]}, key)
+    fresh = honest.keys.new()
+    forger.held.append(fresh)
+    forger._try("member.add", IDS["C"], {
+        "user_id": IDS["A"], "signing_pk": fresh.pk, "encryption_pk": fresh.enc, "role": "member",
+    }, key)
+    assert forger.labels == ["member.remove(C->A)", "member.add(C->A)"]
+    upload = honest.records + forger.records
+
+    assert NormalPath(storage, "C").takes(honest.records, upload)  # the main path refuses
+    assert not restore(_db(storage), upload, IDS["C"])
