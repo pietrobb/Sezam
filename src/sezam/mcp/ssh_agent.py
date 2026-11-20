@@ -285,9 +285,10 @@ class SSHAgentService:
         # gone on lock, on AI off and when the switch epoch changes.
         self._grant_minutes = grant_minutes
         self._grants: dict[tuple, tuple[float, int]] = {}
-        # AI SSH CA entries: entry id -> (settings, ephemeral key, certificate),
-        # in memory only; dropped with the grants.
-        self._certs: dict[str, tuple[tuple, EphemeralKey, UserCertificate]] = {}
+        # AI SSH CA entries: entry id -> [(settings, ephemeral key,
+        # certificate)] still valid, oldest first; in memory only; dropped
+        # with the grants.
+        self._certs: dict[str, list[tuple[tuple, EphemeralKey, UserCertificate]]] = {}
         self._on_activity = on_activity
         # One request at a time: the vault and the approval dialog are shared.
         self._lock = threading.Lock()
@@ -343,55 +344,66 @@ class SSHAgentService:
                 logger.warning("ssh-agent: entry %s has no usable SSH key", policy["id"])
                 continue
             if credentials.ssh_ca:
-                identity = self._certificate_identity(path, entry, tier, credentials, key, issue)
-                if identity is not None:
-                    found.append(identity)
+                found += self._certificate_identities(path, entry, tier, credentials, key, issue)
                 continue
             if not isinstance(key, (paramiko.Ed25519Key, paramiko.RSAKey)):
                 continue
             found.append(_Identity(path, entry, tier, credentials, key, key.asbytes()))
         return found
 
-    def _certificate_identity(
+    def _certificate_identities(
         self, path: str, entry: dict, tier: int, credentials: SSHCredentials, ca_key, issue: bool
-    ) -> Optional[_Identity]:
+    ) -> list[_Identity]:
         """The ephemeral key and its certificate for an AI SSH CA entry:
         principal = the entry's username, valid ``cert_ttl_minutes`` (10,
         max 60), only ``permit-pty``, ``source-address`` if set, key id
         ``sezam-ai:<entry>:<ai epoch>:<nonce>``. Reissued when expiring,
-        when the CA settings change and with every new AI access epoch."""
+        when the CA settings change and with every new AI access epoch.
+
+        Review c78fd19 R13-11: a renewal replaced the certificate another
+        client had just been offered, so that client's sign request failed
+        and asked again (one more certificate each time). Listing
+        (``issue``) offers the newest; signing accepts every certificate
+        this agent issued that is still valid under the current settings."""
         if not isinstance(ca_key, paramiko.Ed25519Key):
             logger.warning("ssh-agent: SSH CA entry %s needs an Ed25519 key", entry["id"])
-            return None
+            return []
         try:
             ttl = ssh_cert.ttl_minutes(credentials.cert_ttl_minutes)
             source = ssh_cert.source_addresses(credentials.source_address)
         except ssh_cert.CertificateConfigError as exc:
             logger.warning("ssh-agent: SSH CA entry %s: %s", entry["id"], exc)
-            return None
+            return []
         epoch = ai_access.read_state(self._vault).epoch
         settings = (ca_key.asbytes(), credentials.username, ttl, source, epoch)
         now = int(time.time())
-        cached = self._certs.get(entry["id"])
-        if cached is not None and cached[0] == settings and (
-            cached[2].valid_before - now > (0 if not issue else CERT_RENEW_SECONDS)
-        ):
-            _settings, ephemeral, certificate = cached
-        elif not issue:
-            return None
-        else:
-            ephemeral = EphemeralKey()
-            certificate = ssh_cert.sign_user_certificate(
-                ca_key,
-                ephemeral.public,
-                principals=[credentials.username],
-                key_id=f"sezam-ai:{entry['id']}:{epoch}:{os.urandom(8).hex()}",
-                valid_after=now - ssh_cert.CLOCK_SKEW,
-                valid_before=now + ttl * 60,
-                source_address=source,
-            )
-            self._certs[entry["id"]] = (settings, ephemeral, certificate)
-        return _Identity(path, entry, tier, credentials, ephemeral, certificate.blob, certificate)
+        issued = [
+            (ephemeral, certificate)
+            for kept, ephemeral, certificate in self._certs.get(entry["id"], [])
+            if kept == settings and certificate.valid_before > now
+        ]
+        self._certs[entry["id"]] = [(settings, e, c) for e, c in issued]
+
+        def identity(pair) -> _Identity:
+            ephemeral, certificate = pair
+            return _Identity(path, entry, tier, credentials, ephemeral, certificate.blob, certificate)
+
+        if not issue:
+            return [identity(pair) for pair in issued]
+        if issued and issued[-1][1].valid_before - now > CERT_RENEW_SECONDS:
+            return [identity(issued[-1])]
+        ephemeral = EphemeralKey()
+        certificate = ssh_cert.sign_user_certificate(
+            ca_key,
+            ephemeral.public,
+            principals=[credentials.username],
+            key_id=f"sezam-ai:{entry['id']}:{epoch}:{os.urandom(8).hex()}",
+            valid_after=now - ssh_cert.CLOCK_SKEW,
+            valid_before=now + ttl * 60,
+            source_address=source,
+        )
+        self._certs[entry["id"]].append((settings, ephemeral, certificate))
+        return [identity((ephemeral, certificate))]
 
     def _identities_answer(self) -> bytes:
         listed: dict[bytes, str] = {}
