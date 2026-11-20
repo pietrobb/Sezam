@@ -865,9 +865,25 @@ async def _sync_push(
                             continue
                     if not obj.is_deleted and (existing is None or existing[0] < obj.version):
                         if team_state is not None:
+                            regrant = False
+                            if (obj.parent_ref not in team_state.dek_index
+                                    and obj.target_user_id != user_id):
+                                # Review c78fd19 R13-10: a key outside the log
+                                # goes to another account only as a re-seal of
+                                # this sender's own earlier grant (identity
+                                # rotation sends it with a new id, the old
+                                # one's tombstone in the same batch).
+                                await cur.execute(
+                                    "SELECT 1 FROM vault_objects WHERE object_type = 'envelope' "
+                                    "AND parent_ref = %s AND target_user_id = %s "
+                                    "AND access_level = %s AND owner_id = %s LIMIT 1",
+                                    (obj.parent_ref, obj.target_user_id, obj.access_level,
+                                     user_id),
+                                )
+                                regrant = await cur.fetchone() is not None
                             refusal = team_log.envelope_refusal(
                                 team_state, user_id, obj.target_user_id, obj.parent_ref,
-                                envelope_acl_node, obj.access_level,
+                                envelope_acl_node, obj.access_level, regrant=regrant,
                             )
                             if refusal:
                                 conflicts.append(PushObjectResult(id=obj.id, error=refusal))

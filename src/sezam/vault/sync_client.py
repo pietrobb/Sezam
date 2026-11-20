@@ -51,7 +51,6 @@ from .sync_common import (
     key_rotation_message,
     KeyEpochStale,
     logger,
-    ORG_RECOVERY_SUPERSEDED,
     pull_warnings,
     RESEED_ARCHIVES_META,
     _rotated_account_name,
@@ -842,27 +841,22 @@ class SyncClient(
         recovery is not set up on this vault."""
         if not vault.org_recovery_configured() or not vault.db.get_meta("server_url"):
             return None
-        from .org_recovery_server import (
-            LOG_ADMIN_NOTE, OTHER_ADMIN_NOTE, SUPERSEDED_NOTE, _log_admin,
-            drop_superseded_setup, server_status, superseded_by,
-        )
+        from .org_recovery_server import LOG_ADMIN_NOTE, OTHER_ADMIN_NOTE, _log_admin, server_status, superseded_note
 
         status = server_status(vault)
         owner = status.get("created_by") if status.get("configured") else None
         if owner and owner != vault.db.get_meta("user_id"):
             # Review 526419e S3: a registration (or '--replace') only gets a 409.
             return LOG_ADMIN_NOTE if _log_admin(vault) else OTHER_ADMIN_NOTE
-        if superseded_by(vault.db, status):
-            drop_superseded_setup(vault.db)  # review c78fd19 R13-10
-            return SUPERSEDED_NOTE
+        if note := superseded_note(vault.db, status):  # review c78fd19 R13-10
+            return note
         try:
             if cls.register_org_recovery(vault, password):
                 return ("The server knows this vault's org recovery: after 'sezam "
                         "org-recovery' it accepts the new password without the old one.")
         except (RuntimeError, ValueError) as exc:
-            if server_error(exc, 409, ORG_RECOVERY_SUPERSEDED):
-                drop_superseded_setup(vault.db)
-                return SUPERSEDED_NOTE
+            if note := superseded_note(vault.db, exc=exc):
+                return note
             return (f"Warning: the server did not take this vault's org recovery ({exc}). "
                     "Run 'sezam org-recovery-setup --replace' and hand out the new shares.")
         if owner and not status.get("stale"):

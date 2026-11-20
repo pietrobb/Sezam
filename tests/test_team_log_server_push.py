@@ -245,3 +245,41 @@ async def test_keys_and_envelopes_the_log_does_not_name_are_refused(app_client, 
                     level="read")
     assert _errors(await _push(app_client, team, ADMIN, [outsider])) == [
         "team log gives this account no access to the key"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("level", ["read", "write"])
+async def test_a_key_outside_the_log_goes_to_another_account_only_as_a_reseal(app_client, mock_db, level):
+    """Review c78fd19 R13-10: with a log, another account gets a key only by access.set.
+
+    The server took an envelope on a folder outside every team folder, and for
+    level=write its write_acl, though every client ignores it.
+    """
+    team = Team(mock_db)
+    await _team_folder(app_client, team)
+    sk = team.sk[ADMIN]
+    folder, key = "01JN000000000000000000000E", "01JD000000000000000000000E"
+    resp = await _push(app_client, team, ADMIN, [
+        _obj(sk, folder, "node", _sealed(key)),
+        _obj(sk, key, "dek", b"wrapped own" * 8, parent=folder),
+    ])
+    assert resp.status_code == 200, resp.text
+    grant = _obj(sk, "01JV000000000000000000000E", "envelope", b"e" * 80, parent=key, target=BOB,
+                 level=level)
+    assert _errors(await _push(app_client, team, ADMIN, [grant])) == [
+        "team log: another account gets a key only with an access.set"]
+    assert not any(o["id"] == grant["id"] for o in mock_db._storage["vault_objects"])
+    assert (BOB, folder) not in _acl(mock_db)
+    # A grant from before the log, re-sealed (identity rotation: new id).
+    mock_db._storage["vault_objects"].append({
+        "id": "01JV000000000000000000000F", "object_type": "envelope", "parent_ref": key,
+        "target_user_id": BOB, "access_level": level, "owner_id": ADMIN, "version": 1,
+        "is_deleted": 0,
+    })
+    assert (await _push(app_client, team, ADMIN, [grant])).status_code == 200
+    # The same re-seal at another level is a new grant.
+    other = "write" if level == "read" else "read"
+    wider = _obj(sk, "01JV000000000000000000000G", "envelope", b"e" * 80, parent=key, target=BOB,
+                 level=other)
+    assert _errors(await _push(app_client, team, ADMIN, [wider])) == [
+        "team log: another account gets a key only with an access.set"]

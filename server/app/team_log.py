@@ -537,13 +537,22 @@ move_refusal = core.move_refusal
 
 def envelope_refusal(
     state: TeamState, user_id: str, target_id: str, dek_id: str,
-    folder: Optional[str], level: Optional[str],
+    folder: Optional[str], level: Optional[str], regrant: bool = False,
 ) -> Optional[str]:
-    """A live envelope giving ``target_id`` the key ``dek_id`` (§4.3.5)."""
+    """A live envelope giving ``target_id`` the key ``dek_id`` (§4.3.5).
+
+    Review c78fd19 R13-10: with a log, another account gets a key only by an
+    ``access.set`` (§9); every client ignores another account's envelope on a
+    key the log does not know, yet the server took it and its write_acl. Only
+    ``regrant`` (the target held this key at this level before the log: a
+    re-seal after the sender's identity rotation) stays possible.
+    """
     found = state.dek_index.get(dek_id)
     if found is None:
         if folder is not None and folder in state.folders:
             return "envelope for a key the team log does not know"
+        if target_id != user_id and not regrant:
+            return "team log: another account gets a key only with an access.set"
         return None
     key_folder, _ = found
     if not core.is_admin(state, user_id):

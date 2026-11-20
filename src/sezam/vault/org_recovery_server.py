@@ -111,6 +111,19 @@ def drop_superseded_setup(db) -> None:
         pending_states.clear_org_recovery_rewrap(db)
 
 
+def superseded_note(db, status: Optional[dict] = None, exc: Optional[BaseException] = None) -> Optional[str]:
+    """SUPERSEDED_NOTE after dropping this device's setup, when the server's
+    ``status`` or its refusal ``exc`` shows a newer one; else None."""
+    from .sync_common import ORG_RECOVERY_SUPERSEDED, server_error
+
+    if (status is not None and superseded_by(db, status)) or (
+        exc is not None and server_error(exc, 409, ORG_RECOVERY_SUPERSEDED)
+    ):
+        drop_superseded_setup(db)
+        return SUPERSEDED_NOTE
+    return None
+
+
 class OrgRecoveryNotReplaced(RuntimeError):
     """The server did not take a new recovery key; the old setup is kept."""
 

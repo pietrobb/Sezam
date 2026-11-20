@@ -86,9 +86,14 @@ def test_a_member_takes_no_key_the_log_does_not_know(team, monkeypatch):  # noqa
     _confirm_founder(admin, bob)
     side = admin.create_node("Side")
     assert admin_client.push()["conflicts"] == []
-    _lying_server(monkeypatch)
     key = admin.dek_mgr.get_dek_for_node(side)[0]
     envelope = admin.grant_folder_access(side, bob.db.get_meta("user_id"), bytes(bob.keypair.encryption_pk), "read")
+    # Review c78fd19 R13-10: the server refuses it too ...
+    assert [c["error"] for c in admin_client.push()["conflicts"]] == [
+        "team log: another account gets a key only with an access.set"]
+    # ... and a server that takes it anyway gives the member nothing.
+    _lying_server(monkeypatch)
+    monkeypatch.setattr(server_team_log, "envelope_refusal", lambda *_a, **_k: None)
     assert admin_client.push()["conflicts"] == []
     assert key not in admin_client.team_state().dek_index
 
