@@ -75,8 +75,46 @@ _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 
 def pipe_client_sid(handle) -> Optional[str]:
-    """String SID of the user whose process is connected to a server pipe
-    instance; None if that cannot be told (the process already gone)."""
+    """String SID of the user connected to a server pipe instance; None if
+    that cannot be told.
+
+    Review c78fd19 R13-11: the SID came only from the client's process
+    (by PID), which a non-elevated owner usually may not open for another
+    user's process, so a group member counted as "unknown" and escaped the
+    per-user limit. The pipe's own impersonation token names the connecting
+    user without opening any process; the PID is the fallback (a client
+    that allowed only anonymous impersonation)."""
+    sid = _impersonated_sid(handle)
+    return sid if sid is not None else _client_process_sid(handle)
+
+
+def _impersonated_sid(handle) -> Optional[str]:
+    k = load_kernel32()
+    a = ctypes.WinDLL("advapi32", use_last_error=True)
+    a.ImpersonateNamedPipeClient.argtypes = [wt.HANDLE]
+    a.OpenThreadToken.argtypes = [wt.HANDLE, wt.DWORD, wt.BOOL, ctypes.POINTER(wt.HANDLE)]
+    k.GetCurrentThread.restype = wt.HANDLE
+    if not a.ImpersonateNamedPipeClient(handle):
+        return None
+    token = wt.HANDLE()
+    try:
+        # OpenAsSelf: open the token with this process's own rights.
+        opened = a.OpenThreadToken(k.GetCurrentThread(), _TOKEN_QUERY, True, ctypes.byref(token))
+    finally:
+        if not a.RevertToSelf():
+            # Never keep serving under the client's identity.
+            raise SystemExit("RevertToSelf failed after pipe client impersonation")
+    if not opened:
+        return None
+    try:
+        return _token_user_sid(k, token)
+    except OSError:
+        return None
+    finally:
+        k.CloseHandle(token)
+
+
+def _client_process_sid(handle) -> Optional[str]:
     k = load_kernel32()
     k.GetNamedPipeClientProcessId.argtypes = [wt.HANDLE, ctypes.POINTER(wt.ULONG)]
     k.OpenProcess.restype = wt.HANDLE
@@ -104,32 +142,34 @@ def current_user_sid() -> str:
 def _process_user_sid(k, process) -> str:
     a = ctypes.WinDLL("advapi32", use_last_error=True)
     a.OpenProcessToken.argtypes = [wt.HANDLE, wt.DWORD, ctypes.POINTER(wt.HANDLE)]
-    a.GetTokenInformation.argtypes = [
-        wt.HANDLE, ctypes.c_int, wt.LPVOID, wt.DWORD, ctypes.POINTER(wt.DWORD),
-    ]
-    a.ConvertSidToStringSidW.argtypes = [wt.LPVOID, ctypes.POINTER(wt.LPWSTR)]
-
     token = wt.HANDLE()
     if not a.OpenProcessToken(process, _TOKEN_QUERY, ctypes.byref(token)):
         raise ctypes.WinError(ctypes.get_last_error())
     try:
-        needed = wt.DWORD(0)
-        a.GetTokenInformation(token, _TOKEN_USER_CLASS, None, 0, ctypes.byref(needed))
-        buf = ctypes.create_string_buffer(needed.value)
-        if not a.GetTokenInformation(
-            token, _TOKEN_USER_CLASS, buf, needed, ctypes.byref(needed)
-        ):
-            raise ctypes.WinError(ctypes.get_last_error())
-        psid = ctypes.cast(buf, ctypes.POINTER(wt.LPVOID))[0]  # TOKEN_USER.User.Sid
-        sid_str = wt.LPWSTR()
-        if not a.ConvertSidToStringSidW(psid, ctypes.byref(sid_str)):
-            raise ctypes.WinError(ctypes.get_last_error())
-        try:
-            return sid_str.value
-        finally:
-            k.LocalFree(ctypes.cast(sid_str, wt.HLOCAL))
+        return _token_user_sid(k, token)
     finally:
         k.CloseHandle(token)
+
+
+def _token_user_sid(k, token) -> str:
+    a = ctypes.WinDLL("advapi32", use_last_error=True)
+    a.GetTokenInformation.argtypes = [
+        wt.HANDLE, ctypes.c_int, wt.LPVOID, wt.DWORD, ctypes.POINTER(wt.DWORD),
+    ]
+    a.ConvertSidToStringSidW.argtypes = [wt.LPVOID, ctypes.POINTER(wt.LPWSTR)]
+    needed = wt.DWORD(0)
+    a.GetTokenInformation(token, _TOKEN_USER_CLASS, None, 0, ctypes.byref(needed))
+    buf = ctypes.create_string_buffer(needed.value)
+    if not a.GetTokenInformation(token, _TOKEN_USER_CLASS, buf, needed, ctypes.byref(needed)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    psid = ctypes.cast(buf, ctypes.POINTER(wt.LPVOID))[0]  # TOKEN_USER.User.Sid
+    sid_str = wt.LPWSTR()
+    if not a.ConvertSidToStringSidW(psid, ctypes.byref(sid_str)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        return sid_str.value
+    finally:
+        k.LocalFree(ctypes.cast(sid_str, wt.HLOCAL))
 
 
 def group_sid(name: str) -> str:

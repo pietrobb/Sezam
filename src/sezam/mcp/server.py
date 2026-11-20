@@ -24,7 +24,13 @@ from typing import Optional
 from ..vault.crud import Vault
 from .approval import ApprovalManager
 from .broker import MCPBroker, MCPError
-from .control import ACCEPT_BACKOFF_MAX, Admission, bind_unix_socket, serve_listener
+from .control import (
+    ACCEPT_BACKOFF_MAX,
+    UNIDENTIFIED,
+    Admission,
+    bind_unix_socket,
+    serve_listener,
+)
 
 # Review 1141a20 H7: bounds of the MCP endpoint (see _new_admission).
 MCP_MAX_CONNECTIONS = 64
@@ -718,16 +724,23 @@ class SezamMCPServer:
     def _start_pipe_client(self, kernel32, handle, buffer_size: int, admission, group) -> None:
         from . import winpipe
 
-        peer = winpipe.pipe_client_sid(handle) if group else None
-        slot = admission.admit(peer, lambda: None)
+        # Review c78fd19 R13-11: the client's user is known only after its
+        # first data (see control.UNIDENTIFIED); a client whose user cannot
+        # be told is then refused instead of escaping the per-user limit.
+        slot = admission.admit(UNIDENTIFIED if group else None, lambda: None)
         if slot is None:
             kernel32.DisconnectNamedPipe(handle)
             kernel32.CloseHandle(handle)
             return
 
+        def identify() -> bool:
+            return admission.identify(slot, winpipe.pipe_client_sid(handle))
+
         def run() -> None:
             try:
-                self._serve_pipe_client(kernel32, handle, buffer_size)
+                self._serve_pipe_client(
+                    kernel32, handle, buffer_size, identify if group else None
+                )
             finally:
                 admission.release(slot)
 
@@ -749,10 +762,10 @@ class SezamMCPServer:
             MCP_MAX_CONNECTIONS, MCP_MAX_PEER_CONNECTIONS if group else None, evict=False
         )
 
-    def _serve_pipe_client(self, kernel32, pipe_handle, buffer_size: int) -> None:
+    def _serve_pipe_client(self, kernel32, pipe_handle, buffer_size: int, identify=None) -> None:
         logger.info("MCP pipe client connected")
         try:
-            self._handle_pipe_connection(kernel32, pipe_handle, buffer_size)
+            self._handle_pipe_connection(kernel32, pipe_handle, buffer_size, identify)
         except Exception as e:
             logger.error("Error handling MCP pipe connection: %s", e)
         finally:
@@ -813,7 +826,9 @@ class SezamMCPServer:
             except (ConnectionResetError, BrokenPipeError):
                 break
 
-    def _handle_pipe_connection(self, kernel32, pipe_handle, buffer_size: int) -> None:
+    def _handle_pipe_connection(
+        self, kernel32, pipe_handle, buffer_size: int, identify=None
+    ) -> None:
         """Handle a single Windows named pipe connection."""
         import ctypes
         import ctypes.wintypes
@@ -833,6 +848,10 @@ class SezamMCPServer:
 
             if not success or bytes_read.value == 0:
                 break
+            if identify is not None:
+                if not identify():
+                    break
+                identify = None
 
             buffer += read_buf.raw[: bytes_read.value]
             if len(buffer) > MAX_LINE and b"\n" not in buffer:

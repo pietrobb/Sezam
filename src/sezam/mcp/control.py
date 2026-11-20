@@ -230,6 +230,13 @@ def _read_line(read: Callable[[int], bytes]) -> bytes:
     return data.split(b"\n", 1)[0][:MAX_MESSAGE]
 
 
+# Review c78fd19 R13-11: a Windows pipe names its client only once data was
+# read (ImpersonateNamedPipeClient), so a group pipe admits a connection
+# under this key (all such connections together get one user's bound) and
+# moves it to the real SID after the first read (Admission.identify).
+UNIDENTIFIED = "?unidentified"
+
+
 class _Slot:
     __slots__ = ("peer", "cut")
 
@@ -280,6 +287,26 @@ class Admission:
         if victim is not None:
             victim.cut()
         return slot
+
+    def identify(self, slot: _Slot, peer) -> bool:
+        """Move an admitted ``slot`` (admitted as UNIDENTIFIED) to the user
+        it turned out to be. False when that user cannot be told, the slot
+        was already cut, or (``evict`` False) the user is at ``per_peer``;
+        with ``evict`` the user's oldest connection is cut instead."""
+        victim = None
+        with self._lock:
+            if peer is None or slot not in self._open:
+                return False
+            mine = [s for s in self._open if s is not slot and s.peer == peer]
+            if self.per_peer is not None and len(mine) >= self.per_peer:
+                if not self.evict:
+                    return False
+                victim = mine[0]
+                self._open.remove(victim)
+            slot.peer = peer
+        if victim is not None:
+            victim.cut()
+        return True
 
     def release(self, slot: _Slot) -> None:
         with self._lock:
@@ -579,17 +606,19 @@ class OwnerOnlyServer:
         from . import winpipe
 
         k = self._kernel32
-        peer = winpipe.pipe_client_sid(handle) if self.group else None
         cut = threading.Event()
-        slot = self._admission.admit(peer, cut.set)
+        slot = self._admission.admit(UNIDENTIFIED if self.group else None, cut.set)
         if slot is None:
             k.DisconnectNamedPipe(handle)
             self._close_pipe(handle)
             return
 
+        def identify() -> bool:
+            return self._admission.identify(slot, winpipe.pipe_client_sid(handle))
+
         def run() -> None:
             try:
-                self._handle_pipe(handle, cut)
+                self._handle_pipe(handle, cut, identify if self.group else None)
             finally:
                 self._admission.release(slot)
 
@@ -602,7 +631,9 @@ class OwnerOnlyServer:
             logger.warning("%s: no thread for a connection; dropped", self.thread_name)
             time.sleep(0.05)
 
-    def _handle_pipe(self, handle, cut: threading.Event) -> None:
+    def _handle_pipe(
+        self, handle, cut: threading.Event, identify: Optional[Callable[[], bool]] = None
+    ) -> None:
         import ctypes
         import ctypes.wintypes as wt
 
@@ -612,6 +643,7 @@ class OwnerOnlyServer:
         buffer = ctypes.create_string_buffer(self.buffer_size)
         bounded = self.connection_deadline is not None or self.evict_oldest
         end = None if self.connection_deadline is None else time.monotonic() + self.connection_deadline
+        unidentified = [True] if identify is not None else []
 
         def wait_readable() -> int:
             """Bytes waiting; 0 once the connection is cut, past its
@@ -636,6 +668,12 @@ class OwnerOnlyServer:
                 handle, buffer, min(size, self.buffer_size), ctypes.byref(got), None
             ):
                 return b""
+            if unidentified and got.value:
+                # A client of unknown user is refused, over its user's bound
+                # refused or (evict) let in with that user's oldest cut.
+                if not identify():
+                    return b""
+                unidentified.clear()
             return buffer.raw[: got.value]
 
         def write(data: bytes) -> None:
