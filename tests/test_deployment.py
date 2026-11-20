@@ -506,7 +506,7 @@ def test_demo_setup_uses_configured_runtime_targets():
     assert "shlex.quote(DB_CONTAINER_NAME)" in source
     assert "$MARIADB_PASSWORD" in source
     assert "docker exec -i sezam-db" not in source
-    assert "centsezam.duckdns.org" not in source
+    assert "duck" + "dns" not in source.lower()
 
 
 def test_tracked_compose_is_self_contained_and_requires_secrets():

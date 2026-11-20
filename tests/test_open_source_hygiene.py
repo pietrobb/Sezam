@@ -53,6 +53,18 @@ _PLACEHOLDER_HOMES = {
     "public", "default", "name", "user", "username", "someone", "u", "ai-web", "runner", "alice", "bob",
 }
 _TOKEN = re.compile(r"[\w.@-]+")
+# Review 8bc70f7 #1: tests/test_deployment.py asserted the production host's
+# dynamic-DNS name was absent and so carried it. A name under a dynamic-DNS
+# provider is always someone's own machine. Assembled at run time.
+_DYNAMIC_DNS = re.compile(
+    rb"(?i)[a-z0-9-]+\.(?:" + b"|".join(
+        re.escape(p.encode()) for p in (
+            "duck" + "dns.org", "no-" + "ip.org", "no-" + "ip.com", "ddns" + ".net",
+            "dyn" + "u.net", "dyn" + "dns.org", "free" + "dns.afraid.org", "hopto" + ".org",
+            "zap" + "to.org", "sytes" + ".net", "ddns" + "free.com", "my" + "fritz.net",
+        )
+    ) + rb")"
+)
 
 
 def _tracked_files() -> list[str]:
@@ -119,12 +131,18 @@ def test_the_checks_catch_what_they_are_for():
     assert _public_ips(text) == {public.decode(), resolver.decode()}
     found = _home_paths(text)
     assert len(found) == 4 and all("jana" in path for path in found)  # Windows twice, Linux, macOS
+    host = b"jana-nas." + b"duck" + b"dns.org"
+    assert _dynamic_dns(b"server " + host + b" and sezam.example.org") == {host.decode()}
+
+
+def _dynamic_dns(data: bytes) -> set[str]:
+    return {m.group(0).decode(errors="replace") for m in _DYNAMIC_DNS.finditer(data)}
 
 
 def test_no_public_address_or_home_directory_in_tracked_files():
     hits = {}
     for name, data in _contents():
-        found = _public_ips(data) | _home_paths(data)
+        found = _public_ips(data) | _home_paths(data) | _dynamic_dns(data)
         if found:
             hits[name] = sorted(found)
     assert hits == {}
