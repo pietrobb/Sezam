@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -735,7 +735,7 @@ name = "importlib-metadata"
 version = "9.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp", marker = "python_full_version < '3.12'" },
+    { name = "zipp" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
 wheels = [
@@ -972,7 +972,7 @@ name = "pyasynchat"
 version = "1.0.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyasyncore", marker = "python_full_version >= '3.12'" },
+    { name = "pyasyncore" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ec/d2/b41df9021c12ca314146abcde7bdd3d9d37d44cc01559d7f13df459ee586/pyasynchat-1.0.5.tar.gz", hash = "sha256:36665473ae730dac51e6d7dad70f8295962120c830ab692f0a31efba32687e24", size = 9959, upload-time = "2026-01-05T20:05:27.712Z" }
 wheels = [
@@ -1174,18 +1174,19 @@ crypto = [
 
 [[package]]
 name = "pykeepass"
-version = "4.1.1.post1"
+version = "4.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "argon2-cffi" },
     { name = "construct" },
+    { name = "importlib-metadata" },
     { name = "lxml" },
     { name = "pycryptodomex" },
     { name = "pyotp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/29/1d/0e909a73eb95cc21b2048685f59d028d2bbac7b3365a2ac2cca6aad53de9/pykeepass-4.1.1.post1.tar.gz", hash = "sha256:28f4927454ebe507ef7294d3ec6b5a72ee3a5c97fcc21b1080b8ddc09f2097dd", size = 55429, upload-time = "2025-03-06T00:41:58.887Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/45/d15ca3aa282cd7aa3dd111303f62e9ca1dc19e5f09f5e69d08efb93613b9/pykeepass-4.2.0.tar.gz", hash = "sha256:0e40eabdac19a511a2be4e550984cbf01f1fd8ec9d9055456136fab266e5cc66", size = 56323, upload-time = "2026-08-09T21:22:58.173Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/04/6cf0687780c68e7fb0525e7210ec5477987c0481904f600c2e5d81bbb7dd/pykeepass-4.1.1.post1-py3-none-any.whl", hash = "sha256:4cfd54f376cb1f58dd8f11fbe7923282bc7dd97ffdf1bb622004a6e718bfe379", size = 55584, upload-time = "2025-03-06T00:41:57.201Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/13/e674e9f67ae0d49e6282d6396b4ecfb4c17e4c33245341ab6a709deb9671/pykeepass-4.2.0-py3-none-any.whl", hash = "sha256:8d6100788422eb8a43710b227fde873f7684d08bf0117eb43c8ae346644b086d", size = 56119, upload-time = "2026-08-09T21:22:56.732Z" },
 ]
 
 [[package]]
@@ -1531,7 +1532,7 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'dev'", specifier = "==2.12.5" },
     { name = "pyftpdlib", marker = "extra == 'dev'", specifier = "==2.2.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'dev'", specifier = "==2.15.1" },
-    { name = "pykeepass", marker = "extra == 'import'", specifier = "==4.1.1.post1" },
+    { name = "pykeepass", marker = "extra == 'import'", specifier = "==4.2.0" },
     { name = "pymysql", marker = "extra == 'dev'", specifier = "==1.2.0" },
     { name = "pynacl", specifier = "==1.6.2" },
     { name = "pyopenssl", marker = "extra == 'dev'", specifier = "==26.4.0" },
