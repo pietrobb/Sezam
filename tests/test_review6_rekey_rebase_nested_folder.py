@@ -15,7 +15,7 @@ import os
 
 import pytest
 
-from sezam.vault import pending_states
+from sezam.vault import oplock, pending_states
 from sezam import cli
 from sezam.crypto.aead import parse_envelope
 from sezam.models import bytes_to_ulid, new_ulid
@@ -62,7 +62,8 @@ def test_a_rebased_rekey_lands_over_a_renamed_subfolder(server, tmp_path, map_or
     if map_order == "child_first":
         batch = (pending_states.rekey_batch(laptop.db) or None)
         batch["dek_map"] = dict(reversed(list(batch["dek_map"].items())))
-        pending_states.set_rekey_batch(laptop.db, batch)
+        with oplock.exclusive(laptop.db.path):  # INV-6
+            pending_states.set_rekey_batch(laptop.db, batch)
     _client(laptop, url).push()
 
     assert pending_states.rekey_batch(laptop.db) == {}

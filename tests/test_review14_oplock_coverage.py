@@ -1,107 +1,102 @@
-"""Review 8bc70f7 #3: the member re-key lost the cross-process lock.
+"""Review 8bc70f7 #3 (H3): the member re-key lost the cross-process lock.
 
 3975939 moved ``@oplock.held`` from ``rekey_after_revocation`` to the new
 ``rekey_after_handover``. Two removals at once (GUI and CLI) then wrote their
 batches over each other; the folder stayed on a key the log does not know and
-every push conflicted. The behavioural test pins this method; the scan below
-pins the rule for every function, so the next move of a decorator fails here.
+every push conflicted.
 
-Rule: a public function of ``sezam.vault`` that writes a pending batch or a key
-change journal (directly, or through private helpers of its module) runs under
-``oplock.held`` or ``with oplock.exclusive(...)``.
+INV-6 (docs/ROOT_CAUSE_PLAN.md): the account-level state another process
+reads and rewrites - a re-key batch, a key change journal, the revocation
+queue, an org recovery body, the last key epoch the server took - is written
+only under the vault lock. The first fix scanned the source for callers of a
+hand-kept list of writer names; the list missed ``set_revocation_queue``, and
+every removal (revoke_member, the queued re-keys of a push, 'sezam
+abandon-rekey --queued') rewrote the queue unlocked. The rule is now checked
+where that state is written (``oplock.require`` in outbox and pending_states):
+any caller that forgets the lock fails on its first write, in every test that
+runs it, with no list of callers to keep.
 """
 
 from __future__ import annotations
 
-import ast
-from pathlib import Path
+import threading
 
 import pytest
 
-from sezam.vault import oplock
+from sezam.vault import oplock, outbox, pending_states
+from sezam.vault.crud import Vault
+from tests.test_integration_client_server import server  # noqa: F401
+from tests.test_rekey_rebase_review8 import _folder_shared_with_member
 from tests.test_review6_vault_oplock import PASSWORD, _hold_in_another_process, vault  # noqa: F401
 
-VAULT_SRC = Path(__file__).resolve().parents[1] / "src" / "sezam" / "vault"
-
-SINKS = {
-    "set_rekey_batch", "clear_rekey_batch", "set_key_change_journal",
-    "clear_key_change_journal", "set_org_recovery_registration",
-    "set_last_pushed_key_epoch", "rekey_folder",
-}
-
-# Public helpers whose every caller holds the lock (checked by hand, keep short).
-CALLERS_HOLD = {
-    # change_password (held) via _seal_identity_rotation; full_resync (held).
-    ("crud.py", "reseal_envelopes_for_rotation"),
-    # The sinks themselves.
-    ("pending_states.py", "set_rekey_batch"),
-}
-
-
-def _held(fn: ast.FunctionDef) -> bool:
-    for dec in fn.decorator_list:
-        if isinstance(dec, ast.Attribute) and dec.attr == "held":
-            return True
-    for node in ast.walk(fn):
-        if isinstance(node, ast.With):
-            for item in node.items:
-                call = item.context_expr
-                if isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) \
-                        and call.func.attr == "exclusive":
-                    return True
-    return False
-
-
-def _called(fn: ast.FunctionDef) -> set[str]:
-    names = set()
-    for node in ast.walk(fn):
-        if isinstance(node, ast.Call):
-            f = node.func
-            name = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", None)
-            if name:
-                names.add(name)
-    return names
-
-
-def unlocked_writers(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    defs: dict[str, list[ast.FunctionDef]] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            defs.setdefault(node.name, []).append(node)
-
-    def reaches(name: str, seen: frozenset) -> bool:
-        if name in SINKS:
-            return True
-        if name in seen or name not in defs or not name.startswith("_"):
-            return False  # a public callee is checked on its own
-        return any(
-            not _held(fn) and any(reaches(n, seen | {name}) for n in _called(fn))
-            for fn in defs[name]
+WRITES = {
+    "rekey batch": lambda db: pending_states.set_rekey_batch(db, {"object_ids": ["x"]}),
+    "rekey batch cleared": pending_states.clear_rekey_batch,
+    "key change journal": lambda db: pending_states.set_key_change_journal(db, {"epoch": 2}),
+    "key change journal cleared": pending_states.clear_key_change_journal,
+    "revocation queue": lambda db: pending_states.set_revocation_queue(db, ["M"]),
+    "org recovery registration": lambda db: pending_states.set_org_recovery_registration(db, {}),
+    "org recovery rewrap": lambda db: pending_states.set_org_recovery_rewrap(db, {}),
+    "last pushed key epoch": lambda db: pending_states.set_last_pushed_key_epoch(db, 3),
+    **{
+        f"outbox.{name}({kind})": (lambda name, kind: lambda db: getattr(outbox, name)(db, kind, "o"))(
+            name, kind
         )
-
-    found = []
-    for name, fns in defs.items():
-        if name.startswith("_") or (path.name, name) in CALLERS_HOLD:
-            continue
-        for fn in fns:
-            if not _held(fn) and any(reaches(n, frozenset({name})) for n in _called(fn)):
-                found.append(f"{path.name}:{fn.lineno} {name}")
-    return found
+        for kind in sorted(outbox.LOCKED)
+        for name in ("queue", "requeue", "refuse", "sent")
+    },
+}
 
 
-def test_every_public_batch_writer_holds_the_lock():
-    found = [hit for path in sorted(VAULT_SRC.glob("*.py")) for hit in unlocked_writers(path)]
-    assert found == []
+def _state(db) -> tuple:
+    return (
+        [tuple(r) for r in db.fetchall("SELECT kind, object_id, body, state FROM outbox ORDER BY seq")],
+        db.get_meta(pending_states.LAST_PUSHED_KEY_EPOCH),
+    )
 
 
-def test_the_scan_sees_the_3975939_regression(tmp_path):
-    src = (VAULT_SRC / "crud.py").read_text(encoding="utf-8")
-    marker = "    @oplock.held  # review 8bc70f7 #3"
-    assert marker in src
-    regressed = tmp_path / "crud.py"
-    regressed.write_text(src.replace(marker, "    # (decorator removed)"), encoding="utf-8")
-    assert any("rekey_after_revocation" in hit for hit in unlocked_writers(regressed))
+@pytest.mark.parametrize("what", sorted(WRITES))
+def test_pending_state_is_written_only_under_the_lock(vault, what):  # noqa: F811
+    before = _state(vault.db)
+    with pytest.raises(oplock.Unlocked):
+        WRITES[what](vault.db)
+    assert _state(vault.db) == before
+    with oplock.exclusive(vault.db.path):
+        WRITES[what](vault.db)
+
+
+def test_another_threads_hold_is_not_this_threads(vault):  # noqa: F811
+    held, release = threading.Event(), threading.Event()
+
+    def hold():
+        with oplock.exclusive(vault.db.path):
+            held.set()
+            release.wait(5)
+
+    t = threading.Thread(target=hold)
+    t.start()
+    held.wait(5)
+    try:
+        with pytest.raises(oplock.Unlocked):
+            pending_states.set_revocation_queue(vault.db, ["M"])
+    finally:
+        release.set()
+        t.join(5)
+
+
+def test_the_3975939_regression_fails_at_its_first_write(server, tmp_path, monkeypatch):  # noqa: F811
+    """3975939 itself: the member re-key without its decorator."""
+    url, db = server
+    laptop, phone, folder, _entry, old_dek, member_id = _folder_shared_with_member(url, tmp_path, db)
+    monkeypatch.setattr(Vault, "rekey_after_revocation", Vault.rekey_after_revocation.__wrapped__)
+    try:
+        with pytest.raises(oplock.Unlocked):
+            laptop.rekey_after_revocation(member_id)
+        assert pending_states.rekey_batch(laptop.db) == {}
+        assert laptop.db.fetchone("SELECT dek_id FROM nodes WHERE id = ?", (folder,))["dek_id"] == old_dek
+    finally:
+        laptop.lock()
+        phone.lock()
 
 
 def test_a_member_rekey_waits_for_another_process(vault, monkeypatch):  # noqa: F811
@@ -115,3 +110,15 @@ def test_a_member_rekey_waits_for_another_process(vault, monkeypatch):  # noqa: 
     finally:
         proc.wait(10)
     assert vault.rekey_after_revocation("01HZZZZZZZZZZZZZZZZZZZZZZZ") == 0
+
+
+def test_a_removal_waits_for_another_process(vault, monkeypatch):  # noqa: F811
+    from sezam.vault import revocation
+
+    monkeypatch.setattr(oplock, "DEFAULT_TIMEOUT", 0.3)
+    proc = _hold_in_another_process(vault.db.path, 3.0)
+    try:
+        with pytest.raises(oplock.VaultBusy):
+            revocation.revoke_member(vault, None, "01HZZZZZZZZZZZZZZZZZZZZZZZ")
+    finally:
+        proc.wait(10)

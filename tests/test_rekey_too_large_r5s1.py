@@ -17,7 +17,7 @@ import os
 import pytest
 from click.testing import CliRunner
 
-from sezam.vault import pending_states
+from sezam.vault import oplock, pending_states
 from sezam import cli
 from sezam.vault import crud
 from sezam.vault.revocation import finish_queued_revocations, queued_revocations
@@ -56,7 +56,8 @@ def test_too_large_member_rekey_is_refused_and_the_queue_goes_on(
 ):
     url, db = server
     admin, client, bob_id, carol_id, _big = _setup(url, db, tmp_path, monkeypatch)
-    pending_states.set_revocation_queue(admin.db, [bob_id, carol_id])
+    with oplock.exclusive(admin.db.path):  # INV-6
+        pending_states.set_revocation_queue(admin.db, [bob_id, carol_id])
 
     with pytest.raises(RuntimeError) as waiting:
         finish_queued_revocations(admin, client)

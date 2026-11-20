@@ -15,7 +15,7 @@ import time
 import pytest
 from click.testing import CliRunner
 
-from sezam.vault import pending_states
+from sezam.vault import oplock, pending_states
 from sezam import cli
 from sezam.vault.revocation import finish_queued_revocations, queued_revocations
 from tests.test_integration_client_server import (  # noqa: F401  (fixture)
@@ -30,7 +30,8 @@ def _queued_with_conflict_on_bob(url, db, tmp_path, monkeypatch):
     client = _client(admin, url)
     client.revoke_user(bob_id)
     client.revoke_user(carol_id)
-    pending_states.set_revocation_queue(admin.db, [bob_id, carol_id])
+    with oplock.exclusive(admin.db.path):  # INV-6
+        pending_states.set_revocation_queue(admin.db, [bob_id, carol_id])
     entry = admin.db.fetchone(  # in bob's folder (Ops)
         "SELECT e.id, e.version FROM entries e JOIN access_envelopes a ON a.dek_id = "
         "(SELECT dek_id FROM nodes WHERE id = e.node_id) WHERE a.user_id = ?", (bob_id,)

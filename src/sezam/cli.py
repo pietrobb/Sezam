@@ -2748,7 +2748,7 @@ def abandon_rekey(yes: bool, queued: bool):
     is dropped: those members keep the keys of folders they could open.
     """
     from .vault.rekey_abandon import abandon_pending_rekey
-    from .vault import pending_states
+    from .vault import oplock, pending_states
     from .vault.sync_client import SyncClient
 
     vault = _open_vault()
@@ -2765,7 +2765,10 @@ def abandon_rekey(yes: bool, queued: bool):
                     "folders they could open until those are re-keyed.",
                     abort=True,
                 )
-            pending_states.set_revocation_queue(vault.db, [])
+            with oplock.exclusive(vault.db.path):  # INV-6; only the members confirmed
+                pending_states.set_revocation_queue(vault.db, [
+                    u for u in pending_states.revocation_queue(vault.db) if u not in queue
+                ])
         finally:
             vault.lock()
         click.echo("Dropped the queued re-keys.")

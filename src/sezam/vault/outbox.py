@@ -28,7 +28,7 @@ device deleted it carries body ``{"revived": true}`` until it is sent.
 import json
 from typing import Any, Iterable, Optional
 
-from . import sync_core
+from . import oplock, sync_core
 
 WRITE = "write"
 ENVELOPE = "envelope"
@@ -47,6 +47,13 @@ REFUSED = "refused"
 HELD = "held"
 ONE = ""  # object_id of an operation this vault has at most one of
 REVIVED_BODY = '{"revived":true}'  # body of a write that brings a folder back
+# Account-level state written only under the vault lock (oplock.require, INV-6).
+LOCKED = frozenset({KEY_CHANGE, REKEY, REVOKE, ORG_RECOVERY})
+
+
+def _write(db: Any, kind: str) -> None:
+    if kind in LOCKED:
+        oplock.require(db)
 
 
 def _dump(value: Any) -> Optional[str]:
@@ -69,6 +76,7 @@ def has(db: Any, kind: str, object_id: str = ONE) -> bool:
 
 def put(db: Any, kind: str, value: Any = None, object_id: str = ONE, state: str = QUEUED) -> None:
     """Queue the operation; one already queued keeps its place, with this body."""
+    _write(db, kind)
     db.execute(
         "INSERT INTO outbox (kind, object_id, body, state) VALUES (?, ?, ?, ?) "
         "ON CONFLICT (kind, object_id) DO UPDATE SET body = excluded.body, state = excluded.state",
@@ -91,6 +99,7 @@ def replace_items(
     db: Any, kind: str, new: Iterable[tuple[Optional[str], Any]], state: str = QUEUED
 ) -> None:
     """The ``kind`` rows in ``state`` are ``new``, queued in that order."""
+    _write(db, kind)
     rows = [(kind, object_id, _dump(value), state) for object_id, value in new]
     with db.transaction():
         db.execute("DELETE FROM outbox WHERE kind = ? AND state = ?", (kind, state))
@@ -119,11 +128,13 @@ def parents_first(rows: list) -> list:
 
 
 def queue(db: Any, kind: str, object_id: str) -> None:
+    _write(db, kind)
     db.execute("INSERT OR IGNORE INTO outbox (kind, object_id) VALUES (?, ?)", (kind, object_id))
 
 
 def requeue(db: Any, kind: str, object_id: str) -> None:
     """Queued again whatever its state was (the server lost it)."""
+    _write(db, kind)
     db.execute(
         "INSERT INTO outbox (kind, object_id) VALUES (?, ?) "
         "ON CONFLICT (kind, object_id) DO UPDATE SET state = 'queued'",
@@ -132,6 +143,7 @@ def requeue(db: Any, kind: str, object_id: str) -> None:
 
 
 def refuse(db: Any, kind: str, object_id: str) -> None:
+    _write(db, kind)
     db.execute(
         "INSERT INTO outbox (kind, object_id, state) VALUES (?, ?, 'refused') "
         "ON CONFLICT (kind, object_id) DO UPDATE SET state = 'refused'",
@@ -141,6 +153,7 @@ def refuse(db: Any, kind: str, object_id: str) -> None:
 
 def sent(db: Any, kind: str, object_id: str) -> None:
     """The server holds it: nothing of it waits any more."""
+    _write(db, kind)
     db.execute("DELETE FROM outbox WHERE kind = ? AND object_id = ?", (kind, object_id))
 
 

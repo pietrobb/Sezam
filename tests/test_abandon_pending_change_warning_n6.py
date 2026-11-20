@@ -11,7 +11,7 @@ import os
 
 from click.testing import CliRunner
 
-from sezam.vault import pending_states
+from sezam.vault import oplock, pending_states
 from sezam import cli
 from sezam.vault import sync_client as sync_client_module
 from tests.test_grant_folder_access import team  # noqa: F401  (fixture)
@@ -28,7 +28,8 @@ def _stuck_bob(team, tmp_path, monkeypatch, *, identity: bool):  # noqa: F811
     bob.change_password(PASSWORD, BOB_NEW)
     if identity:
         journal = (pending_states.key_change_journal(bob.db) or None)
-        pending_states.set_key_change_journal(bob.db, {**journal, "identity": {}})
+        with oplock.exclusive(bob.db.path):  # INV-6
+            pending_states.set_key_change_journal(bob.db, {**journal, "identity": {}})
     bob.lock()
     monkeypatch.setattr(cli, "_open_vault", lambda: bob)
     monkeypatch.setattr(cli, "_load_session", lambda: None)

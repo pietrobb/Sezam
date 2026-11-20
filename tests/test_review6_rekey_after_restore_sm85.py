@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import copy
 
-from sezam.vault import pending_states, revocation
+from sezam.vault import oplock, pending_states, revocation
 from sezam.vault.rekey_abandon import abandon_pending_rekey
 from tests.test_integration_client_server import _client, server  # noqa: F401
 from tests.test_rekey_rebase_review8 import _assert_member_cut_off, _folder_shared_with_member
@@ -29,7 +29,8 @@ def test_queued_rekey_after_a_restore_waits_for_the_full_resync(server, tmp_path
     assert client.push()["conflicts"] == []
 
     assert laptop.rekey_after_revocation(member_id) == 1
-    pending_states.set_revocation_queue(laptop.db, [member_id])
+    with oplock.exclusive(laptop.db.path):  # INV-6
+        pending_states.set_revocation_queue(laptop.db, [member_id])
     _restore(db, backup)
 
     result = revocation.push_with_queued_revocations(laptop, client)

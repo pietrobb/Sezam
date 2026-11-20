@@ -20,7 +20,7 @@ from click.testing import CliRunner
 
 from sezam import cli
 from sezam.models import new_ulid
-from sezam.vault import outbox, pending_states
+from sezam.vault import oplock, outbox, pending_states
 from tests.test_ai_r1_snapshots import _cli_env
 from tests.test_integration_client_server import (  # noqa: F401  (fixture)
     PASSWORD,
@@ -94,7 +94,8 @@ def _build(url, db, tmp_path, combo) -> str:
     if "rekey" in combo:
         assert laptop.rekey_after_revocation(first) == 1
     if "queued_revocations" in combo:
-        pending_states.set_revocation_queue(laptop.db, [second])
+        with oplock.exclusive(laptop.db.path):  # INV-6
+            pending_states.set_revocation_queue(laptop.db, [second])
     laptop.lock()
     return password
 

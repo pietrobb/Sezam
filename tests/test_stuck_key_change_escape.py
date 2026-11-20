@@ -21,7 +21,7 @@ import os
 import pytest
 from click.testing import CliRunner
 
-from sezam.vault import pending_states
+from sezam.vault import oplock, pending_states
 from sezam import cli
 from sezam.vault import sync_client as sync_client_module
 from sezam.vault.crud import Vault
@@ -120,7 +120,8 @@ def test_b_missing_journal_points_to_abandon_not_change_password(team, tmp_path)
     bob, client = _bob(team, tmp_path)
     try:
         bob.change_password(PASSWORD, BOB_NEW)
-        pending_states.clear_key_change_journal(bob.db)
+        with oplock.exclusive(bob.db.path):  # INV-6
+            pending_states.clear_key_change_journal(bob.db)
         with pytest.raises(RuntimeError, match="abandon-pending-change") as exc:
             client.push()
         assert "change-password" not in str(exc.value)

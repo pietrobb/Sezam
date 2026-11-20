@@ -13,6 +13,7 @@ import re
 
 import pytest
 
+from sezam.vault import oplock
 from sezam.vault import pending_states as ps
 from tests.test_integration_client_server import _vault
 
@@ -22,6 +23,11 @@ NO_DROP = (ps.ABANDON_REKEY, ps.ABANDON_QUEUED, ps.ABANDON_KEY_CHANGE)
 
 
 def _set(db, state: str) -> None:
+    with oplock.exclusive(db.path):  # INV-6: an earlier session left the state
+        _seed(db, state)
+
+
+def _seed(db, state: str) -> None:
     if state in ("epoch", "journal", "journal_rewraps", "identity_rewraps", "identity_plain"):
         db.set_meta("key_epoch", "2")
         ps.set_last_pushed_key_epoch(db, 1)
@@ -152,7 +158,8 @@ def test_rotate_identity_is_refused_offline_during_a_rekey(make_db):
 ])
 def test_status_names_a_way_out_of_every_state(make_db, kind, setup):
     vault = make_db("none", True)
-    setup(vault.db)
+    with oplock.exclusive(vault.db.path):
+        setup(vault.db)
     listed = {state.key: state for state in ps.pending_states(vault)}
     assert kind in listed, listed
     assert "'sezam " in listed[kind].resolve

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 if TYPE_CHECKING:
     from .crud import Vault
 
-from . import outbox
+from . import oplock, outbox
 
 # The server's key_epoch as of the last key-change push it took; the local
 # key_epoch above it is a password/identity change the server lacks.
@@ -31,6 +31,7 @@ def last_pushed_key_epoch(db) -> int:
 
 
 def set_last_pushed_key_epoch(db, epoch: int | str) -> None:
+    oplock.require(db)
     db.set_meta(LAST_PUSHED_KEY_EPOCH, str(epoch))
 
 

@@ -202,6 +202,7 @@ def queued_revocations(vault: Vault) -> list[str]:
     return pending_states.revocation_queue(vault.db)
 
 
+@oplock.held  # INV-6: writes the revocation queue (oplock.require)
 def queue_revoked_holders(vault: Vault, client: SyncClient) -> None:
     """Queue the re-key of members revoked elsewhere whose envelopes this device holds.
 
@@ -274,6 +275,7 @@ def _rekey_due(vault: Vault, team, me: str, user_id: str) -> bool:
     return sync_core.call("rekey_due", team=sync_core.team_input(team, me), keys=keys)
 
 
+@oplock.held  # INV-6: writes the revocation queue (oplock.require)
 def finish_queued_revocations(vault: Vault, client: SyncClient) -> dict[str, int]:
     """Re-key and send the folders of every queued member, one batch at a time.
 
@@ -367,6 +369,7 @@ def finish_queued_revocations(vault: Vault, client: SyncClient) -> dict[str, int
     return done
 
 
+@oplock.held  # INV-6: writes the revocation queue (oplock.require)
 def finish_queued_into(
     vault: Vault, client: SyncClient, rekeyed: dict[str, int], blocked: dict[str, list[str]],
     too_large: Optional[dict[str, str]] = None,
@@ -396,6 +399,7 @@ def finish_queued_into(
         too_large.update(exc.too_large)
 
 
+@oplock.held  # INV-6: writes the revocation queue (oplock.require)
 def finish_handover_rekeys(vault: Vault, client: SyncClient) -> dict[str, int]:
     """Admin: re-key the folders a former admin still holds only as admin.
 
@@ -429,6 +433,7 @@ def finish_handover_rekeys(vault: Vault, client: SyncClient) -> dict[str, int]:
     return done
 
 
+@oplock.held  # INV-6: writes the revocation queue (oplock.require)
 def push_with_queued_revocations(vault: Vault, client: SyncClient) -> dict:
     """A push that also finishes the revocation queue, as 'sezam push' does
     (review 526419e S4: the GUI never did), and the re-key after an admin
@@ -455,6 +460,7 @@ def blocked_message(user_id: str, object_ids: list[str]) -> str:
     )
 
 
+@oplock.held  # INV-6: writes the revocation queue (oplock.require)
 def revoke_member(vault: Vault, client: Optional[SyncClient], user_id: str) -> int:
     """Revoke ``user_id`` on the server, then re-key the folders they could open.
 

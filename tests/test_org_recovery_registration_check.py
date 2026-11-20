@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 
-from sezam.vault import pending_states
+from sezam.vault import oplock, pending_states
 from sezam import cli
 from sezam.vault.crud import Vault
 from sezam.vault.sync_client import SyncClient
@@ -64,7 +64,8 @@ def test_push_warns_about_a_recovery_set_up_before_the_server_knew_keys(
     url, db = server
     vault = _connected(url, tmp_path / "laptop")
     # What a setup before f7f43cc left: no registration body, nothing on the server.
-    vault._drop_pending_org_recovery_registration()
+    with oplock.exclusive(vault.db.path):  # INV-6
+        vault._drop_pending_org_recovery_registration()
     vault.lock()
 
     result = _cli(tmp_path / "laptop", monkeypatch, ["push"])

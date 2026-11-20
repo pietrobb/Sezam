@@ -15,7 +15,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from sezam.vault import pending_states
+from sezam.vault import oplock, pending_states
 from sezam import cli
 from sezam.vault.crud import Vault
 from sezam.vault.sync_client import SyncClient
@@ -82,7 +82,8 @@ def test_connect_warns_when_the_server_cannot_learn_the_recovery(server, tmp_pat
     try:
         laptop.setup_org_recovery(threshold=2, shares=3)
         # Path B: the vault takes the account KEK, the setup's body is void.
-        laptop._drop_pending_org_recovery_registration()
+        with oplock.exclusive(laptop.db.path):  # INV-6
+            laptop._drop_pending_org_recovery_registration()
         cli._server_connect_flow(url, laptop, PASSWORD)
         message = SyncClient.org_recovery_after_connect(laptop, PASSWORD)
     finally:

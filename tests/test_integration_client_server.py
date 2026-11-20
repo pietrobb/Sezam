@@ -18,7 +18,7 @@ import pytest
 import uvicorn
 from nacl.signing import SigningKey
 
-from sezam.vault import pending_states
+from sezam.vault import oplock, pending_states
 from sezam import cli
 from sezam.crypto.aead import parse_envelope
 from sezam.crypto.kdf import Argon2Params
@@ -581,12 +581,14 @@ def test_full_resync_refuses_an_unpushed_password_change(server, tmp_path):
     client = _client(laptop, url)
     journal = (pending_states.key_change_journal(laptop.db) or None)
     without_old_kek = {k: v for k, v in journal.items() if k != "old_kek"}
-    pending_states.set_key_change_journal(laptop.db, without_old_kek)
+    with oplock.exclusive(laptop.db.path):  # INV-6
+        pending_states.set_key_change_journal(laptop.db, without_old_kek)
     deks_before = laptop.db.fetchall("SELECT id, encrypted_dek, version FROM deks")
     with pytest.raises(RuntimeError, match="password change the server has not received"):
         client.full_resync(confirmed=True)
     assert laptop.db.fetchall("SELECT id, encrypted_dek, version FROM deks") == deks_before
-    pending_states.set_key_change_journal(laptop.db, journal)
+    with oplock.exclusive(laptop.db.path):  # INV-6
+        pending_states.set_key_change_journal(laptop.db, journal)
 
     assert client.full_resync(confirmed=True)["full_resync"]
     assert (pending_states.key_change_journal(laptop.db) or None)
@@ -607,7 +609,8 @@ def test_full_resync_refuses_an_unpushed_member_rekey(server, tmp_path):
     url, _db = server
     laptop = _vault(tmp_path / "laptop", "admin")
     cli._server_connect_flow(url, laptop, PASSWORD)
-    pending_states.set_rekey_batch(laptop.db, {"object_ids": ["x"]})
+    with oplock.exclusive(laptop.db.path):  # INV-6
+        pending_states.set_rekey_batch(laptop.db, {"object_ids": ["x"]})
     with pytest.raises(RuntimeError, match="re-key the server has not received"):
         _client(laptop, url).full_resync(confirmed=True)
     laptop.lock()
@@ -624,7 +627,8 @@ def test_cli_pull_full_resync_is_refused_before_the_prompt(server, tmp_path, mon
     laptop.unlock(NEW_PASSWORD)
     # A change that cannot re-wrap the server's DEKs (no old KEK in its journal).
     journal = (pending_states.key_change_journal(laptop.db) or None)
-    pending_states.set_key_change_journal(laptop.db, {k: v for k, v in journal.items() if k != "old_kek"})
+    with oplock.exclusive(laptop.db.path):  # INV-6
+        pending_states.set_key_change_journal(laptop.db, {k: v for k, v in journal.items() if k != "old_kek"})
     monkeypatch.setattr(cli, "_open_vault", lambda: laptop)
     monkeypatch.setattr(cli, "_unlock_vault", lambda vault: None)
     monkeypatch.setattr(laptop, "lock", lambda: None)

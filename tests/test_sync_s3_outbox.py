@@ -12,7 +12,7 @@ from __future__ import annotations
 import sqlite3
 
 from sezam import cli
-from sezam.vault import outbox, pending_states
+from sezam.vault import oplock, outbox, pending_states
 from sezam.vault.db import VaultDB
 from tests.test_integration_client_server import (  # noqa: F401  (fixture)
     PASSWORD,
@@ -290,9 +290,11 @@ def test_a_key_change_waits_as_an_outbox_row_until_its_push(server, tmp_path):  
 
 def test_revocations_and_team_changes_keep_queue_order(tmp_path):
     vault = _vault(tmp_path / "laptop", "admin")
-    pending_states.set_revocation_queue(vault.db, ["carol", "bob", "dave"])
+    with oplock.exclusive(vault.db.path):  # INV-6
+        pending_states.set_revocation_queue(vault.db, ["carol", "bob", "dave"])
     assert pending_states.revocation_queue(vault.db) == ["carol", "bob", "dave"]
-    pending_states.set_revocation_queue(vault.db, ["bob", "dave"])
+    with oplock.exclusive(vault.db.path):  # INV-6
+        pending_states.set_revocation_queue(vault.db, ["bob", "dave"])
     assert pending_states.revocation_queue(vault.db) == ["bob", "dave"]
 
     from sezam.vault.team_log_local import (

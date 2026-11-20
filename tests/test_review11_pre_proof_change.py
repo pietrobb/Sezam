@@ -13,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from sezam import cli
-from sezam.vault import pending_states
+from sezam.vault import oplock, pending_states
 from tests.test_grant_folder_access import team  # noqa: F401  (fixture)
 from tests.test_integration_client_server import PASSWORD
 from tests.test_integration_client_server import server  # noqa: F401  (fixture)
@@ -27,7 +27,8 @@ def _older_versions_change(bob) -> None:
     bob.change_password(PASSWORD, BOB_NEW)
     journal = pending_states.key_change_journal(bob.db)
     journal.pop("current_auth_proof")
-    pending_states.set_key_change_journal(bob.db, journal)
+    with oplock.exclusive(bob.db.path):  # INV-6
+        pending_states.set_key_change_journal(bob.db, journal)
 
 
 def _server_takes(url, via, password) -> bool:

@@ -817,22 +817,23 @@ class SyncClient(
         (review e4cd15a #1). False when the vault is not connected; raises
         ValueError for a wrong password, RuntimeError when the server refuses.
         ``replace_other_admin`` replaces another admin's recovery (review 526419e S3)."""
-        server_url = vault.db.get_meta("server_url")
-        user_id = vault.db.get_meta("user_id")
-        body = pending_states.org_recovery_registration(vault.db)
-        if not server_url or not user_id or body is None:
-            return False
-        if replace_other_admin:
-            body = {**body, "replace_other_admin": True}
-        proof = vault.current_auth_proof(password)
-        try:
-            client = cls(vault.db, server_url, vault.keypair, user_id)
-            client.set_dek_manager(vault.dek_mgr)
-            client.store_org_recovery(body, proof)
-        finally:
-            proof[:] = b"\x00" * len(proof)
-        pending_states.clear_org_recovery_registration(vault.db)
-        return True
+        with oplock.exclusive(vault.db.path):  # INV-6: the body sent is the one cleared
+            server_url = vault.db.get_meta("server_url")
+            user_id = vault.db.get_meta("user_id")
+            body = pending_states.org_recovery_registration(vault.db)
+            if not server_url or not user_id or body is None:
+                return False
+            if replace_other_admin:
+                body = {**body, "replace_other_admin": True}
+            proof = vault.current_auth_proof(password)
+            try:
+                client = cls(vault.db, server_url, vault.keypair, user_id)
+                client.set_dek_manager(vault.dek_mgr)
+                client.store_org_recovery(body, proof)
+            finally:
+                proof[:] = b"\x00" * len(proof)
+            pending_states.clear_org_recovery_registration(vault.db)
+            return True
 
     @classmethod
     def org_recovery_after_connect(cls, vault: "Vault", password: str) -> Optional[str]:

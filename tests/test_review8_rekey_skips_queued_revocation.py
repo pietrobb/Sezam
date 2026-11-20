@@ -12,7 +12,7 @@ A member in the queue is now never sealed a new key, whatever the server says.
 from __future__ import annotations
 
 from sezam.models import new_ulid
-from sezam.vault import pending_states
+from sezam.vault import oplock, pending_states
 from tests.test_integration_client_server import server  # noqa: F401
 from tests.test_rekey_rebase_review8 import _folder_shared_with_member
 from tests.test_review7_rekey_seals_only_trusted_holders_h2 import _grant, _pin
@@ -28,7 +28,8 @@ def test_a_rekey_does_not_seal_the_new_key_to_a_member_queued_for_removal(
     for user_id in (carol, dave):
         _pin(laptop, user_id)
         _grant(laptop, old_dek, user_id, own)
-    pending_states.set_revocation_queue(laptop.db, [carol])
+    with oplock.exclusive(laptop.db.path):  # INV-6
+        pending_states.set_revocation_queue(laptop.db, [carol])
 
     assert laptop.rekey_after_revocation(member_id) == 1
 

@@ -117,7 +117,7 @@ def drop_superseded_setup(db) -> None:
 
     pk = db.get_meta("org_recovery_signing_pk")
     wrap = db.get_meta_json("org_recovery_server_wrap") or {}
-    with db.transaction(immediate=True):
+    with oplock.exclusive(db.path), db.transaction(immediate=True):  # INV-6
         rest = [
             change for change in queued_changes(db)
             if not (change[0] == "org.recovery" and change[1].get("recovery_pk") == pk)

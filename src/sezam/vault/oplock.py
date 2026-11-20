@@ -29,7 +29,7 @@ class VaultBusy(RuntimeError):
 
 _BUSY = "Another Sezam program is syncing or changing the vault keys; try again shortly."
 _guard = threading.Lock()
-_slots: dict[str, list] = {}  # lock path → [RLock, depth, fd]
+_slots: dict[str, list] = {}  # lock path → [RLock, depth, fd, owner thread]
 
 
 def lock_path(db_path: str | Path) -> Path:
@@ -37,25 +37,56 @@ def lock_path(db_path: str | Path) -> Path:
     return db_path.with_name(db_path.name + ".sync")
 
 
+def _key(db_path: str | Path) -> str:
+    return os.path.normcase(str(lock_path(db_path).resolve()))
+
+
+class Unlocked(RuntimeError):
+    """A pending batch, key change or revocation queue written without the lock."""
+
+
+def held_here(db_path: str | Path) -> bool:
+    """This thread holds the lock of ``db_path``."""
+    slot = _slots.get(_key(db_path))
+    return slot is not None and slot[1] > 0 and slot[3] == threading.get_ident()
+
+
+def require(db) -> None:
+    """INV-6 (docs/ROOT_CAUSE_PLAN.md, review 8bc70f7 H3): the account-level
+    state another process reads and rewrites (a re-key batch, a key change
+    journal, the revocation queue, an org recovery body, the last key epoch
+    the server took) is written only under the vault lock. Checked where it
+    is written, so a caller that forgets the lock fails on its first write
+    instead of a hand-kept list of callers missing it. A database without a
+    file (a test double), like ``held``, has no other process to order."""
+    path = getattr(db, "path", None)
+    if path is not None and not held_here(path):
+        raise Unlocked(
+            "Internal error: the vault's pending sync state was about to be changed "
+            "without the vault lock; nothing was changed."
+        )
+
+
 @contextmanager
 def exclusive(db_path: str | Path, *, timeout: Optional[float] = None) -> Iterator[None]:
     timeout = DEFAULT_TIMEOUT if timeout is None else timeout
     path = lock_path(db_path)
-    key = os.path.normcase(str(path.resolve()))
+    key = _key(db_path)
     with _guard:
-        slot = _slots.setdefault(key, [threading.RLock(), 0, None])
+        slot = _slots.setdefault(key, [threading.RLock(), 0, None, None])
     if not slot[0].acquire(timeout=timeout):
         raise VaultBusy(_BUSY)
     try:
         if slot[1] == 0:
             slot[2] = _take(path, timeout)
+            slot[3] = threading.get_ident()
         slot[1] += 1
         try:
             yield
         finally:
             slot[1] -= 1
             if slot[1] == 0:
-                fd, slot[2] = slot[2], None
+                fd, slot[2], slot[3] = slot[2], None, None
                 if fd is not None:
                     try:
                         _unlock(fd)
