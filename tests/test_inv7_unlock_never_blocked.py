@@ -128,6 +128,67 @@ def test_the_vault_opens_and_only_the_team_waits(tmp_path, state):
     assert vault.get_field_value(entry, "password") == "keep-me"
 
 
+def _personal_mutations(vault) -> dict:
+    """Every personal write the vault offers, each run on its own (capability
+    run 403: one sampled create left a move and a tier-2 create blocked)."""
+    mine = _mine(vault)
+    held = {}
+
+    def folder(name):
+        return vault.create_node(name, parent_id=mine)
+
+    def entry(tier=None):
+        node = held.setdefault("a", folder("a"))
+        return vault.create_entry(node, "e", [{"key": "password", "value": "v"}], tier=tier)
+
+    def other():
+        return held.setdefault("b", folder("b"))
+
+    return {
+        "create_node": lambda: folder("made"),
+        "create_entry_tier1": lambda: entry(),
+        "create_entry_tier2": lambda: entry(tier=2),
+        "update_entry": lambda: vault.update_entry(entry(), fields=[{"key": "password", "value": "w"}]),
+        "update_entry_to_tier2": lambda: vault.update_entry(entry(), tier=2),
+        "rename_node": lambda: vault.rename_node(folder("old"), "new"),
+        "move_entry_tier1": lambda: vault.move_entry(entry(), other()),
+        "move_entry_tier2": lambda: vault.move_entry(entry(tier=2), other()),
+        "move_node": lambda: vault.move_node(vault.create_node("c", parent_id=folder("p")), other()),
+        "move_node_holding_tier2": lambda: (
+            lambda c: (vault.create_entry(c, "t2", [{"key": "k", "value": "v"}], tier=2),
+                       vault.move_node(c, other()))
+        )(vault.create_node("c2", parent_id=folder("p2"))),
+        "delete_entry": lambda: vault.delete_entry(entry()),
+        "delete_node": lambda: vault.delete_node(folder("gone")),
+    }
+
+
+@pytest.mark.parametrize("state", STATES)
+def test_every_personal_write_goes_on_while_the_team_waits(tmp_path, state):
+    vault, org_entry = _device(tmp_path, state)
+    vault.unlock(PASSWORD)
+    refused = {}
+    for name, op in _personal_mutations(vault).items():
+        try:
+            op()
+        except Exception as exc:  # noqa: BLE001 - every refusal is the finding
+            refused[name] = f"{type(exc).__name__}: {getattr(exc, 'cause', '')} {exc}"[:160]
+    with pytest.raises(TeamLogMismatch) as still:
+        local_team_state(vault.db)  # nothing above fetched the log again: still refused
+    assert still.value.cause == CAUSE[state]
+    assert refused == {}, sorted(refused)
+    root = vault.db.get_meta("root_node_id")  # the organisation's tree still waits
+    with pytest.raises(TeamLogMismatch):
+        vault.create_entry(root, "team", [{"key": "password", "value": "v"}], tier=2)
+    with pytest.raises(TeamLogMismatch):
+        vault.move_entry(org_entry, _mine(vault))
+
+
+def _mine(vault) -> str:
+    return vault.db.fetchone("SELECT id FROM nodes WHERE parent_id IS NULL AND id != ?",
+                             (vault.db.get_meta("root_node_id"),))["id"]
+
+
 @pytest.mark.parametrize("state", ["holds_damaged_sig", "holds_damaged_hash"])
 @pytest.mark.parametrize("served", sorted(SERVERS))
 def test_a_damaged_copy_is_fetched_again_under_its_pins(tmp_path, state, served):

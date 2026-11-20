@@ -457,7 +457,7 @@ class Vault:
         # write was reported as failed, yet it was there.
         self.dek_mgr.require_current_kek()
         self._require_current_identity()
-        if in_personal_tree(self._db, node_id, set(personal_root_ids(self._db, self.dek_mgr))):
+        if self._all_personal(node_id):
             return  # INV-7: a personal write never waits for the team log
         team = local_team_state(self._db)
         if team is None and self._db.get_meta(CONFIRMED_GENESIS_META) is None:
@@ -482,6 +482,16 @@ class Vault:
             "The team log's founder is not confirmed on this device; "
             "compare their fingerprint out of band and use 'sezam team-log confirm-founder'."
         )
+
+    def _all_personal(self, *node_ids: str) -> bool:
+        roots = set(personal_root_ids(self._db, self.dek_mgr))
+        return all(in_personal_tree(self._db, n, roots) for n in node_ids)
+
+    def _team_for(self, *node_ids: str) -> Optional[teamlog.TeamState]:
+        """The team log as far as these nodes go: none for the personal tree,
+        which holds no team folder (INV-7, capability run 403: a refused log
+        blocks team operations only, never a personal one)."""
+        return None if self._all_personal(*node_ids) else local_team_state(self._db)
 
     def _require_unlocked(self) -> None:
         if not self._unlocked:
@@ -1537,7 +1547,7 @@ class Vault:
         """TL7 (docs/DESIGN_TEAM_LOG.md §10): a tier-2 entry's own key is not in
         the team log, so in a team folder nobody else could read it and the
         server refuses it. It goes into a folder of its own key instead."""
-        team = local_team_state(self._db)
+        team = self._team_for(node_id)
         if team is None:
             return
         current: Optional[str] = node_id
@@ -1747,7 +1757,7 @@ class Vault:
             "WITH RECURSIVE t(id) AS (SELECT ? UNION SELECT n.id FROM nodes n JOIN t ON n.parent_id = t.id) "
             "SELECT id FROM t", (node_id,)
         )]
-        team = local_team_state(self._db)
+        team = self._team_for(node_id, new_parent_id)
         if into_personal and team is not None and any(teamlog.is_team_folder(team, n) for n in subtree):
             raise ValueError(
                 "A team folder cannot go into a personal folder; its members would lose it. "
