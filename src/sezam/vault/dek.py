@@ -106,10 +106,16 @@ def shared_before_team_log(db: VaultDB, user_id: str) -> set[str]:
     """Keys other accounts shared with ``user_id`` while the organisation has
     no team log. Review 8595ec1 (low): the desktop never opened them and the
     member got a bare "Decryption failed"; founding the log carries them over."""
-    from .team_log_local import GENESIS_META, local_team_state
+    from .team_log_local import GENESIS_META, TeamLogMismatch, local_team_state
 
-    if not user_id or db.get_meta(GENESIS_META) or local_team_state(db) is not None:
+    if not user_id or db.get_meta(GENESIS_META):
         return set()
+    try:
+        if local_team_state(db) is not None:
+            return set()
+    except TeamLogMismatch:
+        return set()  # capability run 406: a log this device refuses is still a log
+
     return {
         row["dek_id"] for row in db.fetchall(
             "SELECT dek_id FROM access_envelopes WHERE user_id = ? AND created_by != ? "

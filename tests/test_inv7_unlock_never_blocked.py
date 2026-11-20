@@ -88,6 +88,7 @@ def _device(tmp_path, state: str):
     vault = _vault(tmp_path / "v", "owner")
     entry = vault.create_entry(vault.db.get_meta("root_node_id"), "private", [{"key": "password", "value": "keep-me"}])
     vault.create_personal_folder("mine")
+    vault.db.set_meta("server_url", "http://team.invalid")  # capability run 406: a real device is connected
     genesis = TEAM_HEAD["genesis_hash"]
     with vault.db.transaction(immediate=True):
         _Server(vault, "same")._store_team_log(TEAM, tl.replay(TEAM))
@@ -182,6 +183,51 @@ def test_every_personal_write_goes_on_while_the_team_waits(tmp_path, state):
         vault.create_entry(root, "team", [{"key": "password", "value": "v"}], tier=2)
     with pytest.raises(TeamLogMismatch):
         vault.move_entry(org_entry, _mine(vault))
+
+
+WAY_OUT = {"local_damaged": "'sezam pull'", "anchor_conflict": "'sezam team-log forget-pin"}
+
+
+@pytest.mark.parametrize("state", STATES)
+def test_status_names_the_refusal_and_its_way_out(tmp_path, state, monkeypatch):
+    """Capability run 406: a connected device ran local_team_state in
+    pending_states unguarded, so 'sezam status' ended on the refusal."""
+    from click.testing import CliRunner
+
+    from sezam import cli
+    from sezam.vault.pending_states import pending_states
+    from tests.test_ai_r1_snapshots import _cli_env
+
+    vault, _ = _device(tmp_path, state)
+    vault.unlock(PASSWORD)
+    states = {s.key: s for s in pending_states(vault)}
+    vault.lock()
+    refused = states.get("team_log_refused")
+    assert refused is not None, sorted(states)
+    assert WAY_OUT[CAUSE[state]] in refused.resolve
+    assert (RISK_MARKER in refused.resolve) == (CAUSE[state] == "anchor_conflict")
+    assert "lone_admin_without_recovery" not in states  # decided from a log this device refuses
+    _cli_env(tmp_path / "v", monkeypatch)
+    out = CliRunner().invoke(cli.main, ["status"], input=PASSWORD + "\n")
+    assert out.exit_code == 0, out.output
+    assert WAY_OUT[CAUSE[state]] in out.output
+
+
+def test_status_on_keys_naming_another_log_before_this_device_holds_one(tmp_path):
+    """Run 406: shared_before_team_log read the log unguarded while no genesis is
+    held, so a member who confirmed one founder and whose keys name another saw
+    'status' end on the refusal."""
+    from sezam.vault.pending_states import pending_states
+
+    vault, _ = _device(tmp_path, "anchor_names_other")
+    vault.unlock(PASSWORD)
+    with vault.db.transaction(immediate=True):  # confirmed one founder, holds no log yet
+        vault.db.execute("DELETE FROM team_log")
+        vault.db.execute("DELETE FROM vault_meta WHERE key = ?", (GENESIS_META,))
+    with pytest.raises(TeamLogMismatch):
+        local_team_state(vault.db)
+    keys = {s.key for s in pending_states(vault)}
+    assert "team_log_refused" in keys and "shared_before_team_log" not in keys, keys
 
 
 def _mine(vault) -> str:

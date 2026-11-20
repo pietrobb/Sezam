@@ -487,9 +487,26 @@ def pending_states(vault: "Vault") -> list[PendingState]:
 
     # Review 8595ec1 #3: losing the lone admin froze the organisation unnoticed.
     from .. import teamlog
-    from .team_log_local import local_team_state
+    from .team_log_local import LOST_LOG_HINT, TeamLogMismatch, local_team_state
 
-    team = local_team_state(db) if connected else None
+    # Capability run 406 (INV-7): a refused log ended 'status' with the
+    # refusal; it is a state of its own, its way out from its cause, and no
+    # team state is decided from it.
+    try:
+        team = local_team_state(db)
+    except TeamLogMismatch as refusal:
+        team = None
+        states.append(PendingState(
+            "team_log_refused",
+            f"This device refuses its team log ({refusal.cause}): team folders and team "
+            "changes wait; personal entries go on.",
+            LOST_LOG_HINT.strip() if refusal.offers_forget else
+            "'sezam pull' fetches the log again, held to the genesis and the head this "
+            "device saw; a server that went back or forked is still refused.",
+            None,
+        ))
+    if not connected:
+        team = None
     if (
         team is not None and teamlog.is_admin(team, user_id)
         and teamlog.recovery_key(team, user_id) is None
