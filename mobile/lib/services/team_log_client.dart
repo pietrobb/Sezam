@@ -144,12 +144,34 @@ void requireConfirmedGenesis(String? confirmed, String? actual) {
   }
 }
 
+// INV-7 (docs/ROOT_CAUSE_PLAN.md): why this phone refuses the server's team
+// log, and for which causes "Zabudnúť pripnutý tímový denník" is offered: only
+// where the log is missing or a new one starts (another server, a reseed); a
+// fork, a log going back or one that does not replay is a lying server, never
+// forgotten. The same list as MISMATCH_CAUSES in team_log_local.py and
+// TEAM_LOG_MISMATCH_FORGET in app.js (tests/vectors/team_log_mismatch.json).
+const teamLogMismatchForget = <String, bool>{
+  'confirmed_genesis': true, 'log_gone': true, 'other_genesis': true,
+  'left_earlier_log': false, 'went_back': false, 'differs': false, 'does_not_replay': false,
+  'short_of_head': false, 'head_genesis': false, 'refused_at_head': false,
+  'local_damaged': false, 'anchor_conflict': false,
+};
+
 class TeamLogMismatch implements Exception {
-  TeamLogMismatch(this.detail);
+  /// [cause] is a key of [teamLogMismatchForget] (none: this phone's own
+  /// state, never offered); [offersForget] and the hint follow from it alone.
+  TeamLogMismatch(this.detail, [this.cause]) {
+    if (cause != null && !teamLogMismatchForget.containsKey(cause)) {
+      throw ArgumentError.value(cause, 'cause', 'unknown team log mismatch cause');
+    }
+  }
   final String detail;
+  final String? cause;
+
+  bool get offersForget => cause != null && teamLogMismatchForget[cause]!;
 
   @override
-  String toString() => "TEAM LOG MISMATCH: the server's team log $detail";
+  String toString() => "TEAM LOG MISMATCH: the server's team log $detail${offersForget ? lostTeamLogHint : ''}";
 }
 
 /// A change the log refuses: never queued, the server would refuse it for good.
@@ -258,7 +280,7 @@ Future<LocalTeamLog?> syncTeamLog({
   required Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
   Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)? restore,
 }) async {
-  Never fail(String detail) => throw TeamLogMismatch(detail);
+  Never fail(String detail, String cause) => throw TeamLogMismatch(detail, cause);
   final localSeq = local?.team.headSeq ?? -1;
   if (restore != null && local != null) {
     // R9-E: a server restored from a backup lost records this phone
@@ -268,32 +290,32 @@ Future<LocalTeamLog?> syncTeamLog({
     head = await _restoreTeamLog(head, local, pin, restore);
   }
   if (confirmedGenesis != null && confirmedGenesis != head?['genesis_hash']) {
-    fail('does not match the confirmed genesis$lostTeamLogHint');
+    fail('does not match the confirmed genesis', 'confirmed_genesis');
   }
   if (head == null) {
     if (local != null || pin != null) {
-      fail('is gone (a server restored from a backup, or another server)$lostTeamLogHint');
+      fail('is gone (a server restored from a backup, or another server)', 'log_gone');
     }
     // Review 8bc70f7 M2: a phone that left a log does not fall back to the
     // rules from before any log because a server sends none.
     if (leftEarlierLog) {
       fail("is missing, and this phone left an earlier team log: it waits for the team's "
-          'new log (the admin founds it) and its confirmed founder');
+          'new log (the admin founds it) and its confirmed founder', 'left_earlier_log');
     }
     return null;
   }
   final pinned = local?.team.genesisHash ?? pin?['genesis_hash'] as String?;
   if (pinned != null && head['genesis_hash'] != pinned) {
-    fail('starts with another genesis than this device saw$lostTeamLogHint');
+    fail('starts with another genesis than this device saw', 'other_genesis');
   }
   final pinSeq = pin?['seq'] as int? ?? -1;
   final seen = localSeq > pinSeq ? localSeq : pinSeq;
   final headSeq = head['seq'];
   if (headSeq is! int || headSeq < seen)
-    fail('went back (head $headSeq < $seen)');
+    fail('went back (head $headSeq < $seen)', 'went_back');
   if (local != null && headSeq == localSeq) {
     if (head['hash'] != local.team.headHash)
-      fail('differs at record $localSeq');
+      fail('differs at record $localSeq', 'differs');
     return local;
   }
   var team = local?.team ?? TeamState();
@@ -306,26 +328,26 @@ Future<LocalTeamLog?> syncTeamLog({
     try {
       team = log.replay(batch, team); // prev of the first = this phone's head
     } catch (e) {
-      fail('does not replay: $e');
+      fail('does not replay: $e', 'does_not_replay');
     }
     final start = team.headSeq - batch.length + 1;
     if (pin != null &&
         pinSeq >= start &&
         pinSeq <= team.headSeq &&
         TeamLog.recordHash(batch[pinSeq - start]) != pin['hash']) {
-      fail('differs at record $pinSeq');
+      fail('differs at record $pinSeq', 'differs');
     }
     records.addAll(batch);
   }
   if (team.headSeq != headSeq || team.headHash != head['hash']) {
-    fail('does not reach the head it announced');
+    fail('does not reach the head it announced', 'short_of_head');
   }
   if (team.genesisHash != head['genesis_hash']) {
-    fail('genesis differs from the head it announced');
+    fail('genesis differs from the head it announced', 'head_genesis');
   }
   // TL7: the server refuses such an append; a head with it is not followed.
   final refusal = TeamLog.adminPolicyRefusal(team);
-  if (refusal != null) fail('is refused at its head: $refusal');
+  if (refusal != null) fail('is refused at its head: $refusal', 'refused_at_head');
   return LocalTeamLog(records, team);
 }
 

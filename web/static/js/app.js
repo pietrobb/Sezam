@@ -7758,6 +7758,32 @@ function teamLogPin(team) {
     return team ? { genesis_hash: team.genesisHash, seq: team.headSeq, hash: team.headHash } : null;
 }
 
+// INV-7 (docs/ROOT_CAUSE_PLAN.md): why this browser refuses the server's team
+// log, and for which causes "Forget the pinned team log" is offered: only where
+// the log is missing or a new one starts (another server, a reseed); a fork, a
+// log going back or one that does not replay is a lying server, never
+// forgotten. The same list as MISMATCH_CAUSES in team_log_local.py and the
+// phone's teamLogMismatchForget (tests/vectors/team_log_mismatch.json).
+/** Throws TEAM LOG MISMATCH for `cause`; err.teamLogLost (the sign-in screen's
+ * and Team trust's offer to forget) follows from the cause alone. */
+function teamLogMismatch(detail, cause) {
+    const TEAM_LOG_MISMATCH_FORGET = Object.freeze({
+        confirmed_genesis: true, log_gone: true, other_genesis: true,
+        left_earlier_log: false, went_back: false, differs: false, does_not_replay: false,
+        short_of_head: false, head_genesis: false, refused_at_head: false,
+        local_damaged: false, anchor_conflict: false,
+    });
+    if (!Object.hasOwn(TEAM_LOG_MISMATCH_FORGET, cause)) throw new Error(`unknown team log mismatch cause ${cause}`);
+    const lost = TEAM_LOG_MISMATCH_FORGET[cause];
+    const err = new Error(`TEAM LOG MISMATCH: the server's team log ${detail}` + (lost
+        ? '. If your admin confirms the team\'s log is lost for good (another server, a reseed), ' +
+          '"Forget the pinned team log" (Team trust, or the sign-in screen) leaves it in this browser'
+        : ''));
+    err.teamLogCause = cause;
+    err.teamLogLost = lost;
+    throw err;
+}
+
 /**
  * Bring `local` (this session's copy, or null) up to `head` (the pull's
  * team_log_head). `pin` is the head an earlier session saw. Returns
@@ -7767,7 +7793,7 @@ function teamLogPin(team) {
  */
 async function syncWebTeamLog(head, local, pin, _sodium) {
     const TL = globalThis.SezamTeamLog;
-    const fail = detail => { throw new Error(`TEAM LOG MISMATCH: the server's team log ${detail}`); };
+    const fail = (detail, cause) => teamLogMismatch(detail, cause);
     const localSeq = local ? local.team.headSeq : -1;
     const confirmed = state.confirmedTeamGenesis;
     if (local && (!head || head.seq < localSeq)) {
@@ -7778,37 +7804,25 @@ async function syncWebTeamLog(head, local, pin, _sodium) {
         const restored = await restoreWebTeamLog(head, local, pin, _sodium);
         if (restored !== false) head = restored;
     }
-    // Review c78fd19: the way out once the team's log is lost for good. Review
-    // 8bc70f7 M2/H4: offered only where the log is missing or starts anew (a
-    // fork or a log that does not replay is a lying server, never forgotten),
-    // and on the sign-in screen too (err.teamLogLost), where such a mismatch
-    // fails the login.
-    const lost = detail => {
-        const err = new Error(`TEAM LOG MISMATCH: the server's team log ${detail}. If your admin confirms ` +
-            'the team\'s log is lost for good (another server, a reseed), "Forget the pinned team log" ' +
-            '(Team trust, or the sign-in screen) leaves it in this browser');
-        err.teamLogLost = true;
-        throw err;
-    };
     if (confirmed && (!head || head.genesis_hash !== confirmed)) {
-        lost('does not match the externally confirmed genesis');
+        fail('does not match the externally confirmed genesis', 'confirmed_genesis');
     }
     if (!head) {
-        if (local || pin) lost('is gone (a server restored from a backup, or another server)');
+        if (local || pin) fail('is gone (a server restored from a backup, or another server)', 'log_gone');
         // Review 8bc70f7 M2: a browser that left a log does not fall back to
         // the rules from before any log because a server sends none.
         if (state.forgottenTeamGenesis?.length) {
             fail('is missing, and this browser left an earlier team log: it waits for the team\'s ' +
-                 'new log (the admin founds it) and its confirmed founder');
+                 'new log (the admin founds it) and its confirmed founder', 'left_earlier_log');
         }
         return null;
     }
     const pinned = local?.team.genesisHash || pin?.genesis_hash || null;
-    if (pinned && head.genesis_hash !== pinned) lost('starts with another genesis than this browser saw');
+    if (pinned && head.genesis_hash !== pinned) fail('starts with another genesis than this browser saw', 'other_genesis');
     const seen = Math.max(localSeq, Number.isSafeInteger(pin?.seq) ? pin.seq : -1);
-    if (!Number.isSafeInteger(head.seq) || head.seq < seen) fail(`went back (head ${head.seq} < ${seen})`);
+    if (!Number.isSafeInteger(head.seq) || head.seq < seen) fail(`went back (head ${head.seq} < ${seen})`, 'went_back');
     if (local && head.seq === localSeq) {
-        if (head.hash !== local.team.headHash) fail(`differs at record ${localSeq}`);
+        if (head.hash !== local.team.headHash) fail(`differs at record ${localSeq}`, 'differs');
         return local;
     }
     let team = local ? local.team : TL.emptyState();
@@ -7822,20 +7836,20 @@ async function syncWebTeamLog(head, local, pin, _sodium) {
         try {
             team = TL.replay(batch, _sodium, team);  // prev of the first = this browser's head
         } catch (err) {
-            fail(`does not replay: ${err.message}`);
+            fail(`does not replay: ${err.message}`, 'does_not_replay');
         }
         const start = team.headSeq - batch.length + 1;
         if (pin && pin.seq >= start && pin.seq <= team.headSeq &&
                 TL.recordHash(batch[pin.seq - start], _sodium) !== pin.hash) {
-            fail(`differs at record ${pin.seq}`);
+            fail(`differs at record ${pin.seq}`, 'differs');
         }
         records.push(...batch);
     }
-    if (team.headSeq !== head.seq || team.headHash !== head.hash) fail('does not reach the head it announced');
-    if (team.genesisHash !== head.genesis_hash) fail('genesis differs from the head it announced');
+    if (team.headSeq !== head.seq || team.headHash !== head.hash) fail('does not reach the head it announced', 'short_of_head');
+    if (team.genesisHash !== head.genesis_hash) fail('genesis differs from the head it announced', 'head_genesis');
     // TL7: the server refuses such an append; a head with it is not followed.
     const refusal = TL.adminPolicyRefusal(team);
-    if (refusal) fail(`is refused at its head: ${refusal}`);
+    if (refusal) fail(`is refused at its head: ${refusal}`, 'refused_at_head');
     return { records, team };
 }
 

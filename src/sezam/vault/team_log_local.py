@@ -47,15 +47,49 @@ FETCH_PAGES = 1000  # pages of up to 1000 records per pull
 TEAM_LOG_APPEND_MAX = 1000  # records per append the server takes (TeamLogAppend, PushRequest.team_log)
 
 
-class TeamLogMismatch(RuntimeError):
-    """The server's team log is not a continuation of this device's copy."""
-
+# INV-7 (docs/ROOT_CAUSE_PLAN.md): the one list of why a device refuses the
+# server's team log, and for which of them "forget the pinned team log" is
+# offered: only where the log this device holds is missing or a new log
+# starts (another server, a reseed). A fork, a log going back or one that does
+# not replay is a server that lies, never forgotten. The web page
+# (TEAM_LOG_MISMATCH_FORGET in app.js) and the phone (teamLogMismatchForget in
+# team_log_client.dart) carry the same list; tests/vectors/team_log_mismatch.json
+# is it, and every client must give its cases' answers.
+MISMATCH_CAUSES = {
+    "confirmed_genesis": True,   # not the genesis confirmed out of band
+    "log_gone": True,            # the server has no log, this device holds or pins one
+    "other_genesis": True,       # the server's log starts with another genesis
+    "left_earlier_log": False,   # no log, and this device left one: it waits for the new one
+    "went_back": False,          # the server's head is behind what this device saw
+    "differs": False,            # another record at a seq this device saw (a fork)
+    "does_not_replay": False,
+    "short_of_head": False,      # the records served do not reach the announced head
+    "head_genesis": False,       # the records start with another genesis than the head names
+    "refused_at_head": False,    # TL7: a head the server must refuse
+    "local_damaged": False,      # this device's own copy fails its stored hashes
+    "anchor_conflict": False,    # the account anchor names another log than this device holds
+}
 
 # Review c78fd19: the way out once the team's log is lost for good.
 LOST_LOG_HINT = (
     " If your admin confirms the team's log is lost for good (another server, a reseed), "
     "'sezam team-log forget-pin' leaves it on this device."
 )
+
+
+class TeamLogMismatch(RuntimeError):
+    """The server's team log is not a continuation of this device's copy.
+
+    ``cause`` is a key of MISMATCH_CAUSES; ``offers_forget`` and the hint in
+    the message follow from it alone.
+    """
+
+    def __init__(self, message: str, cause: str):
+        if cause not in MISMATCH_CAUSES:
+            raise ValueError(f"unknown team log mismatch cause {cause!r}")
+        self.cause = cause
+        self.offers_forget = MISMATCH_CAUSES[cause]
+        super().__init__(message + (LOST_LOG_HINT if self.offers_forget else ""))
 
 
 def queued_changes(db) -> list[list]:
@@ -124,7 +158,7 @@ def local_team_state(db) -> Optional[teamlog.TeamState]:
     # code: refuse rather than decide from part of it.
     state = teamlog.replay([{"body": r["body"], "sig": r["sig"]} for r in rows])
     if state.head_hash != rows[-1]["hash"] or rows[-1]["seq"] != state.head_seq:
-        raise TeamLogMismatch("the local team log does not match its stored hashes")
+        raise TeamLogMismatch("the local team log does not match its stored hashes", "local_damaged")
     return state
 
 
@@ -199,7 +233,7 @@ def import_account_anchor(db, keypair) -> None:
     for existing in (db.get_meta(CONFIRMED_GENESIS_META), db.get_meta(GENESIS_META),
                      state.genesis_hash if state is not None else None):
         if existing is not None and existing != genesis:
-            raise TeamLogMismatch("The account anchor conflicts with this device's team log.")
+            raise TeamLogMismatch("The account anchor conflicts with this device's team log.", "anchor_conflict")
     db.set_meta(CONFIRMED_GENESIS_META, genesis)
 
 
@@ -467,34 +501,35 @@ class TeamLogMixin:
                 server_head = restored
         if confirmed is not None and (server_head is None or server_head.get("genesis_hash") != confirmed):
             raise TeamLogMismatch(
-                "The server's team log differs from the independently confirmed genesis." + LOST_LOG_HINT
+                "The server's team log differs from the independently confirmed genesis.", "confirmed_genesis"
             )
         if server_head is None:
             if local is not None or pinned:
                 raise TeamLogMismatch(
                     "The server no longer has the team log this device holds "
-                    "(restored from a backup, or another server)." + LOST_LOG_HINT
+                    "(restored from a backup, or another server).", "log_gone"
                 )
             if self._db.get_meta_json(FORGOTTEN_GENESIS_META) and not self._founding_team_log:
                 # Review 8bc70f7 M2: a device that left a log does not fall
                 # back to the rules from before any log because a server sends none.
                 raise TeamLogMismatch(
                     "The server has no team log, and this device left an earlier one: it waits for "
-                    "the team's new log ('sezam team-log found' on the admin's device) and its confirmed founder."
+                    "the team's new log ('sezam team-log found' on the admin's device) and its confirmed founder.",
+                    "left_earlier_log",
                 )
             return None
         if pinned and server_head.get("genesis_hash") != pinned:
             raise TeamLogMismatch(
-                "The server's team log starts with another genesis than this device pinned." + LOST_LOG_HINT
+                "The server's team log starts with another genesis than this device pinned.", "other_genesis"
             )
         local_seq = local.head_seq if local is not None else -1
         if server_head.get("seq", -1) < local_seq:
             raise TeamLogMismatch(
-                f"The server's team log went back (head {server_head.get('seq')} < {local_seq} seen here)."
+                f"The server's team log went back (head {server_head.get('seq')} < {local_seq} seen here).", "went_back"
             )
         if server_head.get("seq") == local_seq:
             if server_head.get("hash") != local.head_hash:
-                raise TeamLogMismatch(f"The server's team log differs at record {local_seq}.")
+                raise TeamLogMismatch(f"The server's team log differs at record {local_seq}.", "differs")
             return local
         state = local
         fetched: list[dict] = []
@@ -509,18 +544,18 @@ class TeamLogMixin:
                 # at an earlier seq is refused here.
                 state = teamlog.replay(records, state)
             except teamlog.TeamLogError as exc:
-                raise TeamLogMismatch(f"The server's team log does not replay: {exc}") from exc
+                raise TeamLogMismatch(f"The server's team log does not replay: {exc}", "does_not_replay") from exc
             fetched.extend(records)
             if state.head_seq >= server_head["seq"]:
                 break
         if state is None or state.head_seq != server_head["seq"] or state.head_hash != server_head.get("hash"):
-            raise TeamLogMismatch("The server's team log does not reach the head it announced.")
+            raise TeamLogMismatch("The server's team log does not reach the head it announced.", "short_of_head")
         if pinned is None and state.genesis_hash != server_head.get("genesis_hash"):
-            raise TeamLogMismatch("The server's team log genesis differs from the head it announced.")
+            raise TeamLogMismatch("The server's team log genesis differs from the head it announced.", "head_genesis")
         refusal = teamlog.admin_policy_refusal(state)
         if refusal:
             # TL7: the server refuses such an append; a head with it is not followed.
-            raise TeamLogMismatch(f"The server's team log is refused at its head: {refusal}.")
+            raise TeamLogMismatch(f"The server's team log is refused at its head: {refusal}.", "refused_at_head")
         with self._db.transaction(immediate=True):
             # Another process of this vault may have stored part of it meanwhile.
             raced = self._local_head_seq() != local_seq
