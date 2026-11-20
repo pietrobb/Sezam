@@ -79,3 +79,27 @@ def test_the_desktop_setup_still_reaches_the_log(team, server):  # noqa: F811
     assert _queued_keys(admin) == []
     status = admin_client._request("GET", "/api/org-recovery/status")
     assert status["recovery_signing_pk"] == desktop_pk
+
+
+def test_the_server_refuses_the_record_the_desktop_check_missed(team, server, monkeypatch):  # noqa: F811
+    """Operator 2026-11-20: the window between the push's check and its send.
+    The server refuses an org.recovery record naming another key than the
+    admin's stored blob; the desktop forgets its setup as if it had looked."""
+    _, admin, admin_client, bob, _ = team
+    _found_with_bob(admin_client, bob)
+    admin_client.pull()
+    admin_id = admin.db.get_meta("user_id")
+    org_recovery_server.setup_and_register(admin, PASSWORD, 2, 3)
+    desktop_pk = admin.db.get_meta("org_recovery_signing_pk")
+    web = _store(admin, admin_client, anchor=False, replace=True)
+    web_pk = bytes(org_recovery_signing_key(web).verify_key).hex()
+    monkeypatch.setattr(admin_client, "drop_superseded_org_recovery", lambda: False)
+
+    result = admin_client.push()
+    assert _logged(admin_client, desktop_pk) == []  # before: logged, the current one
+    status = admin_client._request("GET", "/api/org-recovery/status")
+    assert status["recovery_signing_pk"] == web_pk
+    assert _recovers(admin_client, web) == admin_id
+    assert result.get("org_recovery_superseded") is True
+    assert _queued_keys(admin) == [] and not admin_client.set_aside_team_changes()
+    assert not admin.org_recovery_configured()

@@ -372,6 +372,7 @@ async def append(
             "team_log_code": "rules_outdated", "seq": old.get("seq"),
         })
     current, steps = await _replayed(state, records, bodies)
+    await _refuse_superseded_recovery(cur, bodies, user_id)
     now_ms = int(time.time() * 1000)
     for record, body, step in zip(records, bodies, steps):
         await _check_against_users(cur, body, pending_identity, step)
@@ -389,6 +390,35 @@ async def append(
                        "append (member.role) instead of adding a second admin",
         })
     return current
+
+
+async def _refuse_superseded_recovery(cur, bodies: list[dict], user_id: str) -> None:
+    """Review c78fd19 R13-10 (operator 2026-11-20): an org.recovery record
+    naming a key other than the one this admin's stored blob holds is older
+    than that blob (every client stores before it names the key), yet as the
+    newer log entry it became the current recovery and voided the newer
+    shares. The desktop checks before its push; this closes the window
+    between that check and the append. The last record of the batch counts.
+    Only appends: a log the devices put back (restore) is history."""
+    named = [b for b in bodies if b["type"] == "org.recovery"]
+    pk = named[-1]["data"].get("recovery_pk") if named else None
+    if pk is None:
+        return
+    # Locking read of an existing blob only (gap lock, see recovery.store):
+    # a setup stored meanwhile is either seen here or ranked after this record.
+    await cur.execute("SELECT 1 FROM org_recovery_blobs WHERE id = 1")
+    if not await cur.fetchone():
+        return
+    await cur.execute(
+        "SELECT created_by, recovery_signing_pk FROM org_recovery_blobs WHERE id = 1 FOR UPDATE"
+    )
+    row = await cur.fetchone()
+    if row and row[0] == user_id and row[1] is not None and bytes(row[1]).hex() != pk:
+        raise ApiError(400, TEAM_LOG_REFUSED, {
+            "message": "a newer org recovery was set up after this one (on the web or another "
+                       "device); it is kept",
+            "team_log_code": "org_recovery_superseded", "seq": named[-1]["seq"],
+        })
 
 
 def key_retired(state: Optional[TeamState], user_id: str, signing_pk: Optional[bytes]) -> bool:

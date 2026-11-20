@@ -784,6 +784,20 @@ class TeamLogMixin:
         drop_superseded_setup(self._db)
         return True
 
+    def _drop_refused_org_recovery(self, exc: BaseException) -> bool:
+        """The server refused this device's org.recovery record: a newer setup
+        (web) replaced it after drop_superseded_org_recovery looked. The setup
+        is forgotten the same way; True when its records left the queue."""
+        from .org_recovery_server import drop_superseded_setup
+
+        detail = _refusal_from_server(exc)
+        if detail is None or detail.get("team_log_code") != "org_recovery_superseded":
+            return False
+        before = len(self.pending_team_changes())
+        drop_superseded_setup(self._db)
+        self._org_recovery_superseded = True
+        return len(self.pending_team_changes()) < before
+
     def adopt_logged_org_recovery(self) -> None:
         """Admin: keep a local KEK wrap of a recovery set up on another client.
 
@@ -807,6 +821,10 @@ class TeamLogMixin:
             return
         if any(kind == "org.recovery" for kind, _ in self.pending_team_changes()):
             return  # a setup here waits to replace it
+        from . import pending_states
+
+        if pending_states.org_recovery_registration(self._db) is not None:
+            return  # so does one the server has yet to take (anchored after it)
         try:
             status = self._request("GET", "/api/org-recovery/status") or {}
         except RuntimeError as exc:
@@ -831,8 +849,6 @@ class TeamLogMixin:
             if logged_wrap is not None:
                 self._db.set_meta_json(SERVER_WRAP_META, {**logged_wrap, "recovery_signing_pk": logged})
             # A setup of this vault the server never took is replaced too.
-            from . import pending_states
-
             pending_states.clear_org_recovery_registration(self._db)
             pending_states.clear_org_recovery_rewrap(self._db)
 
@@ -854,8 +870,15 @@ class TeamLogMixin:
         state = self.team_state()
         if not pk or state is None or not teamlog.is_admin(state, self._user_id):
             return
+        from . import pending_states
+
+        if pending_states.org_recovery_registration(self._db) is not None:
+            return  # the server refuses a key its blob does not hold yet (R13-10)
         logged = teamlog.recovery_key(state, self._user_id)
-        if logged is not None and logged != pk and not replace:
+        replaces = self._db.get_meta_json("org_recovery_replaces") or {}
+        # Registered later (offline setup): it still replaces the key it was set up over.
+        meant = replaces.get("recovery_signing_pk") == pk and replaces.get("expected_signing_pk") == logged
+        if logged is not None and logged != pk and not (replace or meant):
             return
         changes = [] if logged == pk else [["org.recovery", {"recovery_pk": pk}]]
         wrap = dict(self._db.get_meta_json(SERVER_WRAP_META) or {})
@@ -986,6 +1009,8 @@ class TeamLogMixin:
             except teamlog.TeamLogError:
                 continue  # the log moved on (pulled on 409): what it no longer takes goes aside
             except RuntimeError as exc:
+                if self._drop_refused_org_recovery(exc):
+                    continue
                 pending = self.pending_team_changes()
                 if not self._set_aside(pending, self._server_refused_team_changes(pending, exc)):
                     raise
