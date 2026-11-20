@@ -277,6 +277,7 @@ async def prepare_restore(cur, records: list, user_id: str) -> Prepared:
     prepared = await _prepare(cur, records, user_id, restore=True)
     named = _named_members(prepared.bodies)
     uploader = await _user_row(cur, user_id, lock=False)
+    await _refuse_restored_founder(cur, prepared.bodies, prepared.current, uploader, user_id, lock=False)
     await _refuse_restored_keys(
         cur, prepared.current, named, _uploader_team_admin(uploader, prepared.current, user_id),
         lock=False,
@@ -564,6 +565,36 @@ async def _refuse_restored_keys(
             })
 
 
+async def _refuse_restored_founder(
+    cur, bodies: list[dict], current: TeamState, uploader, user_id: str, *, lock: bool,
+) -> None:
+    """A restored genesis needs its founder to be an admin here whose genesis
+    keys are the account's, or reach them only by the founder's own rotations
+    (member.keys proves the new key); else the uploader must be an admin here
+    and the restored log's last admin. Capability run 385: a member forged a
+    genesis under the admin's id, removed the admin and re-added it on its real
+    keys, so the final keys matched and only the genesis itself tells."""
+    genesis = next((b for b in bodies if b["type"] == "genesis"), None)
+    if genesis is None:
+        return
+    data = genesis["data"]
+    founder_id = data["user_id"]
+    row = await _user_row(cur, founder_id, lock=lock)
+    founder_admin = row is not None and row[0] == "active" and bool(row[1])
+    removed_later = any(
+        b["type"] == "member.remove" and b["data"]["user_id"] == founder_id for b in bodies
+    )
+    if founder_admin and (_keys_match(row, data) or not removed_later):
+        return
+    uploader_admin = uploader is not None and uploader[0] == "active" and bool(uploader[1])
+    if uploader_admin and core.is_admin(current, user_id):
+        return
+    raise ApiError(400, TEAM_LOG_REFUSED, {
+        "message": "a restored genesis needs its founder (on the keys the account signs in with, "
+                   "or the uploader as its last admin) to be an admin here",
+    })
+
+
 async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepared] = None) -> TeamState:
     """Put back records this server lost (restored from a backup, moved).
 
@@ -581,15 +612,10 @@ async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepar
     bodies, current, steps = prepared.bodies, prepared.current, prepared.steps
     refuse = lambda message: ApiError(400, TEAM_LOG_REFUSED, {"message": message})  # noqa: E731
     uploader = await _user_row(cur, user_id)
-    uploader_admin = uploader is not None and uploader[0] == "active" and bool(uploader[1])
     uploader_team_admin = _uploader_team_admin(uploader, current, user_id)
-    founder_admin = True
+    await _refuse_restored_founder(cur, bodies, current, uploader, user_id, lock=True)
     now_ms = int(time.time() * 1000)
     for record, body, step in zip(records, bodies, steps):
-        kind, data = body["type"], body["data"]
-        if kind == "genesis":
-            row = await _user_row(cur, data["user_id"])
-            founder_admin = row is not None and row[0] == "active" and bool(row[1])
         await cur.execute(
             "INSERT INTO team_log (seq, prev, hash, body, sig, author, created_at) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s)",
@@ -597,8 +623,6 @@ async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepar
              body["author"], now_ms),
         )
         await _apply_to_users(cur, body, step)
-    if not founder_admin and not (uploader_admin and core.is_admin(current, user_id)):
-        raise refuse("a restored genesis needs its founder (or the uploader, its last admin) to be an admin here")
     await _refuse_restored_keys(cur, current, _named_members(bodies), uploader_team_admin, lock=True)
     if core.admin_policy_refusal(current):
         raise refuse("the restored team log has more than one admin")

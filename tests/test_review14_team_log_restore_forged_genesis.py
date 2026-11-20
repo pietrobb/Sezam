@@ -50,12 +50,36 @@ def test_a_member_cannot_take_a_server_without_log_over_through_restore(team):  
     records = _forged_takeover(client._user_id, bob, bob_id)
     teamlog.replay(records)  # the rules alone take it: only the users table can refuse
 
-    with pytest.raises(RuntimeError, match="keys the account does not sign in with"):
+    with pytest.raises(RuntimeError, match="genesis needs its founder"):
         bob_client._request("POST", "/api/team-log/restore", {"records": records}, auth=True)
     assert db._storage["team_log"] == []
     users = {u["id"]: u for u in db._storage["users"]}
     assert users[client._user_id]["status"] == "active"
     assert int(users[client._user_id]["is_admin"]) == 1
+    assert int(users[bob_id]["is_admin"] or 0) == 0
+
+
+def test_a_forged_genesis_cannot_be_hidden_by_re_adding_the_admin_on_its_real_keys(team, lock_spy):  # noqa: F811
+    """Capability run 385: the log ended on the admin's real keys (removed, then
+    re-added as a member), so a check of the final keys alone let it through;
+    the founder's genesis keys themselves must be the account's."""
+    db, admin, client, bob, bob_client = team
+    admin_id, bob_id = client._user_id, bob_client._user_id
+    records = _forged_takeover(admin_id, bob, bob_id)
+    state = teamlog.replay(records)
+    readd = teamlog.sign_record(teamlog.next_body(state, "member.add", bob_id, {
+        "user_id": admin_id, "signing_pk": bytes(client._keypair.signing_pk).hex(),
+        "encryption_pk": bytes(client._keypair.encryption_pk).hex(), "role": "member",
+    }), bob.keypair.to_nacl_signing_key())
+    records.append(readd)
+    teamlog.replay(records)  # the rules alone take it
+
+    with pytest.raises(RuntimeError, match="genesis needs its founder \\(on the keys"):
+        bob_client._request("POST", "/api/team-log/restore", {"records": records}, auth=True)
+    assert lock_spy == []  # refused before the push lock (M6)
+    assert db._storage["team_log"] == []
+    users = {u["id"]: u for u in db._storage["users"]}
+    assert int(users[admin_id]["is_admin"]) == 1
     assert int(users[bob_id]["is_admin"] or 0) == 0
 
 
@@ -79,7 +103,7 @@ def test_a_refused_restore_never_takes_the_push_lock(team, lock_spy):  # noqa: F
     """Review 8bc70f7 M6: the replay and the key check run before the lock."""
     db, admin, client, bob, bob_client = team
     records = _forged_takeover(client._user_id, bob, bob_client._user_id)
-    with pytest.raises(RuntimeError, match="keys the account does not sign in with"):
+    with pytest.raises(RuntimeError, match="genesis needs its founder"):
         bob_client._request("POST", "/api/team-log/restore", {"records": records}, auth=True)
     assert lock_spy == []
 
