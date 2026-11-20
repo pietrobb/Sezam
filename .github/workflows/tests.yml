@@ -47,7 +47,7 @@ jobs:
           python-version: "3.11"
       # The web tests run app.js in node; its Argon2id is crypto.argon2Sync
       # (node >= 24.7), the runner's preinstalled node is older.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - uses: subosito/flutter-action@v2
@@ -104,7 +104,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - run: python -m pip install ./core/py
@@ -147,7 +147,7 @@ jobs:
         working-directory: mobile
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - uses: subosito/flutter-action@v2
