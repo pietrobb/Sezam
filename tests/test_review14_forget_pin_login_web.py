@@ -48,6 +48,7 @@ def test_only_a_missing_or_new_log_offers_to_forget_it():
 def test_after_forgetting_a_server_without_log_is_a_mismatch():
     result = _run("""
         state.confirmedTeamGenesis = null;  // only the log copy and the checkpoint pin it
+        apiFetch = async () => ({ head: null, records: [] });  // the server lost the log
         const before = await syncWebTeamLog(null, null, null, sodium);
         await forgetWebTeamLogPinLocked(want.slice(0, 16), 1, sodium);
         let after;
@@ -64,7 +65,8 @@ def test_after_forgetting_a_server_without_log_is_a_mismatch():
 
 def test_forgetting_at_sign_in_checks_the_queue_no_pull_loaded_yet():
     result = _run("""
-        // A fresh login: the queue is only in IndexedDB.
+        // A fresh login: the queue is only in IndexedDB. The server lost the log.
+        apiFetch = async () => ({ head: null, records: [] });
         let stored = { objects: { E1: { id: 'E1', version: 2 } }, conflicts: {}, ops: [], sent: {} };
         loadWebDirtyState = async () => JSON.parse(JSON.stringify(stored));
         adoptLegacyWebRekeyJournals = async () => {};

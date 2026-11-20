@@ -55,7 +55,7 @@ def test_a_device_leaves_a_lost_log_and_follows_the_new_one(team, monkeypatch): 
 
     for typed in ("", old[:15], new[:16], "f" * 64):
         with pytest.raises(ValueError, match="Type the pinned genesis"):
-            forget_team_log_pin(bob, typed)
+            forget_team_log_pin(bob, typed, bob_client)
     assert pinned_genesis(bob) == {old}
 
     result = _cli(monkeypatch, bob, "forget-pin")
@@ -82,8 +82,9 @@ def test_forget_pin_drops_the_anchor_of_the_local_keys_and_ignores_the_bundle(te
     old = bob_client.team_state().genesis_hash
     bob.keypair.confirmed_genesis = old  # as published in the account keys
     assert pinned_genesis(bob) == {old}
+    _reseed_server(db, client)
 
-    forget_team_log_pin(bob, old)
+    forget_team_log_pin(bob, old, bob_client)
     assert bob.keypair.confirmed_genesis is None
     bob.lock()
     bob.unlock(PASSWORD)
@@ -102,7 +103,8 @@ def test_confirming_the_genesis_again_ends_the_forgetting(team, monkeypatch):  #
     _confirm_founder(admin, bob)
     bob_client.pull()
     old = bob_client.team_state().genesis_hash
-    forget_team_log_pin(bob, old)
+    _reseed_server(db, client)
+    forget_team_log_pin(bob, old, bob_client)
 
     result = _cli(monkeypatch, bob, "confirm-genesis", old)
     assert result.exit_code == 0, result.output
@@ -130,7 +132,7 @@ def test_after_forgetting_a_server_without_log_is_a_mismatch_until_the_admin_fou
     for vault, device in ((bob, bob_client), (admin, client)):
         with pytest.raises(TeamLogMismatch, match="forget-pin"):
             device.pull()
-        forget_team_log_pin(vault, old)
+        forget_team_log_pin(vault, old, device)
         with pytest.raises(TeamLogMismatch, match="left an earlier one"):
             device.pull()
 
@@ -149,5 +151,5 @@ def test_forget_pin_waits_for_unsent_team_changes(team):  # noqa: F811
     old = client.team_state().genesis_hash
     outbox.put(client._db, outbox.TEAM_CHANGE, ["folder.key", {}], new_ulid())
     with pytest.raises(RuntimeError, match="settle them first"):
-        forget_team_log_pin(admin, old)
+        forget_team_log_pin(admin, old, client)
     assert pinned_genesis(admin) == {old}

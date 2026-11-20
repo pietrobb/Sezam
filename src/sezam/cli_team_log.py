@@ -174,7 +174,7 @@ def team_log_forget_pin(genesis: Optional[str]):
         if not click.confirm("Forget the pinned team log on this device?", default=False):
             raise click.ClickException("Nothing was changed.")
         try:
-            left = forget_team_log_pin(vault, genesis)
+            left = forget_team_log_pin(vault, genesis, _connected(vault))
         except (ValueError, RuntimeError) as exc:
             raise click.ClickException(str(exc)) from exc
         click.echo("Forgot " + ", ".join(sorted(left)) + ". Next: 'sezam pull', then "

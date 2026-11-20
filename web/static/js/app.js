@@ -7527,6 +7527,20 @@ function webPinnedTeamGenesis() {
     ].filter(Boolean))].sort();
 }
 
+/** Why this browser refuses the server's team log now (the TEAM LOG MISMATCH
+ * error), or null: it follows it. Call with the sync lock held. */
+async function webTeamLogRefusal(_sodium) {
+    const local = state.teamLog || null;
+    const resp = await apiFetch(`/api/team-log?since=${local ? local.team.headSeq : -1}`);
+    try {
+        await syncWebTeamLog(resp.head || null, local, state.syncCheckpoint?.team_log || null, _sodium);
+    } catch (err) {
+        if (err.teamLogCause) return err;
+        throw err;
+    }
+    return null;
+}
+
 /** Drop this browser's team log pin; call with the sync lock held. */
 async function forgetWebTeamLogPinLocked(typed, session, _sodium, discardUnsent = null) {
     const ended = () => session !== state.sessionSerial || !state.kek;
@@ -7538,6 +7552,14 @@ async function forgetWebTeamLogPinLocked(typed, session, _sodium, discardUnsent 
     if (typed.length < FORGET_PIN_MIN_CHARS || !pins.every(pin => pin.startsWith(typed))) {
         throw new Error(t('team.forget_typed', { pins: pins.join(', ') }));
     }
+    // INV-8: only a log this browser refuses as lost now (the pull's own
+    // judgment, TEAM_LOG_MISMATCH_FORGET), never a fork; asked before any
+    // unsent change is dropped.
+    const refusal = await webTeamLogRefusal(_sodium);
+    if (!refusal?.teamLogLost) {
+        throw new Error(t('team.forget_not_lost', { reason: refusal ? refusal.message : 'this browser follows it' }));
+    }
+    if (ended()) throw new Error(t('team.stale'));
     if (Object.keys(state.outbox || {}).length || Object.keys(state.syncConflicts || {}).length ||
             (state.outboxOps || []).length) {
         if (!discardUnsent || !await discardUnsent()) throw new Error(t('team.forget_unsent'));

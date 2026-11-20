@@ -13,7 +13,7 @@ from tests.test_team_log_web_rekey import FUNCTIONS, TEAMLOG_JS, _secrets
 from tests.test_web_old_kek_records import FAKE_IDB
 
 EXTRA = [
-    "webPinnedTeamGenesis", "forgetWebTeamLogPinLocked", "loadWebLocalStateLocked",
+    "webPinnedTeamGenesis", "forgetWebTeamLogPinLocked", "webTeamLogRefusal", "loadWebLocalStateLocked",
     "loadSyncCheckpoint", "saveSyncCheckpoint", "syncCheckpointRecordId", "syncCheckpointAAD",
 ]
 OLD = Log().genesis().member(B)
@@ -36,7 +36,7 @@ def _run(script: str):
       const fresh = TL.replay(NEW, sodium);
       const want = old.team.genesisHash;
       const pull = async () => {{
-        apiFetch = async () => ({{ records: NEW }});
+        apiFetch = async () => ({{ head: teamLogPin(fresh), records: NEW }});
         try {{
           const got = await syncWebTeamLog(teamLogPin(fresh), state.teamLog, state.syncCheckpoint?.team_log, sodium);
           return got.team.genesisHash === fresh.genesisHash;
@@ -90,6 +90,7 @@ def test_a_browser_leaves_a_lost_log_and_follows_the_new_one():
 
 def test_the_account_bundle_does_not_pin_a_forgotten_log_again_until_confirmed():
     result = _run("""
+        await pull();  // the server serves the team's new log: the old one is lost
         await forget(want);
         state.keypair.confirmedGenesis = want;  // the server's account bundle still names it
         await importAccountTeamAnchor(sodium);

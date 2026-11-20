@@ -2341,8 +2341,26 @@ class SyncService {
         },
       );
     } on TeamLogMismatch catch (e) {
-      throw SyncIntegrityException('$e');
+      throw SyncIntegrityException('$e', teamLog: e);
     }
+  }
+
+  /// Why this phone refuses the server's team log now (the pull's own
+  /// judgment), or null: it follows it. INV-8: forgetting the pin asks this.
+  Future<TeamLogMismatch?> _teamLogRefusal() async {
+    final response = await _http.get(
+      Uri.parse('$_serverUrl/api/team-log?since=${_vault.teamLog?.team.headSeq ?? -1}'),
+      headers: _authHeaders(),
+    );
+    _checkResponse(response, 'team log');
+    final head = (jsonDecode(response.body) as Map<String, dynamic>)['head'];
+    try {
+      await _syncTeamLog(head, await _loadSyncCheckpoint());
+    } on SyncIntegrityException catch (e) {
+      if (e.teamLog != null) return e.teamLog;
+      rethrow;
+    }
+    return null;
   }
 
   /// Fetch the externally anchored log when no copy is cached yet. An
@@ -2440,6 +2458,10 @@ class SyncService {
       throw FormatException('Type the pinned genesis (at least its first $forgetPinMinChars '
           'characters) to forget it: ${pins.join(', ')}');
     }
+    // INV-8: only a log this phone refuses as lost now (teamLogMismatchForget),
+    // never a fork; asked before any unsent change is dropped.
+    final refusal = await _teamLogRefusal();
+    if (refusal == null || !refusal.offersForget) throw TeamLogNotLost(refusal);
     final unsent = (await _db.getDirtyObjects()).length;
     if (unsent > 0 && !discardUnsent) throw UnsentChangesBlockForget(unsent);
     // Only what the file holds is dropped: an edit saved meanwhile stays queued.
@@ -2800,7 +2822,10 @@ class FullResyncResult {
 class SyncIntegrityException implements Exception {
   final String message;
 
-  const SyncIntegrityException(this.message);
+  /// The team log refusal this stands for (its cause decides the offer, INV-7).
+  final TeamLogMismatch? teamLog;
+
+  const SyncIntegrityException(this.message, {this.teamLog});
 
   @override
   String toString() => 'SyncIntegrityException: $message';
@@ -2836,6 +2861,17 @@ class UnsentChangesBlockForget implements Exception {
 
   @override
   String toString() => 'This phone holds $count unsent changes the lost team log no longer takes.';
+}
+
+/// INV-8: the server's team log is not lost (this phone follows it, or it
+/// lies: a fork, a log going back), so the pin is not forgotten.
+class TeamLogNotLost implements Exception {
+  const TeamLogNotLost(this.refusal);
+  final TeamLogMismatch? refusal;
+
+  @override
+  String toString() => 'Tímový denník na serveri nie je stratený, preto sa nezabúda '
+      '(len denník stratený natrvalo, nikdy fork či návrat späť): ${refusal ?? 'telefón ho nasleduje'}';
 }
 
 class TofuKeyChangeException extends SyncIntegrityException {

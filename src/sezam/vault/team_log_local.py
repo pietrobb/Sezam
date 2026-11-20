@@ -966,6 +966,15 @@ class TeamLogMixin:
         resp = self._request("GET", f"/api/team-log?since={since}", auth=True)
         self._sync_team_log(resp.get("head"))
 
+    def team_log_refusal(self) -> Optional[TeamLogMismatch]:
+        """Why this device refuses the server's team log now (INV-8: forgetting
+        the pin asks this), or None: it follows the server's log."""
+        try:
+            self._refresh_team_log()
+        except TeamLogMismatch as exc:
+            return exc
+        return None
+
     def _send_team_records(self, send, extra=()) -> None:
         """Build the pending changes (+ ``extra``) and ``send(records)``.
 

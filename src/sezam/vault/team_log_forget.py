@@ -28,6 +28,7 @@ from .team_log_local import (
 
 if TYPE_CHECKING:
     from .crud import Vault
+    from .sync_client import SyncClient
 
 MIN_CONFIRM_CHARS = 16
 
@@ -44,11 +45,13 @@ def pinned_genesis(vault: Vault) -> set[str]:
     }
 
 
-def forget_team_log_pin(vault: Vault, typed: str) -> set[str]:
+def forget_team_log_pin(vault: Vault, typed: str, client: SyncClient) -> set[str]:
     """Drop the team log pin of this device; the genesis hashes it left.
 
     ``typed``: the pinned genesis, at least its first 16 characters. Refused
-    while a team change of this device waits for the old log.
+    while a team change of this device waits for the old log, and (INV-8)
+    unless ``client`` follows the server's log now and refuses it as lost
+    (MISMATCH_CAUSES): never for a server that forks or goes back.
     """
     from ..crypto.aead import encrypt_keypair_wrap
 
@@ -71,6 +74,12 @@ def forget_team_log_pin(vault: Vault, typed: str) -> set[str]:
         waiting.append("a re-key not sent yet ('sezam push' or 'sezam abandon-rekey')")
     if waiting:
         raise RuntimeError("These wait for the pinned team log; settle them first: " + "; ".join(waiting))
+    refusal = client.team_log_refusal()
+    if refusal is None or not refusal.offers_forget:
+        raise ValueError(
+            "The server's team log is not lost, so it is not forgotten: "
+            + (str(refusal) if refusal else "this device follows it.")
+        )
 
     keypair = vault.keypair
     with db.transaction(immediate=True):
