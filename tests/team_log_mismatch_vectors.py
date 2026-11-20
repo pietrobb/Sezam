@@ -9,7 +9,10 @@ answer an oracle gives that knows nothing of any client's code:
   left one waits for the team's new one instead);
 * the server's log is missing while the device holds, pins or confirmed one,
   or it starts with another genesis than that one: the team's log is lost for
-  good, refused, and leaving it ("forget the pinned team log") is offered;
+  good, refused, and leaving it ("forget the pinned team log") is offered,
+  always as a risk (INV-8): a hostile server drops its log or serves a new
+  genesis just as easily, and no device tells that from a reseed, so the offer
+  carries "risk_marker" wherever it is shown;
 * anything else that does not continue what the device saw (behind, a fork,
   does not replay, short of its head, TL7) is a server that lies: refused, and
   forgetting is never offered.
@@ -77,14 +80,14 @@ def _oracle(device: str, server: str) -> dict:
     anchored = holds or confirmed  # the device names a genesis
     if server == "none":
         if confirmed:
-            return {"refused": "confirmed_genesis", "forget": True}
+            return {"refused": "confirmed_genesis", "forget": True, "risk": True}
         if holds:
-            return {"refused": "log_gone", "forget": True}
+            return {"refused": "log_gone", "forget": True, "risk": True}
         if device == "left_a_log":
             return {"refused": "left_earlier_log", "forget": False}
         return {"follows": None}
     if anchored and server == "another_genesis":
-        return {"refused": "confirmed_genesis" if confirmed else "other_genesis", "forget": True}
+        return {"refused": "confirmed_genesis" if confirmed else "other_genesis", "forget": True, "risk": True}
     lies = {"short_of_head": "short_of_head", "forged": "does_not_replay", "two_admins": "refused_at_head"}
     if holds:
         lies |= {"behind": "went_back", "forked": "differs"}
@@ -115,6 +118,7 @@ def build_vectors() -> dict:
             "own; every client must give these answers. Never regenerate it to make a client pass."
         ),
         "causes": CAUSES,
+        "risk_marker": "RISK:",
         "cases": cases,
     }
 

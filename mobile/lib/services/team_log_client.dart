@@ -134,8 +134,11 @@ Future<void> importAccountTeamGenesis(String userId, String genesis) async {
   await confirmTeamGenesis(userId, genesis);
 }
 
-// Review c78fd19: the way out once the team's log is lost for good.
-const lostTeamLogHint = '. If your admin confirms the team\'s log is lost for good (another server, a reseed), '
+// Review c78fd19: the way out once the team's log is lost for good. INV-8:
+// every offer is marked as a risk (RISK_MARKER in team_log_local.py).
+const lostTeamLogHint = '. RISK: a hostile server can cause this on purpose (drop its log, serve a new genesis) '
+    'so that this phone drops its pin. Only if your admin confirms out of band that the team\'s log '
+    'is lost for good (another server, a reseed), '
     'Settings → "Zabudnúť pripnutý tímový denník" leaves it on this phone';
 
 void requireConfirmedGenesis(String? confirmed, String? actual) {

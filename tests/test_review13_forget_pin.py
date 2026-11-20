@@ -50,8 +50,9 @@ def test_a_device_leaves_a_lost_log_and_follows_the_new_one(team, monkeypatch): 
     bob.db.set_meta(CONFIRMED_GENESIS_META, old)
     new = _reseed_server(db, client)
 
-    with pytest.raises(TeamLogMismatch, match="forget-pin"):
+    with pytest.raises(TeamLogMismatch, match="forget-pin") as refused:
         bob_client.pull()
+    assert "RISK:" in str(refused.value)  # INV-8: the server alone can cause this
 
     for typed in ("", old[:15], new[:16], "f" * 64):
         with pytest.raises(ValueError, match="Type the pinned genesis"):
@@ -64,6 +65,7 @@ def test_a_device_leaves_a_lost_log_and_follows_the_new_one(team, monkeypatch): 
     assert pinned_genesis(bob) == {old}
     result = _cli(monkeypatch, bob, "forget-pin", old[:16])
     assert result.exit_code == 0, result.output
+    assert result.output.index("RISK:") < result.output.index("Forget the pinned team log on this device?")
     bob.unlock(PASSWORD)
     assert pinned_genesis(bob) == set()
     assert bob.db.get_meta_json(FORGOTTEN_GENESIS_META) == [old]

@@ -14,6 +14,7 @@
   "local_damaged": false,
   "anchor_conflict": false
  },
+ "risk_marker": "RISK:",
  "cases": [
   {
    "name": "fresh/none",
@@ -616,7 +617,8 @@
    },
    "expect": {
     "refused": "log_gone",
-    "forget": true
+    "forget": true,
+    "risk": true
    }
   },
   {
@@ -840,7 +842,8 @@
    },
    "expect": {
     "refused": "other_genesis",
-    "forget": true
+    "forget": true,
+    "risk": true
    }
   },
   {
@@ -1015,7 +1018,8 @@
    },
    "expect": {
     "refused": "confirmed_genesis",
-    "forget": true
+    "forget": true,
+    "risk": true
    }
   },
   {
@@ -1239,7 +1243,8 @@
    },
    "expect": {
     "refused": "confirmed_genesis",
-    "forget": true
+    "forget": true,
+    "risk": true
    }
   },
   {
@@ -1401,7 +1406,8 @@
    },
    "expect": {
     "refused": "confirmed_genesis",
-    "forget": true
+    "forget": true,
+    "risk": true
    }
   },
   {
@@ -1558,7 +1564,8 @@
    },
    "expect": {
     "refused": "confirmed_genesis",
-    "forget": true
+    "forget": true,
+    "risk": true
    }
   },
   {

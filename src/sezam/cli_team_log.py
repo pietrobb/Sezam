@@ -155,6 +155,7 @@ def team_log_forget_pin(genesis: Optional[str]):
     shows the pinned one.
     """
     from .vault.team_log_forget import forget_team_log_pin, pinned_genesis
+    from .vault.team_log_local import RISK_MARKER
 
     vault = cli._open_vault()
     cli._unlock_vault_fresh(vault)
@@ -168,6 +169,8 @@ def team_log_forget_pin(genesis: Optional[str]):
             click.echo("To leave it for good: 'sezam team-log forget-pin GENESIS'.")
             return
         click.echo(
+            f"{RISK_MARKER} a hostile server can drop the team's log or serve a new genesis on purpose to make "
+            "you forget the pin. Go on only if your admin confirmed out of band that the log is lost for good.\n"
             "This device then no longer insists on that team log: whatever log the server has next is "
             "new to it, and nothing from it is trusted until you confirm its founder's fingerprint."
         )

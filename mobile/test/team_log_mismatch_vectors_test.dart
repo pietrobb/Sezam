@@ -19,6 +19,8 @@ void main() {
   final vectors = jsonDecode(File('../tests/vectors/team_log_mismatch.json').readAsStringSync())
       as Map<String, dynamic>;
   final cases = [for (final c in vectors['cases'] as List) c as Map<String, dynamic>];
+  // INV-8: no offer to forget without it.
+  final risk = vectors['risk_marker'] as String;
   late TeamLog log;
 
   setUpAll(() async {
@@ -66,7 +68,12 @@ void main() {
       } on NoSuchMethodError {
         cause = null; // a phone before the one list names none
       }
-      return {'refused': true, 'forget': '$e'.contains('Zabudnúť pripnutý tímový denník'), 'cause': cause};
+      return {
+        'refused': true,
+        'forget': '$e'.contains('Zabudnúť pripnutý tímový denník'),
+        'risk': '$e'.contains(risk),
+        'cause': cause,
+      };
     }
   }
 
@@ -80,7 +87,7 @@ void main() {
       final expect = c['expect'] as Map<String, dynamic>;
       want[name] = expect.containsKey('follows')
           ? {'follows': expect['follows']}
-          : {'refused': true, 'forget': expect['forget']};
+          : {'refused': true, 'forget': expect['forget'], 'risk': expect['risk'] ?? false};
     }
     expect(got, want);
   });

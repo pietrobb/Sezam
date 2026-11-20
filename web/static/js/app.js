@@ -7797,9 +7797,12 @@ function teamLogMismatch(detail, cause) {
     });
     if (!Object.hasOwn(TEAM_LOG_MISMATCH_FORGET, cause)) throw new Error(`unknown team log mismatch cause ${cause}`);
     const lost = TEAM_LOG_MISMATCH_FORGET[cause];
+    // INV-8: every offer is marked as a risk (RISK_MARKER in team_log_local.py).
     const err = new Error(`TEAM LOG MISMATCH: the server's team log ${detail}` + (lost
-        ? '. If your admin confirms the team\'s log is lost for good (another server, a reseed), ' +
-          '"Forget the pinned team log" (Team trust, or the sign-in screen) leaves it in this browser'
+        ? '. RISK: a hostile server can cause this on purpose (drop its log, serve a new genesis) so that ' +
+          'this browser drops its pin. Only if your admin confirms out of band that the team\'s log is lost ' +
+          'for good (another server, a reseed), "Forget the pinned team log" (Team trust, or the sign-in ' +
+          'screen) leaves it in this browser'
         : ''));
     err.teamLogCause = cause;
     err.teamLogLost = lost;

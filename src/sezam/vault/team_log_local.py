@@ -51,7 +51,9 @@ TEAM_LOG_APPEND_MAX = 1000  # records per append the server takes (TeamLogAppend
 # server's team log, and for which of them "forget the pinned team log" is
 # offered: only where the log this device holds is missing or a new log
 # starts (another server, a reseed). A fork, a log going back or one that does
-# not replay is a server that lies, never forgotten. The web page
+# not replay is a server that lies, never forgotten. INV-8: a server can drop
+# its log or serve a new genesis on its own, and no device tells that from a
+# reseed, so every offer carries RISK_MARKER (no cause is offered plainly). The web page
 # (TEAM_LOG_MISMATCH_FORGET in app.js) and the phone (teamLogMismatchForget in
 # team_log_client.dart) carry the same list; tests/vectors/team_log_mismatch.json
 # is it, and every client must give its cases' answers.
@@ -70,10 +72,14 @@ MISMATCH_CAUSES = {
     "anchor_conflict": False,    # the account anchor names another log than this device holds
 }
 
+# INV-8: how every client marks the offer to forget as a risk
+# (tests/vectors/team_log_mismatch.json "risk_marker").
+RISK_MARKER = "RISK:"
 # Review c78fd19: the way out once the team's log is lost for good.
 LOST_LOG_HINT = (
-    " If your admin confirms the team's log is lost for good (another server, a reseed), "
-    "'sezam team-log forget-pin' leaves it on this device."
+    f" {RISK_MARKER} a hostile server can cause this on purpose (drop its log, serve a new genesis) "
+    "so that this device drops its pin. Only if your admin confirms out of band that the team's log "
+    "is lost for good (another server, a reseed), 'sezam team-log forget-pin' leaves it on this device."
 )
 
 

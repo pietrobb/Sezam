@@ -85,7 +85,9 @@ class _TeamForgetPinDialogState extends State<TeamForgetPinDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Len ak je denník tímu stratený natrvalo (iný server, nové založenie). '
+              'RIZIKO: nepriateľský server môže denník zámerne zahodiť alebo podstrčiť nový '
+              'genesis, aby ste pin zabudli. Pokračujte len ak správca mimo servera potvrdil, '
+              'že denník je stratený natrvalo (iný server, nové založenie). '
               'Telefón potom nasleduje denník servera ako nový a dôveruje mu až po '
               'novom potvrdení odtlačku zakladateľa.',
             ),

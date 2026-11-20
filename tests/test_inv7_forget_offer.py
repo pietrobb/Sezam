@@ -18,6 +18,12 @@ forget-pin', the page's error carries teamLogLost (the sign-in screen's and Team
 trust's offer) and names "Forget the pinned team log". Before this list each
 client decided it at its own throw sites: on 8bc70f7 the page offered it nowhere
 on a refused login (H4).
+
+INV-8 (run 393): the server alone produces every offered state (no log, a new
+genesis), so wherever the offer shows it carries the vectors' "risk_marker",
+and so does every confirm step before the pin goes (the CLI, the page's
+team.forget_confirm, the phone's dialog). Before that, 5669ca3 offered it with
+the same plain hint as for a log simply gone.
 """
 
 from __future__ import annotations
@@ -41,6 +47,7 @@ from tests.node_support import node_problem
 ROOT = Path(__file__).resolve().parents[1]
 VECTORS = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
 CASES = VECTORS["cases"]
+RISK = VECTORS["risk_marker"]
 
 
 def _seq(record: dict) -> int:
@@ -83,7 +90,7 @@ def _desktop(tmp_path: Path, case: dict) -> dict:
             state = device._sync_team_log(case["server"]["head"])
         except TeamLogMismatch as exc:
             return {"refused": True, "forget": "sezam team-log forget-pin" in str(exc),
-                    "cause": getattr(exc, "cause", None)}
+                    "risk": RISK in str(exc), "cause": getattr(exc, "cause", None)}
         return {"follows": None if state is None else state.head_seq}
     finally:
         db.close()
@@ -93,7 +100,7 @@ def _answer(case: dict) -> dict:
     expect = case["expect"]
     if "follows" in expect:
         return {"follows": expect["follows"]}
-    return {"refused": True, "forget": expect["forget"]}
+    return {"refused": True, "forget": expect["forget"], "risk": expect.get("risk", False)}
 
 
 def _seen(got: dict) -> dict:
@@ -111,6 +118,7 @@ def test_the_desktop_offers_to_forget_exactly_where_the_log_is_lost(tmp_path):
 
 WEB_SCRIPT = """
     const cases = %s;
+    const RISK = %s;
     const out = {};
     restoreWebTeamLog = async () => false;  // a restore that lands is INV-2
     for (const c of cases) {
@@ -129,6 +137,7 @@ WEB_SCRIPT = """
             if (!String(err.message).startsWith('TEAM LOG MISMATCH')) throw err;
             out[c.name] = { refused: true,
                             forget: err.teamLogLost === true && err.message.includes('Forget the pinned team log'),
+                            risk: err.message.includes(RISK),
                             cause: err.teamLogCause ?? null };
         }
     }
@@ -139,7 +148,7 @@ WEB_SCRIPT = """
 def _web() -> dict:
     helpers = (TEAMLOG_JS + "\nvar ENVELOPE_ALG = 1, SCHEMA_VERSION = 1, TEAM_LOG_PAGES = 1000, "
                "BLOB_KIND = { NODE_META: 1 };\n" + "\n".join(_function(n) for n in FUNCTIONS))
-    script = "const TL = globalThis.SezamTeamLog;\n" + WEB_SCRIPT % json.dumps(CASES)
+    script = "const TL = globalThis.SezamTeamLog;\n" + WEB_SCRIPT % (json.dumps(CASES), json.dumps(RISK))
     return _run_source(helpers, "(async () => {" + script + "\n})()")
 
 
@@ -173,6 +182,17 @@ def test_every_client_carries_the_one_list():
         expect = case["expect"]
         if "refused" in expect:
             assert VECTORS["causes"][expect["refused"]] is expect["forget"], case["name"]
+            # INV-8: no offer without the risk marker.
+            assert expect.get("risk", False) is expect["forget"], case["name"]
+
+
+def test_every_confirm_before_forgetting_names_the_risk():
+    # The CLI's prompt: tests/test_review13_forget_pin.py, on a real reseed.
+    i18n = (ROOT / "web/static/js/i18n.js").read_text(encoding="utf-8")
+    confirms = re.findall(r"'team\.forget_confirm': '([^']*)'", i18n)
+    assert len(confirms) == 2 and confirms[0].startswith("RIZIKO:") and confirms[1].startswith(RISK)
+    dialog = (ROOT / "mobile/lib/widgets/team_forget_pin_dialog.dart").read_text(encoding="utf-8")
+    assert "'RIZIKO: " in dialog
 
 
 @pytest.mark.skipif(node_problem() is not None, reason="node is needed for app.js")
