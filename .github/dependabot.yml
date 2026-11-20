@@ -1,40 +1,84 @@
 # INV-10 / review 8bc70f7 M9: every dependency manifest in the tree is watched
 # (tests/test_inv10_public_repo.py fails on a manifest without an entry).
+# Version updates come once a month as ONE grouped pull request per entry, so a
+# config change no longer opens a pull request per package. Security updates
+# are not grouped and still come at once (tests/test_inv10_public_repo.py
+# checks every entry is grouped, monthly and limited to one open PR).
 version: 2
 updates:
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      uv:
+        patterns: ["*"]
   - package-ecosystem: "pip"
     directory: "/server"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      server:
+        patterns: ["*"]
   - package-ecosystem: "cargo"
     directory: "/core"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      core:
+        patterns: ["*"]
   - package-ecosystem: "cargo"
     directory: "/core/ffi"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      core-ffi:
+        patterns: ["*"]
   - package-ecosystem: "cargo"
     directory: "/core/py"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      core-py:
+        patterns: ["*"]
   - package-ecosystem: "cargo"
     directory: "/core/wasm"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      core-wasm:
+        patterns: ["*"]
   - package-ecosystem: "pub"
     directory: "/mobile"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      mobile:
+        patterns: ["*"]
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      docker:
+        patterns: ["*"]
+    ignore:
+      # The server targets Python 3.11; only 3.11.x patch images are wanted.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      actions:
+        patterns: ["*"]

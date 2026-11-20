@@ -69,6 +69,18 @@ def test_every_dependency_manifest_has_a_dependabot_entry():
     assert needed - _dependabot_entries() == set()
 
 
+def test_every_dependabot_entry_is_one_grouped_monthly_pull_request():
+    """A new entry must not open one pull request (and one e-mail) per package."""
+    text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    blocks = re.split(r"\n\s*-\s+(?=package-ecosystem:)", text)[1:]
+    assert blocks
+    for block in blocks:
+        name = block.splitlines()[0]
+        assert re.search(r'interval:\s*"?monthly"?', block), name
+        assert re.search(r"open-pull-requests-limit:\s*1\b", block), name
+        assert re.search(r'groups:\s*\n\s+[\w-]+:\s*\n\s+patterns:\s*\["\*"\]', block), name
+
+
 def test_every_base_image_is_pinned_by_digest():
     froms = []
     for name in _tracked():
