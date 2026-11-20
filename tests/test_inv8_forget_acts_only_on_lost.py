@@ -1,9 +1,13 @@
 """INV-8 (docs/ROOT_CAUSE_PLAN.md, review 8bc70f7 H4): "forget the pinned team
 log" acts exactly where the device, following the server's log now, refuses it
-as lost for good (tests/vectors/team_log_mismatch.json: the server has none
-while the device holds, pins or confirmed one, or it starts with another
-genesis). It never leaves a log for a server that lies (behind, a fork, a log
-that does not replay, short of its head, TL7) or that the device follows.
+as possibly lost for good (tests/vectors/team_log_mismatch.json: the server has
+none while the device holds, pins or confirmed one, or it starts with another
+genesis). A hostile server produces those states just as easily, and no device
+tells them from a reseed: every offer and confirm step on the way marks the
+forget as a risk ("risk_marker", tests/test_inv7_forget_offer.py), and only an
+admin's confirmation out of band settles it. It never leaves a log for a
+server that lies in a way a device sees (behind, a fork, a log that does not
+replay, short of its head, TL7) or that the device follows.
 
 INV-7 (tests/test_inv7_forget_offer.py) decides where it is offered; this is
 the action itself, whichever screen reaches it (CLI, Team trust, the sign-in
