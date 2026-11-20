@@ -47,7 +47,7 @@ dev = [
     "httpx==0.28.1",
     "ruff==0.15.6",
     "fastapi==0.135.1",
-    "uvicorn[standard]==0.34.3",
+    "uvicorn[standard]==0.54.0",
     "aiomysql==0.3.2",
     # Same as server/requirements.txt; aiomysql 0.3.2 breaks on PyMySQL >= 1.2.3
     # (escape_bytes_prefixed became a str).
