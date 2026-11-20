@@ -39,7 +39,7 @@ import = [
 # (tests/test_tooling.py keeps the two lists in step).
 dev = [
     "pytest==9.0.3",
-    "pytest-cov==7.0.0",
+    "pytest-cov==7.1.0",
     "pytest-asyncio==1.3.0",
     "pytest-xdist==3.8.0",
     # Stateful sync test (tests/test_sync_state_machine.py).
