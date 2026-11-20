@@ -1609,6 +1609,9 @@ async function handleLogin(e) {
         return;
     }
 
+    // Review 8bc70f7 H4: shown (and read) only after a login failed on a lost team log.
+    const forgetTyped = state.loginTeamLogLost
+        ? (document.getElementById('login-team-forget-genesis')?.value || '').trim() : '';
     spinner.classList.remove('hidden');
     error.classList.add('hidden');
     resetSession();  // never merge a new login into leftovers of a previous one
@@ -1715,6 +1718,9 @@ async function handleLogin(e) {
 
         // Import only the anchor authenticated inside this account's keypair wrap.
         if (state.keypair.confirmedGenesis) await importAccountTeamAnchor(_sodium);
+        // The password just opened the keypair and signed in: it authorizes
+        // leaving the pinned team log before the pull that would refuse it.
+        if (forgetTyped) await forgetTeamLogPinAtLogin(forgetTyped, loginSession, _sodium);
         // 8. Pull vault and build tree
         await pullAndBuildTree();
         await settleUnfinishedKekRotation(unfinishedRotation, meta);
@@ -1742,6 +1748,8 @@ async function handleLogin(e) {
         await renderUserInfoWithFingerprint(username);
         if (loginSession !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
         showScreen('vault-screen');
+        state.loginTeamLogLost = false;
+        document.getElementById('login-team-forget')?.classList.add('hidden');
 
     } catch (err) {
         if (state.sodium && loginDerivedKey) state.sodium.memzero(loginDerivedKey);
@@ -1761,9 +1769,40 @@ async function handleLogin(e) {
             error.textContent = err.message || t('error.login_failed');
         }
         error.classList.remove('hidden');
+        // Without this the browser stayed at TEAM LOG MISMATCH for good: the
+        // way out was only in the vault this login never reached.
+        state.loginTeamLogLost = !!(err.teamLogLost || forgetTyped);
+        const forgetPanel = document.getElementById('login-team-forget');
+        if (state.loginTeamLogLost) forgetPanel?.classList.remove('hidden');
+        else forgetPanel?.classList.add('hidden');
     } finally {
         spinner.classList.add('hidden');
     }
+}
+
+/** Review 8bc70f7 H4: "Forget the pinned team log" on the sign-in screen, for a
+ * login that fails on a lost team log; runs once the login's password signed in. */
+async function forgetTeamLogPinAtLogin(typed, session, _sodium) {
+    if (!window.confirm(t('team.forget_confirm'))) throw new Error(t('team.forget_cancelled'));
+    // Nothing queued here can reach the lost log, and the vault where it
+    // could be sent or resolved never opens: export it, then drop it.
+    const discardUnsent = async () => {
+        const objects = [...Object.values(state.outbox || {}),
+            ...Object.values(state.syncConflicts || {}).map(conflict => conflict.local_object)];
+        const count = objects.length + (state.outboxOps || []).length;
+        if (!window.confirm(t('team.forget_discard_unsent', { count }))) return false;
+        if (objects.length) exportWebDirtyObjects(objects);
+        const outbox = {}, conflicts = {}, ops = [];
+        await saveWebDirtyState(outbox, conflicts, _sodium, ops);
+        state.outbox = outbox;
+        state.syncConflicts = conflicts;
+        state.outboxOps = ops;
+        return !Object.keys(outbox).length && !Object.keys(conflicts).length && !ops.length;
+    };
+    await withWebSyncLock(() => forgetWebTeamLogPinLocked(typed, session, _sodium, discardUnsent));
+    const input = document.getElementById('login-team-forget-genesis');
+    if (input) input.value = '';
+    document.getElementById('login-team-forget')?.classList.add('hidden');
 }
 
 // ── Onboarding ──
@@ -2408,6 +2447,7 @@ function resetSession() {
     state.heldBeforeRestore = null;
     state.teamLog = null;
     state.confirmedTeamGenesis = null;
+    state.forgottenTeamGenesis = [];
     state.outbox = {};
     state.outboxOps = [];
     state.outboxSent = {};
@@ -2755,36 +2795,7 @@ function pullAndBuildTree() {
 async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     const _sodium = await ensureSodium();
     if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
-    if (!state.syncCheckpointLoaded) {
-        const confirmedGenesis = await loadConfirmedTeamGenesis(_sodium);
-        if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
-        state.confirmedTeamGenesis = confirmedGenesis;
-        state.syncCheckpoint = await loadSyncCheckpoint(_sodium);
-        state.syncCheckpointLoaded = true;
-    }
-    if (!state.outboxLoaded) {
-        let pending;
-        try {
-            pending = await loadWebDirtyState(_sodium);
-        } catch {
-            // Review 8595ec1 #5: a queue this KEK does not open (sealed by a
-            // tab with an older one) is set aside, not an error for good.
-            await setAsideRecordsOfOldKek(_sodium, false);
-            pending = await loadWebDirtyState(_sodium);
-            renderSetAsideWebChanges().catch(() => {});
-        }
-        if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
-        state.outbox = pending.objects;
-        state.outboxOps = pending.ops;
-        state.syncConflicts = pending.conflicts;
-        state.outboxSent = pending.sent;
-        state.outboxBaseline = JSON.parse(JSON.stringify(pending));
-        // S3 (docs/SYNC_SINGLE_SOURCE.md 3.7): the server copy's signer says
-        // which writes are this account's; the old record of them goes.
-        await idbKeysRequest('readwrite', store => store.delete(`sent_writes:${state.userId}`));
-        state.outboxLoaded = true;
-        await adoptLegacyWebRekeyJournals(_sodium);
-    }
+    if (!state.syncCheckpointLoaded || !state.outboxLoaded) await loadWebLocalStateLocked(session, _sodium);
     // The web client keeps its ciphertext snapshot in memory. After a reload it
     // must reconstruct the complete snapshot before a persisted checkpoint can
     // be verified; only then are delta pulls safe.
@@ -3350,6 +3361,49 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     const tree = buildTree(state.allNodes, state.allEntries);
     state.tree = tree;
     renderTree(tree);
+}
+
+/**
+ * What this browser keeps for the session (checkpoint, team log pins, the
+ * queue), loaded once per session with the sync lock held. Review 8bc70f7 H4:
+ * forgetting the pin at sign-in checks the queue before any pull loaded it.
+ */
+async function loadWebLocalStateLocked(session, _sodium) {
+    const ended = () => {
+        if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
+    };
+    if (!state.syncCheckpointLoaded) {
+        const confirmedGenesis = await loadConfirmedTeamGenesis(_sodium);
+        const forgottenGenesis = await loadForgottenTeamGenesis(_sodium);
+        ended();
+        state.confirmedTeamGenesis = confirmedGenesis;
+        state.forgottenTeamGenesis = forgottenGenesis;
+        state.syncCheckpoint = await loadSyncCheckpoint(_sodium);
+        state.syncCheckpointLoaded = true;
+    }
+    if (!state.outboxLoaded) {
+        let pending;
+        try {
+            pending = await loadWebDirtyState(_sodium);
+        } catch {
+            // Review 8595ec1 #5: a queue this KEK does not open (sealed by a
+            // tab with an older one) is set aside, not an error for good.
+            await setAsideRecordsOfOldKek(_sodium, false);
+            pending = await loadWebDirtyState(_sodium);
+            renderSetAsideWebChanges().catch(() => {});
+        }
+        if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
+        state.outbox = pending.objects;
+        state.outboxOps = pending.ops;
+        state.syncConflicts = pending.conflicts;
+        state.outboxSent = pending.sent;
+        state.outboxBaseline = JSON.parse(JSON.stringify(pending));
+        // S3 (docs/SYNC_SINGLE_SOURCE.md 3.7): the server copy's signer says
+        // which writes are this account's; the old record of them goes.
+        await idbKeysRequest('readwrite', store => store.delete(`sent_writes:${state.userId}`));
+        state.outboxLoaded = true;
+        await adoptLegacyWebRekeyJournals(_sodium);
+    }
 }
 
 /**
@@ -7409,6 +7463,7 @@ async function saveConfirmedTeamGenesis(genesis, _sodium) {
     state.confirmedTeamGenesis = genesis;
     const forgotten = await loadForgottenTeamGenesis(_sodium);
     if (forgotten.includes(genesis)) await saveForgottenTeamGenesis(forgotten.filter(g => g !== genesis), _sodium);
+    state.forgottenTeamGenesis = forgotten.filter(g => g !== genesis);
 }
 
 // Review c78fd19 (medium): a browser pinned to a team log the server lost for
@@ -7473,14 +7528,10 @@ function webPinnedTeamGenesis() {
 }
 
 /** Drop this browser's team log pin; call with the sync lock held. */
-async function forgetWebTeamLogPinLocked(typed, session, _sodium) {
+async function forgetWebTeamLogPinLocked(typed, session, _sodium, discardUnsent = null) {
     const ended = () => session !== state.sessionSerial || !state.kek;
     if (ended()) throw new Error(t('team.stale'));
-    if (!state.syncCheckpointLoaded) {
-        state.confirmedTeamGenesis = await loadConfirmedTeamGenesis(_sodium);
-        state.syncCheckpoint = await loadSyncCheckpoint(_sodium);
-        state.syncCheckpointLoaded = true;
-    }
+    await loadWebLocalStateLocked(session, _sodium);
     const pins = webPinnedTeamGenesis();
     if (!pins.length) throw new Error(t('team.forget_none'));
     typed = (typed || '').trim().toLowerCase();
@@ -7489,10 +7540,12 @@ async function forgetWebTeamLogPinLocked(typed, session, _sodium) {
     }
     if (Object.keys(state.outbox || {}).length || Object.keys(state.syncConflicts || {}).length ||
             (state.outboxOps || []).length) {
-        throw new Error(t('team.forget_unsent'));
+        if (!discardUnsent || !await discardUnsent()) throw new Error(t('team.forget_unsent'));
     }
     if (ended()) throw new Error(t('team.stale'));
-    await saveForgottenTeamGenesis([...await loadForgottenTeamGenesis(_sodium), ...pins], _sodium);
+    const forgotten = [...new Set([...await loadForgottenTeamGenesis(_sodium), ...pins])].sort();
+    await saveForgottenTeamGenesis(forgotten, _sodium);
+    state.forgottenTeamGenesis = forgotten;
     await idbKeysRequest('readwrite', store => store.delete(`confirmed_team_genesis:${state.userId}`));
     state.confirmedTeamGenesis = null;
     if (state.syncCheckpoint?.team_log) {
@@ -7725,18 +7778,33 @@ async function syncWebTeamLog(head, local, pin, _sodium) {
         const restored = await restoreWebTeamLog(head, local, pin, _sodium);
         if (restored !== false) head = restored;
     }
-    // Review c78fd19: the way out once the team's log is lost for good.
-    const lost = '. If the team\'s log is lost for good (another server, a reseed), ' +
-        '"Team trust → Forget the pinned team log" leaves it in this browser';
+    // Review c78fd19: the way out once the team's log is lost for good. Review
+    // 8bc70f7 M2/H4: offered only where the log is missing or starts anew (a
+    // fork or a log that does not replay is a lying server, never forgotten),
+    // and on the sign-in screen too (err.teamLogLost), where such a mismatch
+    // fails the login.
+    const lost = detail => {
+        const err = new Error(`TEAM LOG MISMATCH: the server's team log ${detail}. If your admin confirms ` +
+            'the team\'s log is lost for good (another server, a reseed), "Forget the pinned team log" ' +
+            '(Team trust, or the sign-in screen) leaves it in this browser');
+        err.teamLogLost = true;
+        throw err;
+    };
     if (confirmed && (!head || head.genesis_hash !== confirmed)) {
-        fail('does not match the externally confirmed genesis' + lost);
+        lost('does not match the externally confirmed genesis');
     }
     if (!head) {
-        if (local || pin) fail('is gone (a server restored from a backup, or another server)' + lost);
+        if (local || pin) lost('is gone (a server restored from a backup, or another server)');
+        // Review 8bc70f7 M2: a browser that left a log does not fall back to
+        // the rules from before any log because a server sends none.
+        if (state.forgottenTeamGenesis?.length) {
+            fail('is missing, and this browser left an earlier team log: it waits for the team\'s ' +
+                 'new log (the admin founds it) and its confirmed founder');
+        }
         return null;
     }
     const pinned = local?.team.genesisHash || pin?.genesis_hash || null;
-    if (pinned && head.genesis_hash !== pinned) fail('starts with another genesis than this browser saw' + lost);
+    if (pinned && head.genesis_hash !== pinned) lost('starts with another genesis than this browser saw');
     const seen = Math.max(localSeq, Number.isSafeInteger(pin?.seq) ? pin.seq : -1);
     if (!Number.isSafeInteger(head.seq) || head.seq < seen) fail(`went back (head ${head.seq} < ${seen})`);
     if (local && head.seq === localSeq) {

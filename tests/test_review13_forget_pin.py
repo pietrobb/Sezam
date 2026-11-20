@@ -111,6 +111,36 @@ def test_confirming_the_genesis_again_ends_the_forgetting(team, monkeypatch):  #
     assert not bob.db.get_meta_json(FORGOTTEN_GENESIS_META)
 
 
+def test_after_forgetting_a_server_without_log_is_a_mismatch_until_the_admin_founds_one(team, monkeypatch):  # noqa: F811
+    """Review 8bc70f7 M2: the device went back to the rules from before any log."""
+    from server.app import team_log as server_log
+    from sezam.vault import team_migration
+
+    async def refuse(cur, records, user_id, **_):
+        raise server_log.ApiError(400, server_log.TEAM_LOG_REFUSED, {"message": "no"})
+
+    db, admin, client, bob, bob_client = team
+    _found_with_bob(client, bob)
+    _confirm_founder(admin, bob)
+    bob_client.pull()
+    old = bob_client.team_state().genesis_hash
+    db._storage["team_log"] = []  # lost for good (no restore), nothing founded yet
+    _forget_server_cache()
+    monkeypatch.setattr(server_log, "restore", refuse)
+    for vault, device in ((bob, bob_client), (admin, client)):
+        with pytest.raises(TeamLogMismatch, match="forget-pin"):
+            device.pull()
+        forget_team_log_pin(vault, old)
+        with pytest.raises(TeamLogMismatch, match="left an earlier one"):
+            device.pull()
+
+    team_migration.found_team_log(admin, client, confirm_fingerprint=lambda _u, _fp: True)
+    new = client.team_state().genesis_hash
+    assert new != old
+    bob_client.pull()  # a log again: followed, trusted only once its founder is confirmed
+    assert bob_client.team_state().genesis_hash == new
+
+
 def test_forget_pin_waits_for_unsent_team_changes(team):  # noqa: F811
     from sezam.vault import outbox
 

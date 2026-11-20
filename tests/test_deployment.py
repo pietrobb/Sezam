@@ -203,9 +203,9 @@ def test_web_login_assets_and_guidance_are_complete():
     assert "Nové heslo si na tejto obrazovke nevytvárate" not in index
     assert "Pri bežnom prihlásení túto možnosť nepotrebujete" in index
     assert '/static/css/app.css?v=20261109-1' in index
-    assert '/static/js/i18n.js?v=20261115-1' in index
+    assert '/static/js/i18n.js?v=20261120-1' in index
     assert index.index('/static/js/teamlog.js?v=20261113-1') < index.index('/static/js/app.js')
-    assert '/static/js/app.js?v=20261115-1' in index
+    assert '/static/js/app.js?v=20261120-1' in index
     assert '<details class="backup-import">' in index
     assert index.count('action="about:blank" method="post" autocomplete="on"') == 3
     assert 'id="username" name="username"' in index

@@ -109,5 +109,7 @@ def test_login_and_pull_set_aside_what_the_kek_does_not_open():
     login = _function("handleLogin")
     set_aside = login.index("await setAsideRecordsOfOldKek(_sodium, keyChanged);")
     assert set_aside < login.index("if (keyChanged) {") < login.index("await pullAndBuildTree();")
+    # Review 8bc70f7 H4: the pull loads the queue through the loader forget-pin shares.
     pull = _function("pullAndBuildTreeLocked")
-    assert "await setAsideRecordsOfOldKek(_sodium, false);" in pull
+    assert "await loadWebLocalStateLocked(session, _sodium);" in pull
+    assert "await setAsideRecordsOfOldKek(_sodium, false);" in _function("loadWebLocalStateLocked")

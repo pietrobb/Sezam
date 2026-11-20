@@ -13,7 +13,7 @@ from tests.test_team_log_web_rekey import FUNCTIONS, TEAMLOG_JS, _secrets
 from tests.test_web_old_kek_records import FAKE_IDB
 
 EXTRA = [
-    "webPinnedTeamGenesis", "forgetWebTeamLogPinLocked",
+    "webPinnedTeamGenesis", "forgetWebTeamLogPinLocked", "loadWebLocalStateLocked",
     "loadSyncCheckpoint", "saveSyncCheckpoint", "syncCheckpointRecordId", "syncCheckpointAAD",
 ]
 OLD = Log().genesis().member(B)

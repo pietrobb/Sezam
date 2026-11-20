@@ -1161,15 +1161,26 @@ class DatabaseService {
   }
 
   /// Review c78fd19: drop the team log copy ([recordsSetting]) and the
-  /// checkpoint's pin of it ([encryptedCheckpoint]) together.
+  /// checkpoint's pin of it ([encryptedCheckpoint]) together. Review 8bc70f7
+  /// M2: the queued writes of [dropWrites] go with them, and [resyncSetting]
+  /// marks that the next pull must be a full resync.
   Future<void> leaveTeamLog({
     required String recordsSetting,
     required String checkpointKey,
     required String? encryptedCheckpoint,
+    List<String> dropWrites = const [],
+    required String resyncSetting,
   }) async {
     final db = await database;
     await db.transaction((txn) async {
       await txn.delete('settings', where: 'key = ?', whereArgs: [recordsSetting]);
+      for (final id in dropWrites) {
+        await _dropWrite(txn, id);
+      }
+      if (dropWrites.isNotEmpty) {
+        await txn.insert('settings', {'key': resyncSetting, 'value': '1'},
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
       if (encryptedCheckpoint != null) {
         await txn.insert('sync_state', {'key': checkpointKey, 'value': encryptedCheckpoint},
             conflictAlgorithm: ConflictAlgorithm.replace);

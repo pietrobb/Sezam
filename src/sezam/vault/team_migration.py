@@ -401,7 +401,11 @@ def found_team_log(
 
     if not client._token:
         client.authenticate()
-    client.pull()
+    client._founding_team_log = True
+    try:
+        client.pull()
+    finally:
+        client._founding_team_log = False
     if client.team_state() is not None or vault.db.get_meta(GENESIS_META):
         raise RuntimeError("This organisation already has a team log.")
     changes, result = plan_team_log(vault, client, org_id or new_ulid(), confirm_fingerprint)

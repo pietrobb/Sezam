@@ -43,6 +43,14 @@
                                 <input type="file" id="sezam-key-import" accept=".sezam-key,application/octet-stream">
                             </div>
                         </details>
+                        <details id="login-team-forget" class="backup-import hidden" open>
+                            <summary data-i18n="team.forget_title">Zabudnúť pripnutý tímový denník</summary>
+                            <p data-i18n="team.forget_login_help">Prihlásenie zlyhalo na tímovom denníku, ktorý server stratil alebo založil nanovo. Len ak to potvrdí váš admin: napíšte pripnutý genesis a prihláste sa znova heslom.</p>
+                            <div class="input-group">
+                                <label for="login-team-forget-genesis" data-i18n="team.forget_genesis">Pripnutý genesis (aspoň prvých 16 znakov)</label>
+                                <input type="text" id="login-team-forget-genesis" autocomplete="off" spellcheck="false" maxlength="64">
+                            </div>
+                        </details>
                         <button type="submit" id="login-btn"><span data-i18n="login.submit">Prihlásiť a odomknúť</span></button>
                         <div id="login-spinner" class="spinner hidden" data-i18n="login.unlocking">Odomykám...</div>
                         <div id="login-error" class="error hidden"></div>
@@ -392,8 +400,8 @@
     <!-- The shared sync core (core/, built by core/build_web.py). -->
     <script src="/static/js/vendor/sezam-sync-core.js"
             integrity="sha384-sMLCFn1zpH5MzBI1wopYLW/U20r3jLxA9+uP/3kmrFtQ2XJnuuE14yu07ge7sGoc"></script>
-    <script src="/static/js/i18n.js?v=20261115-1"></script>
+    <script src="/static/js/i18n.js?v=20261120-1"></script>
     <script src="/static/js/teamlog.js?v=20261113-1"></script>
-    <script src="/static/js/app.js?v=20261115-1"></script>
+    <script src="/static/js/app.js?v=20261120-1"></script>
 </body>
 </html>

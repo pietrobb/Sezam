@@ -53,7 +53,7 @@ class TeamLogMismatch(RuntimeError):
 
 # Review c78fd19: the way out once the team's log is lost for good.
 LOST_LOG_HINT = (
-    " If the team's log is lost for good (another server, a reseed), "
+    " If your admin confirms the team's log is lost for good (another server, a reseed), "
     "'sezam team-log forget-pin' leaves it on this device."
 )
 
@@ -351,6 +351,9 @@ class TeamLogMixin:
     """Mixed into SyncClient (``_db``, ``_request``, ``_user_id``, ``_keypair``)."""
 
     _team_state_cache: Optional[teamlog.TeamState] = None
+    # Set by team_migration.found_team_log around its pull: the user founding
+    # the team's new log is the one who left the old one.
+    _founding_team_log = False
 
     # ── Local copy ──────────────────────────────────────────────────
 
@@ -471,6 +474,13 @@ class TeamLogMixin:
                 raise TeamLogMismatch(
                     "The server no longer has the team log this device holds "
                     "(restored from a backup, or another server)." + LOST_LOG_HINT
+                )
+            if self._db.get_meta_json(FORGOTTEN_GENESIS_META) and not self._founding_team_log:
+                # Review 8bc70f7 M2: a device that left a log does not fall
+                # back to the rules from before any log because a server sends none.
+                raise TeamLogMismatch(
+                    "The server has no team log, and this device left an earlier one: it waits for "
+                    "the team's new log ('sezam team-log found' on the admin's device) and its confirmed founder."
                 )
             return None
         if pinned and server_head.get("genesis_hash") != pinned:

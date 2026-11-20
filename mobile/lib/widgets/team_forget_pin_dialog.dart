@@ -30,7 +30,21 @@ class _TeamForgetPinDialogState extends State<TeamForgetPinDialog> {
       _error = null;
     });
     try {
-      await SyncService().forgetTeamLogPin(_genesis.text);
+      final sync = SyncService();
+      try {
+        await sync.forgetTeamLogPin(_genesis.text);
+      } on UnsentChangesBlockForget catch (e) {
+        // Review 8bc70f7 M2: these never reach the lost log; without a way
+        // to drop them the phone stayed on the mismatch for good.
+        if (!mounted || !await _confirmDiscard(e.count)) return;
+        await sync.forgetTeamLogPin(_genesis.text, discardUnsent: true);
+        final export = await sync.latestUnsentExport();
+        if (mounted && export != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Neodoslané zmeny sú uložené v ${export.path}')),
+          );
+        }
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -38,6 +52,27 @@ class _TeamForgetPinDialogState extends State<TeamForgetPinDialog> {
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  Future<bool> _confirmDiscard(int count) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Neodoslané zmeny'),
+          content: Text(
+            'Telefón má $count neodoslaných zmien, ktoré stratený denník už neprijme. '
+            'Uložia sa do súboru a zahodia; ďalšia synchronizácia vráti kópiu zo servera '
+            '(úplná resynchronizácia).',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Zrušiť')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Uložiť do súboru a zahodiť'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
 
   @override
   Widget build(BuildContext context) => PopScope(

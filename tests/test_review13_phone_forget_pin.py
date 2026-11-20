@@ -9,9 +9,11 @@ from tests.test_review13_forget_pin import _reseed_server
 from tests.test_team_log_desktop import team, _found_with_bob  # noqa: F401
 
 
-def test_a_phone_leaves_a_lost_team_log(team, server, tmp_path):  # noqa: F811
+def test_a_phone_leaves_a_lost_team_log(team, server, tmp_path, monkeypatch):  # noqa: F811
+    from server.app import team_log as server_log
     from tests.test_cross_client_password_change import _phone
     from tests.test_integration_client_server import PASSWORD
+    from tests.test_review13_forget_pin import _forget_server_cache
 
     url, db = server
     _, admin, client, bob, _ = team
@@ -33,6 +35,15 @@ def test_a_phone_leaves_a_lost_team_log(team, server, tmp_path):  # noqa: F811
             raw, genesis,
             admin.current_kek, admin.db.get_meta("kek_dek_id").encode(), admin_id.encode())
 
+    async def refuse(cur, records, user_id, **_):
+        raise server_log.ApiError(400, server_log.TEAM_LOG_REFUSED, {"message": "no"})
+
+    def lose():
+        # Review 8bc70f7 M2: lost for good (no restore), nothing founded yet.
+        db._storage["team_log"] = []
+        _forget_server_cache()
+        monkeypatch.setattr(server_log, "restore", refuse)
+
     def reseed():
         new = _reseed_server(db, client)
         (tmp_path / "phone" / "new_genesis.txt").write_text(new, encoding="utf-8")
@@ -52,5 +63,5 @@ def test_a_phone_leaves_a_lost_team_log(team, server, tmp_path):  # noqa: F811
     out = _phone(url, tmp_path, {
         "username": "admin", "user_id": admin_id,
         "password": PASSWORD, "new_password": "integration-new-pw!", "genesis": old,
-    }, {"reseed": reseed, "anchor_new": anchor_new}, "test/review13_phone_forget_pin_test.dart")
+    }, {"lose": lose, "reseed": reseed, "anchor_new": anchor_new}, "test/review13_phone_forget_pin_test.dart")
     assert "All tests passed!" in out, out

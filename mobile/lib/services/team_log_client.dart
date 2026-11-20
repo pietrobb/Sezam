@@ -135,7 +135,7 @@ Future<void> importAccountTeamGenesis(String userId, String genesis) async {
 }
 
 // Review c78fd19: the way out once the team's log is lost for good.
-const lostTeamLogHint = '. If the team\'s log is lost for good (another server, a reseed), '
+const lostTeamLogHint = '. If your admin confirms the team\'s log is lost for good (another server, a reseed), '
     'Settings → "Zabudnúť pripnutý tímový denník" leaves it on this phone';
 
 void requireConfirmedGenesis(String? confirmed, String? actual) {
@@ -254,6 +254,7 @@ Future<LocalTeamLog?> syncTeamLog({
   required LocalTeamLog? local,
   required Map<String, dynamic>? pin,
   String? confirmedGenesis,
+  bool leftEarlierLog = false,
   required Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
   Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)? restore,
 }) async {
@@ -272,6 +273,12 @@ Future<LocalTeamLog?> syncTeamLog({
   if (head == null) {
     if (local != null || pin != null) {
       fail('is gone (a server restored from a backup, or another server)$lostTeamLogHint');
+    }
+    // Review 8bc70f7 M2: a phone that left a log does not fall back to the
+    // rules from before any log because a server sends none.
+    if (leftEarlierLog) {
+      fail("is missing, and this phone left an earlier team log: it waits for the team's "
+          'new log (the admin founds it) and its confirmed founder');
     }
     return null;
   }

@@ -52,25 +52,49 @@ void main() {
         }
         expect(await storedAnchor(), old);
 
-        await handshake(dir!, 'reseed');
-        final fresh = File('$dir/new_genesis.txt').readAsStringSync();
+        // Lost for good (no restore), nothing founded yet.
+        await handshake(dir!, 'lose');
         await expectLater(
           sync.sync(),
           throwsA(predicate((e) => '$e'.contains('Zabudnúť pripnutý tímový denník'))),
         );
         expect(await sync.pinnedTeamGenesis(), [old]);
-        for (final typed in ['', old.substring(0, 15), fresh.substring(0, 16)]) {
+        final other = old.replaceRange(0, 1, old[0] == '0' ? '1' : '0');
+        for (final typed in ['', old.substring(0, 15), other.substring(0, 16)]) {
           await expectLater(sync.forgetTeamLogPin(typed), throwsA(isA<FormatException>()));
         }
         expect(await sync.pinnedTeamGenesis(), [old]);
 
-        expect(await sync.forgetTeamLogPin(old.substring(0, 16).toUpperCase()), [old]);
+        // Review 8bc70f7 M2: an unsent change was a dead end (refused, no
+        // way to drop it); now it is exported and dropped on request.
+        final unsent = await vault.createEntry(
+            parentRef: vault.rootNodeId!, name: 'unsent-at-forget', fields: const []);
+        final typed = old.substring(0, 16).toUpperCase();
+        await expectLater(sync.forgetTeamLogPin(typed), throwsA(isA<UnsentChangesBlockForget>()));
+        expect(await sync.pinnedTeamGenesis(), [old]);
+        expect(await sync.forgetTeamLogPin(typed, discardUnsent: true), [old]);
+        expect(await sync.getDirtyObjectCount(), 0);
+        final export = await sync.latestUnsentExport();
+        expect(export?.readAsStringSync(), contains(unsent.id));
         expect(vault.teamLog, isNull);
         expect(await readForgottenTeamGenesis(uid), [old]);
         // The account bundle may still name it: not pinned again from there.
         await importAccountTeamGenesis(uid, old);
         expect(await readConfirmedTeamGenesis(uid), isNull);
 
+        // The dropped edit is still in the local rows: a full resync first.
+        await expectLater(sync.sync(), throwsA(isA<FullResyncRequiredException>()));
+        // Review 8bc70f7 M2: no log on the server is no return to the rules
+        // from before any log; the phone waits for the team's new log.
+        await expectLater(
+          sync.fullResync(confirmed: true),
+          throwsA(predicate((e) => '$e'.contains('left an earlier team log'))),
+        );
+
+        await handshake(dir, 'reseed');
+        final fresh = File('$dir/new_genesis.txt').readAsStringSync();
+        await sync.fullResync(confirmed: true);
+        expect(vault.allEntries.where((e) => e.name == 'unsent-at-forget'), isEmpty);
         await sync.sync();
         expect(vault.teamLog?.team.genesisHash, fresh);
         expect(await sync.pinnedTeamGenesis(), [fresh]);

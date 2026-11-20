@@ -1626,6 +1626,7 @@ class SyncService {
     final export = await _exportDirtyObjects();
     final pullResult = await _pull(fullResync: true);
     await _db.deleteSetting(serverRollbackSetting);
+    await _db.deleteSetting(forgottenLogResyncSetting);
     var reapplied = UnsentReapplyResult.empty;
     if (_vault.isUnlocked) {
       await _vault.reloadData();
@@ -1686,6 +1687,12 @@ class SyncService {
         'The server went back to commit_seq $rollbackHead, below this '
         "device's checkpoint $lastSeq (restored from a backup?); a full "
         'resync is required',
+      );
+    }
+    if (!fullResync && await _db.getSetting(forgottenLogResyncSetting) != null) {
+      throw const FullResyncRequiredException(
+        'Unsent changes were exported and dropped when this phone left the lost team log; '
+        "a full resync puts the server's copy back in their place",
       );
     }
 
@@ -2307,6 +2314,7 @@ class SyncService {
         local: _vault.teamLog,
         pin: checkpoint?['team_log'] as Map<String, dynamic>?,
         confirmedGenesis: await readConfirmedTeamGenesis(_vault.userId!),
+        leftEarlierLog: (await readForgottenTeamGenesis(_vault.userId!)).isNotEmpty,
         fetchPage: (since) async {
           final response = await _http.get(
             Uri.parse('$_serverUrl/api/team-log?since=$since'),
@@ -2415,9 +2423,15 @@ class SyncService {
   /// LOG MISMATCH for good. [typed] is the pinned genesis, at least its first
   /// [forgetPinMinChars] characters. The phone drops its pin, its copy and its
   /// checkpoint's head, and the next pull follows the server's log as a new
-  /// one, trusted only once its founder is confirmed again. Refused while a
-  /// change of this phone is not sent yet. Returns the genesis hashes left.
-  Future<List<String>> forgetTeamLogPin(String typed) => _exclusive(() async {
+  /// one, trusted only once its founder is confirmed again. Returns the
+  /// genesis hashes left.
+  ///
+  /// Unsent changes cannot reach the lost log: refused with
+  /// [UnsentChangesBlockForget] unless [discardUnsent] (review 8bc70f7 M2: the
+  /// phone had no way out). Then they are exported ([latestUnsentExport]),
+  /// dropped, and the next sync asks for a full resync, which puts the
+  /// server's copy back in place of the edits.
+  Future<List<String>> forgetTeamLogPin(String typed, {bool discardUnsent = false}) => _exclusive(() async {
     final userId = _vault.userId!;
     final pins = await _pinnedTeamGenesis();
     if (pins.isEmpty) throw StateError('This phone pins no team log; nothing to forget.');
@@ -2426,9 +2440,11 @@ class SyncService {
       throw FormatException('Type the pinned genesis (at least its first $forgetPinMinChars '
           'characters) to forget it: ${pins.join(', ')}');
     }
-    if ((await _db.getDirtyObjects()).isNotEmpty) {
-      throw StateError('Send or resolve the unsent changes first; nothing was changed.');
-    }
+    final unsent = (await _db.getDirtyObjects()).length;
+    if (unsent > 0 && !discardUnsent) throw UnsentChangesBlockForget(unsent);
+    // Only what the file holds is dropped: an edit saved meanwhile stays queued.
+    final exported = unsent > 0 ? await _exportDirtyObjects() : null;
+    final dropped = [for (final o in exported?.objects ?? const <Map<String, dynamic>>[]) o['id'] as String];
     final checkpoint = await _loadSyncCheckpoint();
     // Left first: a crash below never takes it back from the account bundle.
     await forgetConfirmedTeamGenesis(userId, pins);
@@ -2443,6 +2459,8 @@ class SyncService {
               commitToken: checkpoint['commit_token'] as String?,
               commitTokenSeq: _commitTokenSeq(checkpoint),
             ),
+      dropWrites: dropped,
+      resyncSetting: forgottenLogResyncSetting,
     );
     _vault.teamLog = null;
     await _vault.reloadData();
@@ -2807,6 +2825,18 @@ class FullResyncRequiredException extends SyncIntegrityException {
 
 /// Server head seen behind this device's checkpoint (review d150605 #5).
 const serverRollbackSetting = 'server_rollback_head';
+
+/// Set when forgetting the team log dropped unsent changes (review 8bc70f7 M2).
+const forgottenLogResyncSetting = 'forgotten_log_resync';
+
+/// Forgetting the team log waits for these unsent changes, or drops them.
+class UnsentChangesBlockForget implements Exception {
+  const UnsentChangesBlockForget(this.count);
+  final int count;
+
+  @override
+  String toString() => 'This phone holds $count unsent changes the lost team log no longer takes.';
+}
 
 class TofuKeyChangeException extends SyncIntegrityException {
   final String userId;
