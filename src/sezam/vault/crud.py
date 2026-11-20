@@ -63,6 +63,7 @@ from .sync_common import (
 from .sync_writers import WRITES_AUDITED_META
 from .team_log_local import (
     CONFIRMED_GENESIS_META, import_account_anchor, local_team_state, log_trusted, publishable_anchor,
+    record_account_anchor,
 )
 from .sync_limits import (
     MAX_OBJECT_PAYLOAD_BYTES,
@@ -456,12 +457,12 @@ class Vault:
         # write was reported as failed, yet it was there.
         self.dek_mgr.require_current_kek()
         self._require_current_identity()
+        if in_personal_tree(self._db, node_id, set(personal_root_ids(self._db, self.dek_mgr))):
+            return  # INV-7: a personal write never waits for the team log
         team = local_team_state(self._db)
         if team is None and self._db.get_meta(CONFIRMED_GENESIS_META) is None:
             return
         if log_trusted(self._db, self._user_id, self._keypair, team):
-            return
-        if in_personal_tree(self._db, node_id, set(personal_root_ids(self._db, self.dek_mgr))):
             return
         # A founder rotating offline still owns the old identity in the sealed journal.
         journal = pending_states.key_change_journal(self._db)
@@ -726,7 +727,7 @@ class Vault:
         try:
             self._keypair = KeyPair.from_private_bytes(kp_data, signing_pk, encryption_pk)
             with self._db.transaction(immediate=True):
-                import_account_anchor(self._db, self._keypair)
+                record_account_anchor(self._db, self._keypair)  # INV-7: never refuses the unlock
         except Exception:
             kek[:] = bytes(len(kek))
             self.lock()
@@ -2726,7 +2727,7 @@ class Vault:
             if anchored and password_reopens_pre_anchor(new_password, recovered_pre_anchor):
                 raise ValueError(PRE_ANCHOR_PASSWORD_REFUSED)  # capability runs 269, 273
             with self._db.transaction(immediate=True):
-                import_account_anchor(self._db, self._keypair)
+                record_account_anchor(self._db, self._keypair)  # INV-7: never refuses the unlock
         except Exception:
             kek[:] = bytes(len(kek))
             recovery_key[:] = bytes(len(recovery_key))

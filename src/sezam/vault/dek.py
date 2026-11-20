@@ -206,9 +206,16 @@ class DEKManager:
 
     def _team_key_state(self, dek_id: str, superseded: bool = False):
         from .. import teamlog
-        from .team_log_local import CONFIRMED_GENESIS_META, GENESIS_META, local_team_state, log_trusted
+        from .team_log_local import (
+            CONFIRMED_GENESIS_META, GENESIS_META, TeamLogMismatch, local_team_state, log_trusted, team_key_ids,
+        )
 
-        team = local_team_state(self._db)
+        if dek_id not in team_key_ids(self._db):
+            return None  # INV-7: a personal key never waits for the team log
+        try:
+            team = local_team_state(self._db)
+        except TeamLogMismatch as exc:
+            raise TeamKeyRefused(str(exc)) from exc
         observed = self._db.get_meta(GENESIS_META)
         confirmed = self._db.get_meta(CONFIRMED_GENESIS_META)
         if observed and (team is None or team.genesis_hash != observed):
@@ -384,17 +391,17 @@ class DEKManager:
 
     def unlock_all_deks(self) -> None:
         """Unlock every locally owned DEK; foreign personal wraps stay opaque."""
-        from .team_log_local import local_team_state
+        from .team_log_local import team_key_ids
 
         foreign_dek_ids = set(self._db.get_meta_json("foreign_dek_ids") or [])
-        team = local_team_state(self._db)
+        team_keys = team_key_ids(self._db)
         rows = self._db.fetchall("SELECT id FROM deks")
         for row in rows:
             if row["id"] not in foreign_dek_ids:
                 try:
                     self.unlock_dek(row["id"])
                 except CryptoError:
-                    if team is None or row["id"] not in team.dek_index:
+                    if row["id"] not in team_keys:
                         raise  # A refused team key must not lock personal data.
 
     def get_dek_for_node(self, node_id: str) -> tuple[str, bytearray]:

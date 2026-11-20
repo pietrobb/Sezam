@@ -157,7 +157,7 @@ const teamLogMismatchForget = <String, bool>{
   'confirmed_genesis': true, 'log_gone': true, 'other_genesis': true,
   'left_earlier_log': false, 'went_back': false, 'differs': false, 'does_not_replay': false,
   'short_of_head': false, 'head_genesis': false, 'refused_at_head': false,
-  'local_damaged': false, 'anchor_conflict': false,
+  'local_damaged': false, 'anchor_conflict': true,
 };
 
 class TeamLogMismatch implements Exception {

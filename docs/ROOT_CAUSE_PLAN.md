@@ -135,6 +135,14 @@ nálezu sa začína otázkou, ktorý invariant porušuje. Ak taký nie je, dopln
 - **Pravidlo:** neodoslaná zmena sa nikdy nezahodí bez výslovného súhlasu. Každý
   blokujúci stav má cestu von **dostupnú z miesta, kde používateľ uviazne**:
   prihlasovacia obrazovka, zamknutý telefón, CLI bez odomknutia.
+- **Tímový denník nikdy nezamkne trezor** (capability run 397): nesúlad tímového
+  denníka (poškodená lokálna kópia, účtové kľúče menujú iný genesis, než zariadenie
+  drží) blokuje len tímové operácie, nikdy odomknutie ani osobné položky. Denník sa
+  overuje tam, kde sa tím používa (`local_team_state`), nie v odomknutí; každá
+  príčina má cestu von z odomknutého trezoru: poškodená kópia sa pri ďalšom pulle
+  stiahne znova pod tými istými pinmi (genesis a videná hlava), konfliktné piny sa
+  zabudnú spolu (s označením rizika, INV-8). Pred opravou odomknutie denník
+  kontrolovalo a pri chybe trezor znova zamklo.
 - **Vynútenie:**
   - Tabuľka stavov a ich ciest von (rozšírenie `pending_states.BLOCKS` na všetkých
     troch klientoch).

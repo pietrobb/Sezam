@@ -145,9 +145,10 @@ def team_log_confirm_genesis(anchor: str):
 
 
 @team_log_group.command("forget-pin")
-@click.argument("genesis", required=False)
-def team_log_forget_pin(genesis: Optional[str]):
-    """Leave the team log this device pins: GENESIS is its genesis hash (16+ characters).
+@click.argument("genesis", nargs=-1)
+def team_log_forget_pin(genesis: tuple[str, ...]):
+    """Leave the team log this device pins: GENESIS is its genesis hash (16+ characters),
+    every one of them when the account keys name another than this device holds.
 
     Only for a team log lost for good (the server moved, was reseeded, or kept
     no restore): the device drops its pin and its copy of that log, and follows
@@ -164,9 +165,9 @@ def team_log_forget_pin(genesis: Optional[str]):
         if not pins:
             click.echo("This device pins no team log.")
             return
-        if genesis is None:
+        if not genesis:
             click.echo("Pinned genesis: " + ", ".join(sorted(pins)))
-            click.echo("To leave it for good: 'sezam team-log forget-pin GENESIS'.")
+            click.echo("To leave it for good: 'sezam team-log forget-pin GENESIS...'.")
             return
         click.echo(
             f"{RISK_MARKER} a hostile server can drop the team's log or serve a new genesis on purpose to make "
@@ -177,7 +178,7 @@ def team_log_forget_pin(genesis: Optional[str]):
         if not click.confirm("Forget the pinned team log on this device?", default=False):
             raise click.ClickException("Nothing was changed.")
         try:
-            left = forget_team_log_pin(vault, genesis, _connected(vault))
+            left = forget_team_log_pin(vault, " ".join(genesis), _connected(vault))
         except (ValueError, RuntimeError) as exc:
             raise click.ClickException(str(exc)) from exc
         click.echo("Forgot " + ", ".join(sorted(left)) + ". Next: 'sezam pull', then "

@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 GENESIS_META = "team_log_genesis_hash"
 CONFIRMED_GENESIS_META = "team_log_confirmed_genesis_hash"
+# The genesis the account keys name, written at every unlock from the keys
+# just opened (record_account_anchor); absent while they name none.
+ACCOUNT_ANCHOR_META = "team_log_account_anchor"
 # Genesis hashes the user left ('sezam team-log forget-pin', team_log_forget.py).
 FORGOTTEN_GENESIS_META = "team_log_forgotten_genesis"
 # Outbox rows (vault/outbox.py):
@@ -68,9 +71,14 @@ MISMATCH_CAUSES = {
     "short_of_head": False,      # the records served do not reach the announced head
     "head_genesis": False,       # the records start with another genesis than the head names
     "refused_at_head": False,    # TL7: a head the server must refuse
-    "local_damaged": False,      # this device's own copy fails its stored hashes
-    "anchor_conflict": False,    # the account anchor names another log than this device holds
+    "local_damaged": False,      # this device's own copy does not replay or fails its stored hashes
+    "anchor_conflict": True,     # the account keys name another log than this device holds or pins
 }
+# INV-7 (capability run 397): no cause keeps the vault locked. The log is
+# checked where the team is used (local_team_state), never in the unlock; a
+# damaged copy is fetched again under its pins at the next pull
+# (TeamLogMixin._sync_team_log), and conflicting pins are forgotten together.
+# Before, the unlock checked it and locked the vault again on any error.
 
 # INV-8: how every client marks the offer to forget as a risk
 # (tests/vectors/team_log_mismatch.json "risk_marker").
@@ -155,17 +163,58 @@ def _refusal_from_server(exc: BaseException) -> Optional[dict]:
     return detail if isinstance(detail, dict) and isinstance(detail.get("seq"), int) else None
 
 
+LOCAL_DAMAGED_HINT = " The next pull fetches it again, held to the genesis and the head this device saw."
+
+
 def local_team_state(db) -> Optional[teamlog.TeamState]:
-    """The replayed local log of ``db``, or None while it holds none."""
+    """The replayed local log of ``db``, or None while it holds none.
+
+    The one place a team operation reads the log, so the one place it is
+    refused (INV-7): a copy that conflicts with the account keys or is damaged.
+    """
+    anchor = db.get_meta(ACCOUNT_ANCHOR_META)
+    if anchor is not None and _anchor_conflicts(db, anchor):
+        raise TeamLogMismatch(
+            "The account keys name another team log than the one this device holds or pins.", "anchor_conflict"
+        )
     rows = db.fetchall("SELECT seq, body, sig, hash FROM team_log ORDER BY seq")
     if not rows:
         return None
     # A local copy that does not replay was accepted by no version of this
     # code: refuse rather than decide from part of it.
-    state = teamlog.replay([{"body": r["body"], "sig": r["sig"]} for r in rows])
+    try:
+        state = teamlog.replay([{"body": r["body"], "sig": r["sig"]} for r in rows])
+    except teamlog.TeamLogError as exc:
+        raise TeamLogMismatch(f"This device's copy of the team log does not replay ({exc}).{LOCAL_DAMAGED_HINT}",
+                              "local_damaged") from exc
     if state.head_hash != rows[-1]["hash"] or rows[-1]["seq"] != state.head_seq:
-        raise TeamLogMismatch("the local team log does not match its stored hashes", "local_damaged")
+        raise TeamLogMismatch("This device's copy of the team log does not match its stored hashes."
+                              + LOCAL_DAMAGED_HINT, "local_damaged")
     return state
+
+
+def held_team_head(db) -> Optional[tuple[int, set[str]]]:
+    """The head a (damaged) local copy saw: its last seq, and the hashes it
+    stores for it (the stored hash, the stored record's own)."""
+    row = db.fetchone("SELECT seq, body, sig, hash FROM team_log ORDER BY seq DESC LIMIT 1")
+    if row is None:
+        return None
+    return row["seq"], {row["hash"], teamlog.record_hash({"body": row["body"], "sig": row["sig"]})}
+
+
+def team_key_ids(db) -> set[str]:
+    """Every key a team envelope or a record of the local copy names, read
+    without replaying it: what is not here is personal and opens by the KEK
+    alone, whatever the state of the team log (INV-7)."""
+    ids = {row["dek_id"] for row in db.fetchall("SELECT DISTINCT dek_id FROM access_envelopes")}
+    for row in db.fetchall("SELECT body FROM team_log"):
+        try:
+            data = teamlog.parse_body(row["body"])["data"]
+            named = (data.get("dek_id"), data.get("prev_dek_id"))
+        except (teamlog.TeamLogError, KeyError, TypeError, AttributeError, ValueError):
+            continue
+        ids.update(dek_id for dek_id in named if isinstance(dek_id, str))
+    return ids
 
 
 def projected_team_state(db, author: str) -> Optional[teamlog.TeamState]:
@@ -226,21 +275,40 @@ def received_envelope_sender(db, env, receipt: dict) -> str:
         raise CryptoError("Invalid team envelope receipt") from exc
 
 
-def import_account_anchor(db, keypair) -> None:
-    """Install an authenticated bundle anchor without replacing local continuity."""
+def _anchor_conflicts(db, genesis: str) -> bool:
+    """A pin or the local copy's first record names another genesis than ``genesis``."""
+    first = db.fetchone("SELECT body, sig FROM team_log WHERE seq = 0")
+    held = teamlog.record_hash({"body": first["body"], "sig": first["sig"]}) if first else None
+    return any(pin is not None and pin != genesis
+               for pin in (db.get_meta(CONFIRMED_GENESIS_META), db.get_meta(GENESIS_META), held))
+
+
+def record_account_anchor(db, keypair) -> None:
+    """At unlock: note the genesis the account keys name, and pin it unless
+    this device holds or pins another (INV-7: then team operations are
+    refused as anchor_conflict, the unlock never is)."""
     genesis = keypair.confirmed_genesis
-    if genesis is None:
-        return  # Legacy account keys convey no trust, even after a successful login.
-    if genesis in (db.get_meta_json(FORGOTTEN_GENESIS_META) or []):
+    if genesis is not None and genesis in (db.get_meta_json(FORGOTTEN_GENESIS_META) or []):
         # The user left this log here; the server's bundle still names it.
         keypair.confirmed_genesis, keypair.pre_anchor = None, b""
+        genesis = None
+    if genesis is None:
+        # Legacy account keys convey no trust, even after a successful login.
+        db.execute("DELETE FROM vault_meta WHERE key = ?", (ACCOUNT_ANCHOR_META,))
         return
-    state = local_team_state(db)
-    for existing in (db.get_meta(CONFIRMED_GENESIS_META), db.get_meta(GENESIS_META),
-                     state.genesis_hash if state is not None else None):
-        if existing is not None and existing != genesis:
-            raise TeamLogMismatch("The account anchor conflicts with this device's team log.", "anchor_conflict")
-    db.set_meta(CONFIRMED_GENESIS_META, genesis)
+    db.set_meta(ACCOUNT_ANCHOR_META, genesis)
+    if not _anchor_conflicts(db, genesis):
+        db.set_meta(CONFIRMED_GENESIS_META, genesis)
+
+
+def import_account_anchor(db, keypair) -> None:
+    """Adopt an authenticated bundle anchor without replacing local continuity:
+    account keys from the server naming another log are not taken."""
+    genesis = keypair.confirmed_genesis
+    if (genesis is not None and genesis not in (db.get_meta_json(FORGOTTEN_GENESIS_META) or [])
+            and _anchor_conflicts(db, genesis)):
+        raise TeamLogMismatch("The account anchor conflicts with this device's team log.", "anchor_conflict")
+    record_account_anchor(db, keypair)
 
 
 def log_admins(db, state: teamlog.TeamState) -> set[str]:
@@ -493,9 +561,17 @@ class TeamLogMixin:
         """Bring the local copy up to ``server_head`` (from the pull answer).
 
         Raises TeamLogMismatch when the server's log is not a continuation of
-        what this device accepted.
+        what this device accepted. A damaged local copy (INV-7) is fetched
+        again whole, held to the same pins: its genesis, and the head it saw
+        (``held``), at whose seq the server's record must be the one stored.
         """
-        local = self.team_state()
+        held = None
+        try:
+            local = self.team_state()
+        except TeamLogMismatch as exc:
+            if exc.cause != "local_damaged":
+                raise
+            local, held = None, held_team_head(self._db)
         pinned = self._db.get_meta(GENESIS_META)
         confirmed = self._db.get_meta(CONFIRMED_GENESIS_META)
         if local is not None and (server_head is None or server_head.get("seq", -1) < local.head_seq):
@@ -510,7 +586,7 @@ class TeamLogMixin:
                 "The server's team log differs from the independently confirmed genesis.", "confirmed_genesis"
             )
         if server_head is None:
-            if local is not None or pinned:
+            if local is not None or held is not None or pinned:
                 raise TeamLogMismatch(
                     "The server no longer has the team log this device holds "
                     "(restored from a backup, or another server).", "log_gone"
@@ -528,15 +604,16 @@ class TeamLogMixin:
             raise TeamLogMismatch(
                 "The server's team log starts with another genesis than this device pinned.", "other_genesis"
             )
-        local_seq = local.head_seq if local is not None else -1
+        local_seq = local.head_seq if local is not None else held[0] if held is not None else -1
         if server_head.get("seq", -1) < local_seq:
             raise TeamLogMismatch(
                 f"The server's team log went back (head {server_head.get('seq')} < {local_seq} seen here).", "went_back"
             )
         if server_head.get("seq") == local_seq:
-            if server_head.get("hash") != local.head_hash:
+            if server_head.get("hash") not in ({local.head_hash} if local is not None else held[1]):
                 raise TeamLogMismatch(f"The server's team log differs at record {local_seq}.", "differs")
-            return local
+            if local is not None:
+                return local
         state = local
         fetched: list[dict] = []
         for _ in range(FETCH_PAGES):
@@ -554,6 +631,8 @@ class TeamLogMixin:
             fetched.extend(records)
             if state.head_seq >= server_head["seq"]:
                 break
+        if held is not None and len(fetched) > held[0] and teamlog.record_hash(fetched[held[0]]) not in held[1]:
+            raise TeamLogMismatch(f"The server's team log differs at record {held[0]}.", "differs")
         if state is None or state.head_seq != server_head["seq"] or state.head_hash != server_head.get("hash"):
             raise TeamLogMismatch("The server's team log does not reach the head it announced.", "short_of_head")
         if pinned is None and state.genesis_hash != server_head.get("genesis_hash"):
@@ -566,6 +645,8 @@ class TeamLogMixin:
             # Another process of this vault may have stored part of it meanwhile.
             raced = self._local_head_seq() != local_seq
             if not raced:
+                if held is not None:
+                    self._db.execute("DELETE FROM team_log")  # the damaged copy, fetched again above
                 self._store_team_log(fetched, state)
         if raced:
             self._team_state_cache = None
@@ -967,9 +1048,7 @@ class TeamLogMixin:
     def _refresh_team_log(self) -> None:
         if not self._token:
             self.authenticate()
-        local = self.team_state()
-        since = local.head_seq if local is not None else -1
-        resp = self._request("GET", f"/api/team-log?since={since}", auth=True)
+        resp = self._request("GET", f"/api/team-log?since={self._local_head_seq()}", auth=True)
         self._sync_team_log(resp.get("head"))
 
     def team_log_refusal(self) -> Optional[TeamLogMismatch]:

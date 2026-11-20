@@ -37,7 +37,7 @@ CAUSES = {
     "confirmed_genesis": True, "log_gone": True, "other_genesis": True,
     "left_earlier_log": False, "went_back": False, "differs": False, "does_not_replay": False,
     "short_of_head": False, "head_genesis": False, "refused_at_head": False,
-    "local_damaged": False, "anchor_conflict": False,
+    "local_damaged": False, "anchor_conflict": True,
 }
 
 

@@ -12,7 +12,7 @@
   "head_genesis": false,
   "refused_at_head": false,
   "local_damaged": false,
-  "anchor_conflict": false
+  "anchor_conflict": true
  },
  "risk_marker": "RISK:",
  "cases": [

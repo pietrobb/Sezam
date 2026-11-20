@@ -7793,7 +7793,7 @@ function teamLogMismatch(detail, cause) {
         confirmed_genesis: true, log_gone: true, other_genesis: true,
         left_earlier_log: false, went_back: false, differs: false, does_not_replay: false,
         short_of_head: false, head_genesis: false, refused_at_head: false,
-        local_damaged: false, anchor_conflict: false,
+        local_damaged: false, anchor_conflict: true,
     });
     if (!Object.hasOwn(TEAM_LOG_MISMATCH_FORGET, cause)) throw new Error(`unknown team log mismatch cause ${cause}`);
     const lost = TEAM_LOG_MISMATCH_FORGET[cause];

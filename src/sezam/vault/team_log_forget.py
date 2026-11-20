@@ -23,7 +23,7 @@ from ..models import ulid_to_bytes
 from . import outbox, pending_states
 from .sync_rekey import ROTATION_SEALED_META
 from .team_log_local import (
-    CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, queued_changes, set_aside_changes,
+    ACCOUNT_ANCHOR_META, CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, queued_changes, set_aside_changes,
 )
 
 if TYPE_CHECKING:
@@ -59,10 +59,14 @@ def forget_team_log_pin(vault: Vault, typed: str, client: SyncClient) -> set[str
     pins = pinned_genesis(vault)
     if not pins:
         raise ValueError("This device pins no team log; nothing to forget.")
-    typed = typed.strip().lower()
-    if len(typed) < MIN_CONFIRM_CHARS or not all(pin.startswith(typed) for pin in pins):
+    # Conflicting pins (anchor_conflict: the account keys name another log
+    # than this device holds) are left together, each one typed.
+    parts = typed.replace(",", " ").lower().split()
+    if (not parts or any(len(part) < MIN_CONFIRM_CHARS for part in parts)
+            or not all(any(pin.startswith(part) for part in parts) for pin in pins)
+            or not all(any(pin.startswith(part) for pin in pins) for part in parts)):
         raise ValueError(
-            f"Type the pinned genesis (at least its first {MIN_CONFIRM_CHARS} characters) to forget it: "
+            f"Type the pinned genesis, every one (at least its first {MIN_CONFIRM_CHARS} characters), to forget it: "
             + ", ".join(sorted(pins))
         )
     waiting = []
@@ -85,8 +89,8 @@ def forget_team_log_pin(vault: Vault, typed: str, client: SyncClient) -> set[str
     with db.transaction(immediate=True):
         db.execute("DELETE FROM team_log")
         db.execute(
-            "DELETE FROM vault_meta WHERE key IN (?, ?, ?)",
-            (GENESIS_META, CONFIRMED_GENESIS_META, ROTATION_SEALED_META),
+            "DELETE FROM vault_meta WHERE key IN (?, ?, ?, ?)",
+            (GENESIS_META, CONFIRMED_GENESIS_META, ACCOUNT_ANCHOR_META, ROTATION_SEALED_META),
         )
         db.set_meta_json(FORGOTTEN_GENESIS_META, sorted(set(db.get_meta_json(FORGOTTEN_GENESIS_META) or []) | pins))
         if keypair.confirmed_genesis is not None:

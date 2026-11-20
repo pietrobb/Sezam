@@ -1205,7 +1205,7 @@ def test_desktop_recovery_rejects_authenticated_unsupported_bundles():
 @pytest.mark.parametrize("failure", ["storage", "unlock-conflict", "recovery-conflict"])
 def test_desktop_anchor_failure_preserves_data_and_retry(tmp_path, monkeypatch, failure):
     from sezam.crypto.keys import KeyPair
-    from sezam.vault.team_log_local import CONFIRMED_GENESIS_META, TeamLogMismatch
+    from sezam.vault.team_log_local import CONFIRMED_GENESIS_META, TeamLogMismatch, local_team_state
     from tests.test_integration_client_server import PASSWORD, _vault
 
     vault = _vault(tmp_path / "failure", "owner")
@@ -1225,23 +1225,27 @@ def test_desktop_anchor_failure_preserves_data_and_retry(tmp_path, monkeypatch, 
                     vault.rebind_server_identity(vault.db.get_meta("user_id"), keys)
             assert [tuple(r) for r in vault.db.fetchall("SELECT * FROM vault_meta ORDER BY key")] == before
         vault.rebind_server_identity(vault.db.get_meta("user_id"), keys)
+        password = PASSWORD
         if failure != "storage":
             shares = vault.setup_org_recovery(threshold=2, shares=3) if failure == "recovery-conflict" else None
             vault.db.set_meta(CONFIRMED_GENESIS_META, "cd" * 32)
-            before = [tuple(r) for r in vault.db.fetchall("SELECT * FROM vault_meta ORDER BY key")]
             vault.lock()
-            with pytest.raises(TeamLogMismatch, match="conflicts"):
-                if shares:
-                    vault.org_recovery(shares[:2], PASSWORD + "-new")
-                else:
-                    vault.unlock(PASSWORD)
-            assert not vault.is_unlocked and vault._keypair is None
-            vault.db.open()
-            assert [tuple(r) for r in vault.db.fetchall("SELECT * FROM vault_meta ORDER BY key")] == before
+            # INV-7 (capability run 397): the conflict refuses the team, never
+            # the unlock; the independent pin is not replaced.
+            if shares:
+                password = PASSWORD + "-new"
+                vault.org_recovery(shares[:2], password)
+            else:
+                vault.unlock(PASSWORD)
+            assert vault.is_unlocked and vault.get_field_value(item, "password") == "keep-me"
+            with pytest.raises(TeamLogMismatch, match="another team log") as refused:
+                local_team_state(vault.db)
+            assert refused.value.cause == "anchor_conflict"
+            assert vault.db.get_meta(CONFIRMED_GENESIS_META) == "cd" * 32
             # Restore the fixture's independent pin, not an application auto-reset.
             vault.db.set_meta(CONFIRMED_GENESIS_META, GENESIS)
         vault.lock()
-        vault.unlock(PASSWORD)
+        vault.unlock(password)
         assert vault.keypair.confirmed_genesis == GENESIS
         assert vault.get_field_value(item, "password") == "keep-me"
     finally:

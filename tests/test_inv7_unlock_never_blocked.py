@@ -1,0 +1,162 @@
+"""INV-7 (docs/ROOT_CAUSE_PLAN.md, capability run 397): a team log this device
+refuses never keeps the vault locked. It blocks team operations only, and each
+cause names a way out that runs on the unlocked vault.
+
+On b8c74ed the desktop checked the team log inside the unlock and locked the
+vault again on any error: a copy that no longer replays (a bare TeamLogError),
+one whose stored hashes do not match, or account keys naming another genesis
+than the one this device holds (anchor_conflict) kept every personal secret
+out of reach, and 'sezam team-log forget-pin' / 'status' failed at the unlock.
+
+Each state here is a real desktop vault holding the team's log (pinned and
+confirmed, the account keys anchored to it) and a personal entry, then:
+
+* holds_damaged_sig / holds_damaged_hash: the copy's last record no longer
+  verifies, or its stored hash is not the record's. Way out: the next pull
+  fetches the log again, held to the pins the copy names (its genesis, the
+  head seen: at that seq the server's record is the stored hash or the stored
+  record): the same log is followed, one behind or forked is still refused.
+* anchor_names_other: the account keys name another genesis than the log this
+  device holds. The device cannot tell which is the team's; a server serving
+  an old account bundle produces it, so forgetting is offered as a risk
+  (INV-8), and typing both pinned genesis hashes leaves both.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from sezam import teamlog as tl
+from sezam.crypto import aead
+from sezam.models import ulid_to_bytes
+from sezam.vault.team_log_forget import forget_team_log_pin
+from sezam.vault.team_log_local import (
+    CONFIRMED_GENESIS_META, GENESIS_META, RISK_MARKER, TeamLogMismatch, TeamLogMixin, local_team_state,
+)
+from tests.team_log_mismatch_vectors import _head, _servers
+from tests.test_integration_client_server import PASSWORD, _vault
+
+SERVERS = _servers()
+TEAM, TEAM_HEAD = SERVERS["same"]
+OTHER_GENESIS = SERVERS["another_genesis"][1]["genesis_hash"]
+STATES = ("holds_damaged_sig", "holds_damaged_hash", "anchor_names_other")
+CAUSE = {"holds_damaged_sig": "local_damaged", "holds_damaged_hash": "local_damaged",
+         "anchor_names_other": "anchor_conflict"}
+
+
+def _seq(record: dict) -> int:
+    return tl.parse_body(record["body"])["seq"]
+
+
+class _Server(TeamLogMixin):
+    """The desktop's team log follower over the vault's database; the server
+    serves ``served`` and refuses every restore (a restore that lands is INV-2)."""
+
+    def __init__(self, vault, served: str):
+        self._db = vault.db
+        self._served, self._head = SERVERS[served]
+        self._team_state_cache = None
+        self._token = "session"
+
+    def _request(self, method, path, body=None, auth=False):
+        assert method == "GET" and path.startswith("/api/team-log?since="), path
+        since = int(path.split("since=", 1)[1])
+        return {"records": [r for r in self._served if _seq(r) > since], "head": self._head}
+
+    def _restore_server_team_log(self, local, server_head):
+        return False
+
+
+def _wrap_keys(vault, genesis: str) -> None:
+    """Store the account keys naming ``genesis`` (as a bundle from another device would)."""
+    keys = vault.keypair
+    held = keys.confirmed_genesis
+    keys.confirmed_genesis = genesis
+    try:
+        data = keys.serialize_private()
+    finally:
+        keys.confirmed_genesis = held
+    wrapped = aead.encrypt_keypair_wrap(
+        keypair_data=data, kek=vault.dek_mgr._kek,
+        kek_dek_id=ulid_to_bytes(vault.dek_mgr._wrapping_kek_id()),
+        user_object_id=ulid_to_bytes(vault.db.get_meta("user_id")),
+    )
+    vault.db.set_meta("encrypted_keypair", wrapped.hex())
+
+
+def _device(tmp_path, state: str):
+    vault = _vault(tmp_path / "v", "owner")
+    entry = vault.create_entry(vault.db.get_meta("root_node_id"), "private", [{"key": "password", "value": "keep-me"}])
+    vault.create_personal_folder("mine")
+    genesis = TEAM_HEAD["genesis_hash"]
+    with vault.db.transaction(immediate=True):
+        _Server(vault, "same")._store_team_log(TEAM, tl.replay(TEAM))
+        vault.db.set_meta(CONFIRMED_GENESIS_META, genesis)
+        _wrap_keys(vault, genesis)
+    vault.lock()
+    vault.unlock(PASSWORD)  # the team's log, held and anchored: opens
+    assert vault.keypair.confirmed_genesis == genesis
+    assert local_team_state(vault.db).head_hash == TEAM_HEAD["hash"]
+    with vault.db.transaction(immediate=True):
+        if state == "holds_damaged_sig":
+            vault.db.execute("UPDATE team_log SET sig = ? WHERE seq = 2", ("00" * 64,))
+        elif state == "holds_damaged_hash":
+            vault.db.execute("UPDATE team_log SET hash = ? WHERE seq = 2", ("00" * 32,))
+        else:
+            _wrap_keys(vault, OTHER_GENESIS)
+    vault.lock()
+    return vault, entry
+
+
+@pytest.mark.parametrize("state", STATES)
+def test_the_vault_opens_and_only_the_team_waits(tmp_path, state):
+    vault, entry = _device(tmp_path, state)
+    vault.unlock(PASSWORD)
+    assert vault.get_field_value(entry, "password") == "keep-me"
+    mine = vault.db.fetchone("SELECT id FROM nodes WHERE parent_id IS NULL AND id != ?",
+                             (vault.db.get_meta("root_node_id"),))["id"]
+    written = vault.create_entry(mine, "written", [{"key": "password", "value": "new"}])
+    assert vault.get_field_value(written, "password") == "new"
+    refusal = _Server(vault, "same").team_log_refusal()
+    if state == "anchor_names_other":
+        assert refusal is not None and refusal.cause == "anchor_conflict"
+        assert refusal.offers_forget and RISK_MARKER in str(refusal) and "forget-pin" in str(refusal)
+    else:
+        assert refusal is None  # fetched again under its pins: the team's log
+    vault.lock()
+    vault.unlock(PASSWORD)
+    assert vault.get_field_value(entry, "password") == "keep-me"
+
+
+@pytest.mark.parametrize("state", ["holds_damaged_sig", "holds_damaged_hash"])
+@pytest.mark.parametrize("served", sorted(SERVERS))
+def test_a_damaged_copy_is_fetched_again_under_its_pins(tmp_path, state, served):
+    vault, _ = _device(tmp_path, state)
+    vault.unlock(PASSWORD)
+    with pytest.raises(TeamLogMismatch) as damaged:
+        local_team_state(vault.db)
+    assert damaged.value.cause == "local_damaged"
+    refusal = _Server(vault, served).team_log_refusal()
+    # The pins of the copy (its genesis, confirmed, and the head it saw) decide
+    # exactly as for the intact copy: a damaged copy changes nothing else.
+    holds = {"same": None, "extended": None, "none": "confirmed_genesis", "behind": "went_back",
+             "forked": "differs", "another_genesis": "confirmed_genesis", "short_of_head": "short_of_head",
+             "forged": "does_not_replay", "two_admins": "refused_at_head"}[served]
+    assert (refusal.cause if refusal else None) == holds, str(refusal)
+    if holds is None:
+        assert local_team_state(vault.db).head_hash == _head(SERVERS[served][0])["hash"]
+
+
+def test_conflicting_pins_are_left_together_and_the_vault_follows_the_team_again(tmp_path):
+    vault, entry = _device(tmp_path, "anchor_names_other")
+    vault.unlock(PASSWORD)
+    client = _Server(vault, "another_genesis")
+    with pytest.raises(ValueError):
+        forget_team_log_pin(vault, TEAM_HEAD["genesis_hash"][:16], client)  # one of two pins
+    left = forget_team_log_pin(vault, f"{TEAM_HEAD['genesis_hash'][:16]} {OTHER_GENESIS[:16]}", client)
+    assert left == {TEAM_HEAD["genesis_hash"], OTHER_GENESIS}
+    assert vault.db.get_meta(GENESIS_META) is None and vault.keypair.confirmed_genesis is None
+    vault.lock()
+    vault.unlock(PASSWORD)
+    assert vault.get_field_value(entry, "password") == "keep-me"
+    assert _Server(vault, "another_genesis").team_log_refusal() is None  # a new log, its founder to confirm
