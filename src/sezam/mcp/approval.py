@@ -126,6 +126,13 @@ class ApprovalManager:
                 return "denied"
             return "pending"
 
+    def is_pending(self, request_id: str) -> bool:
+        """Whether the request still waits for an answer (not expired,
+        answered or cleared)."""
+        with self._lock:
+            req = self._requests.get(request_id)
+            return req is not None and req.status == "pending" and not req.is_expired
+
     def get_pending(self) -> list[ApprovalRequest]:
         """Get all pending (non-expired) requests."""
         with self._lock:
@@ -287,13 +294,22 @@ def _ask(message: str) -> bool:
 
 def install_desktop_approval_handler(manager: ApprovalManager) -> None:
     """Show a local OS confirmation dialog for every Tier 1 request; when the
-    broker offers a time-limited grant, ask about it separately (default No)."""
+    broker offers a time-limited grant, ask about it separately (default No).
+
+    Requests from parallel agent calls are asked one at a time, each with
+    its own grant question right after it, so an answer can never land on a
+    different request than the one shown. A request that expired or was
+    cleared while waiting for its turn is not shown at all."""
+    one_dialog = threading.Lock()
 
     def handle(request: ApprovalRequest) -> None:
-        if not _ask(approval_message(request)):
-            manager.deny(request.request_id)
-            return
-        grant = request.grant_minutes > 0 and _ask(grant_message(request))
-        manager.approve(request.request_id, grant=grant)
+        with one_dialog:
+            if not manager.is_pending(request.request_id):
+                return
+            if not _ask(approval_message(request)):
+                manager.deny(request.request_id)
+                return
+            grant = request.grant_minutes > 0 and _ask(grant_message(request))
+            manager.approve(request.request_id, grant=grant)
 
     manager.set_on_request(handle)
