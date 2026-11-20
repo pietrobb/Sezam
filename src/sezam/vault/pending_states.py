@@ -312,17 +312,45 @@ def refuse_if_blocked(db, operation: str, **ctx) -> None:
         raise found.error(found.message)
 
 
-def key_reset_way_out(db, user_id: str) -> str:
+def read_team(db) -> tuple[Any, Any]:
+    """(team state or None, TeamLogMismatch or None): the one read of the log
+    for 'status' and the way-out messages (capability runs 406/407, INV-7)."""
+    from .team_log_local import TeamLogMismatch, local_team_state
+
+    try:
+        return local_team_state(db), None
+    except TeamLogMismatch as refusal:
+        return None, refusal
+
+
+def refusal_way_out(refusal) -> str:
+    """The way out of a team log this device refuses, from its cause."""
+    from .team_log_local import LOST_LOG_HINT
+
+    if refusal.offers_forget:
+        return LOST_LOG_HINT.strip()
+    return ("'sezam pull' fetches the log again, held to the genesis and the head this "
+            "device saw; a server that went back or forked is still refused.")
+
+
+def key_reset_way_out(db, user_id: str, read: Optional[tuple[Any, Any]] = None) -> str:
     """How a password change the server refuses (no old password) gets through.
 
     Review 8595ec1 #3/#4: the admin of a team log is its only admin, so no
     'allow-key-reset' can come from another admin; the way out is the
-    recovery key the log names (or there is none).
+    recovery key the log names (or there is none). ``read`` is read_team()'s
+    result when the caller has it; a refused log is named first, since who may
+    allow a reset is decided from the log (capability run 407).
     """
     from .. import teamlog
-    from .team_log_local import local_team_state
 
-    state = local_team_state(db)
+    state, refusal = read if read is not None else read_team(db)
+    if refusal is not None:
+        return (
+            f"first the team log this device refuses ({refusal.cause}): "
+            f"{refusal_way_out(refusal).rstrip('.')}; then 'sezam status' names who can "
+            "let the reset through"
+        )
     if state is None:
         # Review 4acfdde R11 (medium): without a team log the only admin was
         # sent to another admin's allow-key-reset, which cannot exist.
@@ -387,6 +415,9 @@ def pending_states(vault: "Vault") -> list[PendingState]:
     connected = bool(db.get_meta("server_url"))
     user_id = db.get_meta("user_id") or "USER_ID"
     states: list[PendingState] = []
+    # Capability runs 406/407 (INV-7): the log is read once, guarded, and every
+    # state below (the key-reset way out too) is decided from this read.
+    read = read_team(db)
 
     from .sync_common import SERVER_ROLLBACK_META, STALE_OWN_WRAPS_META
 
@@ -419,7 +450,7 @@ def pending_states(vault: "Vault") -> list[PendingState]:
                 "key_change",
                 "A password reset by org recovery has not reached the server.",
                 "'sezam push' sends it, signed with the recovery key the server registered.",
-                f"If the server refuses it: {key_reset_way_out(db, user_id)}.",
+                f"If the server refuses it: {key_reset_way_out(db, user_id, read)}.",
             ))
         elif change_lacks_server_proof(db):
             states.append(PendingState(
@@ -487,22 +518,17 @@ def pending_states(vault: "Vault") -> list[PendingState]:
 
     # Review 8595ec1 #3: losing the lone admin froze the organisation unnoticed.
     from .. import teamlog
-    from .team_log_local import LOST_LOG_HINT, TeamLogMismatch, local_team_state
 
     # Capability run 406 (INV-7): a refused log ended 'status' with the
     # refusal; it is a state of its own, its way out from its cause, and no
     # team state is decided from it.
-    try:
-        team = local_team_state(db)
-    except TeamLogMismatch as refusal:
-        team = None
+    team, refusal = read
+    if refusal is not None:
         states.append(PendingState(
             "team_log_refused",
             f"This device refuses its team log ({refusal.cause}): team folders and team "
             "changes wait; personal entries go on.",
-            LOST_LOG_HINT.strip() if refusal.offers_forget else
-            "'sezam pull' fetches the log again, held to the genesis and the head this "
-            "device saw; a server that went back or forked is still refused.",
+            refusal_way_out(refusal),
             None,
         ))
     if not connected:

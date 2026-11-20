@@ -213,6 +213,38 @@ def test_status_names_the_refusal_and_its_way_out(tmp_path, state, monkeypatch):
     assert WAY_OUT[CAUSE[state]] in out.output
 
 
+@pytest.mark.parametrize("state", STATES)
+def test_a_pending_recovery_reset_names_the_refusal_first(tmp_path, state, monkeypatch):
+    """Capability run 407: the way out of an org-recovery reset the server
+    refuses read the log on its own, unguarded, so with such a reset pending
+    'status' (and the refused-change messages) still ended on the refusal."""
+    from click.testing import CliRunner
+
+    from sezam import cli
+    from sezam.vault.pending_states import key_reset_way_out, pending_states, set_key_change_journal
+    from tests.test_ai_r1_snapshots import _cli_env
+
+    vault, _ = _device(tmp_path, state)
+    vault.unlock(PASSWORD)
+    from sezam.vault import oplock
+
+    with oplock.exclusive(vault.db.path):  # INV-6
+        set_key_change_journal(vault.db, {"recovery_secret": "x"})
+    assert vault.key_change_unpushed()
+    states = {s.key: s for s in pending_states(vault)}
+    way_out = key_reset_way_out(vault.db, vault.db.get_meta("user_id"))
+    vault.lock()
+    assert {"key_change", "team_log_refused"} <= set(states), sorted(states)
+    for text in (states["key_change"].drop, way_out):  # what cli.py prints on a refused change
+        assert WAY_OUT[CAUSE[state]] in text, text
+        assert (RISK_MARKER in text) == (CAUSE[state] == "anchor_conflict"), text
+        assert "allow-key-reset" not in text, text  # who may allow it is decided from the log
+    _cli_env(tmp_path / "v", monkeypatch)
+    out = CliRunner().invoke(cli.main, ["status"], input=PASSWORD + "\n")
+    assert out.exit_code == 0, out.output
+    assert "org recovery has not reached" in out.output and WAY_OUT[CAUSE[state]] in out.output
+
+
 def test_status_on_keys_naming_another_log_before_this_device_holds_one(tmp_path):
     """Run 406: shared_before_team_log read the log unguarded while no genesis is
     held, so a member who confirmed one founder and whose keys name another saw
