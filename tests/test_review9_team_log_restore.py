@@ -104,7 +104,7 @@ def test_a_restore_the_server_refuses_stays_a_mismatch(team, monkeypatch):  # no
     bob_client.pull()
     _restore_backup(db, 1)
 
-    async def refuse(cur, records, user_id):
+    async def refuse(cur, records, user_id, **_):
         raise server_log.ApiError(400, server_log.TEAM_LOG_REFUSED, {"message": "no"})
 
     monkeypatch.setattr(server_log, "restore", refuse)

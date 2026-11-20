@@ -33,6 +33,9 @@ TeamLogError = core.TeamLogError
 logger = logging.getLogger(__name__)
 
 MAX_RECORDS_PER_APPEND = 1000
+# Review 8bc70f7 M6: a member signs nothing but its own member.keys, yet it
+# could make every push wait on the replay of 1000 records under the lock.
+MAX_RECORDS_FROM_MEMBER = 4
 MAX_BODY_CHARS = 4096
 # TL7 (docs/DESIGN_TEAM_LOG.md §10): one admin per organisation
 # (sezam.teamlog.admin_policy_refusal, the same rule every client applies).
@@ -197,6 +200,90 @@ def _replay_batch(state: TeamState, records: list, bodies: list[dict]) -> tuple[
     return current, steps
 
 
+@dataclass(frozen=True)
+class Prepared:
+    """An uploaded batch parsed and replayed before the push lock (review
+    8bc70f7 M6); under the lock it is reused while the head is the same (the
+    hash chain covers every earlier record), else the head moved: 409."""
+    head_seq: int
+    head_hash: Optional[str]
+    bodies: list
+    current: TeamState
+    steps: list
+
+
+async def _is_admin_here(cur, state: TeamState, user_id: str) -> bool:
+    if state.members:
+        return core.is_admin(state, user_id)
+    await cur.execute("SELECT status, is_admin FROM users WHERE id = %s", (user_id,))
+    row = await cur.fetchone()
+    return row is not None and row[0] == "active" and bool(row[1])
+
+
+async def _prepare(cur, records: list, user_id: str, *, restore: bool) -> Prepared:
+    if not records:
+        raise ApiError(400, TEAM_LOG_REFUSED, {"message": "no team log records"})
+    if len(records) > MAX_RECORDS_PER_APPEND:
+        raise ApiError(400, TEAM_LOG_REFUSED, {"message": "too many team log records"})
+    bodies = [_parse(r) for r in records]
+    state = await load_state(cur) or TeamState()
+    _check_head(state, bodies[0], "compare again" if restore else "build the change again")
+    if not restore:
+        if any(b.get("author") != user_id for b in bodies):
+            raise ApiError(403, TEAM_LOG_REFUSED, {"message": "team log records must be your own"})
+        # Review c78fd19 (medium): a log still at rules 1 took new records
+        # under rules 1 too (a member could get a retired key back). Older
+        # rules are for records stored earlier (replay, restore); a new one is today's.
+        old = next((b for b in bodies if b.get("v") != core.FORMAT_VERSION), None)
+        if old is not None:
+            raise ApiError(400, TEAM_LOG_REFUSED, {
+                "message": f"new team log records follow rules {core.FORMAT_VERSION}",
+                "team_log_code": "rules_outdated", "seq": old.get("seq"),
+            })
+        if len(records) > MAX_RECORDS_FROM_MEMBER and not await _is_admin_here(cur, state, user_id):
+            raise ApiError(400, TEAM_LOG_REFUSED, {"message": "too many team log records"})
+    current, steps = await _replayed(state, records, bodies)
+    return Prepared(state.head_seq, state.head_hash, bodies, current, steps)
+
+
+def _check_head(state: TeamState, first: dict, then: str) -> None:
+    if first.get("prev") != state.head_hash or first.get("seq") != state.head_seq + 1:
+        raise ApiError(409, TEAM_LOG_HEAD_MOVED, {
+            "message": f"the team log moved on; pull it and {then}",
+            "head_seq": state.head_seq, "head_hash": state.head_hash,
+        })
+
+
+async def _under_lock(cur, records: list, user_id: str, prepared: Optional[Prepared], *, restore: bool) -> Prepared:
+    """``prepared`` (from before the lock) when the head is still the one it
+    replayed onto, else the batch prepared now."""
+    if prepared is None:
+        return await _prepare(cur, records, user_id, restore=restore)
+    state = await load_state(cur) or TeamState()
+    if (state.head_seq, state.head_hash) != (prepared.head_seq, prepared.head_hash):
+        _check_head(state, prepared.bodies[0], "compare again" if restore else "build the change again")
+        return await _prepare(cur, records, user_id, restore=restore)  # same head after all
+    return prepared
+
+
+async def prepare_append(cur, records: list, user_id: str) -> Prepared:
+    """Everything ``append`` checks without the users table, outside the push lock."""
+    return await _prepare(cur, records, user_id, restore=False)
+
+
+async def prepare_restore(cur, records: list, user_id: str) -> Prepared:
+    """Everything ``restore`` checks without locking, outside the push lock: a
+    refused restore never holds the lock."""
+    prepared = await _prepare(cur, records, user_id, restore=True)
+    named = _named_members(prepared.bodies)
+    uploader = await _user_row(cur, user_id, lock=False)
+    await _refuse_restored_keys(
+        cur, prepared.current, named, _uploader_team_admin(uploader, prepared.current, user_id),
+        lock=False,
+    )
+    return prepared
+
+
 async def _replayed(state: TeamState, records: list, bodies: list[dict]) -> tuple[TeamState, list[dict]]:
     try:
         return await asyncio.to_thread(_replay_batch, state, records, bodies)
@@ -223,9 +310,10 @@ def _parse(record) -> dict:
         raise ApiError(400, TEAM_LOG_REFUSED, {"message": str(exc), "team_log_code": exc.code}) from exc
 
 
-async def _user_row(cur, user_id: str):
+async def _user_row(cur, user_id: str, *, lock: bool = True):
     await cur.execute(
-        "SELECT status, is_admin, signing_pk, encryption_pk FROM users WHERE id = %s FOR UPDATE",
+        "SELECT status, is_admin, signing_pk, encryption_pk FROM users WHERE id = %s"
+        + (" FOR UPDATE" if lock else ""),
         (user_id,),
     )
     return await cur.fetchone()
@@ -340,38 +428,18 @@ async def _apply_to_users(cur, body: dict, step: dict) -> None:
 
 async def append(
     cur, records: list, user_id: str, *, pending_identity: Optional[tuple[str, str]] = None,
+    prepared: Optional[Prepared] = None,
 ) -> TeamState:
     """Append ``records`` (all by ``user_id``) onto the current head.
 
-    Must run in the caller's transaction after ``commit_counter`` is locked.
+    Must run in the caller's transaction after ``commit_counter`` is locked;
+    ``prepared``: ``prepare_append`` of the same records before the lock.
     Raises ApiError: 409 team_log_head_moved when the head is not the one the
     first record builds on, 400 team_log_refused for any record the rules or
     the users table refuse, 403 for a record signed by someone else.
     """
-    if not records:
-        raise ApiError(400, TEAM_LOG_REFUSED, {"message": "no team log records"})
-    if len(records) > MAX_RECORDS_PER_APPEND:
-        raise ApiError(400, TEAM_LOG_REFUSED, {"message": "too many team log records"})
-    bodies = [_parse(r) for r in records]
-    state = await load_state(cur) or TeamState()
-    first = bodies[0]
-    if first.get("prev") != state.head_hash or first.get("seq") != state.head_seq + 1:
-        raise ApiError(409, TEAM_LOG_HEAD_MOVED, {
-            "message": "the team log moved on; pull it and build the change again",
-            "head_seq": state.head_seq, "head_hash": state.head_hash,
-        })
-    if any(b.get("author") != user_id for b in bodies):
-        raise ApiError(403, TEAM_LOG_REFUSED, {"message": "team log records must be your own"})
-    # Review c78fd19 (medium): a log still at rules 1 took new records under
-    # rules 1 too (a member could get a retired key back). Older rules are for
-    # records stored earlier (replay, restore); a new one is today's.
-    old = next((b for b in bodies if b.get("v") != core.FORMAT_VERSION), None)
-    if old is not None:
-        raise ApiError(400, TEAM_LOG_REFUSED, {
-            "message": f"new team log records follow rules {core.FORMAT_VERSION}",
-            "team_log_code": "rules_outdated", "seq": old.get("seq"),
-        })
-    current, steps = await _replayed(state, records, bodies)
+    prepared = await _under_lock(cur, records, user_id, prepared, restore=False)
+    bodies, current, steps = prepared.bodies, prepared.current, prepared.steps
     await _refuse_superseded_recovery(cur, bodies, user_id)
     now_ms = int(time.time() * 1000)
     for record, body, step in zip(records, bodies, steps):
@@ -448,73 +516,42 @@ def _rotation_lost_here(row, member_id: str, state: TeamState) -> bool:
     )
 
 
-async def restore(cur, records: list, user_id: str) -> TeamState:
-    """Put back records this server lost (restored from a backup, moved).
+def _named_members(bodies: list[dict]) -> list[str]:
+    return sorted({
+        b["data"]["user_id"] for b in bodies if b["type"] in ("genesis", "member.add", "member.keys")
+    })
 
-    Review 1141a20 (R9-E): every device then reported a mismatch for good.
-    A device that accepted the records uploads them again: any author's,
-    as long as they continue the current head and replay (each record's own
-    signature and the log's rules decide, as on every client). The users
-    table still decides keys: the last keys the log gives each member it
-    names must be the ones the account signs in with, and a genesis needs
-    its founder to be an admin here, or the uploader to be the admin the
-    restored log ends with. Same transaction and lock as ``append``.
-    """
-    if not records:
-        raise ApiError(400, TEAM_LOG_REFUSED, {"message": "no team log records"})
-    if len(records) > MAX_RECORDS_PER_APPEND:
-        raise ApiError(400, TEAM_LOG_REFUSED, {"message": "too many team log records"})
-    bodies = [_parse(r) for r in records]
-    state = await load_state(cur) or TeamState()
-    first = bodies[0]
-    if first.get("prev") != state.head_hash or first.get("seq") != state.head_seq + 1:
-        raise ApiError(409, TEAM_LOG_HEAD_MOVED, {
-            "message": "the team log moved on; pull it and compare again",
-            "head_seq": state.head_seq, "head_hash": state.head_hash,
-        })
-    refuse = lambda message: ApiError(400, TEAM_LOG_REFUSED, {"message": message})  # noqa: E731
-    uploader = await _user_row(cur, user_id)
-    uploader_active = uploader is not None and uploader[0] == "active"
-    uploader_admin = uploader_active and bool(uploader[1])
-    founder_admin = True
-    named: set[str] = set()
-    current, steps = await _replayed(state, records, bodies)
+
+def _uploader_team_admin(uploader, current: TeamState, user_id: str) -> bool:
     # Review c78fd19 #2: any account put back a member.keys of any member to
-    # keys the account does not sign in with (the run 277 exception below),
-    # so a thief of a member's identity key (no password) signed one to keys
-    # of its own and took the member's place in the team. Such a rotation
-    # comes back only from the admin; a member's device still puts back the
-    # rest (a lone admin's org.recovery, review 8595ec1 #4).
-    uploader_team_admin = uploader_admin or (uploader_active and core.is_admin(current, user_id))
-    now_ms = int(time.time() * 1000)
-    for record, body, step in zip(records, bodies, steps):
-        kind, data = body["type"], body["data"]
-        if kind == "genesis":
-            row = await _user_row(cur, data["user_id"])
-            founder_admin = row is not None and row[0] == "active" and bool(row[1])
-        if kind in ("genesis", "member.add", "member.keys"):
-            named.add(data["user_id"])
-        await cur.execute(
-            "INSERT INTO team_log (seq, prev, hash, body, sig, author, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (step["seq"], body["prev"], step["hash"], record["body"], record["sig"],
-             body["author"], now_ms),
-        )
-        await _apply_to_users(cur, body, step)
-    if not founder_admin and not (uploader_admin and core.is_admin(current, user_id)):
-        raise refuse("a restored genesis needs its founder (or the uploader, its last admin) to be an admin here")
-    for member_id in sorted(named):
-        member = current.members.get(member_id)
-        if member is None or not member.active:
-            continue
-        row = await _user_row(cur, member_id)
+    # keys the account does not sign in with (the run 277 exception), so a
+    # thief of a member's identity key (no password) signed one to keys of its
+    # own and took the member's place in the team. Such a rotation comes back
+    # only from the admin; a member's device still puts back the rest (a lone
+    # admin's org.recovery, review 8595ec1 #4).
+    active = uploader is not None and uploader[0] == "active"
+    return active and (bool(uploader[1]) or core.is_admin(current, user_id))
+
+
+async def _refuse_restored_keys(
+    cur, current: TeamState, named: list[str], uploader_team_admin: bool, *, lock: bool,
+) -> None:
+    """The last keys the restored log gives each member it names, removed or
+    not, are the ones the account signs in with (review 8bc70f7 H2: a member
+    forged a genesis under the admin's id with a key of its own, made itself
+    admin and removed the admin; a removed member's keys went unchecked).
+    ``lock``: under the push lock, after the users table took the records."""
+    refuse = lambda message: ApiError(400, TEAM_LOG_REFUSED, {"message": message})  # noqa: E731
+    for member_id in named:
+        member = current.members[member_id]
+        row = await _user_row(cur, member_id, lock=lock)
         keys = {"signing_pk": member.signing_pk, "encryption_pk": member.encryption_pk}
         if row is None:
             # Review 8595ec1 #1: the backup is older than this registration.
             # Refusing the log locked the whole organisation out; the account
             # comes back under this id with exactly these keys (POST /auth/rejoin).
             continue
-        if row[0] != "active":
+        if lock and member.active and row[0] != "active":
             raise refuse(f"the restored team log gives {member_id} keys the account does not sign in with")
         if _keys_match(row, keys):
             continue
@@ -525,6 +562,44 @@ async def restore(cur, records: list, user_id: str) -> TeamState:
                 "message": f"only the team admin puts back the key rotation of {member_id} "
                            "the server lost",
             })
+
+
+async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepared] = None) -> TeamState:
+    """Put back records this server lost (restored from a backup, moved).
+
+    Review 1141a20 (R9-E): every device then reported a mismatch for good.
+    A device that accepted the records uploads them again: any author's,
+    as long as they continue the current head and replay (each record's own
+    signature and the log's rules decide, as on every client). The users
+    table still decides keys: the last keys the log gives each member it
+    names must be the ones the account signs in with, and a genesis needs
+    its founder to be an admin here, or the uploader to be the admin the
+    restored log ends with. Same transaction and lock as ``append``;
+    ``prepared``: ``prepare_restore`` of the same records before the lock.
+    """
+    prepared = await _under_lock(cur, records, user_id, prepared, restore=True)
+    bodies, current, steps = prepared.bodies, prepared.current, prepared.steps
+    refuse = lambda message: ApiError(400, TEAM_LOG_REFUSED, {"message": message})  # noqa: E731
+    uploader = await _user_row(cur, user_id)
+    uploader_admin = uploader is not None and uploader[0] == "active" and bool(uploader[1])
+    uploader_team_admin = _uploader_team_admin(uploader, current, user_id)
+    founder_admin = True
+    now_ms = int(time.time() * 1000)
+    for record, body, step in zip(records, bodies, steps):
+        kind, data = body["type"], body["data"]
+        if kind == "genesis":
+            row = await _user_row(cur, data["user_id"])
+            founder_admin = row is not None and row[0] == "active" and bool(row[1])
+        await cur.execute(
+            "INSERT INTO team_log (seq, prev, hash, body, sig, author, created_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (step["seq"], body["prev"], step["hash"], record["body"], record["sig"],
+             body["author"], now_ms),
+        )
+        await _apply_to_users(cur, body, step)
+    if not founder_admin and not (uploader_admin and core.is_admin(current, user_id)):
+        raise refuse("a restored genesis needs its founder (or the uploader, its last admin) to be an admin here")
+    await _refuse_restored_keys(cur, current, _named_members(bodies), uploader_team_admin, lock=True)
     if core.admin_policy_refusal(current):
         raise refuse("the restored team log has more than one admin")
     return current
