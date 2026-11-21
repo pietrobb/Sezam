@@ -210,7 +210,7 @@ class DEKManager:
         self._dek_cache[dek_id] = raw_dek
         return dek_id, raw_dek
 
-    def _team_key_state(self, dek_id: str, superseded: bool = False):
+    def _team_key_state(self, dek_id: str):
         from .. import teamlog
         from .team_log_local import (
             CONFIRMED_GENESIS_META, GENESIS_META, TeamLogMismatch, local_team_state, log_trusted, team_key_ids,
@@ -251,9 +251,10 @@ class DEKManager:
                         private[:] = bytes(len(private))
         if not trusted:
             raise TeamKeyRefused("The team log's founder is not confirmed on this device")
-        if not teamlog.may_hold_key(team, user_id, dek_id) and not (
-                superseded and sync_core.call(
-                    "may_open_superseded", team=sync_core.team_input(team, user_id), key=dek_id)):
+        # A key the log replaced opens while the log lets this account hold
+        # the folder's current one (unlock_dek).
+        if not teamlog.may_hold_key(team, user_id, dek_id) and not sync_core.call(
+                "may_open_superseded", team=sync_core.team_input(team, user_id), key=dek_id):
             raise TeamKeyRefused("The confirmed team log does not permit this key")
         return team
 
@@ -283,17 +284,23 @@ class DEKManager:
             raw[:] = bytes(len(raw))
         raise CryptoError("No authorized team envelope opens this key")
 
-    def unlock_dek(self, dek_id: str, superseded: bool = False) -> bytearray:
+    def unlock_dek(self, dek_id: str) -> bytearray:
         """Unlock through KEK or a trusted team envelope; recheck cached authority.
 
-        ``superseded``: also a team folder's earlier key, when the log lets
-        this account hold the folder's current one - only to seal again under
-        it what was written under the earlier key (conformance scenario
-        client_revokes_member: the pull of another device's re-key failed on
-        this device's own write, the log refusing the key it was sealed with).
+        A team folder's earlier key opens too while the log lets this account
+        hold the folder's current one (sync core may_open_superseded): what
+        was sealed under it before the re-key is read and sealed again under
+        the current key. Whether a live copy under it is valid is decided
+        when it is accepted (teamlog.item_refusal: old key generation, on
+        every pull and on the server's push), not here; design §4.3.3: an old
+        key reads history. Review e443cbc R15 (goal #429): opened only to seal
+        again, an admin device whose log a push, a revocation check or a
+        paginated pull moved past a re-key could not read the copies it held
+        until their re-sealed versions came, nor ever its trash and earlier
+        versions there (no restore).
         """
         try:
-            team = self._team_key_state(dek_id, superseded)
+            team = self._team_key_state(dek_id)
             if dek_id in self._dek_cache and dek_id in self._box_keys:
                 if team is None:
                     raise CryptoError("The team envelope has no verified log")

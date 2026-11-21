@@ -233,7 +233,7 @@ async function setAside() {
 function pageView() {
   return vm.runInContext(`({
     token: !!state.token, userId: state.userId, keyEpoch: state.keyEpoch,
-    unlocked: !!state.kek, rootNodeId: state.rootNodeId || null,
+    unlocked: !!state.kek, rootNodeId: state.rootNodeId || null, teamLogRefused: !!state.teamLogRefusal,
     nodes: (state.allNodes || []).map(n => ({
       id: n.id, name: n.name, parent_ref: n.parent_ref || null,
       personal: !!n.personal, undecryptable: !!n._undecryptable, owner_id: n.owner_id || null,

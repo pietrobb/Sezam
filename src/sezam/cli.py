@@ -2953,6 +2953,7 @@ def _check_org_recovery_registration(vault: Vault) -> None:
     recovery key only after forgetting the password. Checked after a push,
     while the password can still be asked for."""
     from .vault.org_recovery_server import (
+        STALE_NOTE,
         SUPERSEDED_NOTE,
         UNREGISTERED_HINT,
         register_while_password_known,
@@ -2969,6 +2970,8 @@ def _check_org_recovery_registration(vault: Vault) -> None:
         click.echo(f"Warning: {UNREGISTERED_HINT}", err=True)
     elif issue == "superseded":
         click.echo(f"Warning: {SUPERSEDED_NOTE}", err=True)
+    elif issue == "stale":
+        click.echo(f"Warning: {STALE_NOTE}", err=True)
     elif issue == "pending":
         if not sys.stdin.isatty():
             click.echo(

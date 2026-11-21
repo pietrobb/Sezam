@@ -62,7 +62,7 @@ from hypothesis.stateful import (
 from nacl.signing import SigningKey
 
 from sezam.vault import pending_states as pending_store
-from sezam import cli
+from sezam import cli, teamlog
 from sezam.crypto.aead import BlobKind, parse_envelope
 from sezam.crypto.envelope_crypto import open_envelope
 from sezam.crypto.keys import generate_keypair
@@ -1414,9 +1414,13 @@ class SyncMachine(RuleBasedStateMachine):
         a restore from a backup taken before the setup forgot it."""
         if self.org is None or self.org[0] not in self.devices:
             return False
-        return any(
-            _as_bytes(blob.get("recovery_signing_pk")) == self.org[2]
-            for blob in self.db._storage.get("org_recovery_blobs", [])
+        # The server's current recovery: the stored blob or the key (and wrap)
+        # the team log names. A stale one wraps the KEK of an older password.
+        vault = self.devices[self.org[0]].vault
+        status = org_recovery_server._client(vault)._request("GET", "/api/org-recovery/status") or {}
+        return (
+            bool(status.get("configured")) and not status.get("stale")
+            and status.get("recovery_signing_pk") == self.org[2].hex()
         )
 
     def _check_org_recovery_told(self) -> None:
@@ -1602,13 +1606,23 @@ class SyncMachine(RuleBasedStateMachine):
                 objects.append(client._make_sync_object(
                     id=obj_id, object_type="node", payload=meta, parent_ref=parent,
                 ))
+        from server.app import team_log as server_team_log
+
         user["is_admin"] = 1  # the server takes from her what it takes from an admin
+        # With a team log the server's own rules refuse her envelope (only an
+        # admin the log names seals a team key) and her folders; a lying
+        # server skips them.
+        rules = {name: getattr(server_team_log, name) for name in ("envelope_refusal", "item_refusal")}
+        for name in rules:
+            setattr(server_team_log, name, lambda *_a, **_k: None)
         try:
             reply = client._request("POST", "/api/sync", {
                 "objects": objects, "atomic_batch": False,
                 "key_epoch": int(vault.db.get_meta("key_epoch") or 0),
             }, auth=True)
         finally:
+            for name, rule_fn in rules.items():
+                setattr(server_team_log, name, rule_fn)
             user["is_admin"] = 0
             vault.lock()
         assert reply.get("accepted"), f"the made-up envelope did not land: {reply}"
@@ -1773,8 +1787,11 @@ class SyncMachine(RuleBasedStateMachine):
         while more := {n["id"] for n in view.get("nodes", []) if n["parent_ref"] in foreign} - foreign:
             foreign |= more
         for item in view.get("nodes", []) + view.get("entries", []):
+            # INV-7: while the page refuses the team log only personal trees
+            # open (the machine has none); the settle's equal views prove the
+            # refusal ends once a device puts the log back.
             if item["id"] == root or item["undecryptable"] and (
-                item["id"] in foreign or item["parent_ref"] in foreign
+                item["id"] in foreign or item["parent_ref"] in foreign or view.get("teamLogRefused")
             ):
                 continue
             assert not item["undecryptable"], (
@@ -2847,6 +2864,305 @@ class TeamLogMachine(SyncMachine):
         super()._invite_member(device)
         self._confirm_founder(next(reversed(self.members)))
 
+    # ── The log itself under attack (capability run 430) ─────────────
+    # A member signs records the rules refuse and sends them to append and to
+    # restore; the server serves forks, gaps, reorders, forged records and
+    # false heads. The invariants below hold after every step: a broken rule
+    # on the server or in a client turns this machine red.
+
+    FORGERIES = (
+        "grant self", "appoint self", "add made-up admin", "sign as the admin",
+        "take the admin's key", "rotate onto own key",
+    )
+    LOG_LIES = ("truncate", "drop a record", "reorder", "forged record", "old head", "other genesis")
+
+    def _server_log(self) -> list[dict]:
+        rows = sorted(self.db._storage.get("team_log", []), key=lambda r: r["seq"])
+        return [{"body": r["body"], "sig": r["sig"]} for r in rows]
+
+    def _forged_hashes(self) -> set[str]:
+        return getattr(self, "forged", set())
+
+    def _log_vaults(self) -> list[tuple[str, object]]:
+        return [(name, dev.vault) for name, dev in sorted(self.devices.items())] + [
+            (m.name, m.vault) for _, m in sorted(self.members.items()) if m.vault is not None
+        ]
+
+    def _log_holders(self) -> list[tuple[str, object]]:
+        return [(n, v) for n, v in self._log_vaults() if v.db.fetchone("SELECT seq FROM team_log LIMIT 1")]
+
+    def _forgers(self, state) -> list[str]:
+        return [u for u in self._member_desktops()
+                if u in state.members and state.members[u].active and not teamlog.is_admin(state, u)]
+
+    def _forge(self, state, user_id: str, kind: str) -> dict:
+        from nacl.public import PrivateKey
+
+        own = self.members[user_id].vault.keypair.to_nacl_signing_key()
+        admin = next(u for u in state.members if teamlog.is_admin(state, u))
+        fresh = SigningKey.generate()
+        fresh_pk = bytes(fresh.verify_key).hex()
+        enc_pk = bytes(PrivateKey.generate().public_key).hex()
+        folder = next(iter(sorted(state.folders)), None)
+        author, signer = user_id, own
+        if kind == "grant self" and folder is not None:
+            level = "read" if state.access.get(folder, {}).get(user_id) == "write" else "write"
+            change, data = "access.set", {"folder": folder, "user_id": user_id, "level": level}
+        elif kind == "sign as the admin" and folder is not None:
+            level = "read" if state.access.get(folder, {}).get(user_id) == "write" else "write"
+            change, data = "access.set", {"folder": folder, "user_id": user_id, "level": level}
+            author = admin
+        elif kind == "add made-up admin":
+            change, data = "member.add", {
+                "user_id": new_ulid(), "signing_pk": fresh_pk, "encryption_pk": enc_pk, "role": "admin"}
+        elif kind in ("take the admin's key", "rotate onto own key"):
+            if kind == "take the admin's key":
+                spk, epk, key = fresh_pk, state.members[admin].encryption_pk, fresh
+            else:
+                spk, epk, key = state.members[user_id].signing_pk, enc_pk, own
+            proof = key.sign(teamlog.new_key_message(state.head_hash, user_id, spk, epk)).signature
+            change, data = "member.keys", {
+                "user_id": user_id, "signing_pk": spk, "encryption_pk": epk, "new_key_sig": proof.hex()}
+        else:  # appoint self (also a grant while no folder is in the log yet)
+            change, data = "member.role", {"user_id": user_id, "role": "admin"}
+        return teamlog.sign_record(teamlog.next_body(state, change, author, data), signer)
+
+    @precondition(lambda self: self._member_desktops())
+    @rule(data=st.data(), kind=st.sampled_from(FORGERIES), path=st.sampled_from(["append", "restore"]))
+    def member_forges_a_log_record(self, data, kind, path):
+        """A member signs a record the rules refuse and posts it (INV-1/INV-2:
+        restore takes no more than append)."""
+        before = self._server_log()
+        state = teamlog.replay(before)
+        user_id = self._pick(data, self._forgers(state), "forger")
+        if user_id is None:
+            return
+        record = self._forge(state, user_id, kind)
+        self.forged = self._forged_hashes() | {teamlog.record_hash(record)}
+        client = self._new_client(self.members[user_id].vault)
+        url = "/api/team-log" + ("/restore" if path == "restore" else "")
+        try:
+            client._request("POST", url, {"records": [record]}, auth=True)
+        except Exception as exc:  # refused: what must happen
+            outcome = f"refused ({type(exc).__name__})"
+        else:
+            raise AssertionError(
+                f"the server took a {kind!r} record from {self.members[user_id].name} via {path}: "
+                f"{record['body']}\n" + self._trace())
+        coverage_event(f"member forges {kind} via {path}")
+        self.log.append(f"{self.members[user_id].name}: forges {kind} -> {path} {outcome}")
+        assert self._server_log() == before, f"a refused {path} changed the server's log\n" + self._trace()
+
+    @rule(data=st.data(), lie=st.sampled_from(LOG_LIES))
+    def server_lies_about_the_log(self, data, lie):
+        """The server serves one device a log the true one is not; the device
+        takes nothing from it and does no emergency action by itself (INV-8)."""
+        from sezam.vault.team_log_local import (
+            CONFIRMED_GENESIS_META, GENESIS_META, queued_changes, set_aside_changes,
+        )
+
+        true = self._server_log()
+        if not true:
+            return
+        state = teamlog.replay(true)
+        targets = self._log_vaults()
+        name, vault = targets[data.draw(st.integers(0, len(targets) - 1), label="target")]
+        forger = self._forgers(state)
+        # A grant (a self-appointment is also refused as a second admin at the head).
+        forged = self._forge(state, forger[0], "grant self") if forger else None
+        if lie == "forged record" and forged is None:
+            return
+
+        def records(path: str) -> list:
+            since = int(path.split("since=")[1]) if "since=" in path else -1
+            # A device that is up to date gets the whole log again (a server
+            # that ignores 'since'), so a gap or a reorder has records to hit.
+            served = list(true[since + 1:])
+            if lie == "forged record":  # on top of what the device holds
+                return served + [forged]
+            served = served or list(true)
+            if lie == "truncate" and served:
+                served.pop()
+            elif lie == "drop a record" and len(served) > 1:
+                served.pop(len(served) // 2)
+            elif lie == "reorder" and len(served) > 1:
+                served[-1], served[-2] = served[-2], served[-1]
+            return served
+
+        def head(served: dict) -> dict:
+            served = dict(served)
+            if lie == "forged record":
+                served.update(seq=state.head_seq + 1, hash=teamlog.record_hash(forged))
+            elif lie == "old head" and state.head_seq > 0:
+                served.update(seq=state.head_seq - 1, hash=teamlog.record_hash(true[-2]))
+            elif lie == "other genesis":
+                served["genesis_hash"] = "1" * 64
+            return served
+
+        if forged is not None:
+            self.forged = self._forged_hashes() | {teamlog.record_hash(forged)}
+        client = self._new_client(vault)
+        real = client._request
+
+        def lying(m, path, *args, **kwargs):
+            reply = real(m, path, *args, **kwargs)
+            if m != "GET" or not isinstance(reply, dict):
+                return reply
+            reply = dict(reply)
+            if path.startswith("/api/sync") and reply.get("team_log_head"):
+                reply["team_log_head"] = head(reply["team_log_head"])
+            elif path.startswith("/api/team-log"):
+                reply["records"] = records(path)
+                if reply.get("head"):
+                    reply["head"] = head(reply["head"])
+            return reply
+
+        client._request = lying
+        pins = (vault.db.get_meta(GENESIS_META), vault.db.get_meta(CONFIRMED_GENESIS_META))
+        work = [json.dumps(c, sort_keys=True) for c in queued_changes(vault.db)] + [
+            json.dumps(c, sort_keys=True) for c in set_aside_changes(vault.db)]
+        try:
+            client._refresh_team_log()  # the log part of a pull, without its objects
+            outcome = "followed"
+        except Exception as exc:  # fail-closed is fine; what it kept is checked below
+            outcome = f"refused ({type(exc).__name__})"
+        coverage_event(f"server lies about the log: {lie} -> {outcome.split(' ')[0]}")
+        self.log.append(f"server: {lie} in the log served to {name} -> {outcome}")
+        assert (vault.db.get_meta(GENESIS_META), vault.db.get_meta(CONFIRMED_GENESIS_META)) == pins, (
+            f"{name}: a lying server's {lie} changed the log pins\n" + self._trace())
+        kept = [json.dumps(c, sort_keys=True) for c in queued_changes(vault.db)] + [
+            json.dumps(c, sort_keys=True) for c in set_aside_changes(vault.db)]
+        lost = [c for c in work if c not in kept]
+        assert not lost, f"{name}: a lying server's {lie} dropped queued team changes {lost}\n" + self._trace()
+
+    @rule(data=st.data(), lie=st.sampled_from([None, "truncate", "drop a record", "reorder", "old head"]))
+    def user_forgets_the_pin(self, data, lie):
+        """'sezam team-log forget-pin GENESIS' while the log is not lost: the
+        server follows it, or lies in a way that is no lost log (a fork, a log
+        going back). INV-8: refused, and the pins and the log copy stay."""
+        from sezam.vault.team_log_forget import forget_team_log_pin, pinned_genesis
+
+        targets = self._log_holders()
+        if not targets or not self._server_log():
+            return
+        name, vault = targets[data.draw(st.integers(0, len(targets) - 1), label="target")]
+        pins = pinned_genesis(vault)
+        rows = [tuple(r) for r in vault.db.fetchall("SELECT seq, hash FROM team_log ORDER BY seq")]
+        client = self._new_client(vault)
+        if lie is not None:
+            true, real = self._server_log(), client._request
+
+            def lying(m, path, *args, **kwargs):
+                reply = real(m, path, *args, **kwargs)
+                if m == "GET" and path.startswith("/api/team-log") and isinstance(reply, dict):
+                    served = list(true)
+                    if lie == "truncate" or (lie == "old head" and len(served) > 1):
+                        served.pop()
+                    elif lie == "drop a record" and len(served) > 2:
+                        served.pop(len(served) // 2)
+                    elif lie == "reorder" and len(served) > 1:
+                        served[-1], served[-2] = served[-2], served[-1]
+                    reply = {**reply, "records": served}
+                return reply
+
+            client._request = lying
+        try:
+            forget_team_log_pin(vault, " ".join(sorted(pins)), client)
+        except (ValueError, RuntimeError) as exc:
+            outcome = f"refused ({type(exc).__name__})"
+        else:
+            raise AssertionError(f"{name} forgot its team log pin with the log not lost ({lie})\n" + self._trace())
+        coverage_event(f"forget-pin while the log is not lost: {lie}")
+        self.log.append(f"{name}: forget-pin ({lie or 'honest server'}) -> {outcome}")
+        assert pinned_genesis(vault) == pins, f"{name}: a refused forget-pin changed the pins\n" + self._trace()
+        assert [tuple(r) for r in vault.db.fetchall("SELECT seq, hash FROM team_log ORDER BY seq")] == rows, (
+            f"{name}: a refused forget-pin changed the log copy\n" + self._trace())
+
+    @rule()
+    def operator_loses_the_log(self):
+        """The server's team log is gone (a restore of the database without
+        it). No device forgets its pin on its own (INV-8); an admin device that
+        holds the log puts it back on its next sync (INV-7), and the settle
+        ends with every device on that log."""
+        if not self._server_log():
+            return
+        self.db._storage["team_log"] = []
+        self.log.append("server: team log lost")
+
+    @invariant()
+    def the_server_log_follows_the_rules(self):
+        """INV-1/INV-2: what the server stored replays under today's rules,
+        holds no forged record and has one admin at its head."""
+        if not hasattr(self, "db"):
+            return
+        records = self._server_log()
+        state = teamlog.TeamState()
+        for record in records:
+            refusal = teamlog.todays_rules_refusal(state, teamlog.parse_body(record["body"]))
+            assert refusal is None, f"the server stored a record today's rules refuse: {refusal}\n" + self._trace()
+            try:
+                state = teamlog.apply_record(state, record)
+            except teamlog.TeamLogError as exc:
+                raise AssertionError(f"the server stored a log the rules refuse: {exc}\n" + self._trace()) from exc
+        stored = {teamlog.record_hash(r) for r in records}
+        assert not stored & self._forged_hashes(), "the server stored a forged record\n" + self._trace()
+        if records:
+            assert teamlog.admin_policy_refusal(state) is None, "server log head: more than one admin\n" + self._trace()
+
+    @invariant()
+    def every_device_holds_one_log(self):
+        """No device accepted a record the true log does not have (fork,
+        forgery) or a log that does not replay; the server's and each device's
+        copy are one the other's prefix (a restored server is the shorter)."""
+        if not hasattr(self, "db"):
+            return
+        server = [teamlog.record_hash(r) for r in self._server_log()]
+        for name, vault in self._log_vaults():
+            rows = vault.db.fetchall("SELECT body, sig FROM team_log ORDER BY seq")
+            local = [teamlog.record_hash({"body": r["body"], "sig": r["sig"]}) for r in rows]
+            assert not set(local) & self._forged_hashes(), f"{name} holds a forged log record\n" + self._trace()
+            n = min(len(local), len(server))
+            assert local[:n] == server[:n], (
+                f"{name}'s team log forks from the server's at record "
+                f"{next(i for i in range(n) if local[i] != server[i])}\n" + self._trace())
+
+    @invariant()
+    def an_envelope_goes_with_its_access(self):
+        """INV-6: a grant's envelope and its access.set land in one request.
+        A live envelope an admin sealed to a member for a key the log knows
+        is there only while the log gives that member the folder."""
+        if not hasattr(self, "db"):
+            return
+        records = self._server_log()
+        if not records:
+            return
+        state = teamlog.replay(records)
+        for obj in self.db._storage.get("vault_objects", []):
+            target = obj.get("target_user_id")
+            if obj["object_type"] != "envelope" or obj.get("is_deleted") or target not in self.members:
+                continue
+            if obj.get("owner_id") == target or target not in state.members or teamlog.is_admin(state, target):
+                continue
+            folder, gen = state.dek_index.get(obj.get("parent_ref"), (None, None))
+            if folder is None or gen != len(state.folders[folder]) - 1:
+                continue  # not a log key, or an older generation (kept for history)
+            assert state.access.get(folder, {}).get(target), (
+                f"{self.members[target].name} has an envelope of {folder}'s current key "
+                f"({obj.get('parent_ref')}) the log gives them no access to\n" + self._trace())
+
+    @invariant()
+    def a_waiting_member_has_a_way_out(self):
+        """INV-7: a member waiting for records a restored server lost waits
+        for records some device of the admin still holds."""
+        if not hasattr(self, "db"):
+            return
+        held = max([len(self._server_log())] + [
+            len(dev.vault.db.fetchall("SELECT seq FROM team_log")) for dev in self.devices.values()])
+        for user_id in self._waiting_members():
+            mine = len(self.members[user_id].vault.db.fetchall("SELECT seq FROM team_log"))
+            assert mine <= held, (
+                f"{self.members[user_id].name} waits for team log records nobody holds\n" + self._trace())
+
 
 class _Scripted:
     """A stand-in for st.data() that answers each draw from a script by label."""
@@ -3553,3 +3869,189 @@ def test_sync_state_machine_team_folder_with_a_folder_key_below(loopback_server,
         machine._settle(lambda _obj: "server")
     finally:
         machine.teardown()
+
+
+@pytest.mark.skipif(not NODE, reason="the web tab needs Node >= 24.7")
+@pytest.mark.parametrize("who", ["desktop", "web"])
+def test_sync_state_machine_team_trash_and_history_after_a_rekey(loopback_server, monkeypatch, who):
+    """Review e443cbc R15, goal #429 (TeamLogMachine): an entry of a team
+    folder deleted (on this desktop or on the web), and another edited, before
+    a revocation re-keyed the folder. The trash and the entry history keep
+    what was sealed under the folder's earlier key; the desktop opened it only
+    for a key the log names current (may_hold_key), so the admin's own deleted
+    entry read '(unreadable here)' and could not be restored, and the earlier
+    version could not be read. Design §4.3.3: an old key reads history."""
+    from sezam.vault import trash
+
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        top = machine._folders("A")[0]
+        snap = snapshot(machine.devices["A"].vault)
+        gone, edited = [e for e in machine._entries("A") if snap[e][2] == top][:2]
+        machine._grant("A", member, top, "read")
+        machine._member_sync(member)
+        machine.track_member_keys()
+        machine.edit_entry(_Scripted(device="A", entry=edited))
+        if who == "web":
+            machine.open_web_tab()
+            machine.web_delete_entry(_Scripted(entry=gone), None)
+        else:
+            machine.delete_entry(_Scripted(device="A", entry=gone))
+        machine._settle(lambda _obj: "server")
+        machine.revoke(_Scripted(device="A", member=member), None)
+        machine._settle(lambda _obj: "server")
+
+        vault = machine.devices["A"].vault
+        listed = {item["id"]: item["name"] for item in trash.list_trash(vault)}
+        assert listed.get(gone) == snap[gone][1], listed
+        version = trash.list_history(vault, edited)[-1]
+        assert trash.read_history(vault, edited, version["id"])
+        machine._local("A", f"restore {gone} from the trash", lambda v: trash.restore_entry(v, gone))
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+@pytest.mark.parametrize("then", ["push", "invite"])
+def test_sync_state_machine_team_log_pinned_by_the_account_keys(loopback_server, monkeypatch, then):
+    """Review e443cbc R15, goal #429 (TeamLogMachine): the admin's second
+    desktop B has not pulled since the log was founded when A rotates the
+    identity. B takes the account keys over, and with them the log's anchor
+    (import_account_anchor), but not the log: every push and invitation then
+    stopped with 'not downloaded yet; pull it first'. The log is fetched."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        machine.rotate_identity(_Scripted(device="A"), None)
+        machine._push("A")
+        if then == "push":
+            machine.rename_folder(_Scripted(device="B", folder=machine._folders("B")[0]))
+            machine._push("B")
+        else:
+            machine._take_over_account_keys("B", abandon=False)
+            machine._invite_member("B")
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_change_queued_before_a_rotation_taken_over(loopback_server, monkeypatch):
+    """Review e443cbc R15, goal #429 (TeamLogMachine): the admin's desktop C,
+    connected after the founding, revokes a member while A's identity
+    rotation is on the server and C has neither the new keys nor the log
+    records naming them: the removal stays queued (RekeyPending). C's push
+    takes the keys over; the queued member.remove, checked against C's log
+    (still naming the old key) and signed with the new one, failed as
+    bad_signature and was set aside for good: the member stayed in the log."""
+    from sezam.vault.team_log_local import local_team_state, set_aside_changes
+
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine._add_device("C")
+        machine.rotate_identity(_Scripted(device="A"), None)
+        machine._push("A")
+        machine.revoke(_Scripted(device="C", member=member), None)
+        assert "RekeyPending" in machine.log[-2], machine._trace()
+        machine._settle(lambda _obj: "server")
+        vault = machine.devices["C"].vault
+        assert not set_aside_changes(vault.db), set_aside_changes(vault.db)
+        state = local_team_state(vault.db)
+        assert not state.members[member].active, machine._trace()
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_grant_while_own_rotation_waits(loopback_server, monkeypatch):
+    """Review e443cbc R15, goal #429 (TeamLogMachine, randomized run): the
+    admin's desktop B rotates its identity and the push fails before it is
+    sent. A grant on B then signed its log record with the new key while the
+    log still named the old one (member.keys goes last): B's own replay
+    refused it (bad_signature) and the grant crashed. It is signed with the
+    key the log names, and the rotation follows it."""
+    from sezam.vault.team_log_local import local_team_state
+
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine._member_sync(member)
+        machine.rotate_identity(_Scripted(device="B"), "before")
+        machine.track_member_keys()
+        folder = machine._folders("B")[0]
+        machine._grant("B", member, folder, "read")
+        assert machine.log[-1].startswith("B: grant "), machine._trace()
+        machine._settle(lambda _obj: "server")
+        state = local_team_state(machine.devices["A"].vault.db)
+        admin = machine.devices["B"].vault.db.get_meta("user_id")
+        assert state.members[admin].signing_pk == machine.devices["B"].vault.keypair.signing_pk.hex()
+        assert state.access.get(folder, {}).get(member) == "read", machine._trace()
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_log_under_attack(loopback_server, monkeypatch):
+    """Capability run 430 (goal #429): every forgery a member can sign, sent
+    to append and to restore, and every lie a server can tell about the log,
+    with the log invariants after each step. Disabling one log rule on the
+    server or in the clients (e.g. not_admin) turns this red."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+
+    def check():
+        machine.track_member_keys()
+        machine.the_server_log_follows_the_rules()
+        machine.every_device_holds_one_log()
+        machine.an_envelope_goes_with_its_access()
+        machine.a_waiting_member_has_a_way_out()
+
+    try:
+        member = machine._active_members()[0]
+        machine._grant("A", member, machine._folders("A")[0], "read")
+        machine._member_sync(member)
+        check()
+        for kind in TeamLogMachine.FORGERIES:
+            for path in ("append", "restore"):
+                machine.member_forges_a_log_record(_Scripted(forger=member), kind, path)
+                check()
+        for lie in TeamLogMachine.LOG_LIES:
+            for target in range(len(machine._log_vaults())):
+                machine.server_lies_about_the_log(_Scripted(target=target), lie)
+                check()
+        for lie in (None, "truncate", "drop a record", "reorder", "old head"):
+            for target in range(len(machine._log_holders())):
+                machine.user_forgets_the_pin(_Scripted(target=target), lie)
+                check()
+        machine.operator_loses_the_log()
+        check()
+        machine._member_sync(member)
+        check()
+        machine._settle(lambda _obj: "server")
+        check()
+        assert machine._server_log(), "nobody put the lost team log back\n" + machine._trace()
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_log(loopback_server):
+    TeamLogMachine.server = loopback_server
+    run_state_machine_as_test(
+        TeamLogMachine,
+        settings=settings(
+            max_examples=DEEP or 8,
+            stateful_step_count=25,
+            deadline=None,
+            derandomize=not DEEP,
+            database=None,
+            suppress_health_check=list(HealthCheck),
+            print_blob=True,
+        ),
+    )

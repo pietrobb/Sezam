@@ -621,6 +621,13 @@ class TeamLogMixin:
 
     def require_trusted_team_log(self) -> None:
         if self.team_state() is None and self._db.get_meta(CONFIRMED_GENESIS_META) is not None:
+            # Review e443cbc R15 (goal #429): a pin without its log (the anchor
+            # came with account keys taken over from another device, or
+            # 'team-log confirm-founder' before the first pull) stopped every
+            # push and invitation until a pull. The log is fetched and checked
+            # against the pin here.
+            self._refresh_team_log()
+        if self.team_state() is None and self._db.get_meta(CONFIRMED_GENESIS_META) is not None:
             raise RuntimeError("The independently confirmed team log is not downloaded yet; pull it first.")
         if self.team_state() is not None and not self.team_log_trusted():
             raise RuntimeError(
@@ -807,7 +814,7 @@ class TeamLogMixin:
         """``team_log_records`` with the index of the change each record is for."""
         self.require_trusted_team_log()
         state = self.team_state() or teamlog.TeamState()
-        signing_key = self._keypair.to_nacl_signing_key()
+        signing_key = self._log_signing_key(state)
         records = []
         for index, (kind, data) in enumerate(changes):
             resolved = resolve_change(state, kind, data)
@@ -817,6 +824,26 @@ class TeamLogMixin:
             state = teamlog.apply_record(state, record)
             records.append((index, record))
         return records
+
+    def _log_signing_key(self, state: teamlog.TeamState):
+        """The key the log names for this account signs its records.
+
+        Review e443cbc R15 (goal #429): while this device's identity rotation
+        has not landed the log names the old key, and member.keys goes last
+        (add_identity_team_record). A grant signed with the new key came
+        before it: the device's own replay refused it (bad_signature) and
+        the grant could not be made until the rotation was pushed.
+        """
+        member = state.members.get(self._user_id)
+        if member is not None and member.signing_pk != self._keypair.signing_pk.hex():
+            old = self._pending_old_keypair()
+            if old is not None:
+                try:
+                    if old.signing_pk.hex() == member.signing_pk:
+                        return old.to_nacl_signing_key()
+                finally:
+                    old.zeroize()
+        return self._keypair.to_nacl_signing_key()
 
     def add_identity_team_record(self, records: list[dict]) -> list[dict]:
         """Rebuild the two-key proof on each CAS attempt, inside the epoch push."""
@@ -876,9 +903,22 @@ class TeamLogMixin:
     def discard_set_aside_team_changes(self, numbers: Optional[list[int]] = None) -> list[dict]:
         return discard_set_aside(self._db, numbers)
 
+    def _log_names_another_own_key(self, state: Optional[teamlog.TeamState]) -> bool:
+        """The local log names another signing key of this account than the
+        one it holds: an identity rotation taken over from another device that
+        this copy of the log is not past yet."""
+        own = state.members.get(self._user_id) if state is not None else None
+        return own is not None and own.signing_pk != self._keypair.signing_pk.hex()
+
     def _refused_team_changes(self, changes) -> dict[int, str]:
         """Index -> reason of each change the rules refuse on the local head."""
         state = self.team_state() or teamlog.TeamState()
+        if self._log_names_another_own_key(state):
+            # Review e443cbc R15 (goal #429): signed with the current key every
+            # change failed as bad_signature and was set aside for good, though
+            # the rules refuse none of them. They wait (flush_team_log pulls
+            # the log first).
+            return {}
         signing_key = self._keypair.to_nacl_signing_key()
         refused = {}
         lost_founding = None
@@ -1218,6 +1258,10 @@ class TeamLogMixin:
             return
         if not self._token:
             self.authenticate()
+        if self._log_names_another_own_key(self.team_state()):
+            # The changes are judged and built on the log that names this
+            # account's current key (R15, goal #429).
+            self._refresh_team_log()
 
         def post(records):
             if records:

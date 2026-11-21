@@ -650,13 +650,13 @@ class RekeyMixin:
             old_id = bytes_to_ulid(dek_id)
             if old_id not in retired:
                 return None
-            new_id, new = self._successor_dek(dek_id, self._dek_mgr.unlock_dek(old_id, superseded=True), folder_id)
+            new_id, new = self._successor_dek(dek_id, self._dek_mgr.unlock_dek(old_id), folder_id)
             return (old_id, new_id, new) if new_id != dek_id else None
 
         def reseal(blob: bytes, object_id: str, version: int, new_version: int, kind: BlobKind,
                    old_id: str, new_id: bytes, new: bytearray) -> bytes:
             plain = decrypt(
-                blob, self._dek_mgr.unlock_dek(old_id, superseded=True), ulid_to_bytes(object_id), version,
+                blob, self._dek_mgr.unlock_dek(old_id), ulid_to_bytes(object_id), version,
                 expected_blob_kind=kind,
             )
             return encrypt(

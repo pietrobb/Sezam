@@ -73,6 +73,14 @@ SUPERSEDED_NOTE = (
 )
 
 
+STALE_NOTE = (
+    "The server's org recovery of this account wraps the key of an older password "
+    "(the password changed here or on another device since), so its shares open "
+    "nothing. While you still know the password, run 'sezam org-recovery-setup "
+    "--replace' and hand out the new shares."
+)
+
+
 def superseded_by(db, status: dict) -> bool:
     """Review c78fd19 R13-10: whether the registration waiting here is older
     than the org recovery the server reports (``status``): set up on the web
@@ -207,7 +215,10 @@ def registration_issue(vault: "Vault") -> Optional[str]:
     ``'unregistered'`` (the server holds no recovery key of this account),
     ``'other_admin'`` (the server holds another admin's recovery),
     ``'superseded'`` (a newer setup replaced the one waiting here, which is
-    then forgotten: SUPERSEDED_NOTE) or None.
+    then forgotten: SUPERSEDED_NOTE), ``'stale'`` (the server's recovery of
+    this account wraps a KEK from before a later password change, made here
+    or taken over from another device: its shares open nothing, STALE_NOTE)
+    or None.
     Raises RuntimeError when the server cannot be asked."""
     if not vault.org_recovery_configured() or not vault.db.get_meta("server_url"):
         return None
@@ -222,6 +233,8 @@ def registration_issue(vault: "Vault") -> Optional[str]:
         return "superseded"
     if pending_states.org_recovery_registration(vault.db) is not None:
         return "pending"
+    if owner and status.get("stale"):
+        return "stale"
     return None if owner else "unregistered"
 
 
@@ -247,6 +260,8 @@ def register_while_password_known(vault: "Vault", password: str) -> Optional[str
         return REGISTERED_NOTICE
     if issue == "superseded":
         return SUPERSEDED_NOTE
+    if issue == "stale":
+        return STALE_NOTE
     if issue == "unregistered":
         return UNREGISTERED_HINT
     if issue == "other_admin":
