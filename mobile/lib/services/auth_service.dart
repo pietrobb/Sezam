@@ -652,7 +652,12 @@ class AuthService {
 
       if (serverAuthenticated) {
         if (userId != userObjectId) throw const FormatException('Authentication identity mismatch');
-        await _sync.prepareInitialTeamLog(userId, kek: kek);
+        try {
+          await _sync.prepareInitialTeamLog(userId, kek: kek);
+        } on TeamLogMismatch {
+          // INV-7: a log this phone refuses never keeps the vault locked; the
+          // unlock opens the personal tree and the team is refused with a way out.
+        }
       }
       // 6. Unlock vault
       await _vault.unlock(
@@ -2596,7 +2601,11 @@ class AuthService {
       }
       final oldKek = previousKek ?? _vault.currentKek;
       if (oldKek != null) await _requireAccountAnchorContinuity(userId, genesis, oldKek);
-      if (genesis != null) await importAccountTeamGenesis(userId, genesis);
+      // A QR names its genesis on purpose: one this phone pins otherwise is refused.
+      if (expectedGenesis != null && genesis != null) await importAccountTeamGenesis(userId, genesis);
+      // INV-7: account keys naming another log never fail the unlock (it read
+      // "Wrong password"); team operations refuse it as anchor_conflict.
+      await recordAccountTeamGenesis(userId, genesis);
       return expandDesktopKeypair(
         account.keypairData,
         _crypto.signingPublicKeyFromSeed(Uint8List.sublistView(account.keypairData, 0, 32)),

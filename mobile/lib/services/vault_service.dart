@@ -372,7 +372,7 @@ class VaultService {
       }
 
       // Unwrap all DEKs from local DB
-      teamLog = await _loadTeamLog();
+      await _loadTeamLogOrRefusal();
       await _loadDEKs();
 
       // Decrypt all nodes and entries into memory
@@ -413,6 +413,7 @@ class VaultService {
     _rootNodeId = null;
     _kekMatchesServer = false;
     teamLog = null;
+    teamLogRefusal = null;
     _deks.clear();
     _folderDekIds.clear();
     _nodes.clear();
@@ -443,7 +444,8 @@ class VaultService {
   /// Load and unwrap all DEK objects from local DB.
   Future<void> _loadDEKs() async {
     if (_kek == null) return;
-    final trusted = localTeamLogTrusted(
+    // No log (or a refused one, INV-7): no pin is read, an unreadable one is the refusal.
+    final trusted = teamLog != null && localTeamLogTrusted(
       teamLog,
       await readConfirmedTeamGenesis(_userId!),
       _userId!,
@@ -457,9 +459,11 @@ class VaultService {
 
     final dekRows = await _db.getObjectsByType('dek');
     final unreadableOwn = <String>[];
+    final refusedKeys = teamLogRefusal == null ? const <String>{} : await _teamKeyIds();
     for (final row in dekRows) {
       final payload = row['payload'] as Uint8List;
       final dekId = row['id'] as String;
+      if (refusedKeys.contains(dekId)) continue;
       final team = teamLog?.team;
       if (team != null &&
           team.dekIndex.containsKey(dekId) &&
@@ -754,6 +758,8 @@ class VaultService {
 
   /// Verify cached signatures and continuity before any local key is used.
   /// Corruption must not downgrade the vault to the pre-log permission rules.
+  /// INV-7: a refusal names its cause; unlock and reload keep it in
+  /// [teamLogRefusal] and open the personal tree only, never lock on it.
   Future<LocalTeamLog?> _loadTeamLog() async {
     try {
       final confirmed = await readConfirmedTeamGenesis(_userId!);
@@ -767,14 +773,95 @@ class VaultService {
         if (checkpoint?['team_log'] != null)
           checkpoint!['team_log'] as Map<String, dynamic>,
       ];
+      final anchor = await readAccountTeamGenesis(_userId!);
+      if (anchor != null &&
+          [confirmed, for (final pin in pins) pin['genesis_hash'], _heldGenesis(raw)]
+              .any((genesis) => genesis != null && genesis != anchor)) {
+        throw TeamLogMismatch(
+          'names another genesis than the account keys (another server, or a log left elsewhere)',
+          'anchor_conflict',
+        );
+      }
       if (raw == null && pins.isEmpty &&
           (confirmed == null || (await _db.getAllObjects()).isEmpty)) {
         return null;
       }
       return verifiedTeamLogCopy(raw, confirmed, pins, verifyEd25519);
+    } on TeamLogMismatch catch (e) {
+      if (e.cause != null) rethrow;
+      throw _localDamaged(e.detail);
     } catch (e) {
-      throw TeamLogMismatch('cached copy cannot be verified: $e');
+      throw _localDamaged('$e');
     }
+  }
+
+  static TeamLogMismatch _localDamaged(String detail) => TeamLogMismatch(
+    'copy held on this phone cannot be verified ($detail); the next sync fetches it '
+    'again, held to the genesis and the head this phone saw',
+    'local_damaged',
+  );
+
+  /// The genesis the first record of the cached copy [raw] names, if it parses.
+  static String? _heldGenesis(String? raw) {
+    try {
+      final records = jsonDecode(raw!) as List;
+      return TeamLog.recordHash(Map<String, dynamic>.from(records.first as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// INV-7: why the team log is refused on this phone now (cause and way
+  /// out), or null. While set, [teamLog] is null, no team key is opened, and
+  /// only writes in the personal tree are taken.
+  TeamLogMismatch? teamLogRefusal;
+
+  Future<void> _loadTeamLogOrRefusal() async {
+    try {
+      teamLog = await _loadTeamLog();
+      teamLogRefusal = null;
+    } on TeamLogMismatch catch (e) {
+      teamLog = null;
+      teamLogRefusal = e;
+    }
+  }
+
+  /// Keys a team envelope, a folder or a record of the cached copy names:
+  /// while the log is refused only the others (personal, tier-2) are opened.
+  Future<Set<String>> _teamKeyIds() async {
+    final ids = <String>{
+      for (final row in await _db.getObjectsByType('envelope'))
+        if (row['parent_ref'] != null) row['parent_ref'] as String,
+      for (final row in await _db.getObjectsByType('dek'))
+        if (row['parent_ref'] != null) row['id'] as String,
+    };
+    try {
+      for (final record in jsonDecode((await _db.getSetting(teamLogRecordsSetting))!) as List) {
+        try {
+          final data = (jsonDecode((record as Map)['body'] as String) as Map)['data'] as Map;
+          for (final key in [data['dek_id'], data['prev_dek_id']]) {
+            if (key is String) ids.add(key);
+          }
+        } catch (_) {
+          // A damaged record names nothing.
+        }
+      }
+    } catch (_) {
+      // No copy, or one that does not parse.
+    }
+    return ids;
+  }
+
+  /// [nodeId] is a personal folder or lies below one.
+  bool _inPersonalTree(String? nodeId) {
+    final seen = <String>{};
+    while (nodeId != null && seen.add(nodeId)) {
+      final node = _nodes[nodeId];
+      if (node == null) return false;
+      if (node.personal) return true;
+      nodeId = node.parentRef;
+    }
+    return false;
   }
 
   Future<({String userId, String genesis, int generation})>
@@ -885,6 +972,19 @@ class VaultService {
     int isDeleted = 0,
     List<Map<String, dynamic>> extraRows = const [],
   }) async {
+    final refusal = teamLogRefusal;
+    if (refusal != null) {
+      // INV-7: a refused log refuses the team, never a write in the personal
+      // tree (which holds no team folder), from and to.
+      bool personal(String? parent) =>
+          parent == null ? _nodes[id]?.personal == true : _inPersonalTree(parent);
+      final held = await _db.getObject(id);
+      if (personal(parentRef) &&
+          (held == null || personal(held['parent_ref'] as String?))) {
+        return;
+      }
+      throw refusal;
+    }
     final team = teamLog?.team;
     requireConfirmedGenesis(
       await readConfirmedTeamGenesis(_userId!),
@@ -904,8 +1004,8 @@ class VaultService {
       'signer_id': _userId,
     };
     await assertTrustedTeamWrites([write], heldRows: rows);
-    final refusal = teamLogWriteRefusal(team, _userId!, write, rows);
-    if (refusal != null) throw TeamLogRefused(refusal);
+    final refused = teamLogWriteRefusal(team, _userId!, write, rows);
+    if (refused != null) throw TeamLogRefused(refused);
   }
 
   /// Create a new folder node.
@@ -2052,7 +2152,7 @@ class VaultService {
   Future<void> reloadData() => whileKekFixed(() async {
     _ensureUnlocked();
     try {
-      teamLog = await _loadTeamLog();
+      await _loadTeamLogOrRefusal();
       await _loadDEKs();
       await _resealUnsent();
       await _loadDecryptedData();

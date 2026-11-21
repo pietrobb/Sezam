@@ -971,6 +971,9 @@ class SyncService {
   Future<PushResult> _push() async {
     _ensureAuthenticated();
     if (_vault.userId != null) {
+      // INV-7: a log refused at unlock names its cause and way out here too.
+      final refused = _vault.teamLogRefusal;
+      if (refused != null) throw refused;
       requireConfirmedGenesis(await readConfirmedTeamGenesis(_vault.userId!), _vault.teamLog?.team.genesisHash);
     }
 
@@ -2269,6 +2272,8 @@ class SyncService {
     }
     final conflicts = conflictRows.map(PullConflict.fromMap).toList();
     _vault.teamLog = teamLog;
+    // INV-7: the copy fetched again ends the refusal; the team keys open now.
+    if (_vault.teamLogRefusal != null && _vault.isUnlocked) await _vault.reloadData();
     // After the commit: a revived copy lost to a crash here is judged again.
     if (noWriteAccess.isEmpty) {
       await _db.deleteSetting(teamLogNoWriteAccessSetting);
@@ -2307,6 +2312,12 @@ class SyncService {
     Object? head,
     Map<String, dynamic>? checkpoint,
   ) async {
+    // INV-7: conflicting pins are forgotten together, never followed; a
+    // damaged copy (local_damaged) is fetched again below under its pins.
+    final refused = _vault.teamLogRefusal;
+    if (refused?.cause == 'anchor_conflict') {
+      throw SyncIntegrityException('$refused', teamLog: refused);
+    }
     try {
       return await syncTeamLog(
         log: TeamLog(_vault.verifyEd25519),
@@ -2425,6 +2436,7 @@ class SyncService {
     final anchor = await _storedKeypairAnchor(userId);
     return ({
       if (anchor != null && !forgotten.contains(anchor)) anchor,
+      ?await readAccountTeamGenesis(userId),
       ?await readConfirmedTeamGenesis(userId),
       ?_vault.teamLog?.team.genesisHash,
       ?pin?['genesis_hash'] as String?,
@@ -2464,10 +2476,15 @@ class SyncService {
     final userId = _vault.userId!;
     final pins = await _pinnedTeamGenesis();
     if (pins.isEmpty) throw StateError('This phone pins no team log; nothing to forget.');
-    final prefix = typed.trim().toLowerCase();
-    if (prefix.length < forgetPinMinChars || !pins.every((pin) => pin.startsWith(prefix))) {
-      throw FormatException('Type the pinned genesis (at least its first $forgetPinMinChars '
-          'characters) to forget it: ${pins.join(', ')}');
+    // INV-7: conflicting pins (anchor_conflict: the account keys name another
+    // log than this phone holds) are left together, each one typed.
+    final parts = typed.replaceAll(',', ' ').toLowerCase().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty ||
+        parts.any((part) => part.length < forgetPinMinChars) ||
+        !pins.every((pin) => parts.any(pin.startsWith)) ||
+        !parts.every((part) => pins.any((pin) => pin.startsWith(part)))) {
+      throw FormatException('Type the pinned genesis, every one (at least its first $forgetPinMinChars '
+          'characters), to forget it: ${pins.join(', ')}');
     }
     // INV-8: only a log this phone refuses as lost now (teamLogMismatchForget),
     // never a fork; asked before any unsent change is dropped.
@@ -2531,6 +2548,8 @@ class SyncService {
 
   Future<SyncResult> _syncOnce() async {
     PushResult pushResult;
+    // INV-7: a damaged copy refuses the push; the pull fetches it again first.
+    if (_vault.teamLogRefusal?.cause == 'local_damaged') await pull();
     try {
       pushResult = await push();
     } on KeyEpochStaleException {

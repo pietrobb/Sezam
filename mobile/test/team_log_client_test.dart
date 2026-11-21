@@ -215,9 +215,17 @@ void main() {
             throw StateError('Unexpected secure-storage call: ${call.method}');
           });
         }
-        await expectLater(vault.confirmTeamFounder(
+        final confirming = vault.confirmTeamFounder(
           failure == 'genesis' ? (userId: b, genesis: 'ff' * 32, generation: review.generation) : review,
-          fingerprint), throwsA(anything));
+          fingerprint);
+        if (failure == 'refresh') {
+          // INV-7: a copy damaged meanwhile is refused; the vault stays open.
+          await confirming;
+          expect(vault.isUnlocked, isTrue);
+          expect(vault.teamLogRefusal?.cause, 'local_damaged');
+        } else {
+          await expectLater(confirming, throwsA(anything));
+        }
         expect(await readConfirmedTeamGenesis(b), failure == 'foreign-pin' ? 'ff' * 32 :
             (failure == 'lock-after-write' || failure == 'refresh') ? review.genesis : isNull);
         expect(await db.getAllObjects(), before);
@@ -227,6 +235,7 @@ void main() {
           if (!vault.isUnlocked) await unlock();
           await vault.confirmTeamFounder(await vault.reviewTeamFounder(), fingerprint);
           expect(await readConfirmedTeamGenesis(b), review.genesis);
+          expect(vault.teamLogRefusal, isNull);
         }
       } finally {
         vault.lock();
@@ -707,7 +716,7 @@ void main() {
 
   for (final damage in ['json', 'shape', 'signature', 'empty', 'missing', 'rollback', 'fork', 'checkpoint', 'checkpoint_ciphertext', 'checkpoint_account', 'confirmed_genesis', 'confirmed_account']) {
     for (final restart in [false, true]) {
-      test('damaged cached log $damage refuses ${restart ? 'unlock' : 'reload'} before keys', () async {
+      test('damaged cached log $damage refuses the team, not the ${restart ? 'unlock' : 'reload'}, before keys', () async {
         final dir = await Directory.systemTemp.createTemp('sezam_team_damage_');
         await setUpPhone(dir.path);
         initPhoneCrypto();
@@ -795,20 +804,24 @@ void main() {
             );
           }
           if (restart) vault.lock();
-          await expectLater(restart ? unlock() : vault.reloadData(), throwsA(isA<TeamLogMismatch>()));
-          expect(vault.isUnlocked, isFalse);
-          expect(vault.currentKek, isNull);
-          expect(vault.signingSecretKey, isNull);
-          expect(vault.nodes, isEmpty);
-          expect(vault.entries, isEmpty);
+          // INV-7: the damaged copy refuses the team, never the unlock; no
+          // team key opens from it (no downgrade to the rules before a log).
+          await (restart ? unlock() : vault.reloadData());
+          expect(vault.isUnlocked, isTrue);
+          expect(vault.teamLogRefusal?.cause, 'local_damaged');
+          expect(vault.teamLogRefusal!.offersForget, isFalse);
+          expect(vault.teamLog, isNull);
+          expect(vault.nodes, isNot(contains(f1)));
           expect(await db.getAllObjects(), before, reason: 'refusal retains ciphertext and dirty state');
           expect(await db.getSetting(teamLogRecordsSetting), damage == 'missing' ? null : broken);
           expect(await db.getSyncState('sync_checkpoint:$b'), savedCheckpoint);
           await const FlutterSecureStorage().delete(key: 'sezam_confirmed_team_genesis:$b');
           await db.setSetting(teamLogRecordsSetting, goodLog);
           await sql.rawUpdate('UPDATE sync_state SET value = ? WHERE key = ?', [checkpoint, 'sync_checkpoint:$b']);
+          vault.lock();
           await unlock();
           expect(vault.isUnlocked, isTrue);
+          expect(vault.teamLogRefusal, isNull);
           expect(vault.nodes, isNot(contains(f1)), reason: 'retry still honors removal');
           await db.setSetting(teamLogRecordsSetting, jsonEncode(records('remove_member_then_rekey')));
           await vault.reloadData();

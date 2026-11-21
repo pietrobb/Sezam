@@ -88,6 +88,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() => _teamLogLost = lost);
   }
 
+  /// INV-7: the team log this phone refuses now, shown with its way out.
+  Widget? _teamLogRefusalTile() {
+    final refusal = _vault.teamLogRefusal;
+    if (refusal == null) return null;
+    return _settingsTile(
+      icon: Icons.report_problem_outlined,
+      title: 'Tímový denník odmietnutý',
+      subtitle: '$refusal',
+    );
+  }
+
   Future<void> _toggleBiometric(bool value) async {
     if (value) {
       // Enable: check if vault is unlocked and we have KEK
@@ -734,6 +745,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           subtitle: 'Potvrdiť nezávislý odtlačok zakladateľa',
           onTap: _confirmTeamFounder,
         ),
+        ?_teamLogRefusalTile(),
         if (_teamLogLost)
           _settingsTile(
             icon: Icons.link_off_rounded,

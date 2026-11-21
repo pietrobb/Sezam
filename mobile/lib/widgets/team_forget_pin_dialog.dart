@@ -100,7 +100,7 @@ class _TeamForgetPinDialogState extends State<TeamForgetPinDialog> {
               autocorrect: false,
               enableSuggestions: false,
               decoration: const InputDecoration(
-                labelText: 'Pripnutý genesis (aspoň prvých 16 znakov)',
+                labelText: 'Pripnutý genesis, každý (aspoň prvých 16 znakov, oddelené medzerou)',
               ),
             ),
             if (_error != null)

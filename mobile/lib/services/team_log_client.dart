@@ -134,6 +134,46 @@ Future<void> importAccountTeamGenesis(String userId, String genesis) async {
   await confirmTeamGenesis(userId, genesis);
 }
 
+// INV-7: the genesis the account keys name, noted at every unlock from the
+// keys just opened (ACCOUNT_ANCHOR_META in team_log_local.py); absent while
+// they name none or one this phone left.
+String _accountAnchorKey(String userId) => 'sezam_account_team_anchor:$userId';
+
+/// At unlock: note the genesis the account keys name ([genesis], null: none)
+/// and pin it unless this phone pins another. Never refuses: a conflict is
+/// refused where the team is used, as anchor_conflict (VaultService).
+Future<void> recordAccountTeamGenesis(String userId, String? genesis) async {
+  if (genesis != null) {
+    _genesisHash(genesis);
+    if ((await readForgottenTeamGenesis(userId)).contains(genesis)) genesis = null;
+  }
+  if (genesis == null) {
+    await _trustStorage.delete(key: _accountAnchorKey(userId));
+    return;
+  }
+  await _trustStorage.write(
+    key: _accountAnchorKey(userId),
+    value: jsonEncode({'user_id': userId, 'genesis_hash': genesis}),
+  );
+  String? confirmed;
+  try {
+    confirmed = await readConfirmedTeamGenesis(userId);
+  } on TeamLogMismatch {
+    return; // an unreadable pin is refused where the team is used (local_damaged)
+  }
+  if (confirmed == null) await confirmTeamGenesis(userId, genesis);
+}
+
+/// The genesis [recordAccountTeamGenesis] noted, unless this phone left it since.
+Future<String?> readAccountTeamGenesis(String userId) async {
+  final raw = await _trustStorage.read(key: _accountAnchorKey(userId));
+  if (raw == null) return null;
+  final value = jsonDecode(raw) as Map<String, dynamic>;
+  if (value['user_id'] != userId) throw const FormatException('another account');
+  final genesis = _genesisHash(value['genesis_hash']);
+  return (await readForgottenTeamGenesis(userId)).contains(genesis) ? null : genesis;
+}
+
 // Review c78fd19: the way out once the team's log is lost for good. INV-8:
 // every offer is marked as a risk (RISK_MARKER in team_log_local.py).
 const lostTeamLogHint = '. RISK: a hostile server can cause this on purpose (drop its log, serve a new genesis) '
