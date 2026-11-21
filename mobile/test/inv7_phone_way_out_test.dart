@@ -170,6 +170,54 @@ void main() {
           await sync.sync();
           expect(vault.teamLog?.team.genesisHash, genesis, reason: record);
         }
+
+        // 5. Capability run 416: the password changed on another device that
+        // left this log; the server's keys name `genesis`, this phone's own keys
+        // and pin `other`. Before: "Wrong password or corrupted keypair" (the
+        // anchor continuity) or a refusal with the vault locked (the pin), and
+        // forgetting the pin needs the vault open.
+        final founderFingerprint = CryptoService().computeFingerprint(
+            hexToBytes(founder['signing_pk'] as String), hexToBytes(founder['encryption_pk'] as String));
+        final ownKeys = Uint8List.fromList([...vault.signingSecretKey!, ...vault.encryptionSecretKey!]);
+        final kekDekId = (await db.getSetting('kek_dek_id'))!;
+        for (final held in ['own_keys', 'pin_only']) {
+          await relock();
+          await storage.delete(key: 'sezam_forgotten_team_genesis:$uid');
+          await storage.write(key: 'sezam_confirmed_team_genesis:$uid',
+              value: jsonEncode({'user_id': uid, 'genesis_hash': other}));
+          if (held == 'own_keys') {
+            // Keys from before the change, under a salt the server no longer has.
+            final salt = Uint8List.fromList([for (final b in hexToBytes((await storage.read(key: 'sezam_argon2_salt'))!)) b ^ 0xff]);
+            Future<int> param(String name) async => int.parse((await storage.read(key: 'sezam_argon2_$name'))!);
+            final derived = await CryptoService().deriveKEK(anchored, salt, exact: true,
+                timeCost: await param('time_cost'), memoryCost: await param('memory_cost'),
+                parallelism: await param('parallelism'));
+            await storage.write(key: 'sezam_argon2_salt', value: bytesToHex(salt));
+            await storage.write(key: 'sezam_encrypted_keypair', value: bytesToHex(CryptoService().wrapAccountKeypair(
+                ownKeys, other, Uint8List.sublistView(derived, 0, 32), kekDekId, uid)));
+          } else {
+            await storage.delete(key: 'sezam_encrypted_keypair');
+          }
+          final opened = await auth.unlockWithPassword(
+              serverUrl: server, username: cfg['username'] as String, password: anchored);
+          expect(opened.success, isTrue, reason: '$held: ${opened.error}');
+          await net.settle();
+          expect(vault.isUnlocked, isTrue);
+          expect(vault.nodes[personal.id]?.name, 'mine');
+          expect(vault.teamLogRefusal?.cause, 'anchor_conflict', reason: held);
+          expect(vault.teamLogRefusal!.offersForget, isTrue);
+          expect(await readConfirmedTeamGenesis(uid), other, reason: '$held: the server keys never move the pin');
+          expect(await readAccountTeamGenesis(uid), genesis, reason: held);
+          // The way out, on the vault just opened.
+          expect(await sync.forgetTeamLogPin('${genesis.substring(0, 16)} ${other.substring(0, 16)}'),
+              ([genesis, other]..sort()));
+          expect(vault.teamLogRefusal, isNull, reason: held);
+          await sync.sync();
+          expect(vault.teamLog?.team.genesisHash, genesis, reason: held);
+          await vault.confirmTeamFounder(await vault.reviewTeamFounder(), founderFingerprint);
+          expect(vault.teamLogRefusal, isNull, reason: held);
+        }
+        CryptoService().zeroize(ownKeys);
         await relock();
       }, () => net);
       net.close();

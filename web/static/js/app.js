@@ -1566,16 +1566,20 @@ async function signInWithLoginKeypair(username, opened, meta, _sodium) {
         throw new Error(t('error.wrong_password_or_keypair'));
     }
     try {
-        if (opened.confirmedGenesis && confirmedGenesis !== opened.confirmedGenesis) {
-            throw new Error('TEAM LOG MISMATCH: the account keypair lost or changed its confirmed genesis');
-        }
+        // Capability run 416 (INV-7): server keys naming another genesis than
+        // the cached ones (a password changed on a device that left the log)
+        // never fail the sign-in; the cached anchor stays pinned (keepTeamAnchor)
+        // and the team is refused as anchor_conflict, its way out signed in.
+        const cachedGenesis = opened.confirmedGenesis && confirmedGenesis !== opened.confirmedGenesis
+            ? opened.confirmedGenesis : null;
         const authResp = await signInWithKeypair(username, keypairBytes, _sodium);
         await saveToIndexedDB({
             encrypted_keypair: recoverResp.encrypted_keypair,
             user_id: recoverResp.user_id,
         });
         // A server copy never makes this browser forget a recorded pre-anchor state.
-        return { authResp, keypairBytes, confirmedGenesis, preAnchor: mergePreAnchor(preAnchor, opened.preAnchor) };
+        return { authResp, keypairBytes, confirmedGenesis, cachedGenesis,
+            preAnchor: mergePreAnchor(preAnchor, opened.preAnchor) };
     } catch (err) {
         _sodium.memzero(keypairBytes);
         throw err;
@@ -1719,6 +1723,7 @@ async function handleLogin(e) {
         }
 
         // Import only the anchor authenticated inside this account's keypair wrap.
+        if (signedIn.cachedGenesis) await keepTeamAnchor(signedIn.cachedGenesis, _sodium);
         if (state.keypair.confirmedGenesis) await importAccountTeamAnchor(_sodium);
         // The password just opened the keypair and signed in: it authorizes
         // leaving the pinned team log before the pull that would refuse it.
@@ -7587,6 +7592,17 @@ async function saveForgottenTeamGenesis(list, _sodium) {
     await idbKeysRequest('readwrite', store => store.put({
         id, encrypted_list: bytesToHex(new Uint8Array([...nonce, ...ciphertext])),
     }));
+}
+
+/** The anchor the cached keys named, before the server's keys named another:
+ * pinned unless this browser left it or pins one (run 416), never followed away from. */
+async function keepTeamAnchor(genesis, _sodium) {
+    try {
+        if ((await loadForgottenTeamGenesis(_sodium)).includes(genesis)) return;
+        if (!await loadConfirmedTeamGenesis(_sodium)) await saveConfirmedTeamGenesis(genesis, _sodium);
+    } catch {
+        // INV-7: an anchor that does not open is refused where the team is used (local_damaged)
+    }
 }
 
 /** The genesis an account bundle names, unless this browser left that log. */

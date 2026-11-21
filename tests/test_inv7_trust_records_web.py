@@ -64,3 +64,32 @@ def test_a_damaged_trust_record_refuses_the_team_not_the_sign_in(monkeypatch, re
     assert result["stillRefused"] == "local_damaged"
     assert result["after"] is None and result["confirmed"] is True, result
     assert result["forgotten"] == ([] if record == "forgotten" else ["c" * 64])
+
+
+@pytest.mark.parametrize("pinned", [True, False])
+def test_server_keys_naming_another_genesis_keep_the_cached_anchor_pinned(monkeypatch, pinned):
+    # Capability run 416: the sign-in goes on (signInWithLoginKeypair); the
+    # anchor the cached keys named stays pinned, the server keys' genesis is
+    # refused as anchor_conflict, and forgetting the pins together clears it.
+    monkeypatch.setattr(web, "FUNCTIONS", web.FUNCTIONS + EXTRA + ["keepTeamAnchor"])
+    result = web._run(FAKE_IDB + f"const pinned = {'true' if pinned else 'false'};" + """
+        state.userId = ids.B;
+        const cached = state.teamLog.team.genesisHash, server = 'd'.repeat(64);
+        loadSyncCheckpoint = async () => null;
+        if (pinned) await saveConfirmedTeamGenesis(cached, sodium);
+        state.keypair.confirmedGenesis = server;
+        await keepTeamAnchor(cached, sodium);
+        await importAccountTeamAnchor(sodium);
+        state.syncCheckpointLoaded = false;
+        await loadWebLocalStateLocked(state.sessionSerial, sodium);
+        const refused = webLocalTeamLogRefusal();
+        await saveForgottenTeamGenesis([cached, server], sodium);
+        state.syncCheckpointLoaded = false;
+        await loadWebLocalStateLocked(state.sessionSerial, sodium);
+        return { pin: await loadConfirmedTeamGenesis(sodium), cached,
+                 cause: refused && refused.teamLogCause, forgets: refused && refused.teamLogLost,
+                 after: webLocalTeamLogRefusal() };
+    """, Log().genesis().member(B), me=B)
+    assert result["pin"] == result["cached"], result
+    assert result["cause"] == "anchor_conflict", result
+    assert result["after"] is None, result

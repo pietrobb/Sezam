@@ -514,6 +514,10 @@ class AuthService {
         _crypto.zeroize(derived);
         return AuthResult.failure('Missing or invalid keypair object ID');
       }
+      // Keys taken from the server for the account this phone already holds
+      // (its object id), not a fresh phone or a pending enrollment (run 416).
+      final holdsVault = recoveredUserObjectId != null &&
+          localObjectId == userObjectId && pendingRegistration == null;
       if (recoveredUserObjectId != null && localObjectId == userObjectId &&
           localHex != null && localHex.isNotEmpty) {
         // Authenticate the old carrier even when there are no local DEKs.
@@ -542,6 +546,7 @@ class AuthService {
             userObjectId,
             previousKek: continuityKek,
             fromServer: recoveredUserObjectId != null,
+            heldVault: holdsVault,
           );
         } else {
           // Legacy format: nonce(24) + ciphertext (no AAD)
@@ -662,10 +667,10 @@ class AuthService {
         } catch (_) {
           // INV-7: a log this phone refuses, or cannot fetch (the server
           // down altogether opens offline too), never keeps the vault it
-          // already holds locked; the team is refused with a way out. Keys just
-          // taken from the server, or an enrollment still pending, are not that
+          // already holds locked; the team is refused with a way out. Keys a
+          // fresh phone takes from the server, or an enrollment pending, are not that
           // vault: a refused log must not adopt them or finish the enrollment.
-          if (recoveredUserObjectId != null || pendingRegistration != null) rethrow;
+          if ((recoveredUserObjectId != null && !holdsVault) || pendingRegistration != null) rethrow;
         }
       }
       // 6. Unlock vault
@@ -2588,10 +2593,12 @@ class AuthService {
     return canonical!;
   }
 
-  Future<void> _requireAccountAnchorContinuity(
+  /// The anchor this phone's own keys name when the keys just opened
+  /// ([genesis]) changed or removed it, null otherwise.
+  Future<String?> _changedAccountAnchor(
     String userId, String? genesis, Uint8List previousKek,
   ) async {
-    if (await _secureStorage.read(key: _userObjectIdKey) != userId) return;
+    if (await _secureStorage.read(key: _userObjectIdKey) != userId) return null;
     final encoded = await _secureStorage.read(key: _encryptedKeypairKey);
     if (encoded == null) throw StateError('Local keypair state is incomplete');
     final previous = _crypto.openAccountKeypair(hexToBytes(encoded), previousKek, userId);
@@ -2603,9 +2610,7 @@ class AuthService {
       try {
         forgotten = await readForgottenTeamGenesis(userId);
       } on TeamLogMismatch {}
-      if (anchor != null && anchor != genesis && !forgotten.contains(anchor)) {
-        throw const FormatException('Account anchor changed or removed');
-      }
+      return anchor != null && anchor != genesis && !forgotten.contains(anchor) ? anchor : null;
     } finally {
       _crypto.zeroize(previous.keypairData);
     }
@@ -2613,7 +2618,7 @@ class AuthService {
 
   Future<Uint8List> _openAnchoredAccountKeypair(
     Uint8List envelope, Uint8List kek, String userId,
-    {Uint8List? previousKek, String? expectedGenesis, bool fromServer = false}
+    {Uint8List? previousKek, String? expectedGenesis, bool fromServer = false, bool heldVault = false}
   ) async {
     final account = _crypto.openAccountKeypair(envelope, kek, userId);
     try {
@@ -2622,8 +2627,24 @@ class AuthService {
         requireConfirmedGenesis(expectedGenesis, genesis);
       }
       final oldKek = previousKek ?? _vault.currentKek;
-      if (oldKek != null) await _requireAccountAnchorContinuity(userId, genesis, oldKek);
-      if (fromServer || expectedGenesis != null) {
+      final changed = oldKek == null ? null : await _changedAccountAnchor(userId, genesis, oldKek);
+      // Capability run 416: the server's keys of the vault this phone holds
+      // (the password changed on another device) naming another log are no
+      // password error and never keep it locked. The anchor this phone's own
+      // keys named stays pinned, never followed away from; the team is
+      // refused as anchor_conflict and the pin forgotten on the open vault.
+      if (heldVault && expectedGenesis == null) {
+        if (changed != null) {
+          try {
+            if (await readConfirmedTeamGenesis(userId) == null) await confirmTeamGenesis(userId, changed);
+          } catch (_) {}
+        }
+        try {
+          await recordAccountTeamGenesis(userId, genesis);
+        } catch (_) {}
+      } else if (changed != null) {
+        throw const FormatException('Account anchor changed or removed');
+      } else if (fromServer || expectedGenesis != null) {
         // Keys this phone is just taking from a server: one naming a genesis
         // this phone pins otherwise is refused before anything is written.
         if (genesis != null) await importAccountTeamGenesis(userId, genesis);
@@ -2835,7 +2856,9 @@ class AuthService {
         !_bytesEqual(localEncryptionPk, backup.encryptionPublicKey)) {
       throw StateError('This backup holds a different keypair than this vault');
     }
-    await _requireAccountAnchorContinuity(userObjectId, confirmedGenesis, currentKek);
+    if (await _changedAccountAnchor(userObjectId, confirmedGenesis, currentKek) != null) {
+      throw const FormatException('Account anchor changed or removed');
+    }
     if (confirmedGenesis != null) {
       await importAccountTeamGenesis(userObjectId, confirmedGenesis);
     }

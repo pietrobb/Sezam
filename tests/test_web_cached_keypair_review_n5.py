@@ -139,6 +139,30 @@ def test_login_signs_in_only_through_the_cache_check():
     assert "cachedKeypair = fromIndexedDB && !kekChangedElsewhere" in _function("openLoginKeypair")
 
 
+def test_server_keys_naming_another_genesis_sign_in_and_keep_the_cached_anchor():
+    # Capability run 416 (INV-7): a password changed on a device that left the
+    # log. Before: TEAM LOG MISMATCH, the sign-in failed, and the way out
+    # (forgetting the pins) needs a signed-in browser.
+    script = FAKE_SERVER + """
+      decryptLoginKeypair = (envelope, kek) => {
+        if (bytesToHex(envelope) !== SERVER_WRAP || kek[0] !== 1) throw new Error('ciphertext cannot be decrypted');
+        return { keypairBytes: keypair(), confirmedGenesis: 'b'.repeat(64) };
+      };
+      const o = opened(CURRENT, CACHED_WRAP, true);
+      o.confirmedGenesis = 'a'.repeat(64);
+      try {
+        const r = await signInWithLoginKeypair('alice', o, {}, sodium);
+        return { token: r.authResp.token, genesis: r.confirmedGenesis, cached: r.cachedGenesis, cache };
+      } catch (err) { return { error: err.message }; }
+    """
+    result = _run(FUNCTIONS, f"(async () => {{ {script} }})()")
+    assert result.get("error") is None, result
+    assert result["genesis"] == "b" * 64 and result["cached"] == "a" * 64
+    assert result["cache"] == [{"encrypted_keypair": "aa" * 80, "user_id": "ME"}]
+    login = _function("handleLogin")
+    assert login.index("keepTeamAnchor(signedIn.cachedGenesis") < login.index("importAccountTeamAnchor(")
+
+
 @pytest.mark.asyncio
 async def test_verify_reports_the_current_key_material_hash(app_client, mock_db):
     sk, _ = _create_regular_user(mock_db._storage, username="alice")
