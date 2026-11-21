@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Nightly: the stateful sync test with 300 examples per machine (the per-push
-  # run is short and misses what only long sequences reach).
+  # Nightly: the stateful sync test with 300 examples per machine and the
+  # property tests with 10 000 (the per-push run is short and misses what only
+  # long sequences reach).
   schedule:
     - cron: "17 2 * * *"
   workflow_dispatch:
@@ -126,6 +127,8 @@ jobs:
     timeout-minutes: 300
     env:
       SEZAM_STATEFUL_EXAMPLES: "300"
+      # Review e443cbc P2: the @given property tests with 10 000 examples each.
+      SEZAM_PROPERTY_EXAMPLES: "10000"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -136,8 +139,20 @@ jobs:
           node-version: "24"
       - run: python -m pip install ./core/py
       - run: python -m pip install -e ".[dev]"
-      # A failure prints its seed; rerun it with --hypothesis-seed=<seed>.
-      - run: python -m pytest -q -p no:cacheprovider tests/test_sync_state_machine.py --hypothesis-show-statistics
+      # A failure prints @reproduce_failure('<version>', b'<blob>'); the log is
+      # kept, and the blob goes into tests/property_seeds.txt (every push
+      # replays it from then on).
+      - run: >-
+          python -m pytest -q -p no:cacheprovider --hypothesis-show-statistics
+          tests/test_sync_state_machine.py tests/test_inv2_restore_within_append.py
+          tests/test_r15_rotation_cycle.py 2>&1 | tee property-deep.log
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: property-deep-log
+          path: property-deep.log
+          retention-days: 90
 
   # The shared sync core (docs/SYNC_SINGLE_SOURCE.md point 4b).
   core:

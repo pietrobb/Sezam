@@ -79,6 +79,7 @@ from sezam.vault.sync_client import KeyEpochStale, SyncClient, TofuKeyChangeErro
 from sezam.vault.sync_common import STALE_OWN_WRAPS_META, ServerError
 from tests.test_integration_client_server import PARAMS, PASSWORD
 from tests.test_server_spec import MockDatabase
+from tests import property_seeds
 from tests.node_support import fetchable_socket, node_problem
 from tests.web_tab import WebTab
 
@@ -4676,4 +4677,16 @@ def test_sync_state_machine_team_log(loopback_server):
             suppress_health_check=list(HealthCheck),
             print_blob=True,
         ),
+    )
+
+
+@pytest.mark.parametrize("seed", property_seeds.load("test_sync_state_machine.py"), ids=str)
+def test_sync_state_machine_saved_counterexample(loopback_server, seed):
+    """Review e443cbc P2: every counterexample in property_seeds.txt passes."""
+    machine = {m.__name__: m for m in (SyncMachine, SecondAdminMachine, TeamLogMachine)}[seed.target]
+    machine.server = loopback_server
+    property_seeds.replay_machine(
+        machine,
+        seed,
+        settings(stateful_step_count=25, deadline=None, database=None, suppress_health_check=list(HealthCheck)),
     )

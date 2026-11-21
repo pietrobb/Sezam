@@ -1,0 +1,8 @@
+# Saved counterexamples (tests/property_seeds.py). One per line:
+# <test file> <target> <hypothesis version> <blob>  <why>
+
+test_sync_state_machine.py TeamLogMachine 6.170.15 AXiclZJtT8JAEIR32kIFISKJIuoHBatQ3wVfvo5/2T/o7l5pC8EKTXPNpffczOyufMsPv0QIQtgiwFNmgEAE9vFHwibsJCzCA05YgEuegTf2bqB1sgQ7zBkZNhZbX1VXwHxvVTU7BUc8biJL8FBzKqdZH8EZ+2CrdFtyPLeLU8sy3RKnfvP6xZ4kA9+YMf0L47Ud9MPmY8G8SPLCe/AEnDfVD1IICmPXUjoJfOLVvwJvt0tvlCLmwPT7rqnUKPysKlGDKio1+2pcRVX/AewW7iey6khPj8ADxkyEQ/AIHHhtnjXknO+VUnObPeNCqbaN425Mlx+mLTZNOhuf0Kn8F7Sm20CaZCTWdUXvwKgQ1fa6fw+rnp6gtpYc72BqNetJSDPjBTtgr2moamnavDRLGuYXRvg3nQ==  R15 #429 mutant 'not_admin' off on server and client, found on a5940a9
+test_sync_state_machine.py TeamLogMachine 6.170.15 AXicXYvBDYAwEMMcwYMJGKASO/A1K7NgufZV8kksxTy83iAGd4mnV0IgVSNMWONhs8SyM9d3cvthOoeWB0s=  R15 #429 mutant 'not_admin' off on server and client, found on a5940a9
+test_sync_state_machine.py TeamLogMachine 6.170.15 AXicjY6xCoBADEMTRHBxcFFwFAQXBzfX5y/7g3o9vfk6pATy0urSzSlhLFpsRlZblpxWjLLJTllEx8IH7majN61/tJDMvCKnqDmqmkUTyHshDpSGiSFi9RWKx6oZP9U/DgY=  R15 #429 mutant 'not_admin' off in the client, found on a5940a9
+test_sync_state_machine.py TeamLogMachine 6.170.15 AXicY3BkcGRgYHBkAdGOYgzYgaMigyMcIjEYGRw5HJXQxBmBLCZGACIQB0Y=  R15 #429 mutant 'not_admin' off in the client (also kills the server-only mutant), found on a5940a9
+test_inv2_restore_within_append.py test_restore_takes_nothing_the_normal_path_refuses 6.170.15 AXicc2RwZAVDJkcGIGQEskA0hAeiORyZgZDDkduREyzPCBYHiTIAAPVIB/E=  R15 P2 deep run: the main path may end an append anywhere between two member.keys (oracle too strict before)

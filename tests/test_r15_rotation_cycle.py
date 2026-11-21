@@ -82,7 +82,7 @@ BODIES = st.lists(
 )
 
 
-@settings(max_examples=EXAMPLES, deadline=None, derandomize=not os.environ.get("SEZAM_PROPERTY_EXAMPLES"))
+@settings(max_examples=EXAMPLES, deadline=None, derandomize=not os.environ.get("SEZAM_PROPERTY_EXAMPLES"), print_blob=True)
 @given(BODIES, KEY_PAIRS)
 def test_rotation_walk_terminates(uploads, account):
     """Any upload a member sends: the restore check's walk ends, each key once."""

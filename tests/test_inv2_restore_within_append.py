@@ -31,6 +31,7 @@ Default run is derandomized and short; for a deep random run:
 from __future__ import annotations
 
 import asyncio
+import atexit
 import copy
 import hashlib
 import itertools
@@ -38,6 +39,7 @@ import os
 from dataclasses import dataclass
 from unittest import mock
 
+import pytest
 from hypothesis import HealthCheck, given, settings, target
 from hypothesis import event as coverage_event
 from hypothesis import strategies as st
@@ -46,6 +48,7 @@ from nacl.signing import SigningKey
 from sezam import teamlog
 from server.app import team_log
 from server.app.errors import ApiError
+from tests import property_seeds
 from tests.test_server_spec import MockDatabase, _create_regular_user
 
 EXAMPLES = int(os.environ.get("SEZAM_PROPERTY_EXAMPLES", "0"))
@@ -85,8 +88,15 @@ class Keys:
         return bytes(SigningKey(seed).verify_key).hex()
 
 
+# One loop for the whole module: a new loop per call opens a socket pair on
+# Windows, and a deep run (thousands of examples) used up the local ports
+# until creating a loop blocked in accept().
+_LOOP = asyncio.Runner()
+atexit.register(_LOOP.close)
+
+
 def _run(coro):
-    return asyncio.run(coro)
+    return _LOOP.run(coro)
 
 
 async def _locked(db, fn):
@@ -526,7 +536,11 @@ class NormalPath:
         while shared < min(len(upload), len(honest)) and upload[shared] == honest[shared]:
             shared += 1
         put_back(self.db, upload[:shared])
-        for i, record in enumerate(upload[shared:], start=shared):
+        return self._walk(upload, shared)
+
+    def _walk(self, upload: list, start: int) -> str:
+        for i in range(start, len(upload)):
+            record = upload[i]
             body = teamlog.parse_body(record["body"])
             if body["author"] not in self.mine:
                 return f"record {i} ({body['type']}) is signed as {NAME_OF.get(body['author'], '?')}, not by {self.me}"
@@ -534,18 +548,58 @@ class NormalPath:
                 return f"record {i} ({body['type']}) under rules {body['v']}: today's rules refuse it ({why})"
             # One author and one rules version per append; one new identity
             # per push (review e443cbc H3: records after it may share the append).
-            second_rotation = body["type"] == "member.keys" and any(
-                b["type"] == "member.keys" for _, b, _ in self.batch)
-            if self.batch and (self.batch[0][1]["author"] != body["author"] or second_rotation
+            if self.batch and (self.batch[0][1]["author"] != body["author"]
                                or self.batch[0][1]["v"] != body["v"]) and (why := self._send()):
                 return why
+            if body["type"] == "member.keys" and any(b["type"] == "member.keys" for _, b, _ in self.batch):
+                # one new identity per push: cut after the batch's member.keys
+                first = next(k for k, (_, b, _) in enumerate(self.batch) if b["type"] == "member.keys")
+                return self._cut(upload, i, first + 1)
             uid = body["data"].get("user_id")
-            if body["type"] == "member.add" and (_no_account(self.db, uid) or uid in self.provisioned):
-                if uid in self.provisioned and (why := self._send()):  # its keys as of the record
-                    return why
-                self._provision(body["data"])
-            self.batch.append((i, body, record))
+            if body["type"] == "member.add" and uid in self.provisioned and self._new_keys(body["data"]):
+                # the admin provisions the account again with the record's keys,
+                # between appends, after the batch's last record naming its keys
+                about = [k for k, (_, b, _) in enumerate(self.batch)
+                         if b["data"].get("user_id") == uid and "signing_pk" in b["data"]]
+                return self._cut(upload, i, about[-1] + 1 if about else 0)
+            self._take(i, body, record)
         return self._send()
+
+    def _new_keys(self, data: dict) -> bool:
+        row = next(u for u in self.db._storage["users"] if u["id"] == data["user_id"])
+        return (row["signing_pk"], row["encryption_pk"]) != (
+            bytes.fromhex(data["signing_pk"]), bytes.fromhex(data["encryption_pk"]))
+
+    def _take(self, i: int, body: dict, record: dict) -> None:
+        uid = body["data"].get("user_id")
+        if body["type"] == "member.add" and (_no_account(self.db, uid) or uid in self.provisioned):
+            self._provision(body["data"])
+        self.batch.append((i, body, record))
+
+    def _cut(self, upload: list, i: int, earliest: int) -> str:
+        """Record ``i`` cannot join the batch: the append must end at least
+        ``earliest`` records into it, anywhere up to record ``i``. The server
+        checks the one-admin rule on the head each append leaves, so one cut
+        can pass where another is refused (an admin added before the cut and
+        the old admin removed after it)."""
+        saved = copy.deepcopy(self.db._storage), set(self.provisioned), set(self.mine), list(self.batch)
+        body = teamlog.parse_body(upload[i]["body"])
+        refused = ""
+        for keep in range(len(saved[3]), earliest - 1, -1):
+            self.db._storage = copy.deepcopy(saved[0])
+            self.provisioned, self.mine = set(saved[1]), set(saved[2])
+            self.batch, rest = list(saved[3][:keep]), list(saved[3][keep:])
+            why = self._send()
+            if not why:
+                self.batch = rest  # the next append starts with them, then record i
+                self._take(i, body, upload[i])
+                why = self._walk(upload, i + 1)
+            if not why:
+                if keep < len(saved[3]):
+                    coverage_event("normal path cuts an append early")
+                return ""
+            refused = refused or why
+        return refused
 
 
 def _todays_rules_refuse(before: list, body: dict) -> str:
@@ -563,7 +617,7 @@ def _todays_rules_refuse(before: list, body: dict) -> str:
 
 
 @settings(
-    max_examples=EXAMPLES or 300, deadline=None, derandomize=not EXAMPLES,
+    max_examples=EXAMPLES or 300, deadline=None, derandomize=not EXAMPLES, print_blob=True,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
 @given(data=st.data())
@@ -612,7 +666,7 @@ def test_restore_takes_nothing_the_normal_path_refuses(data):
 
 
 @settings(
-    max_examples=EXAMPLES or 200, deadline=None, derandomize=not EXAMPLES,
+    max_examples=EXAMPLES or 200, deadline=None, derandomize=not EXAMPLES, print_blob=True,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
 @given(data=st.data())
@@ -681,3 +735,9 @@ def test_counterexample_the_admin_re_adds_a_member_on_keys_of_its_own():
 
     assert NormalPath(storage, "C").takes(honest.records, upload)  # the main path refuses
     assert not restore(_db(storage), upload, IDS["C"])
+
+
+@pytest.mark.parametrize("seed", property_seeds.load("test_inv2_restore_within_append.py"), ids=str)
+def test_inv2_saved_counterexample(seed):
+    """Review e443cbc P2: every counterexample in property_seeds.txt passes."""
+    property_seeds.replay_given(globals()[seed.target], seed)
