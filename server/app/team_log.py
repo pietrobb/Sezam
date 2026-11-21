@@ -635,8 +635,13 @@ def _own_rotations(before: TeamState, bodies: list[dict], steps: list[dict], mem
             continue
         keys.add(current)
     if left[2] or not keys:  # it left as admin, or the upload ends with it gone
-        keys, rotated = keys | left[0], {**left[1], **rotated}
-    return keys, rotated
+        keys = keys | left[0]
+    # Review e443cbc P2 (deep property run): the rotations of a membership it
+    # left are still the key holder's own (signed by the old key, proven by
+    # the new one). A server restored from a backup older than such a
+    # rotation signs the account in on the key before it, and the re-add on
+    # the rotated key was linked to nothing: the honest history was refused.
+    return keys, {**left[1], **rotated}
 
 
 def _after(rotated: dict, start) -> list:
