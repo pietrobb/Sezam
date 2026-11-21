@@ -2825,6 +2825,9 @@ class TeamLogMachine(SyncMachine):
         # (a restored server): they wait, fail-closed, until an admin device
         # puts the lost records back; a settle does not end while one waits.
         self.waiting: set[str] = set()
+        # Members whose confirm-founder was refused (the admin's shown key is
+        # not in the log yet); they ask again before their next sync.
+        self.unconfirmed: set[str] = set()
         super().__init__()
         if self.GRANT_BEFORE_FOUNDING:
             self._grant("A", self._active_members()[0], self._folders("A")[0], "read")
@@ -2838,6 +2841,13 @@ class TeamLogMachine(SyncMachine):
     def _member_sync(self, user_id: str) -> None:
         from sezam.vault.team_log_local import TeamLogMismatch
 
+        if user_id in self.unconfirmed:
+            self._confirm_founder(user_id)
+            if user_id in self.unconfirmed:
+                # Fail-closed: no sync on a log whose founder it cannot check.
+                self.log.append(f"{self.members[user_id].name}: waits for the founder's key in the log")
+                self.waiting.add(user_id)
+                return
         try:
             super()._member_sync(user_id)
         except AssertionError as exc:
@@ -2851,14 +2861,35 @@ class TeamLogMachine(SyncMachine):
         self.waiting.discard(user_id)
 
     def _confirm_founder(self, user_id: str) -> None:
-        """'sezam team-log confirm-founder' on the member's desktop."""
-        from sezam.vault.sync_common import CONFIRMED_MEMBER_KEYS_META
+        """'sezam team-log confirm-founder <fp>' on the member's desktop, with the
+        fingerprint 'sezam fingerprint' shows on one of the admin's devices.
 
-        admin = self.devices["A"].vault
+        As the CLI, it refreshes the log and trusts only a fingerprint linked to
+        the founder's genesis identity: a key from a rotation whose push failed
+        is not in the log yet, so the member waits and asks again later.
+        """
+        from sezam.crypto.keys import compute_fingerprint
+        from sezam.vault.sync_common import CONFIRMED_MEMBER_KEYS_META
+        from sezam.vault.team_log_state import founder_key_lineage
+
         vault = self.members[user_id].vault
+        client = self._new_client(vault)
+        client._refresh_team_log()
+        shown = None
+        if client.team_state() is not None:
+            founder_id, known = founder_key_lineage(vault.db)
+            linked = {compute_fingerprint(bytes.fromhex(spk), bytes.fromhex(epk)) for spk, epk in known}
+            shown = next((dev.vault.keypair.fingerprint for dev in self.devices.values()
+                          if dev.vault.keypair.fingerprint in linked), None)
+        if shown is None:
+            coverage_event("confirm-founder refused: the admin's key is not in the log yet")
+            self.log.append(f"{self.members[user_id].name}: confirm-founder refused, the admin's key is not in the log yet")
+            self.unconfirmed.add(user_id)
+            return
         confirmed = vault.db.get_meta_json(CONFIRMED_MEMBER_KEYS_META) or {}
-        confirmed[admin.db.get_meta("user_id")] = admin.keypair.fingerprint
+        confirmed[founder_id] = shown
         vault.db.set_meta_json(CONFIRMED_MEMBER_KEYS_META, confirmed)
+        self.unconfirmed.discard(user_id)
 
     def _invite_member(self, device: str) -> None:
         from sezam.vault.team_log_local import TeamLogMismatch
@@ -4262,6 +4293,34 @@ def test_sync_state_machine_team_grant_while_own_rotation_waits(loopback_server,
         admin = machine.devices["B"].vault.db.get_meta("user_id")
         assert state.members[admin].signing_pk == machine.devices["B"].vault.keypair.signing_pk.hex()
         assert state.access.get(folder, {}).get(member) == "read", machine._trace()
+    finally:
+        machine.teardown()
+
+
+@pytest.mark.parametrize("rotated", [("A",), ("A", "B")])
+def test_sync_state_machine_team_log_member_confirms_a_rotating_founder(loopback_server, monkeypatch, rotated):
+    """Deep run (goal #429): a member invited while the founder's rotation had
+    not reached the server confirmed the founder's new key, which the log did
+    not hold, and stayed 'founder is not confirmed' for good after the other
+    device's rotation won. As 'sezam team-log confirm-founder' does, the member
+    trusts only a fingerprint linked to the genesis identity and asks again."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        machine.rotate_identity(_Scripted(device="A"), "before")
+        if rotated == ("A", "B"):
+            machine.rotate_identity(_Scripted(device="B"), "before")
+        machine.invite_member(_Scripted(device="A"))
+        member = next(reversed(machine.members))
+        if rotated == ("A",):
+            machine.rotate_identity(_Scripted(device="B"), "before")
+        else:
+            # Neither device shows a key the log holds: refused, not trusted.
+            assert member in machine.unconfirmed, machine._trace()
+        machine._settle(lambda _obj: "server")
+        assert member not in machine.unconfirmed and member not in machine.waiting, machine._trace()
+        assert any(line.startswith(f"{machine.members[member].name}: sync ->") for line in machine.log), machine._trace()
     finally:
         machine.teardown()
 
