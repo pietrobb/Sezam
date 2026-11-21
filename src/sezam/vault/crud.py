@@ -63,7 +63,7 @@ from .sync_common import (
 from .sync_writers import WRITES_AUDITED_META
 from .team_log_local import (
     CONFIRMED_GENESIS_META, import_account_anchor, local_team_state, log_trusted, publishable_anchor,
-    record_account_anchor,
+    record_account_anchor, team_folder_at_or_above,
 )
 from .sync_limits import (
     MAX_OBJECT_PAYLOAD_BYTES,
@@ -898,6 +898,11 @@ class Vault:
             self._db, parent_id, set(personal_root_ids(self._db, self.dek_mgr))
         ):
             create_dek = False
+        # Review e443cbc R15 (goal #429): nor does a folder in a team folder, as
+        # on the web and the phone. Its own key was not in the log, so every
+        # client refused what it sealed and the server each item put there.
+        if create_dek and team_folder_at_or_above(self._db, self._team_for(parent_id), parent_id):
+            create_dek = False
 
         node_id = new_ulid()
         meta = NodeMeta(name=name, tier=tier, ai_read_secret=ai_read_secret)
@@ -1719,8 +1724,10 @@ class Vault:
         if old_parent_id is not None:  # a personal root keeps its own key
             roots = set(personal_root_ids(self._db, self.dek_mgr))
             into_personal = in_personal_tree(self._db, new_parent_id, roots)
+            team = self._team_for(new_parent_id)
             changes = moved_subtree_keys(
-                self._db, node_id, self.dek_mgr.get_dek_for_node(new_parent_id)[0], into_personal
+                self._db, node_id, self.dek_mgr.get_dek_for_node(new_parent_id)[0], into_personal,
+                team.dek_index if team_folder_at_or_above(self._db, team, new_parent_id) else None,
             )
             self._refuse_move_across_team_keys(node_id, new_parent_id, into_personal)
 

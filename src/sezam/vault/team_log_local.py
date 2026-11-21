@@ -256,6 +256,38 @@ def team_key_ids(db) -> set[str]:
     return ids
 
 
+def team_folder_at_or_above(db, team: Optional[teamlog.TeamState], node_id: Optional[str]) -> Optional[str]:
+    """The team folder of ``team`` at or above ``node_id`` (None: in none)."""
+    current = node_id
+    for _ in range(64):
+        if current is None or team is None:
+            return None
+        if teamlog.is_team_folder(team, current):
+            return current
+        row = db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (current,))
+        current = row["parent_id"] if row else None
+    return None
+
+
+def unlogged_folder_keys(db, logged, node_id: str) -> list[tuple[str, str]]:
+    """(folder, key) of every folder at or below ``node_id`` with a key of its
+    own that is not in ``logged`` (the log's key ids, ``dek_index``). One in
+    the trash too: restored, it is below the team folder again.
+
+    Review e443cbc R15 (goal #429): below a team folder every client refuses
+    what such a key seals (teamlog.item_refusal: 'sealed with a key the team
+    log does not know'). So no folder below a team folder keeps one: a folder
+    that becomes a team folder brings these into the log with it.
+    """
+    rows = db.fetchall(
+        "WITH RECURSIVE t(id) AS (SELECT ? UNION SELECT n.id FROM nodes n JOIN t ON n.parent_id = t.id) "
+        "SELECT n.id, n.dek_id FROM t JOIN nodes n ON n.id = t.id JOIN deks d ON d.id = n.dek_id "
+        "WHERE d.node_id = n.id AND d.scope = 'folder' ORDER BY n.id",
+        (node_id,),
+    )
+    return [(r["id"], r["dek_id"]) for r in rows if r["dek_id"] not in logged]
+
+
 def projected_team_state(db, author: str) -> Optional[teamlog.TeamState]:
     """The local log with this device's queued team changes applied.
 

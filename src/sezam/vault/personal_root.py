@@ -126,13 +126,19 @@ def _resealer(old_key, new_key, new_id: str):
     return reseal
 
 
-def moved_subtree_keys(db, node_id: str, new_parent_key: str, into_personal: bool) -> dict[str, tuple]:
+def moved_subtree_keys(
+    db, node_id: str, new_parent_key: str, into_personal: bool, logged=None,
+) -> dict[str, tuple]:
     """The key each folder of a moved subtree takes: {node_id: (old_key, new_key)}.
 
     Review 1141a20 (R9-E): a folder without a key of its own uses its
     parent's, so after a move it takes the new parent's; one with its own key
     keeps it. A personal tree has one key, the owner's: there every folder
     takes it. Only the folders whose key changes are named.
+
+    ``logged``: the team log's key ids when the target is in a team folder.
+    There a folder keeps its own key only if the log names it (review e443cbc
+    R15: every client refuses what a key the log does not know seals).
     """
     changes: dict[str, tuple] = {}
     todo = [(node_id, new_parent_key)]
@@ -142,8 +148,8 @@ def moved_subtree_keys(db, node_id: str, new_parent_key: str, into_personal: boo
             "SELECT n.dek_id, d.node_id AS key_owner FROM nodes n "
             "LEFT JOIN deks d ON d.id = n.dek_id WHERE n.id = ?", (current,)
         )
-        own = row["key_owner"] == current
-        key = parent_key if into_personal or not own else row["dek_id"]
+        keeps = row["key_owner"] == current and (logged is None or row["dek_id"] in logged)
+        key = parent_key if into_personal or not keeps else row["dek_id"]
         if key != row["dek_id"]:
             changes[current] = (row["dek_id"], key)
         todo.extend((r["id"], key) for r in db.fetchall("SELECT id FROM nodes WHERE parent_id = ?", (current,)))

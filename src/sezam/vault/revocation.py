@@ -10,7 +10,7 @@ from .crud import RekeyBlockedByConflicts
 from .sync_client import CONFIRMED_MEMBER_KEYS_META
 from .sync_limits import SyncUnitTooLarge
 from .sync_common import queued_for_removal
-from .team_log_local import local_team_state, projected_team_state
+from .team_log_local import local_team_state, projected_team_state, unlogged_folder_keys
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +155,14 @@ def _grant_in_team_log(
     changes = []
     if not teamlog.is_team_folder(team, node_id):
         changes.append(("folder.key", {"folder": node_id, "dek_id": row["id"], "prev_dek_id": None}))
+        # Review e443cbc R15 (goal #429): a folder below with a key of its own
+        # goes into the log with it (unlogged_folder_keys); left out, every
+        # client refused what it sealed, the admin's own items there too.
+        changes.extend(
+            ("folder.key", {"folder": folder, "dek_id": dek_id, "prev_dek_id": None})
+            for folder, dek_id in unlogged_folder_keys(vault.db, projected.dek_index, node_id)
+            if folder != node_id
+        )
     elif teamlog.current_key(projected, node_id) != row["id"]:
         raise RuntimeError(
             "This folder's key here is not its current key in the team log; pull first."

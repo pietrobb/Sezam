@@ -14,7 +14,8 @@ The admin makes, in one append, the log of what the organisation is now:
 
 Only folders with a key of their own (scope ``folder``) are founded; the
 root and keys below a shared folder that are not its own are named in the
-result and keep no access from the log.
+result and keep no access from the log. A folder with a key of its own below
+a founded one is founded too, with nobody's access (review e443cbc R15).
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 from .. import teamlog
 from ..models import new_ulid
 from .sync_common import CONFIRMED_MEMBER_KEYS_META, vouched_access_level
+from .team_log_local import unlogged_folder_keys
 
 if TYPE_CHECKING:
     from .crud import Vault
@@ -124,6 +126,15 @@ def plan_team_log(
         if folder not in result.folders:
             result.folders.append(folder)
             changes.append(("folder.key", {"folder": folder, "dek_id": env["dek_id"], "prev_dek_id": None}))
+    # Review e443cbc R15 (goal #429): a folder with a key of its own below a
+    # founded one is founded too, with nobody's access; left out, every client
+    # refused what its key sealed (unlogged_folder_keys).
+    logged = {data["dek_id"] for kind, data in changes if kind == "folder.key"}
+    for founded in list(result.folders):
+        for folder, dek_id in unlogged_folder_keys(vault.db, logged, founded):
+            logged.add(dek_id)
+            result.folders.append(folder)
+            changes.append(("folder.key", {"folder": folder, "dek_id": dek_id, "prev_dek_id": None}))
     for env in envelopes:
         folder = own_keys.get(env["dek_id"])
         if folder is None or env["created_by"] != own or env["user_id"] not in members:

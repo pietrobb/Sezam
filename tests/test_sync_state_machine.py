@@ -187,7 +187,7 @@ def snapshot(vault) -> dict[str, tuple]:
         except Exception as exc:  # noqa: BLE001 — reported as a finding below
             if row["id"] in foreign:
                 continue
-            name = f"<unreadable: {type(exc).__name__}>"
+            name = f"<unreadable: {type(exc).__name__}: {exc}>"
         parent = "ROOT" if row["parent_id"] == root else row["parent_id"]
         out[row["id"]] = (not row["is_deleted"], name, parent)
     for row in vault.db.fetchall(
@@ -201,7 +201,7 @@ def snapshot(vault) -> dict[str, tuple]:
         except Exception as exc:  # noqa: BLE001
             if row["id"] in foreign:
                 continue
-            name = f"<unreadable: {type(exc).__name__}>"
+            name = f"<unreadable: {type(exc).__name__}: {exc}>"
         parent = "ROOT" if row["node_id"] == root else row["node_id"]
         out[row["id"]] = (not row["is_deleted"], name, parent)
     return out
@@ -336,6 +336,11 @@ def _injected(exc: BaseException) -> bool:
 
 class SyncMachine(RuleBasedStateMachine):
     server: _Server  # set by the test
+    # Pending states that warn but hold nothing back: a settle does not wait on them.
+    ADVISORY: frozenset[str] = frozenset()
+
+    def _waiting_members(self) -> set[str]:
+        return set()
 
     def __init__(self):
         super().__init__()
@@ -2484,10 +2489,10 @@ class SyncMachine(RuleBasedStateMachine):
                 self._web_pulled(self._web_do("refresh", "refresh", confirm=True))
             # Quiet only when the one pending-state module lists nothing: the
             # machine knows every password, so each state has its way out here.
-            quiet = not self.resync_due and self._web_quiet() and all(
+            quiet = not self.resync_due and not self._waiting_members() and self._web_quiet() and all(
                 not _dirty_ids(dev.vault)
                 and dev.client.dirty_object_count() == 0
-                and not pending_states(dev.vault)
+                and not [s for s in pending_states(dev.vault) if s.key not in self.ADVISORY]
                 and not rekey_batch(dev.vault.db)  # an identity rotation's too
                 for dev in self.devices.values()
             )
@@ -2504,6 +2509,8 @@ class SyncMachine(RuleBasedStateMachine):
                 }
                 for name, dev in self.devices.items()
             }
+            for user_id in self._waiting_members():
+                details[self.members[user_id].name] = "waits for the team log records the server lost"
             if self.web is not None:
                 details[WEB] = {"session ended": self.web_ended, "dirty": self.web_view.get("dirty"),
                                 "conflicts": self.web_view.get("conflicts")}
@@ -2780,6 +2787,65 @@ class SecondAdminMachine(SyncMachine):
         member = next(u for u in self._active_members() if u != admin)
         self._grant("A", member, self._folders("A")[0], "write")
         self._appoint(admin)
+
+
+class TeamLogMachine(SyncMachine):
+    """The same steps in an organisation with a team log (review e443cbc R15,
+    goal #429): the admin founds it right after the first member joined, every
+    member confirms the founder's fingerprint, and from then on grants,
+    revocations, rotations and appointments go through the log."""
+
+    # Its way out ('sezam org-recovery-setup') is the setup_org_recovery step;
+    # it sends nothing and holds nothing back.
+    ADVISORY = frozenset({"lone_admin_without_recovery"})
+    # The organisation shared its top folder before it had a log.
+    GRANT_BEFORE_FOUNDING = False
+
+    def __init__(self):
+        from sezam.vault.team_migration import found_team_log
+
+        # Members whose last sync stopped because the server's log went back
+        # (a restored server): they wait, fail-closed, until an admin device
+        # puts the lost records back; a settle does not end while one waits.
+        self.waiting: set[str] = set()
+        super().__init__()
+        if self.GRANT_BEFORE_FOUNDING:
+            self._grant("A", self._active_members()[0], self._folders("A")[0], "read")
+        admin = self.devices["A"]
+        result = found_team_log(admin.vault, admin.client, lambda _uid, _fp: True)
+        self.log.append(f"A: team-log init ({len(result.members)} member(s), {len(result.folders)} folder(s))")
+
+    def _waiting_members(self) -> set[str]:
+        return self.waiting & set(self._member_desktops())
+
+    def _member_sync(self, user_id: str) -> None:
+        from sezam.vault.team_log_local import TeamLogMismatch
+
+        try:
+            super()._member_sync(user_id)
+        except AssertionError as exc:
+            cause = exc.__cause__
+            if not (isinstance(cause, TeamLogMismatch) and cause.cause == "went_back"):
+                raise
+            coverage_event("member waits for the lost team log records")
+            self.log.append(f"{self.members[user_id].name}: waits, {cause}")
+            self.waiting.add(user_id)
+            return
+        self.waiting.discard(user_id)
+
+    def _confirm_founder(self, user_id: str) -> None:
+        """'sezam team-log confirm-founder' on the member's desktop."""
+        from sezam.vault.sync_common import CONFIRMED_MEMBER_KEYS_META
+
+        admin = self.devices["A"].vault
+        vault = self.members[user_id].vault
+        confirmed = vault.db.get_meta_json(CONFIRMED_MEMBER_KEYS_META) or {}
+        confirmed[admin.db.get_meta("user_id")] = admin.keypair.fingerprint
+        vault.db.set_meta_json(CONFIRMED_MEMBER_KEYS_META, confirmed)
+
+    def _invite_member(self, device: str) -> None:
+        super()._invite_member(device)
+        self._confirm_founder(next(reversed(self.members)))
 
 
 class _Scripted:
@@ -3444,3 +3510,46 @@ def test_sync_state_machine_second_admin(loopback_server):
             print_blob=True,
         ),
     )
+
+
+class _FoundedAfterAGrant(TeamLogMachine):
+    GRANT_BEFORE_FOUNDING = True
+
+
+@pytest.mark.skipif(not NODE, reason="the web tab needs Node >= 24.7")
+@pytest.mark.parametrize("how", ["granted", "founded", "created", "moved"])
+def test_sync_state_machine_team_folder_with_a_folder_key_below(loopback_server, monkeypatch, how):
+    """Review e443cbc R15, goal #429 (TeamLogMachine, first counterexample): a
+    folder with a key of its own below a team folder, a key the log does not
+    know. Every client refuses what it seals ('sealed with a key the team log
+    does not know'), so the admin's own items there were gone on the web and a
+    new device, and one written there later never left the desktop. It got
+    there when a grant or the founding made the folder above a team folder
+    ('granted', 'founded'), when the desktop gave a new folder in a team folder
+    a key of its own ('created'), and when a folder with its own key moved into
+    one ('moved')."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    klass = _FoundedAfterAGrant if how == "founded" else TeamLogMachine
+    klass.server = loopback_server
+    machine = klass()
+    try:
+        member = machine._active_members()[0]
+        top = machine._folders("A")[0]
+        if how != "founded":
+            machine._grant("A", member, top, "read")
+        machine.track_member_keys()  # an invariant: Hypothesis runs it between steps
+        if how in ("created", "moved"):
+            machine._settle(lambda _obj: "server")
+            name, entry = machine._token("F"), machine._token("E")
+            parent, before = (top if how == "created" else None), set(machine._folders("A"))
+            machine._local("A", f"create folder {name} under {parent}", lambda v: v.create_node(name, parent))
+            (folder,) = set(machine._folders("A")) - before
+            machine._local("A", f"create entry {entry} in {folder}", lambda v: v.create_entry(
+                folder, entry, [{"key": "password", "value": entry, "sensitive": True}]))
+            if how == "moved":
+                machine._settle(lambda _obj: "server")
+                machine._local("A", f"move {folder} under {top}", lambda v: v.move_node(folder, top))
+        machine.open_web_tab()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
