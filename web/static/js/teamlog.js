@@ -335,7 +335,10 @@ const SezamTeamLog = (() => {
       if (author !== userId) throw new TeamLogError('not_self', seq);
       verify(sodium, data.signing_pk, newKeyMessage(prev, userId, data.signing_pk, data.encryption_pk),
         data.new_key_sig, seq, 'bad_new_key_signature');
-      if (data.signing_pk === member.signingPk || data.encryption_pk === member.encryptionPk) {
+      // Review e443cbc H1: two keys the member does not hold in either role (a
+      // swap X -> Y -> X made the server's rotation walk loop for good).
+      const held = [member.signingPk, member.encryptionPk];
+      if (held.includes(data.signing_pk) || held.includes(data.encryption_pk)) {
         throw new TeamLogError('key_reused', seq);
       }
       claimKeys(state, userId, seq, data.signing_pk, data.encryption_pk);

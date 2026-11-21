@@ -528,10 +528,16 @@ def _own_rotations(before: TeamState, bodies: list[dict], member_id: str) -> tup
 
 
 def _after(rotated: dict, start) -> list:
-    """The keys ``start`` rotated to, in order (the rules never reuse a key)."""
-    chain = []
-    while start in rotated:
+    """The keys ``start`` rotated to, in order, each once.
+
+    Review e443cbc H1: rules 1 let a member rotate back to a retired key and
+    every version let it swap its keys there and back; walking such a cycle
+    until it ended spun the worker forever. Each key is visited once, so no
+    upload (and no later hole in the rules) makes this loop."""
+    chain, seen = [], {start}
+    while start in rotated and rotated[start] not in seen:
         start = rotated[start]
+        seen.add(start)
         chain.append(start)
     return chain
 

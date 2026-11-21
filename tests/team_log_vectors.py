@@ -50,6 +50,18 @@ ACTORS = {name: Actor(name, i + 1) for i, name in enumerate(NAMES)}
 # bob's rotated identity keeps bob's user id
 ACTORS["bob2"].uid = ACTORS["bob"].uid
 A, B, C, D, E, B2 = (ACTORS[n] for n in NAMES)
+
+
+class _BothRoles:
+    """Bob on two Ed25519 keys it holds, named in either role (review e443cbc H1)."""
+
+    def __init__(self, signing: SigningKey, other: SigningKey):
+        self.uid, self.sk = ACTORS["bob"].uid, signing
+        self.spk, self.epk = signing.verify_key.encode().hex(), other.verify_key.encode().hex()
+
+
+_K1, _K2 = (SigningKey(hashlib.sha256(b"sezam-team-log-vector:swap" + n).digest()) for n in (b"1", b"2"))
+SWAP_1, SWAP_2 = _BothRoles(_K1, _K2), _BothRoles(_K2, _K1)  # (k1, k2), then (k2, k1)
 # org recovery signing keys (R10-D)
 R1, R2 = (SigningKey(hashlib.sha256(b"sezam-org-recovery:" + n).digest()).verify_key.encode().hex()
           for n in (b"1", b"2"))
@@ -404,6 +416,13 @@ def build_vectors() -> dict:
     ]))
     s.append(_bad("rotation_back_to_retired_keys", basic().rotate(B, B2).rotate(B2, B), "key_reused"))
     s.append(_bad("readd_retired_keys_after_rotation", basic().rotate(B, B2).remove(B2).member(B), "key_reused"))
+    # Review e443cbc H1: a rotation names two keys the member does not hold,
+    # in either role, under every rules version (a swap there and back looped
+    # the server's rotation walk).
+    for rules in tl.RULES_VERSIONS:
+        prefix = "" if rules == tl.FORMAT_VERSION else f"rules_{rules}_"
+        s.append(_bad(f"{prefix}rotation_swaps_its_own_keys",
+                      basic(rules).rotate(B, SWAP_1).rotate(SWAP_1, SWAP_2), "key_reused"))
     # Review 8595ec1 (R10-B): a record is judged by the rules of its "v". A log
     # stored under rules 1 (before retired keys stayed retired) still replays;
     # rules 2 apply from its first record on, and the version never goes down.

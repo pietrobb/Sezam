@@ -418,7 +418,10 @@ def _apply_change(new: TeamState, seq: int, kind: str, author: str, data: dict, 
             new_key_message(prev, user_id, data["signing_pk"], data["encryption_pk"]),
             data["new_key_sig"], seq, code="bad_new_key_signature",
         )
-        if data["signing_pk"] == member.signing_pk or data["encryption_pk"] == member.encryption_pk:
+        # Review e443cbc H1: two keys the member does not hold in either role
+        # (a swap X -> Y -> X made the server's rotation walk loop for good).
+        held = (member.signing_pk, member.encryption_pk)
+        if data["signing_pk"] in held or data["encryption_pk"] in held:
             raise TeamLogError("key_reused", seq)
         _claim_keys(new, user_id, seq, data["signing_pk"], data["encryption_pk"])
         member.signing_pk = data["signing_pk"]

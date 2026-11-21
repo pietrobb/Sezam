@@ -504,7 +504,10 @@ class TeamLog {
         final epk = data['encryption_pk'] as String;
         _verify(spk, newKeyMessage(prev, userId!, spk, epk),
             data['new_key_sig'] as String, seq, 'bad_new_key_signature');
-        if (spk == member!.signingPk || epk == member.encryptionPk) {
+        // Review e443cbc H1: two keys the member does not hold in either role
+        // (a swap X -> Y -> X made the server's rotation walk loop for good).
+        final held = {member!.signingPk, member.encryptionPk};
+        if (held.contains(spk) || held.contains(epk)) {
           throw TeamLogError('key_reused', seq);
         }
         _claimKeys(state, userId, seq, [spk, epk]);
