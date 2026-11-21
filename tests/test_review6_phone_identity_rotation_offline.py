@@ -89,6 +89,7 @@ def test_offline_edit_syncs_after_the_phone_takes_over_an_identity_rotation(serv
                           "current_password": current_password, "recover": recover, "reconnect": reconnect, "qr": qr,
                           "authfail": with_team_log == "portable-authfail", "autolock": with_team_log == "portable-autolock",
                           "refuse": with_team_log in ("portable-downgrade", "portable-conflict"),
+                          "downgrade": not locked and with_team_log == "portable-downgrade",
                           "conflict": locked and with_team_log == "portable-conflict"},
            {"rotated": rotated, **({"qr_token": qr_token} if qr else {}), **({"restore_bundle": restore_bundle}
              if with_team_log in ("portable-downgrade", "portable-conflict") else {})}, PHONE_TEST)

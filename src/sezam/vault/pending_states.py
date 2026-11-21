@@ -26,6 +26,12 @@ from . import oplock, outbox
 LAST_PUSHED_KEY_EPOCH = "last_pushed_key_epoch"
 
 
+# Review e443cbc R15 (goal #429): this device joined an account the server
+# already holds (connect, Path B) and no pull has taken that account's tree
+# yet. A push pulls first; it ends with the first pull or full resync taken.
+JOINED_UNPULLED = "joined_account_unpulled"
+
+
 def last_pushed_key_epoch(db) -> int:
     return int(db.get_meta(LAST_PUSHED_KEY_EPOCH) or "0")
 

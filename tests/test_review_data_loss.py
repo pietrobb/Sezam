@@ -82,6 +82,8 @@ def test_rebind_then_initial_push_uploads_pre_connect_audit(tmp_path, recovery):
         def fake_request(method, path, body=None, auth=False, extra_headers=None):
             if "/keys" in path:
                 raise RuntimeError("404 unknown user")
+            if method == "GET":  # a joined account is pulled before the first push (R15)
+                return {"objects": [], "max_commit_seq": 0, "has_more": False, "next_cursor": None}
             pushed.extend(body["objects"])
             return {"accepted": [{"id": o["id"], "commit_seq": i + 1}
                                  for i, o in enumerate(body["objects"])],

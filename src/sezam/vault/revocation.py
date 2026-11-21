@@ -425,7 +425,14 @@ def finish_handover_rekeys(vault: Vault, client: SyncClient) -> dict[str, int]:
     me = vault.db.get_meta("user_id")
     if team is None or not teamlog.is_admin(team, me) or not client.team_log_trusted(team):
         return done
-    for former in sorted({u for users in team.former_admins.values() for u in users} - {me}):
+    # Review e443cbc R15 (goal #429): a member lowered from write to read is
+    # stale in the log the same way; the same re-key keeps their read access.
+    downgraded = {
+        u for users in team.stale.values() for u in users
+        if (member := team.members.get(u)) is not None and member.active
+    }
+    candidates = {u for users in team.former_admins.values() for u in users} | downgraded
+    for former in sorted(candidates - {me}):
         if pending_states.rekey_batch(vault.db) or vault.key_change_unpushed():
             break  # one batch at a time; after a password change lands
         try:

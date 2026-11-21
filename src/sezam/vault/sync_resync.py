@@ -779,6 +779,7 @@ class ResyncMixin:
                     gc_floor_seq=gc_floor if isinstance(gc_floor, int) else 0,
                 )),
             )
+            self._db.execute("DELETE FROM vault_meta WHERE key = ?", (pending_states.JOINED_UNPULLED,))
             self._advance_commit_anchor(max_seq, resp.get("max_token"), reset=True)
             self._db.commit()
         except Exception:

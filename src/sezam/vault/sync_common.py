@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
 import struct
 from typing import Optional
 
+from nacl.signing import VerifyKey
+
 from ..models import ulid_to_bytes
-from . import outbox
+from . import outbox, pending_states
 
 # Kept under the original module name (log filters, review 6 R6-H split).
 logger = logging.getLogger("sezam.vault.sync_client")
@@ -404,3 +407,125 @@ def _batch_conflicts(exc: Exception) -> list[dict]:
     detail = getattr(exc, "detail", None)
     conflicts = detail.get("conflicts") if isinstance(detail, dict) else None
     return [c for c in conflicts if isinstance(c, dict)] if isinstance(conflicts, list) else []
+
+
+def key_ring_from_response(
+    user_id: str,
+    current_signing_pk: bytes,
+    current_encryption_pk: bytes,
+    response: dict,
+) -> tuple[bytes, ...]:
+    """Current key plus archived keys reachable by rotation certificates.
+
+    An archived key is trusted only if its successor key (the current one
+    or an already trusted archive) signed key_rotation_message(), so the
+    server cannot inject "historical" keys to forge old records. When the
+    server has the old key's authorization of that rotation (rotations
+    since review 688edcb V4), it must verify too. Which objects an archived
+    key may still vouch for is bounded separately (_archive_bound).
+    """
+    archives = response.get("archived_keys", [])
+    if not isinstance(archives, list):
+        raise ValueError("Malformed archived key list")
+
+    candidates = []
+    for archive in archives:
+        if not isinstance(archive, dict):
+            raise ValueError("Malformed archived key")
+        fields = [archive.get(name) for name in (
+            "signing_pk", "encryption_pk", "key_fingerprint",
+            "successor_signing_pk", "rotation_signature",
+        )]
+        if not all(isinstance(value, str) for value in fields):
+            continue  # uncertified legacy archive: never trusted
+        signing_pk, encryption_pk = bytes.fromhex(fields[0]), bytes.fromhex(fields[1])
+        if len(signing_pk) != 32 or len(encryption_pk) != 32:
+            raise ValueError("Archived public keys must be 32 bytes")
+        if hashlib.sha256(signing_pk + encryption_pk).hexdigest() != fields[2]:
+            raise ValueError("Archived key fingerprint mismatch")
+        authorization = archive.get("authorization_signature")
+        if authorization is not None and not isinstance(authorization, str):
+            raise ValueError("Malformed archived key authorization")
+        candidates.append((
+            signing_pk, encryption_pk, bytes.fromhex(fields[3]), bytes.fromhex(fields[4]),
+            bytes.fromhex(authorization) if authorization else None,
+        ))
+
+    trusted = {current_signing_pk: current_encryption_pk}
+    keys = [current_signing_pk]
+    progress = True
+    while progress:
+        progress = False
+        for signing_pk, encryption_pk, successor_pk, cert, authorization in candidates:
+            if signing_pk in trusted or successor_pk not in trusted:
+                continue
+            message = key_rotation_message(
+                user_id, signing_pk, encryption_pk, successor_pk, trusted[successor_pk]
+            )
+            try:
+                VerifyKey(successor_pk).verify(message, cert)
+                if authorization is not None:
+                    VerifyKey(signing_pk).verify(message, authorization)
+            except Exception:
+                continue
+            trusted[signing_pk] = encryption_pk
+            keys.append(signing_pk)
+            progress = True
+    return tuple(keys)
+
+
+def withdraw_from_removed_members(db, team, user_id: str) -> None:
+    """Queue the withdrawal of this account's envelopes the log's removed
+    members still hold on a key no folder here uses any more.
+
+    Review e443cbc R15 (TeamLogMachine, goal #429): A granted a folder and
+    the push reply was lost; B of the same account, not pulled since,
+    removed the member and re-keyed. B's re-key withdrew only the
+    envelopes B held, and A, which took the re-key over in this pull,
+    queued nothing (the log had replaced the key): the removed member kept
+    a live envelope on the server. The queued re-key finds no folder on
+    the key and sends just the tombstone."""
+    if team is None:
+        return
+    queue = pending_states.revocation_queue(db)
+    pending = pending_states.rekey_batch(db).get("revoked_user_id")
+    removed = []
+    for row in db.fetchall(
+        "SELECT DISTINCT user_id, dek_id FROM access_envelopes WHERE created_by = ? AND user_id != ?",
+        (user_id, user_id),
+    ):
+        member = team.members.get(row["user_id"])
+        if (
+            member is not None and not member.active and row["dek_id"] in team.dek_index
+            and row["user_id"] not in queue + removed and row["user_id"] != pending
+            and not db.fetchone("SELECT 1 FROM nodes WHERE dek_id = ?", (row["dek_id"],))
+        ):
+            removed.append(row["user_id"])
+    if removed:
+        logger.warning("Envelopes of removed members %s on replaced keys; queued for withdrawal",
+                       removed)
+        pending_states.set_revocation_queue(db, queue + removed)
+
+
+def serialize_audit_row(row) -> bytes:
+    """Serialize every signed audit field into a deterministic sync payload."""
+    parent_ids = json.loads(row["parent_ids"])
+    if not isinstance(parent_ids, list) or not all(
+        isinstance(parent_id, str) for parent_id in parent_ids
+    ):
+        raise ValueError(f"Invalid audit parent list for {row['id']}")
+    record = {
+        "action": row["action"],
+        "actor_id": row["actor_id"],
+        "encrypted_details": base64.b64encode(
+            bytes(row["encrypted_details"] or b"")
+        ).decode("ascii"),
+        "format": _AUDIT_PAYLOAD_FORMAT,
+        "id": row["id"],
+        "parent_ids": sorted(parent_ids),
+        "signature": bytes(row["signature"]).hex(),
+        "timestamp": row["timestamp"],
+    }
+    return json.dumps(record, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )

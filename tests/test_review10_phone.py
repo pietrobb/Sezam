@@ -43,6 +43,81 @@ def test_phone_without_team_log_takes_over_anchor_password(team, server, tmp_pat
     assert "All tests passed!" in out, out
 
 
+def test_phone_with_the_anchor_takes_over_a_change_made_without_it(team, server, tmp_path, monkeypatch):  # noqa: F811
+    """Review e443cbc R15 (goal #429): after the phone took the anchored
+    password over, a device that never held the anchor changes the password
+    (here the admin's desktop with its anchor withheld, as an org recovery on a
+    second desktop does). The phone refused the keys as a downgrade and every
+    sync stayed on a stale key epoch. It takes them over and keeps the pin."""
+    from click.testing import CliRunner
+    from sezam import cli
+    from sezam.crypto import aead
+    from sezam.vault import crud
+    from tests.test_cross_client_password_change import _phone
+    from tests.test_integration_client_server import PASSWORD, _client
+    from tests.test_team_log_desktop_changes import _ops
+
+    url, db = server
+    _, admin, client, bob, _ = team
+    new_password = "r15-anchor-password!"
+    third_password = "r15-anchorless-password!"
+    assert client.push()["conflicts"] == []
+    pre_anchor, current = {}, {}
+    user_id = admin.db.get_meta("user_id")  # the CLI steps lock the vault
+
+    def user():
+        return next(u for u in db._storage["users"] if u["id"] == user_id)
+
+    def replay():  # a server back on a backup from before the anchor
+        current.update(user())
+        user().update({k: v for k, v in pre_anchor.items() if k != "token_epoch"},
+                      token_epoch=int(current.get("token_epoch") or 0) + 1)
+
+    def unreplay():
+        user().update(current, token_epoch=int(user().get("token_epoch") or 0) + 1)
+
+    def anchored():
+        pre_anchor.update(user())
+        _found_with_bob(client, bob)
+        admin.create_entry(_ops(admin), "after-log", [{"key": "password", "value": "post-log-secret"}])
+        assert client.push()["conflicts"] == []
+        (tmp_path / "phone" / "genesis.txt").write_text(client.team_state().genesis_hash, encoding="utf-8")
+        with monkeypatch.context() as m:
+            m.setattr(cli, "_open_vault", lambda: admin)
+            m.setattr(cli, "_get_password",
+                      lambda prompt="", *a, **k: new_password if "new" in prompt.lower() else PASSWORD)
+            m.setattr(cli, "_check_rate_limit", lambda: None)
+            m.setattr(cli, "_clear_failed_attempts", lambda: None)
+            m.setattr(cli, "_clear_session", lambda: None)
+            out = CliRunner().invoke(cli.main, ["team-log", "publish-anchor"])
+        assert out.exit_code == 0, out.output
+
+    def anchorless():
+        if not admin.is_unlocked:
+            admin.unlock(new_password)  # the CLI locked it
+        held = admin.keypair.confirmed_genesis
+        assert held is not None
+        with monkeypatch.context() as m:
+            m.setattr(crud, "publishable_anchor", lambda *_a, **_k: None)
+            admin.keypair.confirmed_genesis = None
+            try:
+                proof = admin.change_password(new_password, third_password)
+            finally:
+                admin.keypair.confirmed_genesis = held
+            proof[:] = bytes(len(proof))
+        assert _client(admin, url).push()["conflicts"] == []
+        user = next(u for u in db._storage["users"] if u["id"] == admin.db.get_meta("user_id"))
+        assert aead.decrypt_account_keypair(bytes(user["encrypted_keypair"]), admin.current_kek,
+                                            user["id"].encode())[1] is None
+
+    out = _phone(url, tmp_path, {
+        "username": "admin", "user_id": admin.db.get_meta("user_id"),
+        "password": PASSWORD, "new_password": new_password, "third_password": third_password,
+    }, {"anchored": anchored, "replay": replay, "unreplay": unreplay, "anchorless": anchorless},
+        "test/r15_phone_anchorless_change_test.dart")
+    assert "All tests passed!" in out, out
+
+
 def test_phone_team_row_held_back_does_not_block_push(team, server, tmp_path):  # noqa: F811
     """Medium: a queued row in a team folder the phone may not send yet (the
     founder is not confirmed there) threw for the whole push, so none of the

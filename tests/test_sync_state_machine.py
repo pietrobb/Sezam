@@ -2961,6 +2961,104 @@ class TeamLogMachine(SyncMachine):
         self.log.append(f"{self.members[user_id].name}: forges {kind} -> {path} {outcome}")
         assert self._server_log() == before, f"a refused {path} changed the server's log\n" + self._trace()
 
+    # Histories from genesis a member uploads onto a log the server lost
+    # (capability run 433, review e443cbc H3): the restore's own checks
+    # (founder, stolen keys, an admin on the way) are what refuses them.
+    LOST_LOG_FORGERIES = (
+        "own genesis", "made-up founder", "genesis under the admin's id", "second admin mid-history",
+        "stolen admin key, second admin on the way",
+    )
+
+    def _vault_of(self, user_id: str):
+        return next(v for _, v in self._log_vaults() if v.db.get_meta("user_id") == user_id)
+
+    def _local_log(self, user_id: str) -> list[dict]:
+        rows = self.members[user_id].vault.db.fetchall("SELECT body, sig FROM team_log ORDER BY seq")
+        return [{"body": r["body"], "sig": r["sig"]} for r in rows]
+
+    def _lost_log_forgers(self) -> dict[str, list[dict]]:
+        """Members not admin in their own copy of the log, with that copy."""
+        forgers = {}
+        for user_id in self._member_desktops():
+            local = self._local_log(user_id)
+            try:
+                state = teamlog.replay(local)
+            except teamlog.TeamLogError:
+                continue
+            member = state.members.get(user_id)
+            if local and member is not None and member.active and not teamlog.is_admin(state, user_id):
+                forgers[user_id] = local
+        return forgers
+
+    def _forge_history(self, local: list[dict], user_id: str, kind: str) -> list[dict]:
+        from nacl.public import PrivateKey
+
+        state = teamlog.replay(local)
+        if kind in self.FORGERIES:  # the member's true copy, one forged record on top
+            return local + [self._forge(state, user_id, kind)]
+        own = self.members[user_id].vault.keypair.to_nacl_signing_key()
+        me = state.members[user_id]
+        admin = next(u for u in state.members if teamlog.is_admin(state, u))
+        fresh = SigningKey.generate()
+        fresh_pk = bytes(fresh.verify_key).hex()
+
+        def genesis(founder, spk, epk, key):
+            data = {"org": state.org, "user_id": founder, "signing_pk": spk, "encryption_pk": epk}
+            return [teamlog.sign_record(teamlog.next_body(teamlog.TeamState(), "genesis", founder, data), key)]
+
+        def then(records, change, author, data, key):
+            body = teamlog.next_body(teamlog.replay(records), change, author, data)
+            return records + [teamlog.sign_record(body, key)]
+
+        if kind == "stolen admin key, second admin on the way":
+            # The true copy, then the admin (its real key, stolen) appoints the
+            # member and the member demotes the admin: one admin at the end,
+            # two between the authors, which no append takes.
+            stolen = self._vault_of(admin).keypair.to_nacl_signing_key()
+            records = then(local, "member.role", admin, {"user_id": user_id, "role": "admin"}, stolen)
+            return then(records, "member.role", user_id, {"user_id": admin, "role": "member"}, own)
+        if kind == "own genesis":
+            return genesis(user_id, me.signing_pk, me.encryption_pk, own)
+        if kind == "made-up founder":
+            return genesis(new_ulid(), fresh_pk, bytes(PrivateKey.generate().public_key).hex(), fresh)
+        # The admin's id on a key the member holds, the member added under it.
+        records = genesis(admin, fresh_pk, state.members[admin].encryption_pk, fresh)
+        records = then(records, "member.add", admin, {
+            "user_id": user_id, "signing_pk": me.signing_pk, "encryption_pk": me.encryption_pk, "role": "member"}, fresh)
+        if kind == "second admin mid-history":  # two admins between two authors, one at the end
+            records = then(records, "member.role", admin, {"user_id": user_id, "role": "admin"}, fresh)
+            records = then(records, "member.role", user_id, {"user_id": admin, "role": "member"}, own)
+        return records
+
+    @precondition(lambda self: self._member_desktops() and not self._server_log())
+    @rule(data=st.data(), kind=st.sampled_from(FORGERIES + LOST_LOG_FORGERIES),
+          path=st.sampled_from(["restore", "append"]))
+    def member_forges_a_restore_of_the_lost_log(self, data, kind, path):
+        """The server lost its log; before an honest device puts it back, a
+        member uploads a history of its own making (INV-2 on the restore path:
+        refused, the server's log stays empty, no forged record stored)."""
+        forgers = self._lost_log_forgers()
+        user_id = self._pick(data, forgers, "forger")
+        if user_id is None:
+            return
+        records = self._forge_history(forgers[user_id], user_id, kind)
+        honest = {teamlog.record_hash(r) for r in forgers[user_id]}
+        self.forged = self._forged_hashes() | ({teamlog.record_hash(r) for r in records} - honest)
+        client = self._new_client(self.members[user_id].vault)
+        url = "/api/team-log" + ("/restore" if path == "restore" else "")
+        try:
+            client._request("POST", url, {"records": records}, auth=True)
+        except Exception as exc:  # refused: what must happen
+            outcome = f"refused ({type(exc).__name__})"
+        else:
+            raise AssertionError(
+                f"the server took {self.members[user_id].name}'s {kind!r} history onto the lost log via {path}\n"
+                + self._trace())
+        coverage_event(f"member forges {kind} onto the lost log via {path}")
+        coverage_event(f"restore onto a lost log: forged via {path}")
+        self.log.append(f"{self.members[user_id].name}: forges {kind} onto the lost log -> {path} {outcome}")
+        assert not self._server_log(), f"a refused {path} onto the lost log changed it\n" + self._trace()
+
     @rule(data=st.data(), lie=st.sampled_from(LOG_LIES))
     def server_lies_about_the_log(self, data, lie):
         """The server serves one device a log the true one is not; the device
@@ -3036,8 +3134,12 @@ class TeamLogMachine(SyncMachine):
             outcome = f"refused ({type(exc).__name__})"
         coverage_event(f"server lies about the log: {lie} -> {outcome.split(' ')[0]}")
         self.log.append(f"server: {lie} in the log served to {name} -> {outcome}")
-        assert (vault.db.get_meta(GENESIS_META), vault.db.get_meta(CONFIRMED_GENESIS_META)) == pins, (
-            f"{name}: a lying server's {lie} changed the log pins\n" + self._trace())
+        after = (vault.db.get_meta(GENESIS_META), vault.db.get_meta(CONFIRMED_GENESIS_META))
+        # A device with no pin yet may take the true genesis from true records
+        # (a prefix of the log); never another one, never a confirmation.
+        first_pin = pins == (None, None) and after == (teamlog.record_hash(true[0]), None)
+        assert after == pins or first_pin, (
+            f"{name}: a lying server's {lie} changed the log pins {pins} -> {after}\n" + self._trace())
         kept = [json.dumps(c, sort_keys=True) for c in queued_changes(vault.db)] + [
             json.dumps(c, sort_keys=True) for c in set_aside_changes(vault.db)]
         lost = [c for c in work if c not in kept]
@@ -3086,16 +3188,21 @@ class TeamLogMachine(SyncMachine):
         assert [tuple(r) for r in vault.db.fetchall("SELECT seq, hash FROM team_log ORDER BY seq")] == rows, (
             f"{name}: a refused forget-pin changed the log copy\n" + self._trace())
 
-    @rule()
-    def operator_loses_the_log(self):
+    @rule(data=st.data(), race=st.sampled_from([None, *FORGERIES, *LOST_LOG_FORGERIES]),
+          path=st.sampled_from(["restore", "append"]))
+    def operator_loses_the_log(self, data=None, race=None, path="restore"):
         """The server's team log is gone (a restore of the database without
         it). No device forgets its pin on its own (INV-8); an admin device that
         holds the log puts it back on its next sync (INV-7), and the settle
-        ends with every device on that log."""
+        ends with every device on that log. ``race``: a member uploads a
+        history of its own first (capability run 433; random steps seldom
+        find the log still empty)."""
         if not self._server_log():
             return
         self.db._storage["team_log"] = []
         self.log.append("server: team log lost")
+        if race is not None and self._member_desktops():
+            self.member_forges_a_restore_of_the_lost_log(data, race, path)
 
     @invariant()
     def the_server_log_follows_the_rules(self):
@@ -4011,6 +4118,96 @@ def test_sync_state_machine_team_founder_takes_over_a_rotation_made_without_the_
         machine.teardown()
 
 
+def test_sync_state_machine_team_founder_takes_over_an_org_recovery_without_the_anchor(
+    loopback_server, monkeypatch,
+):
+    """Review e443cbc R15, goal #429 (TeamLogMachine, randomized run): the
+    founder's desktop A rotates its identity and the push fails before it is
+    sent. The admin's second desktop B runs the org recovery with two shares;
+    the account keys it sends carry no team anchor (the recovered password
+    never had one). A took the change over and refused it ('missing this
+    device's authenticated anchor'): every push of A wanted a full resync.
+    A keeps the anchor it holds when the server's KEK is one this account
+    left without it."""
+    from sezam.vault.team_log_local import local_team_state
+
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        machine.rotate_identity(_Scripted(device="A"), "before")
+        machine.setup_org_recovery(_Scripted(device="B"))
+        assert machine._org_recovery_usable(), machine._trace()
+        machine._org_recovery(None)
+        machine._push("A")
+        assert not [line for line in machine.log if "authenticated anchor" in line], machine._trace()
+        machine._settle(lambda _obj: "server")
+        vault = machine.devices["A"].vault
+        state = local_team_state(vault.db)
+        admin = vault.db.get_meta("user_id")
+        assert state.members[admin].signing_pk == vault.keypair.signing_pk.hex(), machine._trace()
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_grant_whose_reply_was_lost_before_a_revocation(
+    loopback_server, monkeypatch,
+):
+    """Review e443cbc R15, goal #429 (TeamLogMachine, randomized run): A
+    grants a folder to a member and the push reply is lost (the server has
+    the envelope). B, which has not pulled it, revokes the member and
+    re-keys the folder; its re-key withdraws only the envelopes B holds. A's
+    pull ignored its own envelope as refused by the log, and A queued no
+    withdrawal (the log had replaced the key): the revoked member kept a live
+    envelope on the server for good."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine._pull("B")
+        first, second = machine._folders("A")[:2]
+        machine._grant("B", member, first, "write")
+        machine._grant("A", member, second, "write")
+        assert machine.log[-1].startswith("A: grant "), machine._trace()
+        machine.revoke(_Scripted(device="B", member=member), None)
+        assert machine.log[-2].endswith("re-keyed 2"), machine._trace()
+
+        machine._settle(lambda _obj: "server")
+        machine._check_members()
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_write_lowered_to_read(loopback_server, monkeypatch):
+    """Review e443cbc R15, goal #429 (TeamLogMachine, randomized run): A
+    grants a member write, B lowers it to read. The log marks the folder's
+    key stale (the member knew it with write) and refuses every new write
+    there until a re-key, which no device made: A's new item waited for good
+    and the sync never settled. An admin's push re-keys it; the member keeps
+    read access."""
+    from sezam.vault.team_log_local import local_team_state
+
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        folder = machine._folders("A")[0]
+        machine.track_member_keys()
+        machine._grant("A", member, folder, "write")
+        machine._pull("B")
+        machine._grant("B", member, folder, "read")
+        assert machine.log[-1].startswith("B: grant "), machine._trace()
+        machine.create_entry(_Scripted(device="A", folder=folder))
+        machine._settle(lambda _obj: "server")
+        state = local_team_state(machine.devices["A"].vault.db)
+        assert not state.stale.get(folder), machine._trace()
+        assert state.access[folder][member] == "read", machine._trace()
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_team_change_queued_before_a_rotation_taken_over(loopback_server, monkeypatch):
     """Review e443cbc R15, goal #429 (TeamLogMachine): the admin's desktop C,
     connected after the founding, revokes a member while A's identity
@@ -4104,6 +4301,13 @@ def test_sync_state_machine_team_log_under_attack(loopback_server, monkeypatch):
                 check()
         machine.operator_loses_the_log()
         check()
+        # Capability run 433: a member races the honest devices to the restore.
+        for kind in TeamLogMachine.FORGERIES + TeamLogMachine.LOST_LOG_FORGERIES:
+            for path in ("restore", "append"):
+                machine.member_forges_a_restore_of_the_lost_log(_Scripted(forger=member), kind, path)
+                check()
+        lost = [line for line in machine.log if "onto the lost log -> " in line]
+        assert len(lost) == 2 * len(TeamLogMachine.FORGERIES + TeamLogMachine.LOST_LOG_FORGERIES), machine._trace()
         machine._member_sync(member)
         check()
         machine._settle(lambda _obj: "server")

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import struct
 from typing import Optional
 
@@ -27,7 +26,6 @@ from .sync_limits import (
 from .team_log_local import TeamLogMismatch, local_team_state, rekey_changes
 
 from .sync_common import (
-    _AUDIT_PAYLOAD_FORMAT,
     _AuditLostByRestore,
     _batch_conflicts,
     DETACHED_DEKS_META,
@@ -48,6 +46,7 @@ from .sync_common import (
     IDENTITY_ROTATION_NEEDS_NEW_KEYS,
     KEY_CHANGE_MISSES_DEKS,
     REVOKED_ENVELOPE,
+    serialize_audit_row,
     server_error,
     STALE_KEY_EPOCH,
     WRONG_CURRENT_PASSWORD,
@@ -78,12 +77,13 @@ class PushMixin:
         request; a refused one is a conflict of its envelope.
         """
         self._require_current_kek()
-        if self._db.get_meta("last_known_commit_seq") is None:
+        if self._db.get_meta(pending_states.JOINED_UNPULLED):
             # Review e443cbc R15 (goal #429): a device joining an account whose
             # connect pull was refused (a pinned log the server had lost) pushed
             # its own pristine root; the pull after it kept that second root and
             # showed the account's root as a folder. Nothing goes out before the
-            # first pull took the account's tree.
+            # first pull took the account's tree. A device whose own tree the
+            # account is (it registered it) pushes as before.
             self.pull()
         resp = self._push_checked()
         refused = self._push_team_grants()
@@ -1213,29 +1213,7 @@ class PushMixin:
         """Return how many unsynchronized objects a full resync would overwrite."""
         return len(self._collect_dirty_objects())
 
-    @staticmethod
-    def _serialize_audit_row(row) -> bytes:
-        """Serialize every signed audit field into a deterministic sync payload."""
-        parent_ids = json.loads(row["parent_ids"])
-        if not isinstance(parent_ids, list) or not all(
-            isinstance(parent_id, str) for parent_id in parent_ids
-        ):
-            raise ValueError(f"Invalid audit parent list for {row['id']}")
-        record = {
-            "action": row["action"],
-            "actor_id": row["actor_id"],
-            "encrypted_details": base64.b64encode(
-                bytes(row["encrypted_details"] or b"")
-            ).decode("ascii"),
-            "format": _AUDIT_PAYLOAD_FORMAT,
-            "id": row["id"],
-            "parent_ids": sorted(parent_ids),
-            "signature": bytes(row["signature"]).hex(),
-            "timestamp": row["timestamp"],
-        }
-        return json.dumps(record, sort_keys=True, separators=(",", ":")).encode(
-            "utf-8"
-        )
+    _serialize_audit_row = staticmethod(serialize_audit_row)
 
     def _make_sync_object(
         self,

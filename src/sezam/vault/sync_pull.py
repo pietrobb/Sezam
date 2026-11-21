@@ -34,6 +34,7 @@ from .sync_common import (
     SERVER_ROLLBACK_META,
     STALE_OWN_WRAPS_META,
     SyncRollbackWarning,
+    withdraw_from_removed_members,
 )
 
 
@@ -369,6 +370,7 @@ class PullMixin:
             self._detach_orphan_deks()
             self._reattach_orphans()
             self._revive_folders_of_unsent()
+            withdraw_from_removed_members(self._db, self.team_state(), self._user_id)
 
             if any(obj.get("object_type") == "audit" for obj in objects):
                 try:
@@ -399,6 +401,7 @@ class PullMixin:
                 self._db.set_meta("last_known_commit_seq", str(known))
             if not last_seq:
                 self._db.set_meta(WRITES_AUDITED_META, "1")  # checked as it came
+            self._db.execute("DELETE FROM vault_meta WHERE key = ?", (pending_states.JOINED_UNPULLED,))
             self._advance_commit_anchor(max_seq, resp.get("max_token"))
             self._db.commit()
         except SyncRollbackWarning as warning:

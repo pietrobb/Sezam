@@ -1,4 +1,4 @@
-"""Sync client â€” delta push/pull with the server.
+"""Sync client — delta push/pull with the server.
 
 Spec 8.2: Server-assigned commit_seq, idempotent retry,
 rollback protection (sync checkpoint + state_hash).
@@ -48,6 +48,7 @@ from .sync_common import (
     FULL_RESYNC_HINT,
     IDENTITY_KEY_ROTATED,
     KDF_REPORTED_META_KEY,
+    key_ring_from_response,
     key_rotation_message,
     KeyEpochStale,
     logger,
@@ -147,7 +148,7 @@ class SyncClient(
             self._dek_mgr._wrapping_kek_id()
         self._db.require_generation()
 
-    # â”€â”€ Authentication â”€â”€
+    # ── Authentication ──
 
     def authenticate(self) -> str:
         """Perform challenge-response auth, get JWT.
@@ -486,7 +487,28 @@ class SyncClient(
             auth=True,
         )
 
-    # â”€â”€ Push â”€â”€
+    # ── Push ──
+
+    @staticmethod
+    def _carry_own_anchor(vault: "Vault", server_keypair: KeyPair, kek: bytes | bytearray) -> None:
+        """R15 (goal #429): account keys without the anchor this device holds
+        are a downgrade only when they open under a password state this
+        device left before it had the anchor (its pre-anchor history). Under
+        any other state another device changed the password without ever
+        holding the anchor (an org recovery while this device's first
+        anchored change had not landed): the server held no anchor to strip,
+        and the anchor trusted here goes on with the keys."""
+        from hmac import compare_digest
+
+        from ..crypto.aead import parse_pre_anchor, pre_anchor_check
+
+        anchor = vault.keypair.confirmed_genesis
+        if server_keypair.confirmed_genesis is not None or anchor is None:
+            return
+        check = pre_anchor_check(kek)
+        if any(compare_digest(entry[4], check) for entry in parse_pre_anchor(vault._known_pre_anchor())):
+            return  # a state left without the anchor: rebind_server_identity refuses it
+        server_keypair.confirmed_genesis = anchor
 
     @oplock.held
     def adopt_rotated_key_material(self, vault: "Vault", account_password: str) -> int:
@@ -527,6 +549,7 @@ class SyncClient(
             server_keypair = open_server_keypair(resp, kek)
             if server_keypair is None:
                 raise RuntimeError("Server holds no account keypair")
+            self._carry_own_anchor(vault, server_keypair, kek)
             key_epoch = int(resp.get("key_epoch") or 0)
             if self._server_lost_own_rotation(server_keypair, vault.keypair):
                 # Capability run 277: the server went back to a backup from
@@ -1002,70 +1025,7 @@ class SyncClient(
             ring = (change.signing_pk,)
         self._signing_key_rings[change.user_id] = ring
 
-    @staticmethod
-    def _key_ring_from_response(
-        user_id: str,
-        current_signing_pk: bytes,
-        current_encryption_pk: bytes,
-        response: dict,
-    ) -> tuple[bytes, ...]:
-        """Current key plus archived keys reachable by rotation certificates.
-
-        An archived key is trusted only if its successor key (the current one
-        or an already trusted archive) signed key_rotation_message(), so the
-        server cannot inject "historical" keys to forge old records. When the
-        server has the old key's authorization of that rotation (rotations
-        since review 688edcb V4), it must verify too. Which objects an archived
-        key may still vouch for is bounded separately (_archive_bound).
-        """
-        archives = response.get("archived_keys", [])
-        if not isinstance(archives, list):
-            raise ValueError("Malformed archived key list")
-
-        candidates = []
-        for archive in archives:
-            if not isinstance(archive, dict):
-                raise ValueError("Malformed archived key")
-            fields = [archive.get(name) for name in (
-                "signing_pk", "encryption_pk", "key_fingerprint",
-                "successor_signing_pk", "rotation_signature",
-            )]
-            if not all(isinstance(value, str) for value in fields):
-                continue  # uncertified legacy archive: never trusted
-            signing_pk, encryption_pk = bytes.fromhex(fields[0]), bytes.fromhex(fields[1])
-            if len(signing_pk) != 32 or len(encryption_pk) != 32:
-                raise ValueError("Archived public keys must be 32 bytes")
-            if hashlib.sha256(signing_pk + encryption_pk).hexdigest() != fields[2]:
-                raise ValueError("Archived key fingerprint mismatch")
-            authorization = archive.get("authorization_signature")
-            if authorization is not None and not isinstance(authorization, str):
-                raise ValueError("Malformed archived key authorization")
-            candidates.append((
-                signing_pk, encryption_pk, bytes.fromhex(fields[3]), bytes.fromhex(fields[4]),
-                bytes.fromhex(authorization) if authorization else None,
-            ))
-
-        trusted = {current_signing_pk: current_encryption_pk}
-        keys = [current_signing_pk]
-        progress = True
-        while progress:
-            progress = False
-            for signing_pk, encryption_pk, successor_pk, cert, authorization in candidates:
-                if signing_pk in trusted or successor_pk not in trusted:
-                    continue
-                message = key_rotation_message(
-                    user_id, signing_pk, encryption_pk, successor_pk, trusted[successor_pk]
-                )
-                try:
-                    VerifyKey(successor_pk).verify(message, cert)
-                    if authorization is not None:
-                        VerifyKey(signing_pk).verify(message, authorization)
-                except Exception:
-                    continue
-                trusted[signing_pk] = encryption_pk
-                keys.append(signing_pk)
-                progress = True
-        return tuple(keys)
+    _key_ring_from_response = staticmethod(key_ring_from_response)
 
     _ARCHIVE_BOUNDS_META = "archived_key_bounds"
 
@@ -1258,7 +1218,7 @@ class SyncClient(
             return bytes(existing["signing_pk"])
         return None
 
-    # â”€â”€ HTTP helpers â”€â”€
+    # ── HTTP helpers ──
 
     def _request(
         self,

@@ -2616,6 +2616,18 @@ class AuthService {
     }
   }
 
+  /// [kek] (the server's password state) is one this phone left while its
+  /// keys named no anchor: its keys' pre-anchor states and those it recorded.
+  Future<bool> _leftWithoutAnchor(Uint8List kek, String userId, Uint8List previousKek) async {
+    final encoded = await _secureStorage.read(key: _encryptedKeypairKey);
+    if (encoded == null) throw StateError('Local keypair state is incomplete');
+    final previous = _crypto.openAccountKeypair(hexToBytes(encoded), previousKek, userId);
+    _crypto.zeroize(previous.keypairData);
+    final check = bytesToHex(_crypto.preAnchorCheck(kek));
+    final known = _crypto.mergePreAnchor(previous.preAnchor, await _preAnchorHistory());
+    return _crypto.parsePreAnchor(known).any((e) => bytesToHex(e.check) == check);
+  }
+
   Future<Uint8List> _openAnchoredAccountKeypair(
     Uint8List envelope, Uint8List kek, String userId,
     {Uint8List? previousKek, String? expectedGenesis, bool fromServer = false, bool heldVault = false}
@@ -2627,7 +2639,20 @@ class AuthService {
         requireConfirmedGenesis(expectedGenesis, genesis);
       }
       final oldKek = previousKek ?? _vault.currentKek;
-      final changed = oldKek == null ? null : await _changedAccountAnchor(userId, genesis, oldKek);
+      var changed = oldKek == null ? null : await _changedAccountAnchor(userId, genesis, oldKek);
+      if (changed != null && genesis == null && fromServer && expectedGenesis == null &&
+          !await _leftWithoutAnchor(kek, userId, oldKek!)) {
+        // R15 (goal #429): keys without the anchor this phone's keys named
+        // are a downgrade only under a password state this phone left before
+        // it had the anchor. Under another one a device that never held the
+        // anchor changed the password (an org recovery while this phone's
+        // anchored change had not landed): the server held no anchor to
+        // strip. The keys are taken; the anchor stays pinned here.
+        try {
+          if (await readConfirmedTeamGenesis(userId) == null) await confirmTeamGenesis(userId, changed);
+        } catch (_) {}
+        changed = null;
+      }
       // Capability run 416: the server's keys of the vault this phone holds
       // (the password changed on another device) naming another log are no
       // password error and never keep it locked. The anchor this phone's own

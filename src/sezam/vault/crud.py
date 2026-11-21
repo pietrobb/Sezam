@@ -2055,6 +2055,8 @@ class Vault:
                 kp_data[:] = b"\x00" * len(kp_data)
 
             old_user_id = self._db.get_meta("user_id")
+            if server_keypair is not None and old_user_id != server_user_id:
+                self._db.set_meta(pending_states.JOINED_UNPULLED, "1")
             AuditLog(self._db).reattribute_unpushed(
                 old_user_id, server_user_id, keypair.to_nacl_signing_key()
             )
@@ -3036,10 +3038,17 @@ class Vault:
         from nacl.exceptions import CryptoError
 
         rows = []
+        member = team.members.get(former_admin_id)
         for folder in sorted(team.folders):
-            if former_admin_id not in team.former_admins.get(folder, ()):
+            # Review e443cbc R15 (TeamLogMachine, goal #429): write lowered to
+            # read leaves the member's key stale in the log, which then refuses
+            # every new write there until a re-key nobody made.
+            downgraded = (
+                member is not None and member.active and former_admin_id in team.stale.get(folder, ())
+            )
+            if not downgraded and former_admin_id not in team.former_admins.get(folder, ()):
                 continue
-            if teamlog.may_write(team, folder, former_admin_id):
+            if not downgraded and teamlog.may_write(team, folder, former_admin_id):
                 continue
             dek_id = teamlog.current_key(team, folder)
             if not self._db.fetchone(

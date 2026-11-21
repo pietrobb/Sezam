@@ -175,7 +175,7 @@ void main() {
           const storage = FlutterSecureStorage();
           final beforeSecure = await storage.readAll();
           final beforeObjects = await DatabaseService().getAllObjects();
-          if (cfg['locked'] != true) {
+          if (cfg['locked'] != true && cfg['downgrade'] != true) {
             final reconnect = await auth.connectToServer(
               serverUrl: serverUrl,
               username: cfg['username'] as String,
@@ -195,7 +195,7 @@ void main() {
                   serverUrl: serverUrl,
                 )
               : await auth.adoptPasswordChangedElsewhere(
-                  currentPassword: password,
+                  currentPassword: currentPassword,
                 );
           if (cfg['locked'] == true) {
             // INV-7 (capability run 416): the server's keys after a password
@@ -234,6 +234,19 @@ void main() {
               'db01': 's3cret',
               if (cfg['conflict'] != true) 'offline': 'o1',
             });
+            await handshake(dir, 'restore_bundle');
+          } else if (cfg['downgrade'] == true) {
+            // Review e443cbc R15 (goal #429), INV-7 as for the locked phone:
+            // keys naming no anchor under a password state this phone never
+            // left without it come from a device that holds the password but
+            // not the anchor (no server can wrap them). Refused, the phone
+            // stayed on a stale key epoch for good; it takes them over and
+            // the pin stays. A replayed pre-anchor state is still refused
+            // (test_review10_phone, r15_phone_anchorless_change_test).
+            expect(r.success, isTrue, reason: r.error);
+            await net.settle();
+            expect(await readConfirmedTeamGenesis(vault.userId!), cfg['genesis']);
+            expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
             await handshake(dir, 'restore_bundle');
           } else {
             expect(
