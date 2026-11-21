@@ -154,6 +154,25 @@ jobs:
           path: property-deep.log
           retention-days: 90
 
+  # Review e443cbc P2: the review's mutants (reverted fixes, "allow when
+  # unsure", the same rule in another branch), rebuilt in scripts/mutants.py;
+  # each one must make its tests fail.
+  mutants:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: python -m pip install ./core/py
+      - run: python -m pip install -e ".[dev]"
+      - run: python scripts/mutants.py --here
+
   # The shared sync core (docs/SYNC_SINGLE_SOURCE.md point 4b).
   core:
     if: github.event_name != 'schedule'

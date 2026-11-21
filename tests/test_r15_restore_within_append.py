@@ -174,6 +174,24 @@ def test_the_admin_puts_back_a_log_with_a_re_added_member():
     assert T.restore(T._db(_lost(h)), h.records, IDS["A"]), T.REFUSED
 
 
+def test_an_uploader_without_an_account_is_not_the_team_admin(monkeypatch):
+    """Review e443cbc P2 (mutant O4, "allow when unsure"): B's rotation is lost
+    with a backup; only the team admin puts it back (review c78fd19 #2), and
+    an uploader the server has no row for is not one (an account deleted
+    after the request signed in: the router's check is past)."""
+    monkeypatch.setattr(T, "_active", lambda db, uid: True)
+    h = _honest_with_b()
+    kept, backup = h.snapshots[-1]
+    new = h.keys.new()
+    assert h._commit("B", [T._rotation(h.state, "B", new)], rotate=new), T.REFUSALS[-1:]
+    assert not any(u["id"] == IDS["D"] for u in backup["users"])
+    T.REFUSED.clear()
+    assert not T.restore(T._db(copy.deepcopy(backup)), h.records[kept:], IDS["D"])
+    assert "only the team admin puts back the key rotation" in T.REFUSED[-1]["message"]
+    T.REFUSED.clear()
+    assert T.restore(T._db(copy.deepcopy(backup)), h.records[kept:], IDS["A"]), T.REFUSED
+
+
 def test_a_former_admin_membership_still_needs_its_keys():
     """Keys of a membership the member left count where it was admin: a
     forged genesis under A on keys the forger holds, then A re-added on its

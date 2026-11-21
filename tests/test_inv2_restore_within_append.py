@@ -22,9 +22,12 @@ with B restoring a genesis signed as A; on 0e96ca2 the default run misses it
 but a deep run (3000 examples) finds the same, and the kept counterexample
 below fails. The helpers drive both server versions (prepare_* came in 0e96ca2).
 
-Default run is derandomized and short; for a deep random run:
+Default run (every push) is derandomized, 2000 examples each: review e443cbc
+P2 found the per-push run catching 1 of 4 reverted restore fixes; at 2000 it
+catches each restore mutant of scripts/mutants.py (R1-R6) by itself. For a
+deep random run (the nightly job uses 10000):
 
-    set SEZAM_PROPERTY_EXAMPLES=2000
+    set SEZAM_PROPERTY_EXAMPLES=10000
     python -m pytest -q tests/test_inv2_restore_within_append.py
 """
 
@@ -617,7 +620,7 @@ def _todays_rules_refuse(before: list, body: dict) -> str:
 
 
 @settings(
-    max_examples=EXAMPLES or 300, deadline=None, derandomize=not EXAMPLES, print_blob=True,
+    max_examples=EXAMPLES or 2000, deadline=None, derandomize=not EXAMPLES, print_blob=True,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
 @given(data=st.data())
@@ -666,7 +669,7 @@ def test_restore_takes_nothing_the_normal_path_refuses(data):
 
 
 @settings(
-    max_examples=EXAMPLES or 200, deadline=None, derandomize=not EXAMPLES, print_blob=True,
+    max_examples=EXAMPLES or 2000, deadline=None, derandomize=not EXAMPLES, print_blob=True,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
 @given(data=st.data())
