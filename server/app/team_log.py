@@ -262,21 +262,52 @@ def _refuse_rules_beyond_appends(bodies: list[dict], steps: list[dict]) -> None:
     author's, so a history the main path wrote holds it wherever the author
     changes; a restore checked only the final log and took admins on the way
     (a second admin, later removed by an account the uploader controls).
+    One author's records need more than one append too (review e443cbc P2,
+    found by the deep property run): one new identity per push, and an
+    account's row holds one pair of keys, so an append ends somewhere between
+    two member.keys, and between two records naming the same account with
+    different keys (a made-up member re-added with new keys after the admin
+    provisioned it again). The append may end anywhere in such a span: the
+    log must pass the rule after one of its records.
     A record under older rules (stored before they tightened) replays under
     them; a restore takes it only where today's rules take it as well, else
     a log still at rules 1 took records today that no append takes."""
-    for index, (body, step) in enumerate(zip(bodies, steps)):
-        refuse = lambda message: ApiError(400, TEAM_LOG_REFUSED, {  # noqa: E731
-            "message": message, "seq": step["seq"],
-        })
+    for step in steps:
         if step["todays_rules"]:
             raise ApiError(400, TEAM_LOG_REFUSED, {
                 "message": f"the restored team log: {step['todays_rules']}",
                 "team_log_code": "rules_outdated", "seq": step["seq"],
             })
-        last_of_append = index + 1 == len(bodies) or bodies[index + 1]["author"] != body["author"]
-        if last_of_append and step["admin_policy"]:
-            raise refuse(f"the restored team log has more than one admin after record {step['seq']}")
+    for first, last in _append_ends(bodies):
+        if all(steps[index]["admin_policy"] for index in range(first, last + 1)):
+            seq = steps[last]["seq"]
+            raise ApiError(400, TEAM_LOG_REFUSED, {
+                "message": f"the restored team log has more than one admin after record {seq}",
+                "seq": seq,
+            })
+
+
+def _append_ends(bodies: list[dict]) -> list[tuple[int, int]]:
+    """Spans (first, last) of records the main path ends an append in, one of them at least."""
+    spans: list[tuple[int, int]] = []
+    rotated: Optional[int] = None  # the last member.keys of this author's records
+    named: dict[str, tuple[int, tuple]] = {}  # account -> last record naming its keys
+    for index, body in enumerate(bodies):
+        if index and body["author"] != bodies[index - 1]["author"]:
+            spans.append((index - 1, index - 1))
+            rotated, named = None, {}
+        data = body["data"]
+        if body["type"] == "member.keys":
+            if rotated is not None:
+                spans.append((rotated, index - 1))
+            rotated = index
+        if "signing_pk" in data and (user := data.get("user_id")) is not None:
+            keys = (data["signing_pk"], data.get("encryption_pk"))
+            if body["type"] == "member.add" and user in named and named[user][1] != keys:
+                spans.append((named[user][0], index - 1))
+            named[user] = (index, keys)
+    spans.append((len(bodies) - 1, len(bodies) - 1))
+    return spans
 
 
 def _check_head(state: TeamState, first: dict, then: str) -> None:
