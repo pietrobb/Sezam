@@ -2784,7 +2784,7 @@ class Vault:
                 self._db, self._db.get_meta("server_url") or "", self._keypair, user_id
             )
             client.set_dek_manager(self._dek_mgr)
-            if not client.close_rekey_if_pulled_back():
+            if not client.close_rekey_if_landed():
                 abandon_pending_rekey(client)
 
         # Now re-derive KEK from new password (like change_password but without old password verification)

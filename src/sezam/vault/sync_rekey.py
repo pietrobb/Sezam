@@ -33,85 +33,38 @@ ROTATION_SEALED_META = "team_rotation_sealed_seq"
 class RekeyMixin:
     """SyncClient methods: member re-key batches: close, rebase and reseal after removals."""
 
-    def _rekey_batch_landed(self, pending: dict) -> bool:
-        """Close a pending re-key the server already took (its reply was lost).
+    def rekey_batch_on_server(self, pending: dict) -> bool:
+        """Did the pending re-key batch land? The one check every path asks.
 
-        Stateful test SM25: the batch landed, the reply never came, and another
-        device changed one of its objects on top of it. Resent, the batch was
-        refused; rebased, the server copy was sealed with the batch's own new
-        key - 'sealed with another key' - on every sync. The new DEKs are this
-        device's own, so a server copy sealed with one proves the atomic batch
-        is there: it is closed as landed, held edits come back as conflicts and
-        the rest goes out as ordinary changes.
+        The batch is atomic and its new DEK ids are this device's own, sent
+        nowhere else, so the server holding one of them proves all of it is
+        there. Only the server can say: the reply may be lost, and a pull, a
+        conflict copy or 'pushed_dek_versions' may all be missing or wiped
+        (a restore, a reseed). Before, three local checks answered, and each
+        path asked a different one (stateful tests SM25, SM77, SM84, nightly
+        782dde8); abandon-rekey undid a batch the server held when none of
+        them had a trace (capability run 437, nightly run 44891798136).
+        A server that cannot be reached raises: the caller does not guess.
         """
-        new_raw = {ulid_to_bytes(new) for new in (pending.get("dek_map") or {}).values()}
-        object_ids = set(pending.get("object_ids") or [])
-        landed = False
-        for row in self._db.fetchall(
-            "SELECT object_id, object_type, server_payload FROM sync_conflicts"
-        ):
-            if row["object_id"] not in object_ids or row["server_payload"] is None:
-                continue
-            payload = bytes(row["server_payload"])
-            if row["object_type"] == "entry":
-                payload = payload[4:4 + int.from_bytes(payload[:4], "big")] if len(payload) >= 4 else b""
-            try:
-                landed = parse_envelope(payload).dek_id in new_raw
-            except ValueError:
-                continue
-            if landed:
-                break
-        if not landed:
+        new_ids = sorted(set((pending.get("dek_map") or {}).values()))
+        if not new_ids:
             return False
-        self._close_landed_rekey(pending)
-        return True
+        reply = self._request("POST", "/api/objects/held", {"ids": new_ids}, auth=True) or {}
+        return any(
+            obj.get("id") in new_ids and obj.get("object_type") == "dek" and not obj.get("is_deleted")
+            for obj in reply.get("objects") or []
+        )
 
     @oplock.held
-    def close_rekey_if_pulled_back(self) -> bool:
-        """Close a pending re-key whose new DEK a pull already brought back.
-
-        Stateful test SM77: the batch landed, its reply was lost and a pull
-        brought its new folder key. A Shamir recovery then dropped the re-key
-        as never sent and deleted that key here; the recovery's password
-        change, which must re-wrap every key the server holds, was refused on
-        every sync. The batch is atomic, so one of its keys on the server
-        proves all of it is there.
-        """
+    def close_rekey_if_landed(self) -> bool:
+        """Close a pending re-key the server already took (its reply was lost):
+        held edits come back as conflicts, the rest goes out as ordinary
+        changes, and the member stays removed."""
         pending = pending_states.rekey_batch(self._db)
-        held_by_server = self._db.get_meta_json("pushed_dek_versions") or {}
-        new_ids = set((pending.get("dek_map") or {}).values()) if pending else set()
-        if not pending or not (
-            any(new in held_by_server for new in new_ids)
-            or self._rekey_copy_pulled_back(pending, new_ids)
-        ):
+        if not pending or not self.rekey_batch_on_server(pending):
             return False
         self._close_landed_rekey(pending)
         return True
-
-    def _rekey_copy_pulled_back(self, pending: dict, new_ids: set[str]) -> bool:
-        """Nightly state machine run on 782dde8: the batch landed, its reply was
-        lost, and the server left the batch's new keys out of the pull that
-        brought its copies back. The copies came back clean, so every push
-        stopped as 'Atomic re-key batch is missing'. A clean copy sealed with
-        one of the batch's new keys - this device's own, never sent outside
-        the batch - proves the batch is there just as the key itself would."""
-        object_ids = list(pending.get("object_ids") or [])
-        if not object_ids or not new_ids:
-            return False
-        new_raw = {ulid_to_bytes(new) for new in new_ids}
-        marks = ",".join("?" * len(object_ids))
-        for table in ("nodes", "entries"):
-            for row in self._db.fetchall(
-                f"SELECT encrypted_meta FROM {table} "
-                f"WHERE id IN ({marks}) AND NOT {outbox.queued(table)}",
-                tuple(object_ids),
-            ):
-                try:
-                    if parse_envelope(bytes(row["encrypted_meta"])).dek_id in new_raw:
-                        return True
-                except ValueError:
-                    continue
-        return False
 
     def _close_landed_rekey(self, pending: dict) -> None:
         object_ids = set(pending.get("object_ids") or [])
@@ -171,9 +124,9 @@ class RekeyMixin:
         under a revoked DEK since the re-key join it; anything else sealed
         with an unknown key inside them stops the re-key (fail closed).
         """
-        # Stateful test SM84: the batch landed with its reply lost and a pull
-        # already brought its new key back; resent, it is refused for good.
-        if self.close_rekey_if_pulled_back():
+        # Stateful tests SM25, SM84: the batch landed with its reply lost;
+        # resent, it is refused for good.
+        if self.close_rekey_if_landed():
             return
         # Review 526419e V3: another device of this account re-keyed the same
         # folders first; resent unchanged, this batch was refused for good.
@@ -186,8 +139,6 @@ class RekeyMixin:
             raise RuntimeError(
                 "Atomic re-key batch was refused and this device cannot rebase it"
             )
-        if self._rekey_batch_landed(pending):
-            return
         revoked_user_id = pending["revoked_user_id"]
         object_ids = set(pending["object_ids"])
         # Review 688edcb V1: a row that is not where the re-key left it holds

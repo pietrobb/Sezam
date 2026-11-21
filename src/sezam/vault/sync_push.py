@@ -327,7 +327,7 @@ class PushMixin:
         # collected and every push stopped as 'missing'. A batch key the server
         # holds proves the atomic batch is there: it is closed as sent first.
         if pending_states.rekey_batch(self._db):
-            self.close_rekey_if_pulled_back()
+            self.close_rekey_if_landed()
         # Team changes first (docs/DESIGN_TEAM_LOG.md §5): an access the
         # objects below rely on is in the log before they land.
         if self.drop_superseded_org_recovery():

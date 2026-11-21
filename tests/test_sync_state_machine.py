@@ -3609,6 +3609,45 @@ def test_sync_state_machine_made_up_member(loopback_server, monkeypatch):
         machine.teardown()
 
 
+def test_sync_state_machine_rekey_landed_with_its_reply_lost_is_not_abandoned(loopback_server, monkeypatch):
+    """Nightly run 44891798136 on e443cbc (SecondAdmin, capability run 437):
+    a member's re-key batch reached the server and its reply was lost; then
+    the server made up a head, so the device full-resynced, and the way out
+    of the pending re-key was 'abandon-rekey'. Nothing local said the batch
+    had landed (no reply, no pull since), so abandon took the folders back
+    under the old key and deleted the new one, which the server kept: the
+    resync brought the folder back bound to a key this device no longer had
+    and the subfolder could not be opened ('Decryption failed')."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        folder = machine._folders("A")[0]
+        machine.create_folder(_Scripted(device="A", parent=folder))
+        sub = next(f for f in machine._folders("A") if f != folder and machine.devices["A"].vault.db.fetchone(
+            "SELECT 1 FROM nodes WHERE id = ? AND parent_id = ?", (f, folder)))
+        machine.create_entry(_Scripted(device="A", folder=folder))
+        machine.push(_Scripted(device="A"), None)
+        machine.invite_member(_Scripted(device="A"))
+        member = machine._active_members()[0]
+        machine.grant(_Scripted(device="A", member=member, folder=folder), "write")
+        machine.pull(_Scripted(device="A"), None)
+        machine.revoke(_Scripted(device="A", member=member), "after")
+        pending = pending_store.rekey_batch(machine.devices["A"].vault.db)
+        new_deks = set(pending["dek_map"].values())
+        assert new_deks, "no re-key pending\n" + machine._trace()
+        assert {o["id"] for o in machine.db._storage["vault_objects"]} & new_deks, (
+            "the batch did not reach the server\n" + machine._trace())
+        machine.server_lies_into_full_resync(_Scripted(device="A"), "check_token", False)
+        machine.full_resync(_Scripted(device="A"))
+        machine.rename_folder(_Scripted(device="A", folder=sub))
+        machine._settle(lambda _obj: "server")
+        assert not any("requeued': True" in line for line in machine.log), (
+            "a batch the server holds was undone here\n" + machine._trace())
+    finally:
+        machine.teardown()
+
+
 @pytest.mark.parametrize("where", ["root", "unknown parent"])
 def test_sync_state_machine_made_up_admin_writes_below_the_root(loopback_server, monkeypatch, where):
     """Capability run 196 (review a159e97 H2, 7c10379 H4): 'Eve', an account

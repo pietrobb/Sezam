@@ -29,7 +29,7 @@ from .dependencies import get_db, set_globals
 from .errors import ApiError
 from .models.schemas import MAX_REQUEST_BODY_BYTES
 from . import team_log as team_log_state
-from .routers import ai_policy, audit, auth, recovery, share, sync, team_log, users
+from .routers import ai_policy, audit, auth, recovery, share, sync, sync_held, team_log, users
 
 logger = logging.getLogger(__name__)
 
@@ -515,6 +515,7 @@ app.include_router(auth.router)
 app.include_router(auth.keypair_router)
 app.include_router(users.router)
 app.include_router(sync.router)
+app.include_router(sync_held.router)
 app.include_router(team_log.router)
 app.include_router(share.router)
 app.include_router(audit.router)

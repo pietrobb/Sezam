@@ -113,13 +113,12 @@ def abandon_pending_rekey(client: "SyncClient") -> dict:
     pending = pending_states.rekey_batch(db)
     if dek_mgr is None:
         raise RuntimeError("The vault must be unlocked to drop the re-key")
-    # Stateful test SM84: the batch landed with its reply lost and a pull
-    # brought one of its new keys back. Dropped, the re-key took the folders
-    # back under the old key here while the server and the other admin kept
-    # the new one, which this device deleted: the next envelope sealed to it
-    # broke the foreign key on every pull. The re-key is done; it is closed
-    # as sent (the member stays removed) instead.
-    if client.close_rekey_if_pulled_back():
+    # Stateful test SM84, capability run 437: the batch landed with its reply
+    # lost. Dropped, the re-key took the folders back under the old key here
+    # while the server and the other admin kept the new one, which this
+    # device deleted. The re-key is done; it is closed as sent (the member
+    # stays removed) instead. Only the server can say whether it landed.
+    if client.close_rekey_if_landed():
         held = pending.get("held_edits") or {}
         return {"member": pending.get("revoked_user_id"), "conflicts": len(held), "requeued": False}
     dek_map: dict[str, str] = dict(pending.get("dek_map") or {})
