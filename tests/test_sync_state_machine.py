@@ -4196,6 +4196,35 @@ def test_sync_state_machine_team_device_joins_while_the_pinned_log_is_lost(loopb
         machine.teardown()
 
 
+def test_sync_state_machine_team_rekey_superseded_by_another_device(loopback_server, monkeypatch):
+    """Review e443cbc R15, goal #429 (TeamLogMachine, randomized run): B
+    revoked a member and its re-key push failed (the batch stays pending);
+    A's next sync finished the queued revocation and re-keyed the folder in
+    the log first. B's push then built its batch's folder.key onto the old
+    key, the log refused it (folder_key_moved) before the server saw it, and
+    every sync failed naming 'sezam abandon-rekey'. The superseded batch is
+    dropped as for the server's batch conflict."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine._settle(lambda _obj: "server")
+        machine.track_member_keys()
+        folder = machine._folders("A")[0]
+        machine._grant("A", member, folder, "read")
+        assert machine.log[-1].startswith("A: grant "), machine._trace()
+        machine._settle(lambda _obj: "server")
+        machine.revoke(_Scripted(device="B", member=member), "before")
+        assert rekey_batch(machine.devices["B"].vault.db), machine._trace()
+        machine._push("A")
+        machine._pull("A")
+        machine._settle(lambda _obj: "server")
+        assert not rekey_batch(machine.devices["B"].vault.db), machine._trace()
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_team_founder_takes_over_a_rotation_made_without_the_log(
     loopback_server, monkeypatch,
 ):

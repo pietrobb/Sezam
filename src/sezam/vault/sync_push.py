@@ -618,6 +618,18 @@ class PushMixin:
             else:
                 resp = self._request("POST", "/api/sync", body, auth=True)
         except RuntimeError as exc:
+            if (
+                pending_rekey and not password_rewrap_pending
+                and getattr(exc.__cause__, "code", None) == "folder_key_moved"
+            ):
+                # Stateful test (review e443cbc R15, #429): another device of
+                # this account re-keyed the folder after this batch was made
+                # (it finished the revocation this device's push had not sent).
+                # The log refuses the batch's folder.key before the server sees
+                # it; as for the server's batch conflict, the pull and rebase
+                # drop the superseded batch (superseded_rekey). Raised as is,
+                # every sync failed and named 'sezam abandon-rekey'.
+                raise _RekeyBatchConflict() from exc
             if server_error(exc, 409, HISTORY_CHANGED) and blocked:
                 # Stateful test SM39: sent unchecked, its new audit records
                 # landed on parents the restore lost, and every other device's
