@@ -30,6 +30,8 @@ let state = {
     syncCheckpointLoaded: false,
     syncObjects: null,      // raw ciphertext objects keyed by id; null until a full snapshot exists
     teamLog: null,          // {records, team}: the replayed signed team log (TL5), null without one
+    teamLogRefusal: null,   // INV-7: the TEAM LOG MISMATCH the last pull refused the team with
+    teamLogDamaged: null,   // INV-7: local_damaged, the anchor held here does not open
     confirmedTeamGenesis: null, // external anchor, never inferred from the server checkpoint
     teamTrustReview: null,      // account/session/genesis displayed by the confirmation form
     // docs/SYNC_SINGLE_SOURCE.md point 3: what waits for the server, by id in
@@ -2446,6 +2448,8 @@ function resetSession() {
     state.syncObjects = null;
     state.heldBeforeRestore = null;
     state.teamLog = null;
+    state.teamLogRefusal = null;
+    state.teamLogDamaged = null;
     state.confirmedTeamGenesis = null;
     state.forgottenTeamGenesis = [];
     state.outbox = {};
@@ -2943,8 +2947,32 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
 
     // The log this pull brings decides which keys it retired (capability run
     // 294), as on the desktop: a fresh session holds no log of its own yet.
-    const teamLog = await syncWebTeamLog(
-        teamLogHead, state.teamLog || null, state.syncCheckpoint?.team_log || null, _sodium);
+    // INV-7: a log this browser refuses refuses the team, never the vault:
+    // the personal tree opens, no team key does, and the refusal names its
+    // way out. A damaged anchor is named first; the log is still fetched
+    // under the checkpoint's pin for the founder to be confirmed again.
+    let teamLog = null;
+    let teamLogRefusal = webLocalTeamLogRefusal();
+    if (!teamLogRefusal || teamLogRefusal.teamLogCause === 'local_damaged') {
+        try {
+            teamLog = await syncWebTeamLog(
+                teamLogHead, state.teamLog || null, state.syncCheckpoint?.team_log || null, _sodium);
+        } catch (err) {
+            if (!err.teamLogCause) throw err;
+            teamLogRefusal ||= err;
+        }
+    }
+    if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
+    if (teamLogRefusal && teamLogRefusal.message !== state.teamLogRefusal?.message) alert(teamLogRefusal.message);
+    if (state.teamLogRefusal && !teamLogRefusal && !isFullPull) {
+        // The refused pulls dropped the team keys and a delta pull does not
+        // resend their envelopes: once the team's log is served again, all is pulled.
+        state.teamLogRefusal = null;
+        state.syncObjects = null;
+        return pullAndBuildTreeLocked(session);
+    }
+    state.teamLogRefusal = teamLogRefusal;
+    const teamUsable = teamLogRefusal ? null : teamLog;
 
     // Verify every object before applying any of the response; abort on any invalid object
     const verifiedObjects = [];
@@ -3064,7 +3092,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     // DEKs our own KEK opens: only these can be the root DEK we write with.
     const kekDekIds = new Set(isFullPull ? [] : (state.kekDekIds || []));
     const TL = globalThis.SezamTeamLog;
-    const trustedTeam = teamLog && webTeamLogTrusted(_sodium, teamLog);
+    const trustedTeam = teamUsable && webTeamLogTrusted(_sodium, teamUsable);
     const refusedTeamKeys = new Set(Object.keys(teamLog?.team.dekIndex || {}).filter(id =>
         !trustedTeam || !TL.mayHoldKey(teamLog.team, state.userId, id)));
     for (const id of refusedTeamKeys) {
@@ -3127,7 +3155,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     // Step 1b: folder DEKs shared with this user arrive as authenticated
     // crypto_box envelopes from the (already signature-verified) envelope signer:
     // the folder tree's owner or this account only (review 7c10379 H3, #345).
-    for (const envelope of keyEnvelopesForUser(
+    for (const envelope of teamLogRefusal ? [] : keyEnvelopesForUser(
         Object.values(candidateSyncObjects).filter(obj => obj.object_type === 'envelope' && !obj.is_deleted),
         candidateSyncObjects, state.userId, teamLog, _sodium)) {
         if (candidateDeks[envelope.parent_ref]) continue;
@@ -3220,8 +3248,8 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         }
     }
     const blockedWrites = unauthorizedWrites(
-        candidateSyncObjects, state.userId, teamLog?.team || null, state.syncObjects,
-        teamLog?.team ? webLogAdmins(teamLog) : null);
+        candidateSyncObjects, state.userId, teamUsable?.team || null, state.syncObjects,
+        teamUsable?.team ? webLogAdmins(teamUsable) : null);
     for (const id of blockedWrites) {
         delete candidateEntries[id];
         delete candidateNodes[id];
@@ -3232,11 +3260,32 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
             if (state.nodes?.[id]) candidateNodes[id] = state.nodes[id];
         }
     }
+    // INV-7: while the log is refused only this account's personal tree opens
+    // (its objects signed by this account, below a personal root), and only
+    // the keys sealing it; every other key counts as a team key.
+    const personalKeys = new Set();
+    if (teamLogRefusal) {
+        for (const [objects, kind] of [[candidateEntries, 'entry'], [candidateNodes, 'node']]) {
+            for (const [id, obj] of Object.entries(objects)) {
+                if (obj.dekId && webInPersonalTree(candidateNodes, candidateSyncObjects, kind === 'node' ? id : obj.parent_ref) &&
+                        candidateSyncObjects[id]?.signer === state.userId) {
+                    personalKeys.add(obj.dekId);
+                }
+            }
+        }
+        for (const id of Object.keys(candidateDeks)) {
+            if (!personalKeys.has(id)) refusedTeamKeys.add(id);
+        }
+        for (const id of refusedTeamKeys) {
+            delete candidateDeks[id];
+            kekDekIds.delete(id);
+        }
+    }
     // A log-only delta can withdraw a key without sending the old ciphertext again.
     // Do not retain plaintext from the preceding authorized view in that case.
     for (const [objects, kind] of [[candidateEntries, 'entry'], [candidateNodes, 'node']]) {
         for (const [id, obj] of Object.entries(objects)) {
-            if (!refusedTeamKeys.has(obj.dekId)) continue;
+            if (!refusedTeamKeys.has(obj.dekId) && !(teamLogRefusal && !personalKeys.has(obj.dekId))) continue;
             objects[id] = { id, parent_ref: obj.parent_ref, version: obj.version,
                 dekId: obj.dekId, _undecryptable: true,
                 name: kind === 'entry' ? t('tree.encrypted_entry') : '(osobne — zasifrovane)' };
@@ -3256,14 +3305,16 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         live_state_hash: liveStateHash,
         commit_token: syncPosition === responseSeq && typeof data.max_token === 'string'
             ? data.max_token : null,
-        team_log: teamLogPin(teamLog?.team),
+        // A refused log keeps the pin it is held to, in this session only:
+        // nothing a refused pull saw becomes this browser's checkpoint.
+        team_log: teamLogRefusal ? state.syncCheckpoint?.team_log || null : teamLogPin(teamLog?.team),
         timestamp: Date.now(),
     };
     if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
     await saveWebDirtyState(
         reconciledDirtyState.outbox, reconciledDirtyState.conflicts, _sodium
     );
-    await saveSyncCheckpoint(nextCheckpoint, _sodium);
+    if (!teamLogRefusal) await saveSyncCheckpoint(nextCheckpoint, _sodium);
     if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
     for (const id of refusedTeamKeys) {
         if (state.deks[id]) _sodium.memzero(state.deks[id]);
@@ -3289,7 +3340,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     for (const [id, base] of Object.entries(state.acceptedBases)) {
         if (Number(candidateSyncObjects[id]?.version) >= base.version) delete state.acceptedBases[id];
     }
-    state.teamLog = teamLog;
+    state.teamLog = teamLogRefusal?.teamLogCause === 'local_damaged' ? teamLog : teamUsable;
     state.syncCheckpoint = nextCheckpoint;
     state.keyEpoch = responseKeyEpoch;
     if (responseKeyHash) state.keyMaterialHash = responseKeyHash;
@@ -3373,11 +3424,21 @@ async function loadWebLocalStateLocked(session, _sodium) {
         if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
     };
     if (!state.syncCheckpointLoaded) {
-        const confirmedGenesis = await loadConfirmedTeamGenesis(_sodium);
-        const forgottenGenesis = await loadForgottenTeamGenesis(_sodium);
+        // INV-7: an anchor this browser cannot open refuses the team
+        // (local_damaged), never the sign-in; confirming the founder again
+        // replaces it (saveConfirmedTeamGenesis).
+        let confirmedGenesis = null, forgottenGenesis = [], damaged = null;
+        try {
+            confirmedGenesis = await loadConfirmedTeamGenesis(_sodium);
+            forgottenGenesis = await loadForgottenTeamGenesis(_sodium);
+        } catch (err) {
+            damaged = teamLogMismatch(`anchor held in this browser cannot be read (${err.message}); ` +
+                'confirming the team\'s founder again (Team trust) replaces it', 'local_damaged');
+        }
         ended();
         state.confirmedTeamGenesis = confirmedGenesis;
         state.forgottenTeamGenesis = forgottenGenesis;
+        state.teamLogDamaged = damaged;
         state.syncCheckpoint = await loadSyncCheckpoint(_sodium);
         state.syncCheckpointLoaded = true;
     }
@@ -3679,6 +3740,7 @@ async function renderAdminUserList(users) {
 async function handleInviteUser() {
     try {
         const _sodium = await ensureSodium();
+        if (state.teamLogRefusal) throw state.teamLogRefusal;
         if ((state.teamLog || state.confirmedTeamGenesis) && !webTeamLogTrusted(_sodium)) {
             throw teamLogRefusedError('the founder is not confirmed on this device');
         }
@@ -5409,20 +5471,35 @@ async function retryAllWebDirtyObjects() {
     // Review d150605 S2: an object queued over the 1 MiB limit (by an older
     // version) stopped this loop, so nothing after it went out. It stays
     // queued and is named; the banner can drop it.
+    // INV-7: a refusal is what the last pull saw; the push decides from the
+    // log the server serves now (as the desktop's push reads it again), so a
+    // log put back sends what waited for it.
+    if (state.teamLogRefusal) await pullAndBuildTree();
     const pending = webPushOrder(Object.values(state.outbox));
     const oversized = oversizedQueuedObjects();
     const waiting = [];
+    const waitingForLog = [];
     for (const object of pending) {
         if (!oversized.includes(object)) {
             const resealed = await resealUnderFolderSuccessor(object);
-            if (resealed) await pushEncryptedVaultObject(resealed);
-            else waiting.push(object.id);  // stays queued until the new key arrives
+            if (!resealed) {
+                waiting.push(object.id);  // stays queued until the new key arrives
+                continue;
+            }
+            try {
+                await pushEncryptedVaultObject(resealed);
+            } catch (err) {
+                // A team write waits for the log; the personal ones still go out.
+                if (!state.teamLogRefusal || err !== state.teamLogRefusal) throw err;
+                waitingForLog.push(object.id);
+            }
         }
     }
     await pullAndBuildTree();
     if (waiting.length) {
         problems.push(t('sync.queued_waits_for_key', { count: waiting.length, ids: waiting.join(', ') }));
     }
+    if (waitingForLog.length) problems.push(state.teamLogRefusal?.message || waitingForLog.join(', '));
     if (oversized.length) {
         problems.push(t('sync.queued_too_large', {
             count: oversized.length, ids: oversized.map(object => object.id).join(', '),
@@ -7442,7 +7519,9 @@ async function saveConfirmedTeamGenesis(genesis, _sodium) {
     }
     const userId = state.userId;
     const session = state.sessionSerial;
-    const prior = await loadConfirmedTeamGenesis(_sodium);
+    // INV-7: an anchor that does not open (local_damaged) is replaced by this confirmation.
+    const damaged = !!state.teamLogDamaged;
+    const prior = damaged ? null : await loadConfirmedTeamGenesis(_sodium);
     if (userId !== state.userId || session !== state.sessionSerial) throw new Error('The anchor session has ended');
     const observed = state.teamLog?.team.genesisHash || state.syncCheckpoint?.team_log?.genesis_hash;
     if ((prior && prior !== genesis) || (observed && observed !== genesis)) {
@@ -7461,9 +7540,10 @@ async function saveConfirmedTeamGenesis(genesis, _sodium) {
     }));
     if (userId !== state.userId || session !== state.sessionSerial) throw new Error('The anchor session has ended');
     state.confirmedTeamGenesis = genesis;
-    const forgotten = await loadForgottenTeamGenesis(_sodium);
-    if (forgotten.includes(genesis)) await saveForgottenTeamGenesis(forgotten.filter(g => g !== genesis), _sodium);
+    const forgotten = damaged ? await loadForgottenTeamGenesis(_sodium).catch(() => []) : await loadForgottenTeamGenesis(_sodium);
+    if (damaged || forgotten.includes(genesis)) await saveForgottenTeamGenesis(forgotten.filter(g => g !== genesis), _sodium);
     state.forgottenTeamGenesis = forgotten.filter(g => g !== genesis);
+    state.teamLogDamaged = null;
 }
 
 // Review c78fd19 (medium): a browser pinned to a team log the server lost for
@@ -7513,10 +7593,20 @@ async function saveForgottenTeamGenesis(list, _sodium) {
 async function importAccountTeamAnchor(_sodium) {
     const genesis = state.keypair?.confirmedGenesis;
     if (!genesis) return;
-    if ((await loadForgottenTeamGenesis(_sodium)).includes(genesis)) {
+    let forgotten, prior;
+    try {
+        forgotten = await loadForgottenTeamGenesis(_sodium);
+        prior = await loadConfirmedTeamGenesis(_sodium);
+    } catch {
+        return;  // INV-7: an anchor that does not open is refused where the team is used (local_damaged)
+    }
+    if (forgotten.includes(genesis)) {
         state.keypair.confirmedGenesis = null;
         return;
     }
+    // INV-7: keys naming another log than this browser pins are refused where
+    // the team is used (anchor_conflict, webLocalTeamLogRefusal), never the sign-in.
+    if ((prior && prior !== genesis) || webLocalTeamLogRefusal()) return;
     await saveConfirmedTeamGenesis(genesis, _sodium);
 }
 
@@ -7530,6 +7620,8 @@ function webPinnedTeamGenesis() {
 /** Why this browser refuses the server's team log now (the TEAM LOG MISMATCH
  * error), or null: it follows it. Call with the sync lock held. */
 async function webTeamLogRefusal(_sodium) {
+    const held = webLocalTeamLogRefusal();
+    if (held) return held;
     const local = state.teamLog || null;
     const resp = await apiFetch(`/api/team-log?since=${local ? local.team.headSeq : -1}`);
     try {
@@ -7548,8 +7640,12 @@ async function forgetWebTeamLogPinLocked(typed, session, _sodium, discardUnsent 
     await loadWebLocalStateLocked(session, _sodium);
     const pins = webPinnedTeamGenesis();
     if (!pins.length) throw new Error(t('team.forget_none'));
-    typed = (typed || '').trim().toLowerCase();
-    if (typed.length < FORGET_PIN_MIN_CHARS || !pins.every(pin => pin.startsWith(typed))) {
+    // INV-7: conflicting pins (anchor_conflict: the account keys name another
+    // log than this browser pins) are left together, each one typed.
+    const parts = (typed || '').replace(/,/g, ' ').toLowerCase().split(/\s+/).filter(Boolean);
+    if (!parts.length || parts.some(part => part.length < FORGET_PIN_MIN_CHARS) ||
+            !pins.every(pin => parts.some(part => pin.startsWith(part))) ||
+            !parts.every(part => pins.some(pin => pin.startsWith(part)))) {
         throw new Error(t('team.forget_typed', { pins: pins.join(', ') }));
     }
     // INV-8: only a log this browser refuses as lost now (the pull's own
@@ -7697,7 +7793,8 @@ async function openTeamTrustModal() {
     try {
         const _sodium = await ensureSodium();
         if (review !== state.teamTrustReview || !state.kek || !userId || session !== state.sessionSerial || userId !== state.userId) return;
-        if (!state.teamLog?.records.length) throw new Error(t('team.no_log'));
+        // INV-7: a refused log is named here with its way out.
+        if (!state.teamLog?.records.length) throw state.teamLogRefusal || new Error(t('team.no_log'));
         const team = globalThis.SezamTeamLog.replay(state.teamLog.records, _sodium);
         const { founderId, known } = webFounderLineage(state.teamLog);
         const fingerprints = known.map(([s, e]) => bytesToHex(_sodium.crypto_hash_sha256(
@@ -7705,6 +7802,7 @@ async function openTeamTrustModal() {
         review.genesis = team.genesisHash;
         document.getElementById('team-trust-details').textContent =
             `${founderId}\nGenesis: ${team.genesisHash}\n${fingerprints.join('\n')}`;
+        if (state.teamLogRefusal) throw state.teamLogRefusal;
     } catch (err) {
         if (session !== state.sessionSerial || userId !== state.userId) return;
         error.textContent = err.message;
@@ -7786,8 +7884,8 @@ function teamLogPin(team) {
 // log going back or one that does not replay is a lying server, never
 // forgotten. The same list as MISMATCH_CAUSES in team_log_local.py and the
 // phone's teamLogMismatchForget (tests/vectors/team_log_mismatch.json).
-/** Throws TEAM LOG MISMATCH for `cause`; err.teamLogLost (the sign-in screen's
- * and Team trust's offer to forget) follows from the cause alone. */
+/** The TEAM LOG MISMATCH error for `cause`; err.teamLogLost (the sign-in
+ * screen's and Team trust's offer to forget) follows from the cause alone. */
 function teamLogMismatch(detail, cause) {
     const TEAM_LOG_MISMATCH_FORGET = Object.freeze({
         confirmed_genesis: true, log_gone: true, other_genesis: true,
@@ -7806,7 +7904,39 @@ function teamLogMismatch(detail, cause) {
         : ''));
     err.teamLogCause = cause;
     err.teamLogLost = lost;
-    throw err;
+    return err;
+}
+
+/**
+ * INV-7: why this browser refuses the team log before asking the server: the
+ * anchor it holds does not open (local_damaged; confirming the founder again
+ * replaces it), or the account keys name another genesis than it pins
+ * (anchor_conflict; the pins are forgotten together). Never a failed sign-in.
+ */
+function webLocalTeamLogRefusal() {
+    if (state.teamLogDamaged) return state.teamLogDamaged;
+    const anchor = state.keypair?.confirmedGenesis;
+    if (anchor && !(state.forgottenTeamGenesis || []).includes(anchor) &&
+            [state.confirmedTeamGenesis, state.syncCheckpoint?.team_log?.genesis_hash, state.teamLog?.team.genesisHash]
+                .some(genesis => genesis && genesis !== anchor)) {
+        return teamLogMismatch(
+            'names another genesis than the account keys (another server, or a log left elsewhere)', 'anchor_conflict');
+    }
+    return null;
+}
+
+/** INV-7: folder `id` is this account's personal root or lies below one, each
+ * folder on the way opened and signed by this account. */
+function webInPersonalTree(nodes, syncObjects, id) {
+    const seen = new Set();
+    while (id && !seen.has(id)) {
+        seen.add(id);
+        const node = nodes[id];
+        if (!node || node._undecryptable || syncObjects[id]?.signer !== state.userId) return false;
+        if (node.personal) return true;
+        id = node.parent_ref;
+    }
+    return false;
 }
 
 /**
@@ -7818,7 +7948,7 @@ function teamLogMismatch(detail, cause) {
  */
 async function syncWebTeamLog(head, local, pin, _sodium) {
     const TL = globalThis.SezamTeamLog;
-    const fail = (detail, cause) => teamLogMismatch(detail, cause);
+    const fail = (detail, cause) => { throw teamLogMismatch(detail, cause); };
     const localSeq = local ? local.team.headSeq : -1;
     const confirmed = state.confirmedTeamGenesis;
     if (local && (!head || head.seq < localSeq)) {
@@ -7907,8 +8037,8 @@ async function restoreWebTeamLog(head, local, pin, _sodium) {
  * in the sync checkpoint alone never confirms a founder; fingerprint
  * confirmation and cross-device account transport remain separate work.
  */
-function webTeamLogTrusted(_sodium, teamLog = state.teamLog) {
-    if (!teamLog?.records?.length) return false;
+function webTeamLogTrusted(_sodium, teamLog = state.teamLog, refusal = state.teamLogRefusal) {
+    if (refusal || !teamLog?.records?.length) return false;
     if (state.confirmedTeamGenesis) return teamLog.team.genesisHash === state.confirmedTeamGenesis;
     if (!state.keypair?.signingPk || !state.keypair?.encryptionSk) return false;
     const { founderId, known } = webFounderLineage(teamLog);
@@ -8014,6 +8144,21 @@ function teamLogRefusedError(reason) {
  * Refused here, it is not queued at all: the server would refuse it for good.
  */
 function assertTeamLogAllowsWrite(vaultObj) {
+    const refused = state.teamLogRefusal;
+    if (refused) {
+        // INV-7: a refused log refuses the team, never a write in the personal
+        // tree (from and to), sealed with a key it holds: while refused this
+        // browser holds no team key. A personal folder's own key goes too.
+        const objects = state.syncObjects || {};
+        const held = objects[vaultObj.id] && !objects[vaultObj.id].is_deleted ? objects[vaultObj.id] : null;
+        const personal = parent => parent ? webInPersonalTree(state.nodes || {}, objects, parent)
+            : vaultObj.object_type === 'node' && !!(state.nodes?.[vaultObj.id]?.personal ?? !held);
+        if (vaultObj.object_type === 'dek' && !vaultObj.parent_ref && !held) return;
+        const dekId = vaultObj.is_deleted ? held && sealingDekId(held) : payloadDekId(vaultObj);
+        if (['node', 'entry'].includes(vaultObj.object_type) && dekId && state.deks[dekId] &&
+                personal(vaultObj.parent_ref) && (!held || personal(held.parent_ref))) return;
+        throw refused;
+    }
     const team = state.teamLog?.team || null;
     if (state.confirmedTeamGenesis && team?.genesisHash !== state.confirmedTeamGenesis) {
         throw teamLogRefusedError('the externally confirmed team log is not downloaded');
@@ -8813,6 +8958,10 @@ function trashedNode(nodeId) {
 }
 
 function resolveInheritedPersonalDekId(parentRef) {
+    // INV-7: outside the personal tree a refused log names itself and its way out.
+    if (state.teamLogRefusal && parentRef && !webInPersonalTree(state.nodes || {}, state.syncObjects || {}, parentRef)) {
+        throw state.teamLogRefusal;
+    }
     const visited = new Set();
     let nodeId = parentRef;
 

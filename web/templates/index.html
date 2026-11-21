@@ -48,7 +48,7 @@
                             <p data-i18n="team.forget_login_help">Prihlásenie zlyhalo na tímovom denníku, ktorý server stratil alebo založil nanovo. Len ak to potvrdí váš admin: napíšte pripnutý genesis a prihláste sa znova heslom.</p>
                             <div class="input-group">
                                 <label for="login-team-forget-genesis" data-i18n="team.forget_genesis">Pripnutý genesis (aspoň prvých 16 znakov)</label>
-                                <input type="text" id="login-team-forget-genesis" autocomplete="off" spellcheck="false" maxlength="64">
+                                <input type="text" id="login-team-forget-genesis" autocomplete="off" spellcheck="false" maxlength="200">
                             </div>
                         </details>
                         <button type="submit" id="login-btn"><span data-i18n="login.submit">Prihlásiť a odomknúť</span></button>
@@ -319,7 +319,7 @@
                         <form id="team-forget-form" autocomplete="off">
                             <div class="modal-input-group">
                                 <label for="team-forget-genesis" data-i18n="team.forget_genesis">Pripnutý genesis (aspoň prvých 16 znakov)</label>
-                                <input id="team-forget-genesis" type="text" autocomplete="off" spellcheck="false" maxlength="64" required>
+                                <input id="team-forget-genesis" type="text" autocomplete="off" spellcheck="false" maxlength="200" required>
                             </div>
                             <div class="modal-buttons">
                                 <button id="team-forget-submit" type="submit" class="modal-btn danger" data-i18n="team.forget_button">Zabudnúť</button>

@@ -970,10 +970,11 @@ class SyncService {
 
   Future<PushResult> _push() async {
     _ensureAuthenticated();
-    if (_vault.userId != null) {
-      // INV-7: a log refused at unlock names its cause and way out here too.
-      final refused = _vault.teamLogRefusal;
-      if (refused != null) throw refused;
+    // INV-7: a log refused at unlock holds back the team's rows only, each
+    // reported with the refusal (its cause and way out); the personal tree's go.
+    final refused = _vault.userId == null ? null : _vault.teamLogRefusal;
+    final sendable = refused == null ? null : await _vault.sendableWhileRefused();
+    if (_vault.userId != null && refused == null) {
       requireConfirmedGenesis(await readConfirmedTeamGenesis(_vault.userId!), _vault.teamLog?.team.genesisHash);
     }
 
@@ -994,8 +995,12 @@ class SyncService {
     // whole push, so none of the phone's other changes went out.
     final held = {for (final row in await _db.getAllObjects()) row['id'] as String: row};
     for (final row in dirtyRows) {
+      if (sendable != null && !sendable(row)) {
+        errors.add("${row['id']}: $refused");
+        continue;
+      }
       try {
-        await _vault.assertTrustedTeamWrites([row], heldRows: held);
+        if (sendable == null) await _vault.assertTrustedTeamWrites([row], heldRows: held);
       } on TeamLogRefused catch (e) {
         errors.add("${row['id']}: $e");
         continue;
@@ -2388,7 +2393,14 @@ class SyncService {
   /// bring the log. Review c78fd19 #4: [kek] is the KEK the unlock about to
   /// run derived; without one the checkpoint is not read and the unlock decides.
   Future<void> prepareInitialTeamLog(String userId, {Uint8List? kek}) => _exclusive(() async {
-    final genesis = await readConfirmedTeamGenesis(userId);
+    final String? genesis;
+    try {
+      genesis = await readConfirmedTeamGenesis(userId);
+    } on TeamLogMismatch {
+      // Capability run 412: a pin that cannot be read holds nothing to fetch
+      // under; the unlock opens and refuses the team (local_damaged).
+      return;
+    }
     if (_vault.teamLog != null) return;
     Map<String, dynamic>? pin;
     if (await _db.getSyncState(_checkpointKey(userId)) != null) {
@@ -2432,12 +2444,21 @@ class SyncService {
     final userId = _vault.userId;
     if (userId == null || _vault.currentKek == null) throw StateError('Vault must be unlocked');
     final pin = (await _loadSyncCheckpoint())?['team_log'] as Map<String, dynamic>?;
-    final forgotten = await readForgottenTeamGenesis(userId);
+    // Unreadable trust records are no pin to type (run 412); an unreadable
+    // list of left hashes hides nothing.
+    Future<T?> readable<T>(Future<T> Function(String) read) async {
+      try {
+        return await read(userId);
+      } on TeamLogMismatch {
+        return null;
+      }
+    }
+    final forgotten = await readable(readForgottenTeamGenesis) ?? const <String>[];
     final anchor = await _storedKeypairAnchor(userId);
     return ({
       if (anchor != null && !forgotten.contains(anchor)) anchor,
-      ?await readAccountTeamGenesis(userId),
-      ?await readConfirmedTeamGenesis(userId),
+      ?await readable(readAccountTeamGenesis),
+      ?await readable(readConfirmedTeamGenesis),
       ?_vault.teamLog?.team.genesisHash,
       ?pin?['genesis_hash'] as String?,
     }.toList()..sort());

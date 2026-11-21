@@ -23,7 +23,8 @@ from ..models import ulid_to_bytes
 from . import outbox, pending_states
 from .sync_rekey import ROTATION_SEALED_META
 from .team_log_local import (
-    ACCOUNT_ANCHOR_META, CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, queued_changes, set_aside_changes,
+    ACCOUNT_ANCHOR_META, CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, readable_forgotten_genesis,
+    queued_changes, set_aside_changes,
 )
 
 if TYPE_CHECKING:
@@ -92,7 +93,8 @@ def forget_team_log_pin(vault: Vault, typed: str, client: SyncClient) -> set[str
             "DELETE FROM vault_meta WHERE key IN (?, ?, ?, ?)",
             (GENESIS_META, CONFIRMED_GENESIS_META, ACCOUNT_ANCHOR_META, ROTATION_SEALED_META),
         )
-        db.set_meta_json(FORGOTTEN_GENESIS_META, sorted(set(db.get_meta_json(FORGOTTEN_GENESIS_META) or []) | pins))
+        # An unreadable list is replaced (INV-7, capability run 411).
+        db.set_meta_json(FORGOTTEN_GENESIS_META, sorted(set(readable_forgotten_genesis(db) or []) | pins))
         if keypair.confirmed_genesis is not None:
             # The local keys stop carrying the anchor (unlock would pin it again).
             anchor, pre_anchor = keypair.confirmed_genesis, keypair.pre_anchor

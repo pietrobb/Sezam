@@ -3,7 +3,8 @@ a team log the phone refuses never keeps the vault locked, and each cause has
 a way out that runs on the unlocked vault. A damaged cached copy is fetched
 again by the next sync (held to its pins) and the personal change made
 meanwhile goes out; account keys naming another log are left together with
-the phone's own pin. Before, both stopped the unlock ("Wrong password" offline
+the phone's own pin, and the personal change made before that goes out too
+(before, the push refused it with the team's). Before, both stopped the unlock ("Wrong password" offline
 for the account keys) and the phone had no way out but wiping the app.
 """
 from __future__ import annotations
@@ -30,5 +31,5 @@ def test_a_phone_refusing_its_team_log_unlocks_and_finds_the_way_out(team, serve
 
     out = _phone(url, tmp_path, {
         "username": "admin", "user_id": admin_id, "password": PASSWORD, "genesis": genesis,
-    }, {"pushed": pushed}, "test/inv7_phone_way_out_test.dart")
+    }, {"pushed": pushed, "pushed_while_conflict": pushed}, "test/inv7_phone_way_out_test.dart")
     assert "All tests passed!" in out, out

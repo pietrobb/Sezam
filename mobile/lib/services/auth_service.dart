@@ -541,11 +541,16 @@ class AuthService {
             kek,
             userObjectId,
             previousKek: continuityKek,
+            fromServer: recoveredUserObjectId != null,
           );
         } else {
           // Legacy format: nonce(24) + ciphertext (no AAD)
           throw ArgumentError('Legacy format not supported on mobile');
         }
+      } on TeamLogMismatch {
+        // A named refusal (run 411), never "Wrong password".
+        _crypto.zeroize(derived);
+        rethrow;
       } catch (e) {
         _crypto.zeroize(derived);
         return AuthResult.failure('Wrong password or corrupted keypair');
@@ -654,9 +659,13 @@ class AuthService {
         if (userId != userObjectId) throw const FormatException('Authentication identity mismatch');
         try {
           await _sync.prepareInitialTeamLog(userId, kek: kek);
-        } on TeamLogMismatch {
-          // INV-7: a log this phone refuses never keeps the vault locked; the
-          // unlock opens the personal tree and the team is refused with a way out.
+        } catch (_) {
+          // INV-7: a log this phone refuses, or cannot fetch (the server
+          // down altogether opens offline too), never keeps the vault it
+          // already holds locked; the team is refused with a way out. Keys just
+          // taken from the server, or an enrollment still pending, are not that
+          // vault: a refused log must not adopt them or finish the enrollment.
+          if (recoveredUserObjectId != null || pendingRegistration != null) rethrow;
         }
       }
       // 6. Unlock vault
@@ -760,6 +769,9 @@ class AuthService {
           kek,
           userObjectId,
         );
+      } on TeamLogMismatch {
+        _crypto.zeroize(derived);
+        rethrow;
       } catch (e) {
         _crypto.zeroize(derived);
         return AuthResult.failure('Wrong password');
@@ -875,6 +887,8 @@ class AuthService {
           kek,
           userObjectId,
         );
+      } on TeamLogMismatch {
+        rethrow;
       } catch (e) {
         return AuthResult.failure(
           'Failed to decrypt keypair. Use password to unlock.',
@@ -1061,6 +1075,7 @@ class AuthService {
           userObjectId,
           expectedGenesis: genesis,
           previousKek: previousKek,
+          fromServer: true,
         );
       } on TeamLogMismatch {
         _crypto.zeroize(derived);
@@ -1735,6 +1750,7 @@ class AuthService {
           hexToBytes(encryptedKeypairHex),
           kek,
           userObjectId,
+          fromServer: true,
         );
       } catch (_) {
         return ConnectResult(
@@ -2581,8 +2597,13 @@ class AuthService {
     final previous = _crypto.openAccountKeypair(hexToBytes(encoded), previousKek, userId);
     try {
       final anchor = previous.confirmedGenesis;
-      if (anchor != null && anchor != genesis &&
-          !(await readForgottenTeamGenesis(userId)).contains(anchor)) {
+      // An unreadable list of left hashes leaves nothing (run 411): only keys
+      // that changed their anchor are refused, never local damage alone.
+      List<String> forgotten = const [];
+      try {
+        forgotten = await readForgottenTeamGenesis(userId);
+      } on TeamLogMismatch {}
+      if (anchor != null && anchor != genesis && !forgotten.contains(anchor)) {
         throw const FormatException('Account anchor changed or removed');
       }
     } finally {
@@ -2591,7 +2612,8 @@ class AuthService {
   }
 
   Future<Uint8List> _openAnchoredAccountKeypair(
-    Uint8List envelope, Uint8List kek, String userId, {Uint8List? previousKek, String? expectedGenesis}
+    Uint8List envelope, Uint8List kek, String userId,
+    {Uint8List? previousKek, String? expectedGenesis, bool fromServer = false}
   ) async {
     final account = _crypto.openAccountKeypair(envelope, kek, userId);
     try {
@@ -2601,11 +2623,20 @@ class AuthService {
       }
       final oldKek = previousKek ?? _vault.currentKek;
       if (oldKek != null) await _requireAccountAnchorContinuity(userId, genesis, oldKek);
-      // A QR names its genesis on purpose: one this phone pins otherwise is refused.
-      if (expectedGenesis != null && genesis != null) await importAccountTeamGenesis(userId, genesis);
-      // INV-7: account keys naming another log never fail the unlock (it read
-      // "Wrong password"); team operations refuse it as anchor_conflict.
-      await recordAccountTeamGenesis(userId, genesis);
+      if (fromServer || expectedGenesis != null) {
+        // Keys this phone is just taking from a server: one naming a genesis
+        // this phone pins otherwise is refused before anything is written.
+        if (genesis != null) await importAccountTeamGenesis(userId, genesis);
+      } else {
+        // INV-7: keys this phone already holds naming another log never fail
+        // the unlock (it read "Wrong password"); team operations refuse it
+        // as anchor_conflict. Capability run 411: nor does any trust record
+        // that cannot be read or written; the team is refused where it is
+        // used (local_damaged), only the decrypt above is a password error.
+        try {
+          await recordAccountTeamGenesis(userId, genesis);
+        } catch (_) {}
+      }
       return expandDesktopKeypair(
         account.keypairData,
         _crypto.signingPublicKeyFromSeed(Uint8List.sublistView(account.keypairData, 0, 32)),
@@ -2910,6 +2941,7 @@ class AuthService {
           newKek,
           recoveredUserId,
           previousKek: oldKek,
+          fromServer: true,
         );
       } catch (_) {
         return AuthResult.failure('Wrong password or corrupted keypair');

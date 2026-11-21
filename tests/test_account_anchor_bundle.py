@@ -229,7 +229,9 @@ def test_web_fresh_account_uses_bundle_before_team_pull(team, server, tmp_path, 
                 profile = tab.close()
                 continue
             if case == "foreign":
-                assert "TEAM LOG" in (result["error"] or ""), result
+                # INV-7: the refused log refuses the team, not the sign-in.
+                assert result["error"] is None and result["view"]["unlocked"], result
+                assert any(a.startswith("TEAM LOG MISMATCH") for a in result["alerts"]), result
             else:
                 assert result["error"] is None, result
             readable = any(e["password"] == "actual-shared-secret" for e in result["view"]["entries"])

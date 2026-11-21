@@ -457,9 +457,10 @@ def test_complete_web_login_uses_persisted_anchor_and_retries_after_server_lie(t
     tab = WebTab(url, tmp_path / "anchored-web.log", idb=profile)
     try:
         denied = tab.do("login", username="bob", password=PASSWORD)
-        assert "TEAM LOG MISMATCH" in (denied["error"] or ""), denied
-        assert not denied["view"]["unlocked"]
-        assert not denied["view"]["entries"]
+        # INV-7: the lie refuses the team, not the sign-in; no team item opens.
+        assert denied["error"] is None and denied["view"]["unlocked"], denied
+        assert any(a.startswith("TEAM LOG MISMATCH") for a in denied["alerts"]), denied
+        assert not any(e["password"] for e in denied["view"]["entries"]), denied
         profile = tab.close()
     finally:
         tab.kill()

@@ -67,6 +67,15 @@ String? provisioningGenesis(String fragment) {
   return (token: token, genesis: provisioningGenesis(uri.fragment));
 }
 
+// INV-7 (capability run 411): trust this phone keeps that cannot be read
+// refuses the team (local_damaged), never the unlock, and is no password
+// error; the founder confirmed again replaces it (confirmTeamFounder).
+TeamLogMismatch _unreadableTrust(String what, Object error) => TeamLogMismatch(
+      "anchor held on this phone cannot be read ($what: $error); confirming the team's founder "
+      'again (Settings → Team trust) replaces it',
+      'local_damaged',
+    );
+
 Future<String?> readConfirmedTeamGenesis(String userId) async {
   final raw = await _trustStorage.read(key: 'sezam_confirmed_team_genesis:$userId');
   if (raw == null) return null;
@@ -75,13 +84,21 @@ Future<String?> readConfirmedTeamGenesis(String userId) async {
     if (value['user_id'] != userId) throw const FormatException('another account');
     return _genesisHash(value['genesis_hash']);
   } catch (e) {
-    throw TeamLogMismatch('confirmed genesis cannot be read: $e');
+    throw _unreadableTrust('confirmed genesis', e);
   }
 }
 
-Future<void> confirmTeamGenesis(String userId, String genesis, {void Function()? beforeWrite}) async {
+/// [replaceUnreadable]: the founder confirmed again on purpose replaces a pin
+/// or a list of left genesis hashes that cannot be read.
+Future<void> confirmTeamGenesis(String userId, String genesis,
+    {void Function()? beforeWrite, bool replaceUnreadable = false}) async {
   _genesisHash(genesis);
-  final previous = await readConfirmedTeamGenesis(userId);
+  String? previous;
+  try {
+    previous = await readConfirmedTeamGenesis(userId);
+  } on TeamLogMismatch {
+    if (!replaceUnreadable) rethrow;
+  }
   if (previous != null && previous != genesis) {
     throw TeamLogMismatch('conflicts with the confirmed genesis');
   }
@@ -91,9 +108,22 @@ Future<void> confirmTeamGenesis(String userId, String genesis, {void Function()?
     value: jsonEncode({'user_id': userId, 'genesis_hash': genesis}),
   );
   // Confirmed again on purpose (invitation, QR, founder): no longer left.
-  final forgotten = await readForgottenTeamGenesis(userId);
-  if (forgotten.contains(genesis)) {
-    await _writeForgottenTeamGenesis(userId, forgotten.where((g) => g != genesis));
+  List<String>? forgotten;
+  try {
+    forgotten = await readForgottenTeamGenesis(userId);
+  } on TeamLogMismatch {
+    if (!replaceUnreadable) rethrow;
+  }
+  if (forgotten == null || forgotten.contains(genesis)) {
+    await _writeForgottenTeamGenesis(userId, (forgotten ?? const []).where((g) => g != genesis));
+  }
+  if (replaceUnreadable) {
+    try {
+      await readAccountTeamGenesis(userId);
+    } on TeamLogMismatch {
+      // Noted again from the account keys at the next unlock.
+      await _trustStorage.delete(key: _accountAnchorKey(userId));
+    }
   }
 }
 
@@ -108,7 +138,16 @@ Future<List<String>> readForgottenTeamGenesis(String userId) async {
     if (value['user_id'] != userId) throw const FormatException('another account');
     return [for (final g in value['genesis'] as List) _genesisHash(g)];
   } catch (e) {
-    throw TeamLogMismatch('forgotten genesis cannot be read: $e');
+    throw _unreadableTrust('genesis hashes this phone left', e);
+  }
+}
+
+/// [readForgottenTeamGenesis], or null while it cannot be read.
+Future<List<String>?> _readableForgottenTeamGenesis(String userId) async {
+  try {
+    return await readForgottenTeamGenesis(userId);
+  } on TeamLogMismatch {
+    return null;
   }
 }
 
@@ -124,13 +163,24 @@ Future<void> _writeForgottenTeamGenesis(String userId, Iterable<String> genesis)
 
 /// Leave [genesis]: remembered as left, the confirmed pin removed.
 Future<void> forgetConfirmedTeamGenesis(String userId, Iterable<String> genesis) async {
-  await _writeForgottenTeamGenesis(userId, [...await readForgottenTeamGenesis(userId), ...genesis]);
+  // An unreadable list is replaced, never in the way of leaving (run 411).
+  await _writeForgottenTeamGenesis(userId, [...?await _readableForgottenTeamGenesis(userId), ...genesis]);
   await _trustStorage.delete(key: 'sezam_confirmed_team_genesis:$userId');
 }
 
 /// The genesis an account bundle names, unless this phone left that log.
 Future<void> importAccountTeamGenesis(String userId, String genesis) async {
-  if ((await readForgottenTeamGenesis(userId)).contains(genesis)) return;
+  // Capability run 412: a pin or list that cannot be read pins nothing and
+  // never fails the unlock; the team is refused where it is used
+  // (local_damaged) until the founder is confirmed again. A readable pin of
+  // another log still refuses these keys before anything is written.
+  final forgotten = await _readableForgottenTeamGenesis(userId);
+  if (forgotten == null || forgotten.contains(genesis)) return;
+  try {
+    await readConfirmedTeamGenesis(userId);
+  } on TeamLogMismatch {
+    return;
+  }
   await confirmTeamGenesis(userId, genesis);
 }
 
@@ -143,9 +193,12 @@ String _accountAnchorKey(String userId) => 'sezam_account_team_anchor:$userId';
 /// and pin it unless this phone pins another. Never refuses: a conflict is
 /// refused where the team is used, as anchor_conflict (VaultService).
 Future<void> recordAccountTeamGenesis(String userId, String? genesis) async {
+  List<String>? forgotten = const [];
   if (genesis != null) {
     _genesisHash(genesis);
-    if ((await readForgottenTeamGenesis(userId)).contains(genesis)) genesis = null;
+    // Capability run 411: unguarded, an unreadable list read "Wrong password".
+    forgotten = await _readableForgottenTeamGenesis(userId);
+    if (forgotten != null && forgotten.contains(genesis)) genesis = null;
   }
   if (genesis == null) {
     await _trustStorage.delete(key: _accountAnchorKey(userId));
@@ -155,6 +208,8 @@ Future<void> recordAccountTeamGenesis(String userId, String? genesis) async {
     key: _accountAnchorKey(userId),
     value: jsonEncode({'user_id': userId, 'genesis_hash': genesis}),
   );
+  // An unreadable list may hold it: not pinned from the keys then (local_damaged).
+  if (forgotten == null) return;
   String? confirmed;
   try {
     confirmed = await readConfirmedTeamGenesis(userId);
@@ -168,9 +223,14 @@ Future<void> recordAccountTeamGenesis(String userId, String? genesis) async {
 Future<String?> readAccountTeamGenesis(String userId) async {
   final raw = await _trustStorage.read(key: _accountAnchorKey(userId));
   if (raw == null) return null;
-  final value = jsonDecode(raw) as Map<String, dynamic>;
-  if (value['user_id'] != userId) throw const FormatException('another account');
-  final genesis = _genesisHash(value['genesis_hash']);
+  final String genesis;
+  try {
+    final value = jsonDecode(raw) as Map<String, dynamic>;
+    if (value['user_id'] != userId) throw const FormatException('another account');
+    genesis = _genesisHash(value['genesis_hash']);
+  } catch (e) {
+    throw _unreadableTrust('account anchor', e);
+  }
   return (await readForgottenTeamGenesis(userId)).contains(genesis) ? null : genesis;
 }
 

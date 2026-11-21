@@ -160,6 +160,13 @@ const tabActions = {
     }
     return document.getElementById('team-trust-error');
   },
+  // Team trust's "Forget the pinned team log": the typed genesis, then the
+  // risk confirmation answered with step.confirm.
+  async forget_pin(step) {
+    document.getElementById('team-forget-genesis').value = step.typed;
+    await page('handleForgetTeamPin')({ preventDefault() {} });
+    return document.getElementById('team-trust-error');
+  },
   // The admin list's Revoke, confirmed: the member is revoked and their
   // folders re-keyed (confirmRevokeUser).
   async revoke(step) {

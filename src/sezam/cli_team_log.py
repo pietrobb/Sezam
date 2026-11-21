@@ -115,7 +115,8 @@ def team_log_confirm_genesis(anchor: str):
     import re
     from urllib.parse import parse_qs, urlsplit
     from .vault.team_log_local import (
-        CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, local_team_state,
+        CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, forgotten_genesis, local_team_state,
+        readable_forgotten_genesis,
     )
 
     if "://" in anchor:
@@ -127,6 +128,9 @@ def team_log_confirm_genesis(anchor: str):
     cli._unlock_vault_fresh(vault)
     try:
         with vault.db.transaction(immediate=True):
+            if readable_forgotten_genesis(vault.db) is None:
+                # INV-7 (capability run 411): the way out of an unreadable list.
+                vault.db.execute("DELETE FROM vault_meta WHERE key = ?", (FORGOTTEN_GENESIS_META,))
             state = local_team_state(vault.db)
             pins = [vault.db.get_meta(CONFIRMED_GENESIS_META), vault.db.get_meta(GENESIS_META),
                     state.genesis_hash if state is not None else None]
@@ -136,7 +140,7 @@ def team_log_confirm_genesis(anchor: str):
                     "(A team log lost for good: 'sezam team-log forget-pin' first.)"
                 )
             vault.db.set_meta(CONFIRMED_GENESIS_META, anchor)
-            forgotten = vault.db.get_meta_json(FORGOTTEN_GENESIS_META) or []
+            forgotten = forgotten_genesis(vault.db)
             if anchor in forgotten:
                 vault.db.set_meta_json(FORGOTTEN_GENESIS_META, [g for g in forgotten if g != anchor])
         click.echo("Genesis anchor confirmed on this device; the next pull must match it.")

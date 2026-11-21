@@ -11,6 +11,7 @@ import 'package:sezam_mobile/models/vault_models.dart';
 import 'package:sezam_mobile/services/crypto_service.dart';
 import 'package:sezam_mobile/services/database_service.dart';
 import 'package:sezam_mobile/services/sync_service.dart';
+import 'package:sezam_mobile/services/team_log.dart';
 import 'package:sezam_mobile/services/team_log_client.dart';
 import 'package:sezam_mobile/services/vault_service.dart';
 
@@ -110,7 +111,13 @@ void main() {
         await net.settle();
         await db.close();
         final offline = await auth.unlockOffline(password: cfg['password'] as String);
-        expect(offline.success, isFalse, reason: 'missing trusted log must still prevent unlock');
+        // INV-7: the trusted log still missing refuses the team, never this
+        // phone's own vault: it opens with no team log and the refusal named.
+        expect(offline.success, isTrue, reason: offline.error);
+        expect(vault.teamLog, isNull, reason: 'missing trusted log must not be trusted');
+        expect(vault.teamLogRefusal, isNotNull, reason: 'the missing log is named');
+        await auth.lock();
+        await net.settle();
         expect(vault.isUnlocked, isFalse);
         final saved = await storage.readAll();
         final requests = net.paths.length;
@@ -239,8 +246,16 @@ void main() {
           : auth.pollForApproval(username: 'invited-phone',
               password: cfg['password'] as String, serverUrl: server);
       if (locked) {
-        expect(await approvedLogin(), isFalse);
-        expect(vault.isUnlocked, isFalse);
+        // INV-7: a password unlock the server does not sign in (not approved
+        // yet) opens this phone's own vault as offline; it finishes nothing.
+        expect(await approvedLogin(), net.fault == 'login');
+        expect(vault.isUnlocked, net.fault == 'login');
+        if (net.fault == 'login') {
+          expect(vault.teamLog, isNull);
+          expect(await storage.read(key: 'sezam_pending_invitation_registration'), isNotNull);
+          await auth.lock();
+          await net.settle();
+        }
         expect(await db.getAllObjects(), beforeRegistration);
       }
       if (portable && !locked) {
@@ -282,8 +297,17 @@ void main() {
         }
         for (final path in ['/api/auth/verify', '/api/team-log']) {
           net.failPath = path;
-          expect(await approvedLogin(), isFalse, reason: path);
-          expect(vault.isUnlocked, isFalse);
+          // INV-7: no sign-in opens this phone's own vault as offline; a sign-in
+          // whose log cannot be fetched does not finish the enrollment. Neither
+          // finishes anything.
+          final signedOut = path == '/api/auth/verify';
+          expect(await approvedLogin(), signedOut, reason: path);
+          expect(vault.isUnlocked, signedOut);
+          if (signedOut) {
+            expect(vault.teamLog, isNull);
+            await auth.lock();
+            await net.settle();
+          }
           expect(await storage.read(key: 'sezam_pending_invitation_registration'), isNotNull);
           expect(await db.getAllObjects(), beforeRegistration);
         }
@@ -320,10 +344,34 @@ void main() {
         }
         await auth.lock();
         await db.close();
-        final offline = await auth.unlockOffline(password: cfg['password'] as String);
-        expect(offline.success, isFalse, reason: 'no log yet: offline must stay fail-closed');
-        expect(await db.getAllObjects(), before);
         final failure = net.fault.split('-').last;
+        // The background sync of the offline unlock meets the same server lie.
+        if (failure == 'network') {
+          net.failPath = '/api/team-log';
+        } else {
+          net.initialLie = failure;
+        }
+        final offline = await auth.unlockOffline(password: cfg['password'] as String);
+        // INV-7: no log yet refuses the team, never this phone's own vault.
+        expect(offline.success, isTrue, reason: offline.error);
+        expect(vault.teamLog, isNull, reason: 'no log yet must not be trusted');
+        expect(vault.teamLogRefusal, isNotNull, reason: 'the missing log is named');
+        await net.settle();
+        await auth.lock();
+        await net.settle();
+        if (failure != 'none') {
+          // Its pull follows only the log under the confirmed pin ('missing' and
+          // 'foreign' lie in the head of /api/team-log, which the pull does not
+          // read: it takes the honest log); records that lie store nothing.
+          final held = await db.getSetting(teamLogRecordsSetting);
+          if (held == null) {
+            expect(await db.getAllObjects(), before);
+          } else {
+            final records = [for (final r in jsonDecode(held) as List) Map<String, dynamic>.from(r as Map)];
+            expect(TeamLog.recordHash(records.first), genesis);
+          }
+          expect(await readConfirmedTeamGenesis(userId), genesis);
+        }
         Future<AuthResult> online() async {
           if (!viaQR) {
             return auth.unlockWithPassword(password: cfg['password'] as String,
@@ -339,13 +387,38 @@ void main() {
         } else {
           net.initialLie = failure;
         }
+        final heldBefore = await db.getSetting(teamLogRecordsSetting);
+        final objectsBefore = await db.getAllObjects();
+        final checkpointBefore = await db.getSyncState('sync_checkpoint:$userId');
         var opened = await online();
         if (failure != 'none') {
-          expect(opened.success, isFalse, reason: opened.error);
-          expect(vault.isUnlocked, isFalse);
-          expect(await db.getAllObjects(), before);
-          expect(await db.getSetting(teamLogRecordsSetting), isNull);
-          expect(await db.getSyncState('sync_checkpoint:$userId'), isNull);
+          if (viaQR && heldBefore != null) {
+            // The offline unlock's pull already holds the honest log under the
+            // pin; the lie in the head is never read and nothing of it adopted.
+            expect(opened.success, isTrue, reason: opened.error);
+            expect(vault.teamLog?.team.genesisHash, genesis);
+            final held = [for (final r in jsonDecode((await db.getSetting(teamLogRecordsSetting))!) as List)
+              Map<String, dynamic>.from(r as Map)];
+            expect(TeamLog.recordHash(held.first), genesis);
+            await net.settle();
+            await auth.lock();
+            await net.settle();
+          } else if (viaQR) {
+            // Keys taken from the server through a lying log: nothing adopted.
+            expect(opened.success, isFalse, reason: opened.error);
+            expect(vault.isUnlocked, isFalse);
+            expect(await db.getAllObjects(), objectsBefore);
+            expect(await db.getSetting(teamLogRecordsSetting), heldBefore);
+            expect(await db.getSyncState('sync_checkpoint:$userId'), checkpointBefore);
+          } else {
+            // INV-7: the vault this phone holds opens; the lie refuses the team.
+            expect(opened.success, isTrue, reason: opened.error);
+            expect(vault.isUnlocked, isTrue);
+            if (heldBefore == null) expect(vault.teamLog, isNull);
+            await net.settle();
+            await auth.lock();
+            await net.settle();
+          }
           expect(await readConfirmedTeamGenesis(userId), genesis);
           net.initialLie = 'none';
           opened = await online();

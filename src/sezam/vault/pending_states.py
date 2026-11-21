@@ -329,6 +329,8 @@ def refusal_way_out(refusal) -> str:
 
     if refusal.offers_forget:
         return LOST_LOG_HINT.strip()
+    if getattr(refusal, "way_out", None):
+        return refusal.way_out
     return ("'sezam pull' fetches the log again, held to the genesis and the head this "
             "device saw; a server that went back or forked is still refused.")
 

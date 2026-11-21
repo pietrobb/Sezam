@@ -31,7 +31,8 @@ from sezam.crypto import aead
 from sezam.models import ulid_to_bytes
 from sezam.vault.team_log_forget import forget_team_log_pin
 from sezam.vault.team_log_local import (
-    CONFIRMED_GENESIS_META, GENESIS_META, RISK_MARKER, TeamLogMismatch, TeamLogMixin, local_team_state,
+    CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, RISK_MARKER, TeamLogMismatch, TeamLogMixin,
+    forgotten_genesis, local_team_state,
 )
 from tests.team_log_mismatch_vectors import _head, _servers
 from tests.test_integration_client_server import PASSWORD, _vault
@@ -84,7 +85,7 @@ def _wrap_keys(vault, genesis: str) -> None:
     vault.db.set_meta("encrypted_keypair", wrapped.hex())
 
 
-def _device(tmp_path, state: str):
+def _device(tmp_path, state: str, forgotten: str | None = None):
     vault = _vault(tmp_path / "v", "owner")
     entry = vault.create_entry(vault.db.get_meta("root_node_id"), "private", [{"key": "password", "value": "keep-me"}])
     vault.create_personal_folder("mine")
@@ -103,8 +104,10 @@ def _device(tmp_path, state: str):
             vault.db.execute("UPDATE team_log SET sig = ? WHERE seq = 2", ("00" * 64,))
         elif state == "holds_damaged_hash":
             vault.db.execute("UPDATE team_log SET hash = ? WHERE seq = 2", ("00" * 32,))
-        else:
+        elif state == "anchor_names_other":
             _wrap_keys(vault, OTHER_GENESIS)
+        if forgotten is not None:
+            vault.db.set_meta(FORGOTTEN_GENESIS_META, forgotten)
     vault.lock()
     return vault, entry
 
@@ -284,6 +287,45 @@ def test_a_damaged_copy_is_fetched_again_under_its_pins(tmp_path, state, served)
     assert (refusal.cause if refusal else None) == holds, str(refusal)
     if holds is None:
         assert local_team_state(vault.db).head_hash == _head(SERVERS[served][0])["hash"]
+
+
+@pytest.mark.parametrize("value", ["{", "42", '"' + "a" * 64 + '"', '["zz"]', '{"a": 1}', "[1]"])
+def test_an_unreadable_list_of_left_logs_opens_and_names_its_way_out(tmp_path, value, monkeypatch):
+    """Capability run 411: record_account_anchor read the genesis hashes this
+    device left unguarded, so a damaged list failed every unlock with the
+    correct password (JSONDecodeError, TypeError), and a string matched any
+    genesis it contains. Now the team is refused (local_damaged) and
+    'sezam team-log confirm-genesis' replaces the list."""
+    from click.testing import CliRunner
+
+    from sezam import cli
+    from sezam.vault.pending_states import pending_states
+
+    vault, entry = _device(tmp_path, "intact", forgotten=value)
+    vault.unlock(PASSWORD)
+    assert vault.get_field_value(entry, "password") == "keep-me"
+    written = vault.create_entry(_mine(vault), "written", [{"key": "password", "value": "new"}])
+    assert vault.get_field_value(written, "password") == "new"
+    with pytest.raises(TeamLogMismatch) as local:
+        local_team_state(vault.db)
+    for refusal in (local.value, _Server(vault, "same").team_log_refusal()):
+        assert refusal is not None and refusal.cause == "local_damaged" and not refusal.offers_forget
+        assert "confirm-genesis" in str(refusal), str(refusal)
+    assert "confirm-genesis" in {s.key: s for s in pending_states(vault)}["team_log_refused"].resolve
+    vault.lock()
+    vault.unlock(PASSWORD)  # still refused, never locked
+    assert vault.get_field_value(entry, "password") == "keep-me"
+    assert vault.db.get_meta(FORGOTTEN_GENESIS_META) == value, "nothing replaced on its own"
+    vault.lock()
+
+    monkeypatch.setattr(cli, "_open_vault", lambda: vault)
+    monkeypatch.setattr(cli, "_unlock_vault_fresh", lambda v: v.unlock(PASSWORD))
+    result = CliRunner().invoke(cli.main, ["team-log", "confirm-genesis", TEAM_HEAD["genesis_hash"]])
+    assert result.exit_code == 0, result.output
+    vault.unlock(PASSWORD)
+    assert forgotten_genesis(vault.db) == []
+    assert local_team_state(vault.db).head_hash == TEAM_HEAD["hash"]
+    assert _Server(vault, "same").team_log_refusal() is None
 
 
 def test_conflicting_pins_are_left_together_and_the_vault_follows_the_team_again(tmp_path):

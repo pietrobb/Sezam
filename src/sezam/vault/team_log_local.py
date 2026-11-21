@@ -14,6 +14,7 @@ from the log (callers ask ``team_log_trusted``).
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from .. import teamlog
@@ -31,6 +32,7 @@ CONFIRMED_GENESIS_META = "team_log_confirmed_genesis_hash"
 ACCOUNT_ANCHOR_META = "team_log_account_anchor"
 # Genesis hashes the user left ('sezam team-log forget-pin', team_log_forget.py).
 FORGOTTEN_GENESIS_META = "team_log_forgotten_genesis"
+_GENESIS = re.compile(r"[0-9a-f]{64}")
 # Outbox rows (vault/outbox.py):
 # - team_change, queued: a team change made here that the server does not hold
 #   yet, body [type, data], in queue order. Rebuilt onto the current head at
@@ -164,6 +166,41 @@ def _refusal_from_server(exc: BaseException) -> Optional[dict]:
 
 
 LOCAL_DAMAGED_HINT = " The next pull fetches it again, held to the genesis and the head this device saw."
+FORGOTTEN_DAMAGED_WAY_OUT = (
+    "'sezam team-log confirm-genesis GENESIS' (the team's genesis from your admin, not from the "
+    "server) replaces it."
+)
+
+
+def forgotten_genesis(db) -> list[str]:
+    """The genesis hashes this device left (team_log_forget.py).
+
+    INV-7 (capability run 411): a list that cannot be read failed the unlock
+    (record_account_anchor). It is refused where the team is used
+    (local_damaged), and confirming the genesis again replaces it.
+    """
+    try:
+        value = db.get_meta_json(FORGOTTEN_GENESIS_META)
+    except ValueError as exc:
+        value = exc
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(g, str) and _GENESIS.fullmatch(g) for g in value):
+        refusal = TeamLogMismatch(
+            f"This device's list of team logs it left cannot be read ({value!r:.60}). {FORGOTTEN_DAMAGED_WAY_OUT}",
+            "local_damaged",
+        )
+        refusal.way_out = FORGOTTEN_DAMAGED_WAY_OUT
+        raise refusal
+    return value
+
+
+def readable_forgotten_genesis(db) -> Optional[list[str]]:
+    """forgotten_genesis, or None while it cannot be read."""
+    try:
+        return forgotten_genesis(db)
+    except TeamLogMismatch:
+        return None
 
 
 def local_team_state(db) -> Optional[teamlog.TeamState]:
@@ -172,6 +209,7 @@ def local_team_state(db) -> Optional[teamlog.TeamState]:
     The one place a team operation reads the log, so the one place it is
     refused (INV-7): a copy that conflicts with the account keys or is damaged.
     """
+    forgotten_genesis(db)
     anchor = db.get_meta(ACCOUNT_ANCHOR_META)
     if anchor is not None and _anchor_conflicts(db, anchor):
         raise TeamLogMismatch(
@@ -288,7 +326,8 @@ def record_account_anchor(db, keypair) -> None:
     this device holds or pins another (INV-7: then team operations are
     refused as anchor_conflict, the unlock never is)."""
     genesis = keypair.confirmed_genesis
-    if genesis is not None and genesis in (db.get_meta_json(FORGOTTEN_GENESIS_META) or []):
+    forgotten = readable_forgotten_genesis(db)
+    if genesis is not None and genesis in (forgotten or []):
         # The user left this log here; the server's bundle still names it.
         keypair.confirmed_genesis, keypair.pre_anchor = None, b""
         genesis = None
@@ -297,7 +336,8 @@ def record_account_anchor(db, keypair) -> None:
         db.execute("DELETE FROM vault_meta WHERE key = ?", (ACCOUNT_ANCHOR_META,))
         return
     db.set_meta(ACCOUNT_ANCHOR_META, genesis)
-    if not _anchor_conflicts(db, genesis):
+    # An unreadable list may hold this genesis: not pinned from the keys then.
+    if forgotten is not None and not _anchor_conflicts(db, genesis):
         db.set_meta(CONFIRMED_GENESIS_META, genesis)
 
 
@@ -305,7 +345,7 @@ def import_account_anchor(db, keypair) -> None:
     """Adopt an authenticated bundle anchor without replacing local continuity:
     account keys from the server naming another log are not taken."""
     genesis = keypair.confirmed_genesis
-    if (genesis is not None and genesis not in (db.get_meta_json(FORGOTTEN_GENESIS_META) or [])
+    if (genesis is not None and genesis not in (readable_forgotten_genesis(db) or [])
             and _anchor_conflicts(db, genesis)):
         raise TeamLogMismatch("The account anchor conflicts with this device's team log.", "anchor_conflict")
     record_account_anchor(db, keypair)
@@ -566,6 +606,7 @@ class TeamLogMixin:
         (``held``), at whose seq the server's record must be the one stored.
         """
         held = None
+        forgotten_genesis(self._db)  # unreadable: no fetch mends it (FORGOTTEN_DAMAGED_WAY_OUT)
         try:
             local = self.team_state()
         except TeamLogMismatch as exc:
@@ -591,7 +632,7 @@ class TeamLogMixin:
                     "The server no longer has the team log this device holds "
                     "(restored from a backup, or another server).", "log_gone"
                 )
-            if self._db.get_meta_json(FORGOTTEN_GENESIS_META) and not self._founding_team_log:
+            if forgotten_genesis(self._db) and not self._founding_team_log:
                 # Review 8bc70f7 M2: a device that left a log does not fall
                 # back to the rules from before any log because a server sends none.
                 raise TeamLogMismatch(

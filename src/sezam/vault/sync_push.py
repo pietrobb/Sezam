@@ -24,7 +24,7 @@ from .sync_limits import (
     require_fits_atomic_unit,
     split_for_push,
 )
-from .team_log_local import rekey_changes
+from .team_log_local import TeamLogMismatch, local_team_state, rekey_changes
 
 from .sync_common import (
     _AUDIT_PAYLOAD_FORMAT,
@@ -306,6 +306,10 @@ class PushMixin:
         return result
 
     def _push_once(self) -> dict:
+        try:
+            local_team_state(self._db)
+        except TeamLogMismatch as refusal:
+            return self._push_personal_while_refused(refusal)
         self.require_trusted_team_log()
         if not self._token:
             self.authenticate()
@@ -476,6 +480,46 @@ class PushMixin:
         if rekey_too_large:
             resp = {**resp, "rekey_too_large": rekey_too_large}
         return resp
+
+    def _push_personal_while_refused(self, refusal: TeamLogMismatch) -> dict:
+        """INV-7: a refused team log holds back only the team's changes. The
+        personal tree's go out; the rest stays queued and the refusal names its
+        way out. A re-key or key change is one unit with the team's keys and waits whole."""
+        if pending_states.rekey_batch(self._db) or self.has_pending_key_change():
+            raise refusal
+        if not self._token:
+            self.authenticate()
+        roots = set(personal_root_ids(self._db, self._dek_mgr))
+        key_nodes = {row["id"]: row["node_id"] for row in self._db.fetchall("SELECT id, node_id FROM deks")}
+
+        def personal(obj: dict) -> bool:
+            if obj["object_type"] == "node":
+                return in_personal_tree(self._db, obj["id"], roots)
+            if obj["object_type"] == "entry":
+                return in_personal_tree(self._db, obj["parent_ref"], roots)
+            if obj["object_type"] == "dek":
+                return bool(key_nodes.get(obj["id"])) and in_personal_tree(self._db, key_nodes[obj["id"]], roots)
+            return False
+
+        collected = self._collect_dirty_objects()
+        objects = [obj for obj in collected if personal(obj)]
+        too_large = {obj["id"] for obj in objects if payload_too_large(_payload_len(obj))}
+        resp = {"accepted": [], "conflicts": [
+            {"id": obj_id, "error": "exceeds the server's 1 MiB limit per object"} for obj_id in too_large
+        ]}
+        key_epoch = int(self._db.get_meta("key_epoch") or "0")
+        for chunk in split_for_push([obj for obj in objects if obj["id"] not in too_large]):
+            part = self._send_push(chunk, False, key_epoch, {}, False, set())
+            resp = {**part, "accepted": resp["accepted"] + list(part.get("accepted", [])),
+                    "conflicts": resp["conflicts"] + list(part.get("conflicts", []))}
+        waiting = len(collected) - len(objects)
+        if waiting:
+            # Callers must learn the team's changes did not go (a grant reads "no error" as sent).
+            refusal.args = (f"{len(resp['accepted'])} personal change(s) went out; {waiting} wait "
+                            f"for the team log. {refusal}",)
+            refusal.pushed = resp
+            raise refusal
+        return {**resp, "team_log_refused": str(refusal)}
 
     def _send_with_team_records(self, body: dict, team_extra: list) -> dict:
         from .. import teamlog

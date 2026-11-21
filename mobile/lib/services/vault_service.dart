@@ -760,9 +760,21 @@ class VaultService {
   /// Corruption must not downgrade the vault to the pre-log permission rules.
   /// INV-7: a refusal names its cause; unlock and reload keep it in
   /// [teamLogRefusal] and open the personal tree only, never lock on it.
-  Future<LocalTeamLog?> _loadTeamLog() async {
+  /// [replacingUnreadableTrust]: the founder review, whose confirmation
+  /// replaces trust records that cannot be read (capability run 411), reads
+  /// them as absent; the copy is still held to the pins of the checkpoint.
+  Future<LocalTeamLog?> _loadTeamLog({bool replacingUnreadableTrust = false}) async {
+    Future<String?> trust(Future<String?> Function(String) read) async {
+      try {
+        return await read(_userId!);
+      } on TeamLogMismatch {
+        if (!replacingUnreadableTrust) rethrow;
+        return null;
+      }
+    }
+
     try {
-      final confirmed = await readConfirmedTeamGenesis(_userId!);
+      final confirmed = await trust(readConfirmedTeamGenesis);
       final raw = await _db.getSetting(teamLogRecordsSetting);
       final saved = await _db.getSyncState('sync_checkpoint:$_userId');
       final checkpoint = saved == null
@@ -773,7 +785,10 @@ class VaultService {
         if (checkpoint?['team_log'] != null)
           checkpoint!['team_log'] as Map<String, dynamic>,
       ];
-      final anchor = await readAccountTeamGenesis(_userId!);
+      // Unreadable, it may hold any pin above: the team is refused
+      // (local_damaged) even with no account anchor noted (run 412).
+      await trust((userId) async => (await readForgottenTeamGenesis(userId)).firstOrNull);
+      final anchor = await trust(readAccountTeamGenesis);
       if (anchor != null &&
           [confirmed, for (final pin in pins) pin['genesis_hash'], _heldGenesis(raw)]
               .any((genesis) => genesis != null && genesis != anchor)) {
@@ -852,6 +867,23 @@ class VaultService {
     return ids;
   }
 
+  /// INV-7: which queued rows go out while the log is refused: the personal
+  /// tree's (the write gate checked from and to when they were written) and
+  /// keys of its own. The team's wait, named with the refusal.
+  Future<bool Function(Map<String, dynamic>)> sendableWhileRefused() async {
+    final teamKeys = await _teamKeyIds();
+    return (row) {
+      final id = row['id'] as String;
+      final parent = row['parent_ref'] as String?;
+      return switch (row['object_type']) {
+        'dek' => parent == null && !teamKeys.contains(id),
+        'node' => parent == null ? _nodes[id]?.personal == true : _inPersonalTree(parent),
+        'entry' => _inPersonalTree(parent),
+        _ => false,
+      };
+    };
+  }
+
   /// [nodeId] is a personal folder or lies below one.
   bool _inPersonalTree(String? nodeId) {
     final seen = <String>{};
@@ -869,7 +901,7 @@ class VaultService {
     _ensureUnlocked();
     final userId = _userId!;
     final generation = _lockGeneration;
-    final local = await _loadTeamLog();
+    final local = await _loadTeamLog(replacingUnreadableTrust: true);
     if (!isUnlocked || _userId != userId || _lockGeneration != generation) {
       throw const VaultLockedMeanwhile();
     }
@@ -900,7 +932,7 @@ class VaultService {
         'requires an independent 64-character founder fingerprint',
       );
     }
-    final local = await _loadTeamLog();
+    final local = await _loadTeamLog(replacingUnreadableTrust: true);
     checkSession();
     if (local == null || local.team.genesisHash != review.genesis) {
       throw TeamLogMismatch('changed since the founder review');
@@ -921,6 +953,7 @@ class VaultService {
       review.userId,
       review.genesis,
       beforeWrite: checkSession,
+      replaceUnreadable: true,
     );
     checkSession();
     // Reopen already held ciphertext without resetting the checkpoint or queue.
