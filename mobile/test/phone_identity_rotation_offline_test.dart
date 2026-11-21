@@ -197,57 +197,62 @@ void main() {
               : await auth.adoptPasswordChangedElsewhere(
                   currentPassword: password,
                 );
-          expect(
-            r.success,
-            isFalse,
-            reason: 'replacement removed or changed the account anchor',
-          );
-          expect(await storage.readAll(), beforeSecure);
-          expect(await DatabaseService().getAllObjects(), beforeObjects);
-          if (cfg['locked'] != true) {
-            expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
-          } else {
-            final db = await DatabaseService().database;
-            final deks = await db.query(
-              'vault_objects',
-              where: 'object_type = ?',
-              whereArgs: ['dek'],
-            );
-            expect(deks, isNotEmpty);
-            await db.delete(
-              'vault_objects',
-              where: 'object_type = ?',
-              whereArgs: ['dek'],
-            );
-            final withoutDeks = await DatabaseService().getAllObjects();
-            try {
-              r = await auth.unlockWithPassword(
-                password: currentPassword,
-                previousPassword: password,
-                username: cfg['username'] as String,
-                serverUrl: serverUrl,
+          if (cfg['locked'] == true) {
+            // INV-7 (capability run 416): the server's keys after a password
+            // change elsewhere opening the vault this phone holds never keep it
+            // locked, whatever genesis they name (before: refused, locked).
+            // The pin never moves; a changed anchor refuses the team, and
+            // forgetting the pins on the open vault is the way out.
+            expect(r.success, isTrue, reason: r.error);
+            await net.settle();
+            expect(vault.isUnlocked, isTrue);
+            // The refused team's folder is not shown until the way out.
+            expect(passwords(vault), cfg['conflict'] == true
+                ? isEmpty : {'db01': 's3cret', 'offline': 'o1'});
+            final uid = vault.userId!;
+            expect(await readConfirmedTeamGenesis(uid), cfg['genesis']);
+            if (cfg['conflict'] == true) {
+              expect(vault.teamLogRefusal?.cause, 'anchor_conflict');
+              final genesis = cfg['genesis'] as String;
+              final typed = '${genesis.substring(0, 16)} ${'cd' * 8}';
+              // Asked before the unsent edit the left log no longer takes goes.
+              await expectLater(
+                sync.forgetTeamLogPin(typed),
+                throwsA(isA<UnsentChangesBlockForget>()),
               );
-              expect(
-                r.success,
-                isFalse,
-                reason: 'anchor continuity must not depend on DEKs',
-              );
-              expect(await storage.readAll(), beforeSecure);
-              expect(await DatabaseService().getAllObjects(), withoutDeks);
-            } finally {
-              for (final dek in deks) {
-                await db.insert('vault_objects', dek);
-              }
+              await sync.forgetTeamLogPin(typed, discardUnsent: true);
+              // The way out exported the unsent edit; the full resync it
+              // requires puts the server's copy back in its place.
+              await sync.fullResync(confirmed: true);
             }
+            expect(vault.teamLogRefusal, isNull);
+            await auth.lock();
+            r = await auth.unlockOffline(password: currentPassword);
+            expect(r.success, isTrue, reason: r.error);
+            await net.settle();
+            expect(passwords(vault), {
+              'db01': 's3cret',
+              if (cfg['conflict'] != true) 'offline': 'o1',
+            });
+            await handshake(dir, 'restore_bundle');
+          } else {
+            expect(
+              r.success,
+              isFalse,
+              reason: 'replacement removed or changed the account anchor',
+            );
+            expect(await storage.readAll(), beforeSecure);
+            expect(await DatabaseService().getAllObjects(), beforeObjects);
+            expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
+            await auth.lock();
+            r = await auth.unlockOffline(password: password);
+            expect(r.success, isTrue, reason: r.error);
+            expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
+            // The test server's rollback restores its whole storage: a refused
+            // background sync still in flight would undo the restored bundle.
+            await net.settle();
+            await handshake(dir, 'restore_bundle');
           }
-          await auth.lock();
-          r = await auth.unlockOffline(password: password);
-          expect(r.success, isTrue, reason: r.error);
-          expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
-          // The test server's rollback restores its whole storage: a refused
-          // background sync still in flight would undo the restored bundle.
-          await net.settle();
-          await handshake(dir, 'restore_bundle');
         }
         if (cfg['authfail'] == true) {
           await net.settle();
@@ -310,9 +315,16 @@ void main() {
         expect(result.push.errors, isEmpty);
         expect(result.push.conflicts, 0);
         expect(await sync.getDirtyObjectCount(), 0);
-        expect(passwords(vault), {'db01': 's3cret', 'offline': 'o1'});
-        if (cfg['genesis'] != null) {
+        expect(passwords(vault), {
+          'db01': 's3cret',
+          if (cfg['conflict'] != true) 'offline': 'o1',
+        });
+        if (cfg['genesis'] != null && cfg['conflict'] != true) {
           expect(await readConfirmedTeamGenesis(vault.userId!), cfg['genesis']);
+        }
+        // The locked phone took the swapped bundle's key material over (it
+        // syncs only on the server's key_material_hash); the pin decided.
+        if (cfg['genesis'] != null && !(cfg['locked'] == true && cfg['refuse'] == true)) {
           final encoded = await const FlutterSecureStorage().read(
             key: 'sezam_encrypted_keypair',
           );

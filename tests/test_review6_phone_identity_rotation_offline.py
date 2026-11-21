@@ -88,7 +88,8 @@ def test_offline_edit_syncs_after_the_phone_takes_over_an_identity_rotation(serv
                           "crash": with_team_log == "portable-crash", "locked": locked,
                           "current_password": current_password, "recover": recover, "reconnect": reconnect, "qr": qr,
                           "authfail": with_team_log == "portable-authfail", "autolock": with_team_log == "portable-autolock",
-                          "refuse": with_team_log in ("portable-downgrade", "portable-conflict")},
+                          "refuse": with_team_log in ("portable-downgrade", "portable-conflict"),
+                          "conflict": locked and with_team_log == "portable-conflict"},
            {"rotated": rotated, **({"qr_token": qr_token} if qr else {}), **({"restore_bundle": restore_bundle}
              if with_team_log in ("portable-downgrade", "portable-conflict") else {})}, PHONE_TEST)
 
@@ -98,6 +99,9 @@ def test_offline_edit_syncs_after_the_phone_takes_over_an_identity_rotation(serv
         e["name"]: tablet.get_field_value(e["id"], "password")
         for n in tablet.list_nodes() for e in tablet.list_entries(n["id"])
     }
-    assert passwords == {"db01": "s3cret", "offline": "o1"}
+    # A locked phone handed a bundle naming another genesis opens (INV-7) and
+    # leaves that log the way out does: its unsent edit exported, not pushed.
+    left = locked and with_team_log == "portable-conflict"
+    assert passwords == {"db01": "s3cret", **({} if left else {"offline": "o1"})}
     tablet.lock()
     laptop.lock()

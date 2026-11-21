@@ -243,7 +243,7 @@ def test_web_fresh_account_uses_bundle_before_team_pull(team, server, tmp_path, 
 
 @requires_node
 @pytest.mark.parametrize("replacement", ["legacy", "foreign"])
-def test_web_anchored_cache_refuses_server_downgrade(team, server, tmp_path, replacement):  # noqa: F811
+def test_web_server_downgrade_signs_in_and_keeps_the_pin(team, server, tmp_path, replacement):  # noqa: F811
     from tests.test_integration_client_server import PASSWORD
     from tests.web_tab import WebTab
 
@@ -268,13 +268,16 @@ def test_web_anchored_cache_refuses_server_downgrade(team, server, tmp_path, rep
     tab = WebTab(url, tmp_path / "changed-cache.log", idb=profile)
     try:
         result = tab.do("login", username="bob", password=PASSWORD)
-        assert "TEAM LOG" in (result["error"] or ""), result
-        assert not result["view"]["unlocked"], result
+        # INV-7 (capability run 416): the server copy naming another or no
+        # genesis never fails the sign-in; the pin it never moves decides.
+        assert result["error"] is None and result["view"]["unlocked"], result
+        mismatch = any(a.startswith("TEAM LOG MISMATCH") for a in result["alerts"])
+        assert mismatch == (replacement == "foreign"), result
         after = tab.close()
         before_keys = {r["id"]: r for r in profile["keys"]}
         after_keys = {r["id"]: r for r in after["keys"]}
-        for key in ("keypair", f"confirmed_team_genesis:{user['id']}"):
-            assert after_keys[key] == before_keys[key]
+        pin = f"confirmed_team_genesis:{user['id']}"
+        assert after_keys[pin] == before_keys[pin]
     finally:
         tab.kill()
     user["encrypted_keypair"] = honest
