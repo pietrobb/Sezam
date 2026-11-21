@@ -1,4 +1,4 @@
-"""Sync client — delta push/pull with the server.
+"""Sync client â€” delta push/pull with the server.
 
 Spec 8.2: Server-assigned commit_seq, idempotent retry,
 rollback protection (sync checkpoint + state_hash).
@@ -73,7 +73,7 @@ from .sync_rekey import RekeyMixin
 from .sync_resync import ResyncMixin
 from .sync_state import SyncStateMixin
 from .sync_writers import WritersMixin
-from .team_log_local import TeamLogMixin
+from .team_log_local import TeamLogMixin, keep_identity_continuation
 
 # Re-exported: callers import these from sync_client.
 __all__ = [
@@ -147,7 +147,7 @@ class SyncClient(
             self._dek_mgr._wrapping_kek_id()
         self._db.require_generation()
 
-    # ── Authentication ──
+    # â”€â”€ Authentication â”€â”€
 
     def authenticate(self) -> str:
         """Perform challenge-response auth, get JWT.
@@ -486,7 +486,7 @@ class SyncClient(
             auth=True,
         )
 
-    # ── Push ──
+    # â”€â”€ Push â”€â”€
 
     @oplock.held
     def adopt_rotated_key_material(self, vault: "Vault", account_password: str) -> int:
@@ -568,6 +568,15 @@ class SyncClient(
             # Org recovery replaced the account keypair; it opened under the
             # account KEK, so it is the account's own.
             former_sk = bytearray(local.to_nacl_private_key().encode())
+            if self._named_by_team_log(local):
+                # R15 (goal #429): the log names the keys held here, not the
+                # new ones; they link them (continue_identity_in_log).
+                former_private = local.serialize_private()
+                try:
+                    keep_identity_continuation(self._db, self._dek_mgr._kek, self._user_id, bytes(former_private))
+                finally:
+                    if isinstance(former_private, bytearray):
+                        former_private[:] = b"\x00" * len(former_private)
             vault.rebind_server_identity(resp["user_id"], server_keypair)
             self._keypair = vault.keypair
             # Stateful test SM11: the ring loaded before held only the old
@@ -1249,7 +1258,7 @@ class SyncClient(
             return bytes(existing["signing_pk"])
         return None
 
-    # ── HTTP helpers ──
+    # â”€â”€ HTTP helpers â”€â”€
 
     def _request(
         self,

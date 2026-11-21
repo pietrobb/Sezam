@@ -2861,7 +2861,15 @@ class TeamLogMachine(SyncMachine):
         vault.db.set_meta_json(CONFIRMED_MEMBER_KEYS_META, confirmed)
 
     def _invite_member(self, device: str) -> None:
-        super()._invite_member(device)
+        from sezam.vault.team_log_local import TeamLogMismatch
+
+        try:
+            super()._invite_member(device)
+        except TeamLogMismatch as exc:
+            # INV-7: no invitation onto a log this device refuses (a pinned
+            # log the server lost); a device holding it puts it back.
+            self.log.append(f"{device}: invite refused, {exc.cause}")
+            return
         self._confirm_founder(next(reversed(self.members)))
 
     # ── The log itself under attack (capability run 430) ─────────────
@@ -3142,6 +3150,10 @@ class TeamLogMachine(SyncMachine):
             if obj["object_type"] != "envelope" or obj.get("is_deleted") or target not in self.members:
                 continue
             if obj.get("owner_id") == target or target not in state.members or teamlog.is_admin(state, target):
+                continue
+            if not state.members[target].active:
+                # member.remove lands before the re-key (revoke_member); the
+                # key it held is retired by that re-key, not by this envelope.
                 continue
             folder, gen = state.dek_index.get(obj.get("parent_ref"), (None, None))
             if folder is None or gen != len(state.folders[folder]) - 1:
@@ -3935,6 +3947,66 @@ def test_sync_state_machine_team_log_pinned_by_the_account_keys(loopback_server,
             machine._take_over_account_keys("B", abandon=False)
             machine._invite_member("B")
         machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_device_joins_while_the_pinned_log_is_lost(loopback_server, monkeypatch):
+    """Review e443cbc R15, goal #429 (TeamLogMachine, randomized run): A's
+    identity rotation published the log's anchor with the account keys, then
+    the server lost the log. A new desktop C connects: its connect pull is
+    refused (the pinned log is not there) and C pushed its own pristine root;
+    the pull after it kept that second root, shown as a folder 'Root' no
+    device wrote. Nothing goes out before the first pull took the tree."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        machine.rotate_identity(_Scripted(device="A"), None)
+        machine._push("A")
+        machine.operator_loses_the_log()
+        machine._add_device("C")
+        machine._settle(lambda _obj: "server")
+        def roots(device):
+            return sorted(tuple(r) for r in machine.devices[device].vault.db.fetchall(
+                "SELECT id, is_deleted FROM nodes WHERE parent_id IS NULL"))
+
+        assert roots("C") == roots("A"), (roots("C"), roots("A"), machine._trace())
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_founder_takes_over_a_rotation_made_without_the_log(
+    loopback_server, monkeypatch,
+):
+    """Review e443cbc R15, goal #429 (TeamLogMachine, randomized run): the
+    server lost the log; the admin's second desktop B, which never held it,
+    rotates the account's identity, so no member.keys links the new keys to
+    the founder's. A, which holds the log, takes the keys over: its log names
+    keys the account no longer has, and every pull and push stopped with
+    'founder is not confirmed'. A held both keys at the take-over; it proves
+    the link (member.keys) once the log is back."""
+    from sezam.vault.team_log_local import local_team_state
+
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        machine.operator_loses_the_log()
+        machine.rotate_identity(_Scripted(device="B"), None)
+        machine._push("B")
+        machine._push("A")
+        member = machine._active_members()[0]
+        machine._settle(lambda _obj: "server")
+        machine.track_member_keys()
+        machine._grant("A", member, machine._folders("A")[0], "read")
+        assert machine.log[-1].startswith("A: grant "), machine._trace()
+        machine._settle(lambda _obj: "server")
+        vault = machine.devices["A"].vault
+        state = local_team_state(vault.db)
+        admin = vault.db.get_meta("user_id")
+        assert state.members[admin].signing_pk == vault.keypair.signing_pk.hex(), machine._trace()
+        assert machine._server_log(), machine._trace()
     finally:
         machine.teardown()
 

@@ -48,6 +48,13 @@ _GENESIS = re.compile(r"[0-9a-f]{64}")
 # This admin's org recovery blob in the server format (web-openable), with its
 # key: what anchor_org_recovery puts in the log as org.recovery.wrap.
 SERVER_WRAP_META = "org_recovery_server_wrap"
+# The identity keypair the local log names for this account, kept when this
+# device took over account keys another device rotated without the log (no
+# member.keys links them: that device never held it, the server had lost it).
+# Sealed under the KEK; it anchors the log here and signs that member.keys
+# (continue_identity_in_log), then it is dropped.
+IDENTITY_CONTINUATION_META = "team_log_identity_continuation"
+_CONTINUATION_AAD = b"sezam/team-log-identity-continuation/v1/"
 FETCH_PAGES = 1000  # pages of up to 1000 records per pull
 TEAM_LOG_APPEND_MAX = 1000  # records per append the server takes (TeamLogAppend, PushRequest.team_log)
 
@@ -387,6 +394,49 @@ def record_account_anchor(db, keypair) -> None:
         db.set_meta(CONFIRMED_GENESIS_META, genesis)
 
 
+def keep_identity_continuation(db, kek: bytes, user_id: str, old_private: bytes) -> None:
+    from .key_rotation import _seal
+
+    db.set_meta(IDENTITY_CONTINUATION_META, _seal(kek, _CONTINUATION_AAD + user_id.encode(), old_private))
+
+
+def identity_continuation(db, kek: Optional[bytes], user_id: str):
+    """The kept keypair the log names for this account, or None."""
+    from nacl.exceptions import CryptoError
+
+    from ..crypto.keys import KeyPair
+    from .key_rotation import _open
+
+    sealed = db.get_meta(IDENTITY_CONTINUATION_META)
+    if sealed is None or kek is None:
+        return None
+    try:
+        private = _open(kek, _CONTINUATION_AAD + user_id.encode(), sealed)
+    except CryptoError:
+        return None  # sealed under a KEK a later password change replaced
+    try:
+        return KeyPair.from_private_only(bytes(private))
+    finally:
+        private[:] = b"\x00" * len(private)
+
+
+def drop_identity_continuation(db) -> None:
+    db.execute("DELETE FROM vault_meta WHERE key = ?", (IDENTITY_CONTINUATION_META,))
+
+
+def member_keys_record(state: teamlog.TeamState, user_id: str, old, new) -> dict:
+    """member.keys moving ``user_id`` from ``old`` to ``new``: signed by the
+    key the log names, with the new key's signature over the head."""
+    spk, epk = new.signing_pk.hex(), new.encryption_pk.hex()
+    data = {
+        "user_id": user_id, "signing_pk": spk, "encryption_pk": epk,
+        "new_key_sig": new.to_nacl_signing_key().sign(
+            teamlog.new_key_message(state.head_hash, user_id, spk, epk)
+        ).signature.hex(),
+    }
+    return teamlog.sign_record(teamlog.next_body(state, "member.keys", user_id, data), old.to_nacl_signing_key())
+
+
 def import_account_anchor(db, keypair) -> None:
     """Adopt an authenticated bundle anchor without replacing local continuity:
     account keys from the server naming another log are not taken."""
@@ -610,12 +660,69 @@ class TeamLogMixin:
         state = state or self.team_state()
         if log_trusted(self._db, self._user_id, self._keypair, state):
             return True
-        # A pending identity rotation still anchors the log with its old key.
-        old = self._pending_old_keypair()
+        # A pending identity rotation still anchors the log with its old key,
+        # as does the kept one of a rotation taken over without the log.
+        for old in (self._pending_old_keypair(), self._continuation_old_keypair()):
+            if old is None:
+                continue
+            try:
+                if log_trusted(self._db, self._user_id, old, state):
+                    return True
+            finally:
+                old.zeroize()
+        return False
+
+    def _continuation_old_keypair(self):
+        dek_mgr = getattr(self, "_dek_mgr", None)
+        return identity_continuation(self._db, dek_mgr._kek if dek_mgr is not None else None, self._user_id)
+
+    def continue_identity_in_log(self) -> None:
+        """Link the account's current keys to the ones the log names.
+
+        Review e443cbc R15 (goal #429): the server lost the log, and a device
+        of this account that never held it rotated the identity: no
+        member.keys. This device took the new keys over holding the old ones
+        (IDENTITY_CONTINUATION_META) and signs that member.keys now, as the
+        rotating device would have. Until then every pull and push stopped
+        with 'founder is not confirmed'.
+        """
+        from .sync_common import TEAM_LOG_HEAD_MOVED, server_error
+
+        for attempt in range(2):
+            record = self._identity_link(self.team_state())
+            if record is None:
+                return
+            if not self._token:
+                self.authenticate()
+            try:
+                self._request("POST", "/api/team-log", {"records": [record]}, auth=True)
+            except RuntimeError as exc:
+                if attempt == 0 and server_error(exc, 409, TEAM_LOG_HEAD_MOVED):
+                    self._refresh_team_log()  # puts back what the server lost, with the link
+                    continue
+                raise
+            self.accept_own_team_log([record])
+            drop_identity_continuation(self._db)
+            return
+
+    def _identity_link(self, state: Optional[teamlog.TeamState]) -> Optional[dict]:
+        """member.keys from the kept keys onto ``state``, or None (dropped once moot)."""
+        if self._db.get_meta(IDENTITY_CONTINUATION_META) is None:
+            return None
+        old = self._continuation_old_keypair()
         if old is None:
-            return False
+            drop_identity_continuation(self._db)
+            return None
         try:
-            return log_trusted(self._db, self._user_id, old, state)
+            member = state.members.get(self._user_id) if state is not None else None
+            if (
+                member is None or not member.active
+                or member.signing_pk != old.signing_pk.hex()
+                or teamlog.signing_key_retired(state, self._user_id, old.signing_pk.hex())
+            ):
+                drop_identity_continuation(self._db)  # linked, or no longer this key's to link
+                return None
+            return member_keys_record(state, self._user_id, old, self._keypair)
         finally:
             old.zeroize()
 
@@ -777,8 +884,13 @@ class TeamLogMixin:
             (server_seq, local.head_seq),
         )
         head = server_head
+        # The server takes back no log naming keys this account does not sign
+        # in with: the link to the ones taken over goes with it (R15, #429).
+        link = self._identity_link(local)
         for start in range(0, len(rows), TEAM_LOG_APPEND_MAX):
             part = [{"body": r["body"], "sig": r["sig"]} for r in rows[start:start + TEAM_LOG_APPEND_MAX]]
+            if link is not None and start + TEAM_LOG_APPEND_MAX >= len(rows):
+                part.append(link)
             try:
                 head = self._request("POST", "/api/team-log/restore", {"records": part}, auth=True).get("head")
             except RuntimeError as exc:
@@ -788,6 +900,9 @@ class TeamLogMixin:
                 logger.log(level, "The server did not take back the team log records it lost: %s", exc)
                 return False
             logger.warning("Put back team log records the server had lost (now at %s)", (head or {}).get("seq"))
+        if link is not None:
+            self.accept_own_team_log([link])
+            drop_identity_continuation(self._db)
         if rows:
             # Review c78fd19 #2: the admin's own device puts back its lost
             # rotation; its session proved the key the log named before, which
@@ -836,8 +951,9 @@ class TeamLogMixin:
         """
         member = state.members.get(self._user_id)
         if member is not None and member.signing_pk != self._keypair.signing_pk.hex():
-            old = self._pending_old_keypair()
-            if old is not None:
+            for old in (self._pending_old_keypair(), self._continuation_old_keypair()):
+                if old is None:
+                    continue
                 try:
                     if old.signing_pk.hex() == member.signing_pk:
                         return old.to_nacl_signing_key()
@@ -875,16 +991,7 @@ class TeamLogMixin:
             old.zeroize()
             return records
         try:
-            data = {
-                "user_id": self._user_id, "signing_pk": spk, "encryption_pk": epk,
-                "new_key_sig": self._keypair.to_nacl_signing_key().sign(
-                    teamlog.new_key_message(state.head_hash, self._user_id, spk, epk)
-                ).signature.hex(),
-            }
-            record = teamlog.sign_record(
-                teamlog.next_body(state, "member.keys", self._user_id, data),
-                old.to_nacl_signing_key(),
-            )
+            record = member_keys_record(state, self._user_id, old, self._keypair)
             teamlog.apply_record(state, record)
             records.append(record)
             return records

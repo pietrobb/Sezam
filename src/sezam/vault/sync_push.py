@@ -78,6 +78,13 @@ class PushMixin:
         request; a refused one is a conflict of its envelope.
         """
         self._require_current_kek()
+        if self._db.get_meta("last_known_commit_seq") is None:
+            # Review e443cbc R15 (goal #429): a device joining an account whose
+            # connect pull was refused (a pinned log the server had lost) pushed
+            # its own pristine root; the pull after it kept that second root and
+            # showed the account's root as a folder. Nothing goes out before the
+            # first pull took the account's tree.
+            self.pull()
         resp = self._push_checked()
         refused = self._push_team_grants()
         if refused:
@@ -327,6 +334,7 @@ class PushMixin:
             self._org_recovery_superseded = True
         self.adopt_logged_org_recovery()
         self.anchor_org_recovery()
+        self.continue_identity_in_log()
         self.flush_team_log()
         # A re-key's new key goes to the log's recipients as the log is now.
         self._reseal_team_rekey(self.team_state())

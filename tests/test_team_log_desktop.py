@@ -194,7 +194,9 @@ def test_expected_but_not_downloaded_log_cannot_authorize_writes(team, operation
     _, admin, client, _, _ = team
     admin.db.set_meta(CONFIRMED_GENESIS_META, "a" * 64)
     before = admin.db.fetchall("SELECT id FROM nodes")
-    with pytest.raises(RuntimeError, match="not confirmed|not downloaded"):
+    # 662ebe2 pulls a pinned log before the write: the server serving no log
+    # under the pin is then refused as a genesis mismatch (still fail-closed).
+    with pytest.raises(RuntimeError, match="not confirmed|not downloaded|independently confirmed genesis"):
         if operation == "invite":
             client.create_invitation()
         elif operation == "provision":

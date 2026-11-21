@@ -308,6 +308,7 @@ class PullMixin:
         # A rolled back, forked or missing log raises TeamLogMismatch.
         self._sync_team_log(resp.get("team_log_head"))
         self.require_trusted_team_log()
+        self.continue_identity_in_log()
 
         # Clear per-pull security trackers before applying objects
         self._equivocations = []

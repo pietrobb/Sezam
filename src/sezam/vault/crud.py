@@ -62,7 +62,8 @@ from .sync_common import (
 )
 from .sync_writers import WRITES_AUDITED_META
 from .team_log_local import (
-    CONFIRMED_GENESIS_META, import_account_anchor, local_team_state, log_trusted, publishable_anchor,
+    CONFIRMED_GENESIS_META, identity_continuation, import_account_anchor, local_team_state, log_trusted,
+    publishable_anchor,
     record_account_anchor, team_folder_at_or_above,
 )
 from .sync_limits import (
@@ -478,6 +479,14 @@ class Vault:
                         old.zeroize()
                 finally:
                     private[:] = b"\x00" * len(private)
+        # ... as does the kept one of a rotation taken over without the log (R15, goal #429).
+        kept = identity_continuation(self._db, self.dek_mgr._kek, self._user_id)
+        if kept is not None:
+            try:
+                if log_trusted(self._db, self._user_id, kept, team):
+                    return
+            finally:
+                kept.zeroize()
         raise RuntimeError(
             "The team log's founder is not confirmed on this device; "
             "compare their fingerprint out of band and use 'sezam team-log confirm-founder'."
