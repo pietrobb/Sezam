@@ -88,7 +88,7 @@ def test_rotation_walk_terminates(uploads, account):
     """Any upload a member sends: the restore check's walk ends, each key once."""
     bodies = [{"type": kind, "data": {"user_id": B_ID, "signing_pk": s, "encryption_pk": e}}
               for kind, (s, e) in uploads]
-    keys, rotated = team_log._own_rotations(teamlog.TeamState(), bodies, B_ID)
+    keys, rotated = team_log._own_rotations(teamlog.TeamState(), bodies, [{"admin": False}] * len(bodies), B_ID)
     for start in {account, *keys}:
         walk = _Bounded(rotated, limit=len(rotated) + 1)
         assert team_log._after(walk, start) == _reachable(rotated, start)
@@ -192,7 +192,9 @@ def _child(case: str, out) -> None:
 
 @pytest.mark.parametrize("case, expected", [
     ("swap", "refused:key_reused"),  # the reviewer's three records
-    ("rules_1_cycle", "accepted"),  # a log the rules take; the admin puts it back
+    # Clients replay it (its own rules); a restore takes only what today's
+    # rules take too (INV-2, review e443cbc H3), and B got a retired key back.
+    ("rules_1_cycle", "refused:rules_outdated"),
 ])
 def test_restore_of_a_rotation_cycle_finishes(case, expected):
     ctx = multiprocessing.get_context("spawn")

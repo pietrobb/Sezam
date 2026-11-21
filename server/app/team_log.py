@@ -181,7 +181,10 @@ def _replay_batch(state: TeamState, records: list, bodies: list[dict]) -> tuple[
     clean = [{"body": r.get("body"), "sig": r.get("sig")} for r in records]
     steps: list[dict] = []
     current = state
-    for index, (body, current) in enumerate(zip(bodies, core.replay_steps(clean, state))):
+    replayed = core.replay_steps(clean, state)
+    for index, body in enumerate(bodies):
+        todays_rules = core.todays_rules_refusal(current, body)  # ``current``: the log before ``body``
+        current = next(replayed)
         data = body["data"]
         user = data.get("user_id")
         member = current.members.get(user) if user is not None else None
@@ -190,6 +193,8 @@ def _replay_batch(state: TeamState, records: list, bodies: list[dict]) -> tuple[
             "admin": user is not None and core.is_admin(current, user),
             "level": current.access.get(data.get("folder"), {}).get(user),
             "keys": (member.signing_pk, member.encryption_pk) if member is not None else None,
+            "admin_policy": core.admin_policy_refusal(current),
+            "todays_rules": todays_rules,
             # Review 4acfdde R11 #4: a readmit (member.remove + member.add in
             # one append) is no removal for the member's share links.
             "readded": body["type"] == "member.remove" and any(
@@ -244,7 +249,34 @@ async def _prepare(cur, records: list, user_id: str, *, restore: bool) -> Prepar
         if len(records) > MAX_RECORDS_FROM_MEMBER and not await _is_admin_here(cur, state, user_id):
             raise ApiError(400, TEAM_LOG_REFUSED, {"message": "too many team log records"})
     current, steps = await _replayed(state, records, bodies)
+    if restore:
+        _refuse_rules_beyond_appends(bodies, steps)
     return Prepared(state.head_seq, state.head_hash, bodies, current, steps, state)
+
+
+def _refuse_rules_beyond_appends(bodies: list[dict], steps: list[dict]) -> None:
+    """INV-2 (review e443cbc H3): the log rules an append holds that a replay
+    alone does not, held by a restore too.
+
+    Every append holds the one-admin rule at its end, and an append is one
+    author's, so a history the main path wrote holds it wherever the author
+    changes; a restore checked only the final log and took admins on the way
+    (a second admin, later removed by an account the uploader controls).
+    A record under older rules (stored before they tightened) replays under
+    them; a restore takes it only where today's rules take it as well, else
+    a log still at rules 1 took records today that no append takes."""
+    for index, (body, step) in enumerate(zip(bodies, steps)):
+        refuse = lambda message: ApiError(400, TEAM_LOG_REFUSED, {  # noqa: E731
+            "message": message, "seq": step["seq"],
+        })
+        if step["todays_rules"]:
+            raise ApiError(400, TEAM_LOG_REFUSED, {
+                "message": f"the restored team log: {step['todays_rules']}",
+                "team_log_code": "rules_outdated", "seq": step["seq"],
+            })
+        last_of_append = index + 1 == len(bodies) or bodies[index + 1]["author"] != body["author"]
+        if last_of_append and step["admin_policy"]:
+            raise refuse(f"the restored team log has more than one admin after record {step['seq']}")
 
 
 def _check_head(state: TeamState, first: dict, then: str) -> None:
@@ -279,7 +311,7 @@ async def prepare_restore(cur, records: list, user_id: str) -> Prepared:
     uploader = await _user_row(cur, user_id, lock=False)
     await _refuse_restored_founder(cur, prepared.bodies, prepared.current, uploader, user_id, lock=False)
     await _refuse_restored_keys(
-        cur, prepared.before, prepared.bodies, prepared.current,
+        cur, prepared.before, prepared.bodies, prepared.steps, prepared.current,
         _uploader_team_admin(uploader, prepared.current, user_id), lock=False,
     )
     return prepared
@@ -329,9 +361,19 @@ def _keys_match(row, data: dict) -> bool:
 
 
 async def _check_against_users(
-    cur, body: dict, pending_identity: Optional[tuple[str, str]], step: dict,
+    cur, body: dict, pending_identity: Optional[tuple[str, str]], step: dict, *, history: bool = False,
 ) -> None:
-    """The log never gives rights to a key the account does not sign in with."""
+    """The log never gives rights to a key the account does not sign in with.
+
+    ``history`` (a restore, INV-2 review e443cbc H3): the same checks on
+    records the main path took once, in their order, while ``_apply_to_users``
+    replays their effects. Two things it cannot know then are left to later
+    checks: the keys (the account may have rotated since:
+    ``_refuse_restored_keys`` links them) and admin rights of a genesis
+    (handed over since: ``_refuse_restored_founder``). An account with no
+    row (a backup older than its registration, review 8595ec1 #1) comes back
+    through POST /auth/rejoin; only the founder, registered before anyone
+    else, has one always."""
     kind, data = body["type"], body["data"]
     # The seq tells the client which queued change it was (review 8595ec1 #2).
     refuse = lambda message: ApiError(400, TEAM_LOG_REFUSED, {  # noqa: E731
@@ -339,10 +381,15 @@ async def _check_against_users(
     })
     if kind == "genesis":
         row = await _user_row(cur, data["user_id"])
-        if row is None or row[0] != "active" or not row[1] or not _keys_match(row, data):
+        if history:
+            if row is None:
+                raise refuse("a restored genesis names a founder with no account here")
+        elif row is None or row[0] != "active" or not row[1] or not _keys_match(row, data):
             raise refuse("genesis must be signed by an active admin with the keys the server holds")
     elif kind == "member.add":
         row = await _user_row(cur, data["user_id"])
+        if history and row is None:
+            return
         if row is not None and row[0] == "revoked":
             # Review 1141a20 (R9-F): a removed member comes back only through
             # the log (reactivate refuses them); the signed re-add reactivates.
@@ -352,9 +399,9 @@ async def _check_against_users(
                 raise refuse("member.add of a revoked account without key material: onboard it again")
         elif row is None or row[0] != "active":
             raise refuse("member.add must name an approved account with its current keys")
-        if not _keys_match(row, data):
+        if not history and not _keys_match(row, data):
             raise refuse("member.add must name an approved account with its current keys")
-    elif kind == "member.keys":
+    elif kind == "member.keys" and not history:
         row = await _user_row(cur, data["user_id"])
         new = (data["signing_pk"], data["encryption_pk"])
         if not (_keys_match(row, data) or pending_identity == new):
@@ -365,7 +412,10 @@ async def _check_against_users(
         # readmit): no device of it could sign, and the team froze.
         row = await _user_row(cur, data["user_id"])
         keys = step["keys"]
-        if row is None or row[0] != "active" or keys is None or not _keys_match(
+        if history:
+            if row is not None and row[0] not in ("active", "revoked"):  # never approved
+                raise refuse("member.role admin must name an approved account")
+        elif row is None or row[0] != "active" or keys is None or not _keys_match(
             row, {"signing_pk": keys[0], "encryption_pk": keys[1]}
         ):
             raise refuse(
@@ -441,7 +491,7 @@ async def append(
     """
     prepared = await _under_lock(cur, records, user_id, prepared, restore=False)
     bodies, current, steps = prepared.bodies, prepared.current, prepared.steps
-    await _refuse_superseded_recovery(cur, bodies, user_id)
+    await _refuse_superseded_recovery(cur, bodies)
     now_ms = int(time.time() * 1000)
     for record, body, step in zip(records, bodies, steps):
         await _check_against_users(cur, body, pending_identity, step)
@@ -461,28 +511,44 @@ async def append(
     return current
 
 
-async def _refuse_superseded_recovery(cur, bodies: list[dict], user_id: str) -> None:
+async def _refuse_superseded_recovery(
+    cur, bodies: list[dict], *, restored: Optional[TeamState] = None, uploader: Optional[str] = None,
+) -> None:
     """Review c78fd19 R13-10 (operator 2026-11-20): an org.recovery record
-    naming a key other than the one this admin's stored blob holds is older
+    naming a key other than the one its admin's stored blob holds is older
     than that blob (every client stores before it names the key), yet as the
     newer log entry it became the current recovery and voided the newer
     shares. The desktop checks before its push; this closes the window
-    between that check and the append. The last record of the batch counts.
-    Only appends: a log the devices put back (restore) is history."""
-    named = [b for b in bodies if b["type"] == "org.recovery"]
-    pk = named[-1]["data"].get("recovery_pk") if named else None
-    if pk is None:
+    between that check and the append. The blob creator's last record of the
+    batch counts.
+
+    A restore too (INV-2, review e443cbc H3: any member put back such a
+    record of the admin, signed by a stolen key, and voided its shares), with
+    ``restored`` the log it ends with: the record counts while it is still the
+    current recovery there. The uploader's own record stands: after a backup
+    the blob may be older than the log, and its author stores a blob for the
+    key on the main path anyway (recovery.store, then the append)."""
+    if not any(b["type"] == "org.recovery" for b in bodies):
         return
-    # Locking read of an existing blob only (gap lock, see recovery.store):
-    # a setup stored meanwhile is either seen here or ranked after this record.
     await cur.execute("SELECT 1 FROM org_recovery_blobs WHERE id = 1")
     if not await cur.fetchone():
         return
+    # Locking read of an existing blob only (gap lock, see recovery.store):
+    # a setup stored meanwhile is either seen here or ranked after this record.
     await cur.execute(
         "SELECT created_by, recovery_signing_pk FROM org_recovery_blobs WHERE id = 1 FOR UPDATE"
     )
     row = await cur.fetchone()
-    if row and row[0] == user_id and row[1] is not None and bytes(row[1]).hex() != pk:
+    if not row or row[1] is None:
+        return
+    user_id = row[0]
+    named = [b for b in bodies if b["type"] == "org.recovery" and b["author"] == user_id]
+    pk = named[-1]["data"].get("recovery_pk") if named else None
+    if pk is None or user_id == uploader:
+        return
+    if restored is not None and core.recovery_key(restored, user_id) != pk:
+        return
+    if bytes(row[1]).hex() != pk:
         raise ApiError(400, TEAM_LOG_REFUSED, {
             "message": "a newer org recovery was set up after this one (on the web or another "
                        "device); it is kept",
@@ -500,20 +566,33 @@ def key_retired(state: Optional[TeamState], user_id: str, signing_pk: Optional[b
     return bool(signing_pk) and core.signing_key_retired(state, user_id, bytes(signing_pk).hex())
 
 
-def _own_rotations(before: TeamState, bodies: list[dict], member_id: str) -> tuple[set, dict]:
+def _own_rotations(before: TeamState, bodies: list[dict], steps: list[dict], member_id: str) -> tuple[set, dict]:
     """Every key pair the upload gives ``member_id``, and its own rotations
     old -> new from the server's head on (whose keys the server took already).
 
     A member.keys is signed by the old key and proven by the new one
     (new_key_sig), so only the key's holder makes that edge; a genesis or
     member.add starts the member over on keys anyone could name.
+
+    Review e443cbc H3: a re-added member starts over on the keys its account
+    signs in with now, so the keys of a membership it left were the account's
+    once and are no longer: the honest history was refused for good. Keys of
+    such a membership count only where it was admin (then its records shaped
+    the team); a member's own records end with its membership (member.keys only).
     """
     member = before.members.get(member_id)
     current = (member.signing_pk, member.encryption_pk) if member is not None else None
+    admin = member is not None and member.active and member.role == "admin"
     keys, rotated = set(), {}
-    for body in bodies:
+    left: tuple[set, dict, bool] = (set(), {}, False)  # the membership before a re-add
+    for body, step in zip(bodies, steps):
         data = body["data"]
         if data.get("user_id") != member_id:
+            continue
+        admin = admin or step["admin"]
+        if body["type"] == "member.remove":
+            left = (keys | left[0], {**left[1], **rotated}, admin or left[2])
+            keys, rotated, admin = set(), {}, False
             continue
         if body["type"] in ("genesis", "member.add"):
             current = (data["signing_pk"], data["encryption_pk"])
@@ -524,6 +603,8 @@ def _own_rotations(before: TeamState, bodies: list[dict], member_id: str) -> tup
         else:
             continue
         keys.add(current)
+    if left[2] or not keys:  # it left as admin, or the upload ends with it gone
+        keys, rotated = keys | left[0], {**left[1], **rotated}
     return keys, rotated
 
 
@@ -545,6 +626,7 @@ def _after(rotated: dict, start) -> list:
 def _named_members(bodies: list[dict]) -> list[str]:
     return sorted({
         b["data"]["user_id"] for b in bodies if b["type"] in ("genesis", "member.add", "member.keys")
+        or b["type"] == "member.role" and b["data"].get("role") == "admin"
     })
 
 
@@ -560,7 +642,8 @@ def _uploader_team_admin(uploader, current: TeamState, user_id: str) -> bool:
 
 
 async def _refuse_restored_keys(
-    cur, before: TeamState, bodies: list[dict], current: TeamState, uploader_team_admin: bool,
+    cur, before: TeamState, bodies: list[dict], steps: list[dict], current: TeamState,
+    uploader_team_admin: bool,
     *, lock: bool,
 ) -> None:
     """INV-2 (docs/ROOT_CAUSE_PLAN.md): every key a restored log gives a
@@ -586,7 +669,7 @@ async def _refuse_restored_keys(
         wrong = refuse(f"the restored team log gives {member_id} keys the account does not sign in with")
         if lock and current.members[member_id].active and row[0] != "active":
             raise wrong
-        keys, rotated = _own_rotations(before, bodies, member_id)
+        keys, rotated = _own_rotations(before, bodies, steps, member_id)
         if row[2] is None or row[3] is None:
             raise wrong
         account = (bytes(row[2]).hex(), bytes(row[3]).hex())
@@ -640,12 +723,13 @@ async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepar
     """
     prepared = await _under_lock(cur, records, user_id, prepared, restore=True)
     bodies, current, steps = prepared.bodies, prepared.current, prepared.steps
-    refuse = lambda message: ApiError(400, TEAM_LOG_REFUSED, {"message": message})  # noqa: E731
     uploader = await _user_row(cur, user_id)
     uploader_team_admin = _uploader_team_admin(uploader, current, user_id)
     await _refuse_restored_founder(cur, bodies, current, uploader, user_id, lock=True)
+    await _refuse_superseded_recovery(cur, bodies, restored=current, uploader=user_id)
     now_ms = int(time.time() * 1000)
     for record, body, step in zip(records, bodies, steps):
+        await _check_against_users(cur, body, None, step, history=True)
         await cur.execute(
             "INSERT INTO team_log (seq, prev, hash, body, sig, author, created_at) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s)",
@@ -653,10 +737,8 @@ async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepar
              body["author"], now_ms),
         )
         await _apply_to_users(cur, body, step)
-    await _refuse_restored_keys(cur, prepared.before, bodies, current, uploader_team_admin, lock=True)
-    if core.admin_policy_refusal(current):
-        raise refuse("the restored team log has more than one admin")
-    return current
+    await _refuse_restored_keys(cur, prepared.before, bodies, steps, current, uploader_team_admin, lock=True)
+    return current  # one admin at the end: _refuse_rules_beyond_appends
 
 
 # ── Pushes once the organisation has a log (design §4.3.4–6, §5) ─────────

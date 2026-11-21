@@ -297,6 +297,24 @@ def _claim_keys(state: TeamState, user_id: str, seq: int, *pks: str) -> None:
         state.seen_keys[pk] = user_id
 
 
+def todays_rules_refusal(state: TeamState, body: dict) -> Optional[str]:
+    """What today's rules refuse in ``body``, a record its own older rules
+    take on top of ``state`` (review e443cbc H3: a restore took rules 1
+    records no append takes). Rules 2 differ only in a retired key: its
+    owner does not get it back either."""
+    if body["v"] >= FORMAT_VERSION or body["type"] not in ("genesis", "member.add", "member.keys"):
+        return None
+    data = body["data"]
+    user_id = data["user_id"]
+    current = state.members.get(user_id)
+    for pk in (data["signing_pk"], data["encryption_pk"]):
+        if state.seen_keys.get(pk) == user_id and (
+            current is None or pk not in (current.signing_pk, current.encryption_pk)
+        ):
+            return f"record {body['seq']} gives {user_id} back a key the log retired (rules {FORMAT_VERSION})"
+    return None
+
+
 def signing_key_retired(state: Optional[TeamState], user_id: str, pk_hex: str) -> bool:
     """The log rotated ``user_id`` away from signing key ``pk_hex``.
 

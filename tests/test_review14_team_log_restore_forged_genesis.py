@@ -40,6 +40,9 @@ def _forged_takeover(admin_id: str, bob, bob_id: str) -> list[dict]:
         "user_id": bob_id, "signing_pk": bytes(bob.keypair.signing_pk).hex(),
         "encryption_pk": bytes(bob.keypair.encryption_pk).hex(), "role": "admin",
     }, fake_sk)
+    # A handover in the forged founder's own records: one admin wherever the
+    # author changes (review e443cbc H3 refuses two there before the keys).
+    add("member.role", admin_id, {"user_id": admin_id, "role": "member"}, fake_sk)
     add("member.remove", bob_id, {"user_id": admin_id}, bob.keypair.to_nacl_signing_key())
     return records
 

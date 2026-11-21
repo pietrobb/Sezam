@@ -51,7 +51,11 @@ from tests.test_server_spec import MockDatabase, _create_regular_user
 EXAMPLES = int(os.environ.get("SEZAM_PROPERTY_EXAMPLES", "0"))
 NAMES = ("A", "B", "C")  # registered accounts; A founds the honest log
 MADE_UP = "D"  # no account on the server
-IDS = {name: f"0{name}" + "0" * 24 for name in NAMES + (MADE_UP,)}
+# Review e443cbc H3: accounts the main path refuses to name, which the generator
+# never had: P registered but not approved yet, N approved without keys.
+WAITING, KEYLESS = "P", "N"
+OTHERS = (WAITING, KEYLESS)
+IDS = {name: f"0{name}" + "0" * 24 for name in NAMES + (MADE_UP,) + OTHERS}
 NAME_OF = {uid: name for name, uid in IDS.items()}
 FOLDERS = ("0F" + "0" * 23 + "1", "0F" + "0" * 23 + "2")
 
@@ -75,6 +79,10 @@ class Keys:
     def new(self) -> Key:
         seed = hashlib.sha256(b"inv2-%d" % next(self._n)).digest()
         return Key(SigningKey(seed), hashlib.sha256(b"enc" + seed).hexdigest())
+
+    def recovery_pk(self) -> str:
+        seed = hashlib.sha256(b"inv2-recovery-%d" % next(self._n)).digest()
+        return bytes(SigningKey(seed).verify_key).hex()
 
 
 def _run(coro):
@@ -139,9 +147,13 @@ def restore(db, records: list, uid: str) -> bool:
 
     try:
         _run(go())
-    except ApiError:
+    except ApiError as exc:
+        REFUSED.append(exc.detail)
         return False
     return True
+
+
+REFUSED: list = []  # why the last restores were refused
 
 
 def put_back(db, records: list) -> None:
@@ -185,23 +197,34 @@ def _db(storage: dict) -> MockDatabase:
 class Honest:
     """The team's real history, built through the normal path only."""
 
-    def __init__(self, keys: Keys):
+    def __init__(self, keys: Keys, legacy: bool = False):
+        """``legacy``: the log was founded under rules 1 and stored before
+        today's appends (review e443cbc H3: the generator never had one)."""
         self.keys = keys
         self.db = MockDatabase()
         _run(self.db.create_schema())
         self.account: dict[str, list[Key]] = {}  # name -> its keys, current last
-        for name in NAMES:
+        for name in NAMES + OTHERS:
             _create_regular_user(self.db._storage, IDS[name], name.lower())
             self.account[name] = [keys.new()]
             _set_keys(self.db, IDS[name], self.account[name][-1])
-        next(u for u in self.db._storage["users"] if u["id"] == IDS["A"])["is_admin"] = 1
+        rows = {u["id"]: u for u in self.db._storage["users"]}
+        rows[IDS["A"]]["is_admin"] = 1
+        rows[IDS[WAITING]]["status"] = "pending"
+        rows[IDS[KEYLESS]]["signing_pk"] = rows[IDS[KEYLESS]]["encryption_pk"] = None
         self.state = teamlog.TeamState()
         self.records: list[dict] = []
         self.snapshots: list[tuple[int, dict]] = []  # (records so far, server storage)
-        assert self._commit("A", [("genesis", "A", {
+        genesis = [("genesis", "A", {
             "org": "0G" + "0" * 24, "user_id": IDS["A"],
             "signing_pk": self.current("A").pk, "encryption_pk": self.current("A").enc,
-        })])
+        })]
+        if legacy:
+            genesis.append(("member.add", "A", {
+                "user_id": IDS["B"], "signing_pk": self.current("B").pk,
+                "encryption_pk": self.current("B").enc, "role": "member",
+            }))
+        assert self._commit("A", genesis, rules=1 if legacy else None)
 
     def current(self, name: str) -> Key:
         return self.account[name][-1]
@@ -209,18 +232,23 @@ class Honest:
     def admin(self) -> str:
         return next(NAME_OF[uid] for uid, m in self.state.members.items() if m.active and m.role == "admin")
 
-    def _commit(self, by: str, changes: list, rotate: Key | None = None) -> bool:
+    def _commit(self, by: str, changes: list, rotate: Key | None = None, rules: int | None = None) -> bool:
+        """``rules``: records stored under older rules before today (no append)."""
         state, batch = self.state, []
         try:
             for kind, author, data in changes:
-                record = teamlog.sign_record(teamlog.next_body(state, kind, IDS[author], data),
-                                             self.current(author).sk)
+                body = teamlog.next_body(state, kind, IDS[author], data)
+                if rules is not None:
+                    body["v"] = rules
+                record = teamlog.sign_record(body, self.current(author).sk)
                 state = teamlog.apply_record(state, record)
                 batch.append(record)
         except teamlog.TeamLogError:
             return False
         pending = (rotate.pk, rotate.enc) if rotate else None
-        if not append(self.db, batch, IDS[by], pending):
+        if rules is not None:
+            put_back(self.db, batch)
+        elif not append(self.db, batch, IDS[by], pending):
             return False
         if rotate:
             _set_keys(self.db, IDS[by], rotate)
@@ -234,9 +262,18 @@ class Honest:
         admin = self.admin()
         members = self.state.members
         active = [n for n in NAMES if IDS[n] in members and members[IDS[n]].active]
-        op = data.draw(st.sampled_from(["add", "add", "remove", "folder", "access", "rotate", "handover"]))
-        if op == "add":
-            name = data.draw(st.sampled_from(NAMES))
+        op = data.draw(st.sampled_from(["add", "add", "remove", "folder", "access", "rotate", "handover",
+                                        "recovery"]))
+        if op == "recovery":
+            # The admin stores the org recovery blob, then names its key
+            # (review c78fd19 R13-10: every client stores before it names).
+            pk = self.keys.recovery_pk()
+            self.db._storage["org_recovery_blobs"] = [{
+                "id": 1, "created_by": IDS[admin], "recovery_signing_pk": bytes.fromhex(pk),
+            }]
+            self._commit(admin, [("org.recovery", admin, {"recovery_pk": pk})])
+        elif op == "add":
+            name = data.draw(st.sampled_from(NAMES + OTHERS))
             self._commit(admin, [("member.add", admin, {
                 "user_id": IDS[name], "signing_pk": self.current(name).pk,
                 "encryption_pk": self.current(name).enc, "role": "member",
@@ -282,18 +319,25 @@ def _rotation(state, name: str, new: Key) -> tuple:
 class Forger:
     """A member that signs whatever its keys allow on top of a log it chose."""
 
-    def __init__(self, honest: Honest, me: str, state):
+    def __init__(self, honest: Honest, me: str, state, stolen: str | None = None):
+        """``stolen``: an account whose current identity key the forger holds
+        too (review e443cbc H3); it signs in and appends as that account."""
         self.honest, self.me, self.state = honest, me, state
         self.held: list[Key] = list(honest.account[me])  # its own account's keys
+        if stolen is not None:
+            self.held.append(honest.current(stolen))
         self.records: list[dict] = []
         self.labels: list[str] = []
+        self.rules = state.rules or teamlog.FORMAT_VERSION
 
     def _key_of(self, uid: str):
         member = self.state.members.get(uid)
         return next((k for k in self.held if member is not None and k.pk == member.signing_pk), None)
 
     def _try(self, kind: str, author: str, data: dict, key: Key) -> None:
-        record = teamlog.sign_record(teamlog.next_body(self.state, kind, author, data), key.sk)
+        body = teamlog.next_body(self.state, kind, author, data)
+        body["v"] = self.rules  # a log still at rules 1 takes rules 1 records on replay
+        record = teamlog.sign_record(body, key.sk)
         try:
             self.state = teamlog.apply_record(self.state, record)
         except teamlog.TeamLogError:
@@ -334,11 +378,16 @@ class Forger:
         kinds = ["member.keys"]
         if admins:
             kinds = ["member.add"] * 3 + ["member.remove"] * 3 + ["member.role"] * 2 + kinds + [
-                "folder.key", "access.set"]
+                "folder.key", "access.set", "org.recovery"]
+        if self.state.rules == 1 and data.draw(st.booleans()):
+            self.rules = data.draw(st.sampled_from(teamlog.RULES_VERSIONS))
         kind = data.draw(st.sampled_from(kinds))
         author = data.draw(st.sampled_from(mine if kind == "member.keys" else admins))
         key = self._key_of(author)
-        everyone = NAMES + (MADE_UP,)
+        everyone = NAMES + (MADE_UP,) + OTHERS
+        if kind == "org.recovery":
+            self._try(kind, author, {"recovery_pk": self.honest.keys.recovery_pk()}, key)
+            return
         active = [n for n in everyone if IDS[n] in members and members[IDS[n]].active]
         if kind == "member.add":
             outside = [n for n in everyone if n not in active]
@@ -388,12 +437,23 @@ RESTORE_EXCEPTIONS = {
         "with the keys the log holds for that id; the log's admin, the only one "
         "who signs a member.add, provisions accounts on the main path anyway"
     ),
-    # server/app/team_log.py restore: admin_policy_refusal on the final log only.
-    "E3 one admin at the end": (
-        "the one-admin rule holds after the whole upload, not after each append: "
-        "a restore may begin inside a handover (two admins between its two "
-        "records), and a transient admin can only be one the uploader already "
-        "controls; the final log has exactly one admin, as after every append"
+    # server/app/team_log.py _refuse_rules_beyond_appends, todays_rules (review
+    # e443cbc H3; E3 "one admin at the end" is gone: a restore holds the
+    # one-admin rule wherever the author changes, as the appends did).
+    "E4 records under older rules": (
+        "a log founded before the rules tightened keeps its rules for its records "
+        "(a version never goes down), and an append takes only today's. A restore "
+        "takes such a record only where today's rules take the same change "
+        "(the oracle replays it under them), so it changes the log as a "
+        "today's record of the same author would"
+    ),
+    # server/app/team_log.py _refuse_superseded_recovery, uploader (review e443cbc H3).
+    "E5 own org recovery": (
+        "the uploader's own org.recovery naming a key its stored blob does not "
+        "hold: after a backup the blob is older than the log, and refusing it "
+        "locked the team out of its log. On the main path its author stores a "
+        "blob for any key (recovery.store) and names it; a member's restore of "
+        "another admin's such record is refused"
     ),
 }
 
@@ -411,19 +471,37 @@ class NormalPath:
     one author per append and one new identity per push (member.keys ends an
     append)."""
 
-    def __init__(self, server: dict, me: str):
+    def __init__(self, server: dict, me: str, stolen: str | None = None):
         self.db = _db(server)
+        self.kept = [{"body": r["body"], "sig": r["sig"]}
+                     for r in sorted(server.get("team_log", []), key=lambda r: r["seq"])]
         self.me = me
-        self.mine = {IDS[me]}  # accounts whose appends the uploader can make
+        # accounts whose appends the uploader can make (a stolen identity key
+        # signs in as its account: review c78fd19 #2)
+        self.mine = {IDS[me]} | ({IDS[stolen]} if stolen else set())
         self.provisioned: set[str] = set()  # E2
         self.batch: list[tuple[int, dict]] = []
 
-    def _send(self, pending=None) -> str:
+    def _send(self) -> str:
         if not self.batch:
             return ""
         author = self.batch[0][1]["author"]
+        rotation = next((b["data"] for _, b, _ in self.batch if b["type"] == "member.keys"), None)
+        pending = (rotation["signing_pk"], rotation["encryption_pk"]) if rotation else None
         records = [record for _, _, record in self.batch]
-        done = append(self.db, records, author, pending)
+        named = [b["data"]["recovery_pk"] for _, b, _ in self.batch if b["type"] == "org.recovery"]
+        if named and named[-1] is not None and author == IDS[self.me]:
+            coverage_event("restore exception E5 own org recovery")  # store first, as every client does
+            self.db._storage["org_recovery_blobs"] = [{
+                "id": 1, "created_by": author, "recovery_signing_pk": bytes.fromhex(named[-1]),
+            }]
+        rules = self.batch[0][1]["v"]
+        if rules < teamlog.FORMAT_VERSION:  # E4: the append as today's records of the same changes
+            coverage_event("restore exception E4 records under older rules")
+            with mock.patch.object(team_log.core, "FORMAT_VERSION", rules):
+                done = append(self.db, records, author, pending)
+        else:
+            done = append(self.db, records, author, pending)
         kinds = ", ".join(f"{i} {body['type']}" for i, body, _ in self.batch)
         self.batch.clear()
         if not done:
@@ -448,23 +526,40 @@ class NormalPath:
         while shared < min(len(upload), len(honest)) and upload[shared] == honest[shared]:
             shared += 1
         put_back(self.db, upload[:shared])
-        with mock.patch.object(team_log.core, "admin_policy_refusal", lambda state: None):  # E3
-            for i, record in enumerate(upload[shared:], start=shared):
-                body = teamlog.parse_body(record["body"])
-                if body["author"] not in self.mine:
-                    return f"record {i} ({body['type']}) is signed as {NAME_OF.get(body['author'], '?')}, not by {self.me}"
-                if self.batch and self.batch[0][1]["author"] != body["author"] and (why := self._send()):
+        for i, record in enumerate(upload[shared:], start=shared):
+            body = teamlog.parse_body(record["body"])
+            if body["author"] not in self.mine:
+                return f"record {i} ({body['type']}) is signed as {NAME_OF.get(body['author'], '?')}, not by {self.me}"
+            if body["v"] < teamlog.FORMAT_VERSION and (why := _todays_rules_refuse(self.kept + upload[:i], body)):
+                return f"record {i} ({body['type']}) under rules {body['v']}: today's rules refuse it ({why})"
+            # One author and one rules version per append; one new identity
+            # per push (review e443cbc H3: records after it may share the append).
+            second_rotation = body["type"] == "member.keys" and any(
+                b["type"] == "member.keys" for _, b, _ in self.batch)
+            if self.batch and (self.batch[0][1]["author"] != body["author"] or second_rotation
+                               or self.batch[0][1]["v"] != body["v"]) and (why := self._send()):
+                return why
+            uid = body["data"].get("user_id")
+            if body["type"] == "member.add" and (_no_account(self.db, uid) or uid in self.provisioned):
+                if uid in self.provisioned and (why := self._send()):  # its keys as of the record
                     return why
-                uid = body["data"].get("user_id")
-                if body["type"] == "member.add" and (_no_account(self.db, uid) or uid in self.provisioned):
-                    if uid in self.provisioned and (why := self._send()):  # its keys as of the record
-                        return why
-                    self._provision(body["data"])
-                self.batch.append((i, body, record))
-                if body["type"] == "member.keys":
-                    if why := self._send((body["data"]["signing_pk"], body["data"]["encryption_pk"])):
-                        return why
-            return self._send()
+                self._provision(body["data"])
+            self.batch.append((i, body, record))
+        return self._send()
+
+
+def _todays_rules_refuse(before: list, body: dict) -> str:
+    """E4: the change of ``body`` replayed under today's rules on the log
+    ``before`` it ('' when they take it)."""
+    if body["type"] == "genesis":
+        return ""  # a fresh log retired no key
+    state = teamlog.replay(before)
+    state.rules = teamlog.FORMAT_VERSION
+    try:
+        teamlog._apply_change(state, body["seq"], body["type"], body["author"], body["data"], body["prev"])
+    except teamlog.TeamLogError as exc:
+        return exc.code
+    return ""
 
 
 @settings(
@@ -474,7 +569,7 @@ class NormalPath:
 @given(data=st.data())
 def test_restore_takes_nothing_the_normal_path_refuses(data):
     keys = Keys()
-    honest = Honest(keys)
+    honest = Honest(keys, legacy=data.draw(st.sampled_from((False, False, True)), label="rules 1 log"))
     for _ in range(data.draw(st.integers(0, 6), label="honest steps")):
         honest.step(data)
     # The server lost its log (users current) or came back from a backup.
@@ -484,14 +579,16 @@ def test_restore_takes_nothing_the_normal_path_refuses(data):
         storage["team_log"] = []
     else:
         kept, storage = data.draw(st.sampled_from(honest.snapshots[:-1] or honest.snapshots), label="backup")
-    me = data.draw(st.sampled_from(("B", "C")), label="uploader")
+    me = data.draw(st.sampled_from(("B", "C", "A")), label="uploader")
     if not _active(_db(storage), IDS[me]):
         return
+    stolen = data.draw(st.sampled_from((None, None, None) + tuple(n for n in NAMES if n != me)),
+                       label="identity key it stole")
 
     upto = data.draw(st.one_of(st.just(kept), st.integers(kept, len(honest.records))),
                      label="honest records uploaded")
     state = teamlog.replay(honest.records[:upto]) if upto else teamlog.TeamState()
-    forger = Forger(honest, me, state)
+    forger = Forger(honest, me, state, stolen)
     if upto == 0:
         forger.genesis(data)
     for _ in range(data.draw(st.integers(0, 8), label="forged attempts")):
@@ -506,11 +603,43 @@ def test_restore_takes_nothing_the_normal_path_refuses(data):
         return
     coverage_event(f"restore took forged={len(forger.records)}")
     target(float(len(forger.records)), label="forged records a restore took")
-    why = NormalPath(storage, me).takes(honest.records[kept:], upload)
+    why = NormalPath(storage, me, stolen).takes(honest.records[kept:], upload)
     assert not why, (
         f"restore by {me} took more than the normal path would: {why}\n"
         f"honest kept on the server: {kept}, honest uploaded: {upto - kept}, "
         f"forged: {forger.labels}"
+    )
+
+
+@settings(
+    max_examples=EXAMPLES or 200, deadline=None, derandomize=not EXAMPLES,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
+)
+@given(data=st.data())
+def test_the_admin_puts_back_the_honest_history(data):
+    """Review e443cbc H3: a restore at least takes what existed (INV-7: a team
+    whose server lost its log has a way back). Once a member was re-added, the
+    restore refused the honest history for good. The team admin of the
+    honest log uploads every record the server lost."""
+    keys = Keys()
+    honest = Honest(keys, legacy=data.draw(st.sampled_from((False, False, True)), label="rules 1 log"))
+    for _ in range(data.draw(st.integers(0, 8), label="honest steps")):
+        honest.step(data)
+    lost = data.draw(st.sampled_from((True, True, False)), label="log lost")
+    if lost:
+        kept, storage = 0, copy.deepcopy(honest.snapshots[-1][1])
+        storage["team_log"] = []
+    else:
+        kept, storage = data.draw(st.sampled_from(honest.snapshots[:-1] or honest.snapshots), label="backup")
+    upload = honest.records[kept:]
+    admin = IDS[honest.admin()]
+    if not upload or not _active(_db(storage), admin):
+        return
+    coverage_event(f"honest restore of {len(upload)} records")
+    REFUSED.clear()
+    assert restore(_db(storage), upload, admin), (
+        f"the admin could not put back the honest history: {REFUSED[-1:]}\n"
+        f"kept on the server: {kept}, uploaded: {[teamlog.parse_body(r['body'])['type'] for r in upload]}"
     )
 
 
