@@ -822,6 +822,8 @@ class SyncMachine(RuleBasedStateMachine):
                     self.log.append(f"{device}: the server lost its org recovery; "
                                     "another admin allowed a key reset")
                     return self._push(device)
+                if self._waits_for_sibling_rotation(device, exc):
+                    return
                 self.log.append(f"{device}: push raised {type(exc).__name__}: {exc}")
                 raise AssertionError(f"{device}: push raised {exc!r}\n" + self._trace()) from exc
             self.log.append(f"{device}: push failed ({failure})")
@@ -847,6 +849,53 @@ class SyncMachine(RuleBasedStateMachine):
             and not self._org_recovery_usable()
         )
 
+    def _rotation_the_log_waits_for(self, skip: str | None = None) -> str | None:
+        """The admin device holding an identity rotation of the account that
+        the server lost (restored from a backup), named by that device's copy
+        of the log or still pending there, while the server signs the account
+        in with another key (review e443cbc R15, #429: a backup from before
+        two rotations came back). Until that device puts the log back and its
+        rotation goes out again, the account's other devices are refused as
+        retired and members cannot check the account's objects signed before
+        it; they wait, fail-closed."""
+        from sezam.vault.team_log_local import TeamLogMismatch
+
+        user_id = self.devices["A"].vault.db.get_meta("user_id")
+        account = next((u for u in self.db._storage.get("users", []) if u.get("id") == user_id), None)
+        if account is None:
+            return None
+        server_key = bytes(account.get("signing_pk") or b"").hex()
+        for name, dev in sorted(self.devices.items()):
+            if name == skip:
+                continue
+            held = dev.vault.keypair.signing_pk.hex()
+            if held == server_key:
+                continue
+            journal = dev.client._pending_identity()
+            if journal is not None and journal["identity"].get("new_signing_pk") == held:
+                return name
+            try:
+                state = dev.client.team_state()
+            except TeamLogMismatch:
+                continue
+            member = state.members.get(user_id) if state is not None else None
+            if member is not None and member.active and member.signing_pk == held:
+                return name
+        return None
+
+    def _waits_for_sibling_rotation(self, device: str, exc: Exception) -> bool:
+        """The server refuses this device's key as retired by the log while a
+        sibling holds the rotation the log waits for. Without such a sibling
+        the refusal is a lock-out."""
+        if not isinstance(exc, ServerError) or "identity_key_retired" not in str(exc):
+            return False
+        sibling = self._rotation_the_log_waits_for(skip=device)
+        if sibling is None:
+            return False
+        coverage_event("a device waits for a sibling's rotation the log names")
+        self.log.append(f"{device}: waits for {sibling}'s identity rotation (key retired by the log)")
+        return True
+
     def _note_pushed(self, device: str, before: set[str], undo=None) -> None:
         """After a step that pushed: what the server holds now."""
         dev = self.devices[device]
@@ -871,6 +920,8 @@ class SyncMachine(RuleBasedStateMachine):
                     # the user is told about is a full resync.
                     self.log.append(f"{device}: pull wants a full resync: {exc}")
                     self.resync_due.add(device)
+                    return
+                if self._waits_for_sibling_rotation(device, exc):
                     return
                 self.log.append(f"{device}: pull raised {type(exc).__name__}: {exc}")
                 raise AssertionError(f"{device}: pull raised {exc!r}\n" + self._trace()) from exc
@@ -1835,7 +1886,10 @@ class SyncMachine(RuleBasedStateMachine):
             f"W: {label} left unhandled rejections {result['rejections']}\n" + self._trace()
         )
         error = result["error"]
-        if error and not any(ok in error for ok in self.WEB_ERRORS):
+        if error and "retired by an identity rotation" in error and self._rotation_the_log_waits_for():
+            coverage_event("the web page waits for a desktop's rotation the log names")
+            self.log.append(f"W: waits for {self._rotation_the_log_waits_for()}'s identity rotation")
+        elif error and not any(ok in error for ok in self.WEB_ERRORS):
             raise AssertionError(f"W: {label} failed: {error}\n" + self._trace())
         if not (self.web_view["token"] and self.web_view["unlocked"]):
             self.web_ended = True
@@ -2841,7 +2895,9 @@ class TeamLogMachine(SyncMachine):
     def _member_sync(self, user_id: str) -> None:
         from sezam.vault.team_log_local import TeamLogMismatch
 
-        if user_id in self.unconfirmed:
+        # A revoked member asks nothing: its sync is refused (super), and its
+        # refused login made confirm-founder raise (randomized run).
+        if user_id in self.unconfirmed and self._member_status(user_id) == "active":
             self._confirm_founder(user_id)
             if user_id in self.unconfirmed:
                 # Fail-closed: no sync on a log whose founder it cannot check.
@@ -2852,6 +2908,14 @@ class TeamLogMachine(SyncMachine):
             super()._member_sync(user_id)
         except AssertionError as exc:
             cause = exc.__cause__
+            sibling = self._rotation_the_log_waits_for()
+            if sibling is not None and "invalid signature" in str(cause):
+                # The server signs the admin in with a key the log retired and
+                # serves it without its bound: nothing signed with it checks.
+                coverage_event("member waits for an admin rotation the log names")
+                self.log.append(f"{self.members[user_id].name}: waits for {sibling}'s identity rotation, {cause}")
+                self.waiting.add(user_id)
+                return
             if not (isinstance(cause, TeamLogMismatch) and cause.cause == "went_back"):
                 raise
             coverage_event("member waits for the lost team log records")
@@ -2902,6 +2966,32 @@ class TeamLogMachine(SyncMachine):
             self.log.append(f"{device}: invite refused, {exc.cause}")
             return
         self._confirm_founder(next(reversed(self.members)))
+
+    def teardown(self):
+        # Every example ends under attack, whatever its steps drew (capability
+        # run 430 probe on cd6d473: no example of the derandomized run reached
+        # a forgery only not_admin refuses).
+        try:
+            if hasattr(self, "db") and self.devices:
+                self._attack_the_log()
+        finally:
+            super().teardown()
+
+    def _attack_the_log(self) -> None:
+        """Each forgery a member can sign, posted to append and to restore and
+        served as a forged record to every device holding the log."""
+        before = self._server_log()
+        forgers = self._forgers(teamlog.replay(before)) if before else []
+        if not forgers:
+            return
+        state = teamlog.replay(before)
+        for kind in self.FORGERIES:
+            for path in ("append", "restore"):
+                self._post_forgery(state, before, forgers[0], kind, path)
+            for name, vault in self._log_vaults():
+                self._serve_a_lie(name, vault, "forged record", kind)
+                self.every_device_holds_one_log()
+        self.the_server_log_follows_the_rules()
 
     # ── The log itself under attack (capability run 430) ─────────────
     # A member signs records the rules refuse and sends them to append and to
@@ -2967,15 +3057,23 @@ class TeamLogMachine(SyncMachine):
         return teamlog.sign_record(teamlog.next_body(state, change, author, data), signer)
 
     @precondition(lambda self: self._member_desktops())
-    @rule(data=st.data(), kind=st.sampled_from(FORGERIES), path=st.sampled_from(["append", "restore"]))
-    def member_forges_a_log_record(self, data, kind, path):
-        """A member signs a record the rules refuse and posts it (INV-1/INV-2:
-        restore takes no more than append)."""
+    @rule(data=st.data())
+    def member_forges_a_log_record(self, data):
+        """A member signs every record the rules refuse and posts each to
+        append and to restore (INV-1/INV-2: restore takes no more than append).
+        A refused record changes nothing, so one step tries them all: drawn
+        one at a time, the 8 derandomized examples reached one forgery and
+        missed a broken not_admin rule (capability run 430 probe on cd6d473)."""
         before = self._server_log()
         state = teamlog.replay(before)
         user_id = self._pick(data, self._forgers(state), "forger")
         if user_id is None:
             return
+        for kind in self.FORGERIES:
+            for path in ("append", "restore"):
+                self._post_forgery(state, before, user_id, kind, path)
+
+    def _post_forgery(self, state, before: list[dict], user_id: str, kind: str, path: str) -> None:
         record = self._forge(state, user_id, kind)
         self.forged = self._forged_hashes() | {teamlog.record_hash(record)}
         client = self._new_client(self.members[user_id].vault)
@@ -3090,23 +3188,26 @@ class TeamLogMachine(SyncMachine):
         self.log.append(f"{self.members[user_id].name}: forges {kind} onto the lost log -> {path} {outcome}")
         assert not self._server_log(), f"a refused {path} onto the lost log changed it\n" + self._trace()
 
-    @rule(data=st.data(), lie=st.sampled_from(LOG_LIES))
-    def server_lies_about_the_log(self, data, lie):
+    @rule(data=st.data(), lie=st.sampled_from(LOG_LIES), kind=st.sampled_from(FORGERIES))
+    def server_lies_about_the_log(self, data, lie, kind):
         """The server serves one device a log the true one is not; the device
-        takes nothing from it and does no emergency action by itself (INV-8)."""
+        takes nothing from it and does no emergency action by itself (INV-8).
+        A 'forged record' is one of the member forgeries (kind)."""
+        if not self._server_log():
+            return
+        targets = self._log_vaults()
+        name, vault = targets[data.draw(st.integers(0, len(targets) - 1), label="target")]
+        self._serve_a_lie(name, vault, lie, kind)
+
+    def _serve_a_lie(self, name: str, vault, lie: str, kind: str) -> None:
         from sezam.vault.team_log_local import (
             CONFIRMED_GENESIS_META, GENESIS_META, queued_changes, set_aside_changes,
         )
 
         true = self._server_log()
-        if not true:
-            return
         state = teamlog.replay(true)
-        targets = self._log_vaults()
-        name, vault = targets[data.draw(st.integers(0, len(targets) - 1), label="target")]
         forger = self._forgers(state)
-        # A grant (a self-appointment is also refused as a second admin at the head).
-        forged = self._forge(state, forger[0], "grant self") if forger else None
+        forged = self._forge(state, forger[0], kind) if forger else None
         if lie == "forged record" and forged is None:
             return
 
@@ -4225,6 +4326,44 @@ def test_sync_state_machine_team_rekey_superseded_by_another_device(loopback_ser
         machine.teardown()
 
 
+def test_sync_state_machine_team_restore_from_before_two_rotations(loopback_server, monkeypatch):
+    """Review e443cbc R15, goal #429 (TeamLogMachine, randomized run): the
+    admin's desktop B rotated the account's identity, A took the keys over and
+    rotated again, then the server went back to a backup from before both.
+    Until A sends its rotation again, the server signs the account in with
+    the backup's key, which the put-back log retired: B and the page are
+    refused (identity_key_retired) and a member cannot check the admin's
+    earlier objects ('invalid signature'). That is fail-closed, not a
+    lock-out: the machine took it for a failure; they wait for A
+    (_rotation_the_log_waits_for), and A's next push lets every device on."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        machine._settle(lambda _obj: "server")
+        machine.track_member_keys()
+        machine._appoint(machine._member_desktops()[0])
+        machine.rotate_identity(_Scripted(device="B"), "before")
+        machine.server_backup()
+        machine._push("B")
+        machine.track_member_keys()
+        for user_id in machine._member_desktops():
+            machine._member_sync(user_id)
+        machine._push("A")
+        machine._pull("A")
+        machine.rotate_identity(_Scripted(device="A"), None)
+        machine._push("A")
+        machine.server_restore()
+        machine._settle(lambda _obj: "server")
+        admin = machine.devices["A"].vault
+        account = next(u for u in machine.db._storage["users"] if u["id"] == admin.db.get_meta("user_id"))
+        assert bytes(account["signing_pk"]) == admin.keypair.signing_pk, machine._trace()
+        assert machine.devices["B"].vault.keypair.signing_pk == admin.keypair.signing_pk, machine._trace()
+        assert not machine._waiting_members(), machine._trace()
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_team_founder_takes_over_a_rotation_made_without_the_log(
     loopback_server, monkeypatch,
 ):
@@ -4494,12 +4633,14 @@ def test_sync_state_machine_team_log_under_attack(loopback_server, monkeypatch):
         check()
         for kind in TeamLogMachine.FORGERIES:
             for path in ("append", "restore"):
-                machine.member_forges_a_log_record(_Scripted(forger=member), kind, path)
+                before = machine._server_log()
+                machine._post_forgery(teamlog.replay(before), before, member, kind, path)
                 check()
         for lie in TeamLogMachine.LOG_LIES:
-            for target in range(len(machine._log_vaults())):
-                machine.server_lies_about_the_log(_Scripted(target=target), lie)
-                check()
+            for kind in TeamLogMachine.FORGERIES if lie == "forged record" else ("grant self",):
+                for target in range(len(machine._log_vaults())):
+                    machine.server_lies_about_the_log(_Scripted(target=target), lie, kind)
+                    check()
         for lie in (None, "truncate", "drop a record", "reorder", "old head"):
             for target in range(len(machine._log_holders())):
                 machine.user_forgets_the_pin(_Scripted(target=target), lie)
