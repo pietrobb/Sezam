@@ -1,0 +1,14 @@
+#!/bin/sh
+# docs/ROOT_CAUSE_PLAN.md section 6 (review e443cbc P6): every commit message
+# carries the checklist and a "Red on <sha>: <command>" line (or "No fix:").
+# Enable once per clone (with the pre-push hook):
+#   git config core.hooksPath .githooks
+root=$(git rev-parse --show-toplevel) || exit 1
+for py in python3 python; do
+    # A Windows "python3" may be the Store stub that runs nothing.
+    if "$py" -c "import sys" >/dev/null 2>&1; then
+        exec "$py" "$root/scripts/commit_discipline.py" msg "$1"
+    fi
+done
+echo "commit-msg: no python found, refusing an unchecked commit" >&2
+exit 1

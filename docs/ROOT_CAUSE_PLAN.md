@@ -274,7 +274,11 @@ nálezu sa začína otázkou, ktorý invariant porušuje. Ak taký nie je, dopln
 
 ## 6. Kontrolný zoznam pre každú zmenu
 
-Odpovede patria do popisu commitu alebo PR:
+Odpovede patria do popisu commitu alebo PR. Vynucuje to commit-msg hook
+(`.githooks/commit-msg`, `git config core.hooksPath .githooks`) a CI job `commits`
+(`scripts/commit_discipline.py`): riadok `Checklist (docs/ROOT_CAUSE_PLAN.md section 6)`
+s odpoveďami `1.` až `9.` a riadok `Red on <sha>: python -m pytest ...` (príkaz na <sha>
+s testami commitu padne; CI ho spustí) alebo `No fix: <dôvod>`.
 
 1. Mení zmena autoritu (kto smie čo) alebo dáta iného používateľa? Ak áno, kde je
    v mape autority (S1) a ktorou funkciou sa overuje?
