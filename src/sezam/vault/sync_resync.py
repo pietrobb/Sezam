@@ -442,6 +442,7 @@ class ResyncMixin:
         prior_base = {object_id: base[0] for object_id, base in prior_bases.items()}
         prior_base_hash = {object_id: base[1] for object_id, base in prior_bases.items()}
         unsent = outbox.queued_ids(self._db, "nodes") | outbox.queued_ids(self._db, "entries")
+        revived_before = outbox.revived_folders(self._db)
         confirmed_at = {
             row["object_id"]: (row["commit_seq"], row["modified_at"])
             for row in self._db.fetchall(
@@ -662,6 +663,15 @@ class ResyncMixin:
                         f"UPDATE {table} SET version = ? WHERE id = ?", (version, obj_id)
                     )
                     server_copy = server_copies.get(obj_id)
+                    # Nightly run on e443cbc (goal #429 b): a kept folder the
+                    # server holds deleted brings it back. Queued without the
+                    # mark, a re-key batch with an item below it left it for
+                    # the normal push and was refused ('parent folder is
+                    # deleted') on every sync.
+                    if kind == "node" and (
+                        obj_id in revived_before or (server_copy or {}).get("is_deleted")
+                    ):
+                        outbox.mark_revived(self._db, obj_id)
                     if server_copy is None:
                         # Stateful test SM42: built on no server copy. Without
                         # a base, its push overwrote a copy another device sent

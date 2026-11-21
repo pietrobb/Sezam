@@ -67,7 +67,7 @@ from sezam.crypto.aead import BlobKind, parse_envelope
 from sezam.crypto.envelope_crypto import open_envelope
 from sezam.crypto.keys import generate_keypair
 from sezam.models import EntryMeta, NodeMeta, bytes_to_ulid, new_ulid
-from sezam.vault import org_recovery_server, revocation, trash
+from sezam.vault import org_recovery_server, outbox, revocation, trash
 from sezam.crypto.shamir import reconstruct_secret
 from sezam.vault.crud import Vault
 from sezam.vault.db import VaultChangedElsewhere
@@ -3644,6 +3644,49 @@ def test_sync_state_machine_rekey_landed_with_its_reply_lost_is_not_abandoned(lo
         machine._settle(lambda _obj: "server")
         assert not any("requeued': True" in line for line in machine.log), (
             "a batch the server holds was undone here\n" + machine._trace())
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_rekey_below_a_folder_deleted_elsewhere_survives_a_full_resync(
+    loopback_server, monkeypatch,
+):
+    """Nightly run on e443cbc (goal #429 b): a member's re-key waited, another
+    device deleted the folder above the re-keyed one, and the way out of the
+    pending re-key before a full resync was 'abandon-rekey'. The resync kept
+    the folder (it holds the re-keyed work) but queued it again without the
+    mark that it brings the folder back, so the re-key batch went without it
+    and the server refused the subfolder ('parent folder is deleted') on
+    every sync."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        folder = machine._folders("A")[0]
+        machine.create_folder(_Scripted(device="A", parent=folder))
+        sub = next(f for f in machine._folders("A") if f != folder and machine.devices["A"].vault.db.fetchone(
+            "SELECT 1 FROM nodes WHERE id = ? AND parent_id = ?", (f, folder)))
+        machine.create_entry(_Scripted(device="A", folder=sub))
+        machine.push(_Scripted(device="A"), None)
+        machine.pull(_Scripted(device="B"), None)
+        machine.invite_member(_Scripted(device="A"))
+        member = machine._active_members()[0]
+        machine.grant(_Scripted(device="A", member=member, folder=sub), "write")
+        machine.pull(_Scripted(device="A"), None)
+        machine.revoke(_Scripted(device="A", member=member), "before")
+        assert pending_store.rekey_batch(machine.devices["A"].vault.db), "no re-key pending\n" + machine._trace()
+        entry = machine.devices["A"].vault.db.fetchone("SELECT id FROM entries WHERE node_id = ?", (sub,))["id"]
+        machine.edit_entry(_Scripted(device="A", entry=entry))
+        machine.delete_folder(_Scripted(device="B", folder=folder))
+        machine.push(_Scripted(device="B"), None)
+        machine.pull(_Scripted(device="A"), None)
+        machine.abandon_rekey(_Scripted(device="A"))
+        machine.full_resync(_Scripted(device="A"))
+        db = machine.devices["A"].vault.db
+        assert db.fetchone("SELECT is_deleted FROM nodes WHERE id = ?", (folder,))["is_deleted"] == 0, machine._trace()
+        assert folder in outbox.revived_folders(db), (  # what the re-key batch takes along (SM73)
+            "the kept folder is queued as a plain edit\n" + machine._trace())
+        machine._settle(lambda _obj: "server")
     finally:
         machine.teardown()
 
