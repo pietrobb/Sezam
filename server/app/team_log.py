@@ -259,8 +259,9 @@ def _refuse_rules_beyond_appends(bodies: list[dict], steps: list[dict]) -> None:
     alone does not, held by a restore too.
 
     Every append holds the one-admin rule at its end, and an append is one
-    author's, so a history the main path wrote holds it wherever the author
-    changes; a restore checked only the final log and took admins on the way
+    author's under one rules version (an append takes today's rules only), so
+    a history the main path wrote holds it wherever the author or the rules
+    change; a restore checked only the final log and took admins on the way
     (a second admin, later removed by an account the uploader controls).
     One author's records need more than one append too (review e443cbc P2,
     found by the deep property run): one new identity per push, and an
@@ -293,7 +294,7 @@ def _append_ends(bodies: list[dict]) -> list[tuple[int, int]]:
     rotated: Optional[int] = None  # the last member.keys of this author's records
     named: dict[str, tuple[int, tuple]] = {}  # account -> last record naming its keys
     for index, body in enumerate(bodies):
-        if index and body["author"] != bodies[index - 1]["author"]:
+        if index and (body["author"], body["v"]) != (bodies[index - 1]["author"], bodies[index - 1]["v"]):
             spans.append((index - 1, index - 1))
             rotated, named = None, {}
         data = body["data"]
