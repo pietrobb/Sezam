@@ -728,6 +728,16 @@ organizácie. Návrh a formát: `docs/DESIGN_TEAM_LOG.md`.
   server nemá, desktop pri odomknutí zloží do stromu (`fold_personal_tree_keys`: prepečatí položky,
   mená podpriečinkov a históriu kľúčom rodiča), inak by položky v ňom boli na ostatných zariadeniach
   nečitateľné.
+- **Podpriečinok tímového priečinka (R15, #429):** pod tímovým priečinkom klienti aj server odmietnu,
+  čo zapečatí kľúč, ktorý denník nepozná. Nový podpriečinok preto berie kľúč rodiča (desktop, web aj
+  mobil) a prvé zdieľanie priečinka zapíše `folder.key` gen 0 aj pre podpriečinky s vlastným kľúčom,
+  ktoré admin pozná (`unlogged_folder_keys`). Podpriečinok, ktorý iné zariadenie admina urobilo
+  s vlastným kľúčom skôr, než stiahlo zdieľanie, to zariadenie pri ďalšom pushi zloží do kľúča
+  rodiča ako presun do tímového priečinka (`fold_unlogged_folder_keys`: prepečatí položky, mená
+  podpriečinkov a históriu); inak by každá položka v ňom ostala navždy neodoslaná. Starý kľúč sa do
+  denníka nezapisuje: zariadenie, ktoré drží len zastaranú väzbu priečinka na kľúč, ktorým už nič
+  nie je zapečatené, by tak z priečinka urobilo tímový pod mŕtvym kľúčom. Test
+  `test_sync_state_machine_team_log_subfolder_made_before_the_grant_was_pulled`.
 - **Tier-2 v zdieľanom priečinku (TL7):** tier-2 položka má vlastný kľúč mimo denníka, preto do
   tímového priečinka nepatrí: desktop ju tam nevytvorí, nezmení na tier 2, neupraví ani nepresunie
   (chyba s odkazom na samostatný priečinok — osobný koreň alebo nový tímový priečinok); presun von do

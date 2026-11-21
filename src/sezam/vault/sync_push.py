@@ -335,6 +335,7 @@ class PushMixin:
         self.adopt_logged_org_recovery()
         self.anchor_org_recovery()
         self.continue_identity_in_log()
+        self.fold_unlogged_folder_keys()
         self.flush_team_log()
         # A re-key's new key goes to the log's recipients as the log is now.
         self._reseal_team_rekey(self.team_state())

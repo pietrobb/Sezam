@@ -595,6 +595,52 @@ class TeamLogMixin:
         with self._db.transaction(immediate=True):
             self._queue_team_changes(changes)
 
+    def fold_unlogged_folder_keys(self) -> None:
+        """Below a team folder, no folder keeps a key the log does not know.
+
+        Stateful run on ab915bc (goal #429): B made a subfolder, with a key
+        of its own, in a folder whose grant (made on A) it had not pulled yet;
+        the grant logged only the subfolders A knew (unlogged_folder_keys).
+        Every client refuses what an unlogged key seals below a team folder,
+        so each item put there stayed unpushed for good. As a move into a
+        team folder does (moved_subtree_keys), what such a key seals is
+        resealed under the folder's parent's key, which the folder then uses.
+        A folder another device already folded only takes the parent's key
+        here (nothing is sealed with its old one); logging the old key would
+        have made it a team folder under a key that seals nothing.
+        """
+        from .personal_root import moved_subtree_keys, reseal_moved_subtree
+
+        state, me = self.team_state(), self._db.get_meta("user_id")
+        # Only an admin's devices make folder keys; a member holds rows of the
+        # admin's it cannot open.
+        if self._dek_mgr is None or state is None or not teamlog.is_admin(state, me):
+            return
+        projected = projected_team_state(self._db, me)
+        missing = {
+            folder
+            for team_folder in projected.folders
+            for folder, _ in unlogged_folder_keys(self._db, projected.dek_index, team_folder)
+            if folder not in projected.folders
+        }
+
+        def outermost(folder: str) -> bool:
+            row = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (folder,))
+            while row is not None and row["parent_id"] is not None:
+                if row["parent_id"] in missing:
+                    return False
+                row = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (row["parent_id"],))
+            return True
+
+        for folder in sorted(f for f in missing if outermost(f)):
+            logger.warning("Folder %s below a team folder takes its parent's key", folder)
+            with self._db.transaction(immediate=True):
+                parent = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (folder,))["parent_id"]
+                changes = moved_subtree_keys(
+                    self._db, folder, self._dek_mgr.get_dek_for_node(parent)[0], False, projected.dek_index
+                )
+                reseal_moved_subtree(self._db, self._dek_mgr, folder, changes)
+
     def _queue_team_changes(self, changes) -> None:
         self.set_aside_refused_team_changes()
         state = self.team_state()

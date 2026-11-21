@@ -4364,6 +4364,41 @@ def test_sync_state_machine_team_log_member_confirms_a_rotating_founder(loopback
         machine.teardown()
 
 
+def test_sync_state_machine_team_log_subfolder_made_before_the_grant_was_pulled(loopback_server, monkeypatch):
+    """Stateful run on ab915bc (goal #429): B made a subfolder, with a key of
+    its own, in a folder A had just shared and B had not pulled the grant of.
+    The grant logged only the subfolders A knew, so the subfolder's key never
+    reached the log and every item put there later was refused ('sealed with
+    a key the team log does not know') and stayed unpushed for good."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        machine.create_folder(_Scripted(device="A", parent="ROOT"))
+        machine.push(_Scripted(device="A"), None)
+        machine.pull(_Scripted(device="B"), None)
+        logged = machine.devices["A"].client.team_state().folders
+        db = machine.devices["A"].vault.db
+        folder = next(f for f in machine._folders("A") if f not in logged and db.fetchone(
+            "SELECT 1 FROM nodes n JOIN deks d ON d.id = n.dek_id WHERE n.id = ? AND d.node_id = n.id", (f,)))
+        machine._grant("A", machine._active_members()[0], folder, "write")
+        assert folder in machine.devices["A"].client.team_state().folders, machine._trace()
+        before = set(machine._folders("B"))
+        machine.create_folder(_Scripted(device="B", parent=folder))
+        sub = next(iter(set(machine._folders("B")) - before))
+        assert machine.devices["B"].vault.db.fetchone(
+            "SELECT 1 FROM deks WHERE node_id = ?", (sub,)), "the subfolder has no key of its own\n" + machine._trace()
+        machine.push(_Scripted(device="B"), None)
+        machine.pull(_Scripted(device="B"), None)
+        machine.create_entry(_Scripted(device="B", folder=sub))
+        machine.track_member_keys()  # the admin keys settle opens the member's envelopes with
+        machine._settle(lambda _obj: "server")
+        assert not any("sealed with a key the team log does not know" in line for line in machine.log), (
+            machine._trace())
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_team_log_under_attack(loopback_server, monkeypatch):
     """Capability run 430 (goal #429): every forgery a member can sign, sent
     to append and to restore, and every lie a server can tell about the log,
