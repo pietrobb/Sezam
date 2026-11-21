@@ -40,9 +40,11 @@ from tests.test_integration_client_server import PASSWORD, _vault
 SERVERS = _servers()
 TEAM, TEAM_HEAD = SERVERS["same"]
 OTHER_GENESIS = SERVERS["another_genesis"][1]["genesis_hash"]
-STATES = ("holds_damaged_sig", "holds_damaged_hash", "anchor_names_other")
-CAUSE = {"holds_damaged_sig": "local_damaged", "holds_damaged_hash": "local_damaged",
-         "anchor_names_other": "anchor_conflict"}
+# Capability run 418: damage to the first record (the genesis) read as
+# anchor_conflict: the held genesis was the damaged record's own hash.
+DAMAGED = ("holds_damaged_sig", "holds_damaged_hash", "holds_damaged_genesis_sig", "holds_damaged_genesis_hash")
+STATES = (*DAMAGED, "anchor_names_other")
+CAUSE = {**{state: "local_damaged" for state in DAMAGED}, "anchor_names_other": "anchor_conflict"}
 
 
 def _seq(record: dict) -> int:
@@ -104,6 +106,10 @@ def _device(tmp_path, state: str, forgotten: str | None = None):
             vault.db.execute("UPDATE team_log SET sig = ? WHERE seq = 2", ("00" * 64,))
         elif state == "holds_damaged_hash":
             vault.db.execute("UPDATE team_log SET hash = ? WHERE seq = 2", ("00" * 32,))
+        elif state == "holds_damaged_genesis_sig":
+            vault.db.execute("UPDATE team_log SET sig = ? WHERE seq = 0", ("00" * 64,))
+        elif state == "holds_damaged_genesis_hash":
+            vault.db.execute("UPDATE team_log SET hash = ? WHERE seq = 0", ("00" * 32,))
         elif state == "anchor_names_other":
             _wrap_keys(vault, OTHER_GENESIS)
         if forgotten is not None:
@@ -270,7 +276,36 @@ def _mine(vault) -> str:
                              (vault.db.get_meta("root_node_id"),))["id"]
 
 
-@pytest.mark.parametrize("state", ["holds_damaged_sig", "holds_damaged_hash"])
+@pytest.mark.parametrize("state", DAMAGED)
+def test_server_keys_on_a_damaged_copy_are_taken_and_the_pull_repairs_it(tmp_path, state):
+    """Capability run 418: keys from the server (password changed elsewhere,
+    org recovery) naming the genesis this device pins were refused as
+    anchor_conflict in rebind_server_identity, before the pull that repairs
+    a damaged copy, and the risky forget-pin was the only way out offered."""
+    from sezam.crypto.keys import KeyPair, generate_keypair
+
+    vault, entry = _device(tmp_path, state)
+    vault.unlock(PASSWORD)
+    raw = generate_keypair().serialize_private()
+    try:
+        server_keys = KeyPair.from_private_only(aead.encode_account_keypair(raw, TEAM_HEAD["genesis_hash"]))
+    finally:
+        raw[:] = bytes(len(raw))
+    vault.rebind_server_identity(vault.db.get_meta("user_id"), server_keys)
+    assert vault.keypair.confirmed_genesis == TEAM_HEAD["genesis_hash"]
+    with pytest.raises(TeamLogMismatch) as damaged:
+        local_team_state(vault.db)
+    assert damaged.value.cause == "local_damaged" and not damaged.value.offers_forget
+    assert _Server(vault, "same").team_log_refusal() is None  # the pull fetches it again under its pins
+    assert local_team_state(vault.db).head_hash == TEAM_HEAD["hash"]
+    assert vault.db.get_meta(CONFIRMED_GENESIS_META) == TEAM_HEAD["genesis_hash"]
+    vault.lock()
+    vault.unlock(PASSWORD)
+    assert vault.get_field_value(entry, "password") == "keep-me"
+    assert local_team_state(vault.db).head_hash == TEAM_HEAD["hash"]
+
+
+@pytest.mark.parametrize("state", DAMAGED)
 @pytest.mark.parametrize("served", sorted(SERVERS))
 def test_a_damaged_copy_is_fetched_again_under_its_pins(tmp_path, state, served):
     vault, _ = _device(tmp_path, state)

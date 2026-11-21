@@ -32,6 +32,9 @@ final otherGenesis = 'ab' * 32;
 const states = {
   'damaged_json': 'local_damaged',
   'damaged_signature': 'local_damaged',
+  // Capability run 418: account keys naming this log's genesis, whose first
+  // record is damaged, read anchor_conflict (the damaged record's own hash).
+  'damaged_genesis_anchored': 'local_damaged',
   'anchor_conflict': 'anchor_conflict',
 };
 
@@ -46,8 +49,11 @@ List<Map<String, dynamic>> basicRecords() {
 void main() {
   final recs = basicRecords();
 
-  Future<void> breakIt(String state, DatabaseService db, String userId) async {
+  Future<void> breakIt(String state, DatabaseService db, String userId, String genesis) async {
     switch (state) {
+      case 'damaged_genesis_anchored':
+        await recordAccountTeamGenesis(userId, genesis);
+        await db.setSetting(teamLogRecordsSetting, jsonEncode([{...recs.first, 'sig': '00' * 64}, ...recs.skip(1)]));
       case 'damaged_json':
         await db.setSetting(teamLogRecordsSetting, '{');
       case 'damaged_signature':
@@ -129,7 +135,7 @@ void main() {
         expect(vault.nodes[f1]?.name, 'shared', reason: 'the trusted log lets F1 open');
         expect(vault.entries[orgEntry.id]?.name, 'org');
 
-        await breakIt(state, db, b);
+        await breakIt(state, db, b, genesis);
         final copy = await db.getSetting(teamLogRecordsSetting);
         vault.lock();
         await unlock(); // before: TEAM LOG MISMATCH, the vault locked again

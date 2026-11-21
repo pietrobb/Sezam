@@ -816,11 +816,14 @@ class VaultService {
     'local_damaged',
   );
 
-  /// The genesis the first record of the cached copy [raw] names, if it parses.
-  static String? _heldGenesis(String? raw) {
+  /// The genesis the cached copy [raw] holds: its first record, once it
+  /// verifies as a genesis. Capability run 418: a damaged first record named
+  /// its own hash as another genesis (anchor_conflict) instead of local
+  /// damage the next sync repairs under the pins.
+  String? _heldGenesis(String? raw) {
     try {
       final records = jsonDecode(raw!) as List;
-      return TeamLog.recordHash(Map<String, dynamic>.from(records.first as Map));
+      return TeamLog(verifyEd25519).replay([Map<String, dynamic>.from(records.first as Map)]).genesisHash;
     } catch (_) {
       return null;
     }

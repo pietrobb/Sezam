@@ -225,7 +225,8 @@ def local_team_state(db) -> Optional[teamlog.TeamState]:
     except teamlog.TeamLogError as exc:
         raise TeamLogMismatch(f"This device's copy of the team log does not replay ({exc}).{LOCAL_DAMAGED_HINT}",
                               "local_damaged") from exc
-    if state.head_hash != rows[-1]["hash"] or rows[-1]["seq"] != state.head_seq:
+    if rows[-1]["seq"] != state.head_seq or any(
+            teamlog.record_hash({"body": r["body"], "sig": r["sig"]}) != r["hash"] for r in rows):
         raise TeamLogMismatch("This device's copy of the team log does not match its stored hashes."
                               + LOCAL_DAMAGED_HINT, "local_damaged")
     return state
@@ -313,12 +314,25 @@ def received_envelope_sender(db, env, receipt: dict) -> str:
         raise CryptoError("Invalid team envelope receipt") from exc
 
 
+def held_genesis(db) -> Optional[str]:
+    """The genesis the local copy holds: its first record's stored hash while
+    the record still hashes to it. Capability run 418: a damaged first record
+    named its own hash as another genesis, so local damage (repaired by the
+    next pull, under the pins) was refused as anchor_conflict instead."""
+    first = db.fetchone("SELECT body, sig, hash FROM team_log WHERE seq = 0")
+    if first is None:
+        return None
+    try:
+        own = teamlog.record_hash({"body": first["body"], "sig": first["sig"]})
+    except ValueError:
+        return None
+    return first["hash"] if own == first["hash"] else None
+
+
 def _anchor_conflicts(db, genesis: str) -> bool:
-    """A pin or the local copy's first record names another genesis than ``genesis``."""
-    first = db.fetchone("SELECT body, sig FROM team_log WHERE seq = 0")
-    held = teamlog.record_hash({"body": first["body"], "sig": first["sig"]}) if first else None
+    """A pin or the genesis the local copy holds is another than ``genesis``."""
     return any(pin is not None and pin != genesis
-               for pin in (db.get_meta(CONFIRMED_GENESIS_META), db.get_meta(GENESIS_META), held))
+               for pin in (db.get_meta(CONFIRMED_GENESIS_META), db.get_meta(GENESIS_META), held_genesis(db)))
 
 
 def record_account_anchor(db, keypair) -> None:

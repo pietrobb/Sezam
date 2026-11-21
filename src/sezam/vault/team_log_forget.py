@@ -23,7 +23,8 @@ from ..models import ulid_to_bytes
 from . import outbox, pending_states
 from .sync_rekey import ROTATION_SEALED_META
 from .team_log_local import (
-    ACCOUNT_ANCHOR_META, CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, readable_forgotten_genesis,
+    ACCOUNT_ANCHOR_META, CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, held_genesis,
+    readable_forgotten_genesis,
     queued_changes, set_aside_changes,
 )
 
@@ -37,11 +38,10 @@ MIN_CONFIRM_CHARS = 16
 def pinned_genesis(vault: Vault) -> set[str]:
     """Every genesis this device holds on to: pins, its log copy, its keys."""
     db = vault.db
-    first = db.fetchone("SELECT hash FROM team_log WHERE seq = 0")
     return {
         pin for pin in (
             db.get_meta(CONFIRMED_GENESIS_META), db.get_meta(GENESIS_META),
-            first["hash"] if first else None, vault.keypair.confirmed_genesis,
+            held_genesis(db), vault.keypair.confirmed_genesis,
         ) if pin
     }
 
