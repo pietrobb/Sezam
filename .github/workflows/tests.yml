@@ -20,13 +20,13 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - run: python -m pip install ./core/py
@@ -66,15 +66,15 @@ jobs:
       # a missing flutter fails instead of skipping.
       SEZAM_REQUIRE_FLUTTER: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       # The web tests run app.js in node; its Argon2id is crypto.argon2Sync
       # (node >= 24.7), the runner's preinstalled node is older.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - uses: subosito/flutter-action@v2
@@ -109,7 +109,7 @@ jobs:
       SEZAM_TEST_HOST_SETUP: "1"
       SEZAM_REQUIRE_HOST_SETUP: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server openssh-client procps sudo
       # The checkout belongs to the runner user, the container runs as root:
       # without this git refuses the repo and setuptools-scm cannot read the version.
@@ -127,11 +127,11 @@ jobs:
     env:
       SEZAM_STATEFUL_EXAMPLES: "300"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - run: python -m pip install ./core/py
@@ -147,7 +147,7 @@ jobs:
       run:
         working-directory: core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
@@ -173,8 +173,8 @@ jobs:
       run:
         working-directory: mobile
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - uses: subosito/flutter-action@v2
