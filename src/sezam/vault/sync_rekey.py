@@ -29,6 +29,9 @@ from .team_log_local import local_team_state, projected_team_state
 # Last team-log seq whose member.keys records this device sealed keys for.
 ROTATION_SEALED_META = "team_rotation_sealed_seq"
 
+# Same as server/app/routers/sync_held.py MAX_HELD_IDS.
+HELD_IDS_PER_REQUEST = 200
+
 
 class RekeyMixin:
     """SyncClient methods: member re-key batches: close, rebase and reseal after removals."""
@@ -47,13 +50,17 @@ class RekeyMixin:
         A server that cannot be reached raises: the caller does not guess.
         """
         new_ids = sorted(set((pending.get("dek_map") or {}).values()))
-        if not new_ids:
-            return False
-        reply = self._request("POST", "/api/objects/held", {"ids": new_ids}, auth=True) or {}
-        return any(
-            obj.get("id") in new_ids and obj.get("object_type") == "dek" and not obj.get("is_deleted")
-            for obj in reply.get("objects") or []
-        )
+        # The server takes HELD_IDS_PER_REQUEST ids a request; a member with
+        # more folders than that made every push raise 422 (capability run 439).
+        for start in range(0, len(new_ids), HELD_IDS_PER_REQUEST):
+            chunk = new_ids[start:start + HELD_IDS_PER_REQUEST]
+            reply = self._request("POST", "/api/objects/held", {"ids": chunk}, auth=True) or {}
+            if any(
+                obj.get("id") in chunk and obj.get("object_type") == "dek" and not obj.get("is_deleted")
+                for obj in reply.get("objects") or []
+            ):
+                return True
+        return False
 
     @oplock.held
     def close_rekey_if_landed(self) -> bool:
