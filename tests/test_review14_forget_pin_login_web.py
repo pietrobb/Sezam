@@ -73,31 +73,25 @@ def test_forgetting_at_sign_in_checks_the_queue_no_pull_loaded_yet():
         saveWebDirtyState = async (objects, conflicts, _s, ops) => { stored = { objects, conflicts, ops, sent: {} }; };
         state.outboxLoaded = false;
         state.outbox = {};
-        let refused;
-        try { await forgetWebTeamLogPinLocked(want.slice(0, 16), 1, sodium); } catch (err) { refused = err.message; }
-        const keptPins = webPinnedTeamGenesis();
+        // Review e443cbc H2: the forget itself asks to export and drop the
+        // queue (every screen that forgets), and only for the right genesis.
+        let answer = false, asked = 0, exported = [];
+        window = { confirm: () => { asked++; return answer; } };
+        exportWebDirtyObjects = objects => { exported.push(...objects.map(o => o.id)); };
         // Declined: nothing is dropped. A typo: the queue is never touched.
         let declined, typo;
-        try { await forgetWebTeamLogPinLocked(want.slice(0, 16), 1, sodium, async () => false); }
-        catch (err) { declined = err.message; }
-        let asked = 0;
-        try { await forgetWebTeamLogPinLocked('0'.repeat(16), 1, sodium, async () => { asked++; return true; }); }
-        catch (err) { typo = err.message; }
-        const discard = async () => {
-            asked++;
-            const outbox = {}, conflicts = {}, ops = [];
-            await saveWebDirtyState(outbox, conflicts, sodium, ops);
-            state.outbox = outbox; state.syncConflicts = conflicts; state.outboxOps = ops;
-            return true;
-        };
-        const left = await forgetWebTeamLogPinLocked(want.slice(0, 16), 1, sodium, discard);
-        return { refused, keptPins, declined, typo, asked, left, stored, pins: webPinnedTeamGenesis() };
+        try { await forgetWebTeamLogPinLocked(want.slice(0, 16), 1, sodium); } catch (err) { declined = err.message; }
+        const keptPins = webPinnedTeamGenesis();
+        try { await forgetWebTeamLogPinLocked('0'.repeat(16), 1, sodium); } catch (err) { typo = err.message; }
+        answer = true;
+        const left = await forgetWebTeamLogPinLocked(want.slice(0, 16), 1, sodium);
+        return { keptPins, declined, typo, asked, exported, left, stored, pins: webPinnedTeamGenesis() };
     """)
     want = result["keptPins"]
-    assert result["refused"] == "team.forget_unsent"
     assert result["declined"] == "team.forget_unsent"
     assert result["typo"].startswith("team.forget_typed")
-    assert result["asked"] == 1  # only the right genesis reached the discard question
+    assert result["asked"] == 2  # declined, then accepted; the typo never reached the question
+    assert result["exported"] == ["E1"]
     assert result["left"] == want and result["pins"] == []
     assert result["stored"]["objects"] == {}
 
@@ -115,8 +109,11 @@ def test_the_sign_in_screen_offers_the_way_out():
     assert login.index("const forgetTyped = state.loginTeamLogLost") < login.index("resetSession();")
     at_login = _function("forgetTeamLogPinAtLogin")
     assert "window.confirm(t('team.forget_confirm'))" in at_login
-    assert "exportWebDirtyObjects(objects)" in at_login
-    assert at_login.index("exportWebDirtyObjects(objects)") < at_login.index("saveWebDirtyState(")
+    # Review e443cbc H2: the export and drop live in the forget itself, so the
+    # vault's Team trust forget has them too.
+    assert "forgetWebTeamLogPinLocked(typed, session, _sodium)" in at_login
+    forget_locked = _function("forgetWebTeamLogPinLocked")
+    assert forget_locked.index("exportWebDirtyObjects(objects)") < forget_locked.index("saveWebDirtyState(")
     index = (ROOT / "web/templates/index.html").read_text(encoding="utf-8")
     form = index[index.index('<form id="login-form"'):index.index("</form>", index.index('<form id="login-form"'))]
     assert 'id="login-team-forget"' in form and 'id="login-team-forget-genesis"' in form

@@ -1791,22 +1791,7 @@ async function handleLogin(e) {
  * login that fails on a lost team log; runs once the login's password signed in. */
 async function forgetTeamLogPinAtLogin(typed, session, _sodium) {
     if (!window.confirm(t('team.forget_confirm'))) throw new Error(t('team.forget_cancelled'));
-    // Nothing queued here can reach the lost log, and the vault where it
-    // could be sent or resolved never opens: export it, then drop it.
-    const discardUnsent = async () => {
-        const objects = [...Object.values(state.outbox || {}),
-            ...Object.values(state.syncConflicts || {}).map(conflict => conflict.local_object)];
-        const count = objects.length + (state.outboxOps || []).length;
-        if (!window.confirm(t('team.forget_discard_unsent', { count }))) return false;
-        if (objects.length) exportWebDirtyObjects(objects);
-        const outbox = {}, conflicts = {}, ops = [];
-        await saveWebDirtyState(outbox, conflicts, _sodium, ops);
-        state.outbox = outbox;
-        state.syncConflicts = conflicts;
-        state.outboxOps = ops;
-        return !Object.keys(outbox).length && !Object.keys(conflicts).length && !ops.length;
-    };
-    await withWebSyncLock(() => forgetWebTeamLogPinLocked(typed, session, _sodium, discardUnsent));
+    await withWebSyncLock(() => forgetWebTeamLogPinLocked(typed, session, _sodium));
     const input = document.getElementById('login-team-forget-genesis');
     if (input) input.value = '';
     document.getElementById('login-team-forget')?.classList.add('hidden');
@@ -7650,7 +7635,7 @@ async function webTeamLogRefusal(_sodium) {
 }
 
 /** Drop this browser's team log pin; call with the sync lock held. */
-async function forgetWebTeamLogPinLocked(typed, session, _sodium, discardUnsent = null) {
+async function forgetWebTeamLogPinLocked(typed, session, _sodium) {
     const ended = () => session !== state.sessionSerial || !state.kek;
     if (ended()) throw new Error(t('team.stale'));
     await loadWebLocalStateLocked(session, _sodium);
@@ -7672,9 +7657,21 @@ async function forgetWebTeamLogPinLocked(typed, session, _sodium, discardUnsent 
         throw new Error(t('team.forget_not_lost', { reason: refusal ? refusal.message : 'this browser follows it' }));
     }
     if (ended()) throw new Error(t('team.stale'));
-    if (Object.keys(state.outbox || {}).length || Object.keys(state.syncConflicts || {}).length ||
-            (state.outboxOps || []).length) {
-        if (!discardUnsent || !await discardUnsent()) throw new Error(t('team.forget_unsent'));
+    // INV-7 (review e443cbc H2): nothing queued can reach a lost log, so the
+    // forget exports it and drops it once asked, whichever screen forgets.
+    // Before, only the sign-in screen did; since INV-7 that sign-in opens the
+    // vault, whose Team trust forget then refused for good with anything queued.
+    const objects = [...Object.values(state.outbox || {}),
+        ...Object.values(state.syncConflicts || {}).map(conflict => conflict.local_object)];
+    const count = objects.length + (state.outboxOps || []).length;
+    if (count) {
+        if (!window.confirm(t('team.forget_discard_unsent', { count }))) throw new Error(t('team.forget_unsent'));
+        if (objects.length) exportWebDirtyObjects(objects);
+        const outbox = {}, conflicts = {}, ops = [];
+        await saveWebDirtyState(outbox, conflicts, _sodium, ops);
+        state.outbox = outbox;
+        state.syncConflicts = conflicts;
+        state.outboxOps = ops;
     }
     if (ended()) throw new Error(t('team.stale'));
     const forgotten = [...new Set([...await loadForgottenTeamGenesis(_sodium), ...pins])].sort();

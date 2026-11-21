@@ -66,7 +66,10 @@ def test_a_browser_leaves_a_lost_log_and_follows_the_new_one():
         for (const typed of ['', want.slice(0, 15), fresh.genesisHash.slice(0, 16), 'f'.repeat(64)]) {
             refused.push(await forget(typed));
         }
+        // Review e443cbc H2: queued work is exported and dropped once asked;
+        // declined, nothing changes.
         state.outboxOps = [{ op: 'x' }];
+        window = { confirm: () => false };
         const unsent = await forget(want.slice(0, 16));
         state.outboxOps = [];
         const stillPinned = webPinnedTeamGenesis();
