@@ -469,7 +469,9 @@ def test_complete_web_login_uses_persisted_anchor_and_retries_after_server_lie(t
     kept = {row["id"]: json.loads(row["__json"]) for row in profile["keys"]}
     anchor_id = f"confirmed_team_genesis:{bob_id}"
     assert kept[anchor_id] == next(row for row in stored if row["id"] == anchor_id)
-    assert f"sync_checkpoint:{bob_id}" not in kept
+    # Review e443cbc (INV-2): the refused sign-in keeps its rollback floor;
+    # the log it refused pins nothing (tests/test_web_checkpoint_while_refused.py).
+    assert f"sync_checkpoint:{bob_id}" in kept
     tab = WebTab(url, tmp_path / "anchored-web-retry.log", idb=profile)
     try:
         accepted = tab.do("login", username="bob", password=PASSWORD)

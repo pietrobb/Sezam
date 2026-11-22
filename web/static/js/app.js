@@ -3335,8 +3335,8 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         live_state_hash: liveStateHash,
         commit_token: syncPosition === responseSeq && typeof data.max_token === 'string'
             ? data.max_token : null,
-        // A refused log keeps the pin it is held to, in this session only:
-        // nothing a refused pull saw becomes this browser's checkpoint.
+        // A refused log keeps the pin it is held to: no log a refused pull
+        // saw becomes this browser's pin (its seq floor does, below).
         team_log: teamLogRefusal ? state.syncCheckpoint?.team_log || null : teamLogPin(teamLog?.team),
         timestamp: Date.now(),
     };
@@ -3344,7 +3344,13 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     await saveWebDirtyState(
         reconciledDirtyState.outbox, reconciledDirtyState.conflicts, _sodium
     );
-    if (!teamLogRefusal) await saveSyncCheckpoint(nextCheckpoint, _sodium);
+    // Review e443cbc (INV-2): a refused pull moves the rollback floor too, or
+    // a server restored between the last clean pull and this one is taken at
+    // the next sign-in. The log's pin stays (above). With a signer's objects
+    // withheld the hashes are of no server state: only the seq and the
+    // commit token are kept (core check_state compares a missing hash as equal).
+    await saveSyncCheckpoint(withheld
+        ? { ...nextCheckpoint, state_hash: null, live_state_hash: null } : nextCheckpoint, _sodium);
     if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
     for (const id of refusedTeamKeys) {
         if (state.deks[id]) _sodium.memzero(state.deks[id]);
@@ -5216,8 +5222,9 @@ async function loadSyncCheckpoint(_sodium) {
         );
         const checkpoint = JSON.parse(new TextDecoder().decode(plaintext));
         if (!Number.isSafeInteger(checkpoint.last_sync_seq) || checkpoint.last_sync_seq < 0 ||
-                !/^[0-9a-f]{64}$/.test(checkpoint.state_hash || '') ||
-                (checkpoint.live_state_hash !== undefined &&
+                // null: a pull with a signer's objects withheld (seq floor only).
+                (checkpoint.state_hash !== null && !/^[0-9a-f]{64}$/.test(checkpoint.state_hash || '')) ||
+                (checkpoint.live_state_hash != null &&
                     !/^[0-9a-f]{64}$/.test(checkpoint.live_state_hash)) ||
                 (checkpoint.commit_token != null && !/^[0-9a-f]{1,64}$/.test(checkpoint.commit_token)) ||
                 (checkpoint.team_log != null && (
