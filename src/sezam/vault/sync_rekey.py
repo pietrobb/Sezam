@@ -173,6 +173,17 @@ class RekeyMixin:
 
         batch_old_raw = {ulid_to_bytes(old) for old in dek_map}
 
+        def held_node(row) -> dict:
+            # Review e443cbc #438 (7): a folder deleted here is held as its
+            # delete, as an entry is; it comes back as a conflict once the
+            # batch landed.
+            if row["is_deleted"]:
+                return {"kind": "node", "deleted": True, "parent": row["parent_id"]}
+            return {
+                "kind": "node", "version": row["version"], "parent": row["parent_id"],
+                "meta": bytes(row["encrypted_meta"]).hex(),
+            }
+
         self._db.begin()
         try:
             for old_dek_id, new_dek_id in dek_map.items():
@@ -208,10 +219,13 @@ class RekeyMixin:
                     )
 
                 for row in self._db.fetchall(
-                    "SELECT id, parent_id, encrypted_meta, version, "
+                    "SELECT id, parent_id, encrypted_meta, version, is_deleted, "
                     f"{outbox.queued('nodes')} AS queued FROM nodes "
                     f"WHERE (id IN ({marks}) OR parent_id IN ({marks}) "
-                    f"OR (id IN ({out_marks}) AND {outbox.queued('nodes')})) AND is_deleted = 0",
+                    f"OR (id IN ({out_marks}) AND {outbox.queued('nodes')})) "
+                    # Seed 858585: a folder deleted here whose delete lost to a
+                    # restore was never rebased and sank the batch on every push.
+                    f"AND (is_deleted = 0 OR {outbox.queued('nodes')})",
                     tuple(folder_ids) * 2 + tuple(moved_out),
                 ):
                     node_id = row["id"]
@@ -241,6 +255,8 @@ class RekeyMixin:
                                     "during the re-key"
                                 )
                             own_edit = rekeyed_versions.get(node_id) != row["version"]
+                            if row["is_deleted"] and shadow["server_is_deleted"]:
+                                own_edit = False  # deleted on both sides: nothing to hold
                             if own_edit and node_id not in folder_ids:
                                 # Stateful test SM41: as SM37 for entries - the
                                 # user's edit leaves the batch and stays a conflict.
@@ -251,9 +267,7 @@ class RekeyMixin:
                                 # batch as the server has it; the edit is held
                                 # and comes back as a conflict with that copy.
                                 held[node_id] = {
-                                    "kind": "node", "version": row["version"],
-                                    "parent": row["parent_id"],
-                                    "meta": bytes(row["encrypted_meta"]).hex(),
+                                    **held_node(row),
                                     "server_deleted": bool(shadow["server_is_deleted"]),
                                 }
                             outbox.drop_write(self._db, node_id)
@@ -274,11 +288,7 @@ class RekeyMixin:
                         # A row edited again after an earlier rebase held it:
                         # the newer edit is held (review e4cd15a S1).
                         if rekeyed_versions.get(node_id) != row["version"]:
-                            held[node_id] = {
-                                "kind": "node", "version": row["version"],
-                                "parent": row["parent_id"],
-                                "meta": bytes(row["encrypted_meta"]).hex(),
-                            }
+                            held[node_id] = held_node(row)
                     else:
                         blob = bytes(row["encrypted_meta"])
                         version = row["version"]

@@ -4156,6 +4156,39 @@ def test_sync_state_machine_withheld_archive_then_a_stale_grant(loopback_server,
         machine.teardown()
 
 
+def test_sync_state_machine_rekey_of_a_folder_deleted_here(loopback_server, monkeypatch):
+    """Review e443cbc #438 (7), seed 858585 (second admin): A deletes a folder
+    shared with a member while B renames it; A's delete comes back a conflict.
+    The second admin revokes the member, so A re-keys the folder. The rebase
+    skipped the folder deleted here, so the batch went out at the old base and
+    every push of A failed as 'Atomic re-key batch conflict'."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SecondAdminMachine.server = loopback_server
+    machine = SecondAdminMachine()
+    try:
+        machine.track_member_keys()
+        (admin,) = machine._second_admins()
+        member = next(u for u in machine._active_members() if u not in machine.admins and machine.granted[u])
+        folder = sorted(machine.granted[member])[0]
+        machine.delete_folder(_Scripted(device="A", folder=folder))
+        machine.rename_folder(_Scripted(device="B", folder=folder))
+        machine.push(_Scripted(device="B"), None)
+        machine.push(_Scripted(device="A"), None)
+        assert "conflicts 1" in machine.log[-1], machine._trace()
+        machine.second_admin_revokes(_Scripted(admin=admin, member=member), None)
+        assert member in machine.revoked, machine._trace()
+        machine.push(_Scripted(device="A"), None)
+        assert "re-key batch conflict" not in machine._trace(), machine._trace()
+        a = machine.devices["A"].client
+        assert not rekey_batch(machine.devices["A"].vault.db), machine._trace()
+        # The delete made here is not lost: it is a conflict with B's rename.
+        assert folder in {c["id"] for c in a.get_pull_conflicts()}, machine._trace()
+        machine.track_member_keys()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_withheld_keys_after_a_revocation(loopback_server, monkeypatch):
     """Run on S4a (reproduce_failure AXicY3BkcBR11HNUZHAEQxBicFQFsZlAhA5YFABcKASH):
     A grants a folder to a member, a new device C revokes the member (re-keys
