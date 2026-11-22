@@ -497,8 +497,10 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         **_auth_fields("signedInUserId", "signAuthChallenge", "decryptLoginKeypair"),
         "VerifyResponse.user_id": Field(
             HINT, "this browser's identity only when it is the account its keys were wrapped for (KEYPAIR_WRAP "
-            "AAD); another refuses the sign-in, as on the phone (tests/test_inv3_web_verify_user_id.py)",
-            ("signedInUserId",)),
+            "AAD); another refuses the sign-in, as on the phone (tests/test_inv3_web_verify_user_id.py). A "
+            ".sezam-key wraps for a random id, so its keys are bound at their first sign-in (firstSignInUserId), "
+            "as the desktop's rebind_server_identity; getUserSigningPks then refuses another account's keys",
+            ("signedInUserId", "firstSignInUserId", "getUserSigningPks")),
         "VerifyResponse.username": Field(
             HINT, "kept for this session only; the next sign-in asks under it and only this browser's keys "
             "answer, for the account signedInUserId checks", ("signedInUserId",)),

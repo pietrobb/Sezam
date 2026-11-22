@@ -1500,6 +1500,17 @@ function signedInUserId(authResp, keypairUserId) {
     return keypairUserId;
 }
 
+// A .sezam-key wraps its keys for a random object id (buildSezamKeyBackup, as
+// desktop keys.py and the phone do), not for an account: they are bound to the
+// account at their first sign-in, as the desktop's rebind_server_identity does.
+// From then on the own-key check of getUserSigningPks refuses another account's keys.
+function firstSignInUserId(authResp) {
+    if (!authResp || typeof authResp.user_id !== 'string' || !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(authResp.user_id)) {
+        throw new Error(t('error.identity_mismatch'));
+    }
+    return authResp.user_id;
+}
+
 async function signInWithKeypair(username, keypairBytes, _sodium) {
     // Get the challenge right before signing, so it doesn't expire.
     const challengeResp = await apiFetch('/api/auth/challenge', {
@@ -1537,7 +1548,10 @@ async function signInWithLoginKeypair(username, opened, meta, _sodium) {
     } catch (authErr) {
         if (!opened.cachedKeypair || !authErr || authErr.status !== 401) throw authErr;
     }
-    if (!opened.cachedKeypair) return { authResp, keypairBytes: null, userId: opened.keypairUserId };
+    if (!opened.cachedKeypair) {
+        return { authResp, keypairBytes: null,
+            userId: opened.importedBackup ? firstSignInUserId(authResp) : opened.keypairUserId };
+    }
     if (authResp) {
         const cachedHash = bytesToHex(_sodium.crypto_hash_sha256(hexToBytes(opened.encryptedKeypairHex)));
         if (authResp.key_material_hash === cachedHash) return { authResp, keypairBytes: null, userId: opened.keypairUserId };

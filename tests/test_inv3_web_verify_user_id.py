@@ -39,3 +39,24 @@ def test_every_sign_in_takes_the_identity_of_its_keys():
     # The password login knows which account its keypair opened for.
     returns = re.findall(r"return \{ authResp,[^}]*\}", _function("signInWithLoginKeypair"))
     assert returns and all("userId:" in r for r in returns), returns
+
+
+def test_a_key_backup_is_bound_at_its_first_sign_in_only():
+    # A .sezam-key wraps its keys for a random object id, not for the account.
+    script = """(() => {
+      t = key => key;
+      const outcome = resp => { try { return firstSignInUserId(resp); } catch (err) { return err.message; } };
+      return {
+        bound: outcome({ user_id: '01HZZZZZZZZZZZZZZZZZZZZZZZ' }),
+        missing: outcome({}),
+        malformed: outcome({ user_id: 'ADMIN' }),
+      };
+    })()"""
+    result = _run_source(_function("firstSignInUserId"), script)
+    assert result == {
+        "bound": "01HZZZZZZZZZZZZZZZZZZZZZZZ", "missing": "error.identity_mismatch",
+        "malformed": "error.identity_mismatch",
+    }
+    sign_in = _function("signInWithLoginKeypair")
+    assert "opened.importedBackup ? firstSignInUserId(authResp) : opened.keypairUserId" in sign_in
+    assert APP.count("firstSignInUserId(") == 2
