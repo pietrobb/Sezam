@@ -5,7 +5,7 @@ this is the desktop's door to it (the PyO3 binding in core/py).
 """
 
 import json
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 import sezam_sync_core
 
@@ -41,14 +41,27 @@ def call(op: str, **arguments: Any) -> Any:
     return _run(op, arguments)
 
 
-def team_input(team: Any, user_id: Optional[str]) -> Optional[dict]:
+def team_input(team: Any, user_id: Optional[str], keys: Optional[Iterable[str]] = None) -> Optional[dict]:
     """The verified team log as the core reads it: each folder's keys, oldest
-    first, and the keys the log lets ``user_id`` hold."""
+    first, and the keys the log lets ``user_id`` hold.
+
+    With ``keys``, only the folders that name one of them: the log names a key
+    in one folder only, and the core's answer about a key reads that folder
+    alone. Review 8bc70f7 M8: every question sent all of a 40 000-folder team.
+    """
     if team is None:
         return None
     from .. import teamlog
 
+    if keys is None:
+        folders = team.folders
+    else:
+        named = {team.dek_index[key][0] for key in keys if key in team.dek_index}
+        folders = {folder: team.folders[folder] for folder in sorted(named) if folder in team.folders}
     return {
-        "folders": {folder: [gen[0] for gen in gens] for folder, gens in team.folders.items()},
-        "may_hold": [key for key in team.dek_index if user_id and teamlog.may_hold_key(team, user_id, key)],
+        "folders": {folder: [gen[0] for gen in gens] for folder, gens in folders.items()},
+        "may_hold": [
+            gen[0] for gens in folders.values() for gen in gens
+            if user_id and teamlog.may_hold_key(team, user_id, gen[0])
+        ],
     }

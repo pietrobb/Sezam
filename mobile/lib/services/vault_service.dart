@@ -280,6 +280,7 @@ class VaultService {
   String? get rootNodeId => _rootNodeId;
   String? get kekDekId => _kekDekId;
   String? get userId => _userId;
+
   /// INV-3 (review e443cbc): admin as the verified team log says (as on the
   /// desktop). The server's unsigned is_admin ([serverSaysAdmin], kept for
   /// offline unlock too) only stands while this phone knows no team log at
@@ -462,13 +463,17 @@ class VaultService {
   Future<void> _loadDEKs() async {
     if (_kek == null) return;
     // No log (or a refused one, INV-7): no pin is read, an unreadable one is the refusal.
-    final trusted = teamLog != null && localTeamLogTrusted(
-      teamLog,
-      await readConfirmedTeamGenesis(_userId!),
-      _userId!,
-      _signingPublicKey == null ? null : bytesToHex(_signingPublicKey!),
-      _encryptionPublicKey == null ? null : bytesToHex(_encryptionPublicKey!),
-    );
+    final trusted =
+        teamLog != null &&
+        localTeamLogTrusted(
+          teamLog,
+          await readConfirmedTeamGenesis(_userId!),
+          _userId!,
+          _signingPublicKey == null ? null : bytesToHex(_signingPublicKey!),
+          _encryptionPublicKey == null
+              ? null
+              : bytesToHex(_encryptionPublicKey!),
+        );
     for (final key in _deks.values) {
       _crypto.zeroize(key);
     }
@@ -476,7 +481,9 @@ class VaultService {
 
     final dekRows = await _db.getObjectsByType('dek');
     final unreadableOwn = <String>[];
-    final refusedKeys = teamLogRefusal == null ? const <String>{} : await _teamKeyIds();
+    final refusedKeys = teamLogRefusal == null
+        ? const <String>{}
+        : await _teamKeyIds();
     for (final row in dekRows) {
       final payload = row['payload'] as Uint8List;
       final dekId = row['id'] as String;
@@ -721,13 +728,19 @@ class VaultService {
       final shown = refusedLogPersonalTree(
         allObjects,
         _userId,
-        personalNodes: {for (final n in _nodes.values) if (n.personal) n.id},
+        personalNodes: {
+          for (final n in _nodes.values)
+            if (n.personal) n.id,
+        },
         dekIds: {
           for (final n in _nodes.values) n.id: n.dekId,
           for (final e in _entries.values) e.id: e.dekId,
         },
         heldDekIds: _deks.keys.toSet(),
-        tier2Entries: {for (final e in _entries.values) if (e.tier == 2) e.id},
+        tier2Entries: {
+          for (final e in _entries.values)
+            if (e.tier == 2) e.id,
+        },
       );
       _nodes.removeWhere((id, _) => !shown.contains(id));
       _entries.removeWhere((id, _) => !shown.contains(id));
@@ -800,7 +813,9 @@ class VaultService {
   /// [replacingUnreadableTrust]: the founder review, whose confirmation
   /// replaces trust records that cannot be read (capability run 411), reads
   /// them as absent; the copy is still held to the pins of the checkpoint.
-  Future<LocalTeamLog?> _loadTeamLog({bool replacingUnreadableTrust = false}) async {
+  Future<LocalTeamLog?> _loadTeamLog({
+    bool replacingUnreadableTrust = false,
+  }) async {
     Future<String?> trust(Future<String?> Function(String) read) async {
       try {
         return await read(_userId!);
@@ -824,18 +839,25 @@ class VaultService {
       ];
       // Unreadable, it may hold any pin above: the team is refused
       // (local_damaged) even with no account anchor noted (run 412).
-      await trust((userId) async => (await readForgottenTeamGenesis(userId)).firstOrNull);
+      await trust(
+        (userId) async => (await readForgottenTeamGenesis(userId)).firstOrNull,
+      );
       final anchor = await trust(readAccountTeamGenesis);
       if (anchor != null &&
-          [confirmed, for (final pin in pins) pin['genesis_hash'], _heldGenesis(raw)]
-              .any((genesis) => genesis != null && genesis != anchor)) {
+          [
+            confirmed,
+            for (final pin in pins) pin['genesis_hash'],
+            _heldGenesis(raw),
+          ].any((genesis) => genesis != null && genesis != anchor)) {
         throw TeamLogMismatch(
           'names another genesis than the account keys (another server, or a log left elsewhere)',
           'anchor_conflict',
         );
       }
-      _teamGenesisPinned = anchor != null || confirmed != null || pins.isNotEmpty;
-      if (raw == null && pins.isEmpty &&
+      _teamGenesisPinned =
+          anchor != null || confirmed != null || pins.isNotEmpty;
+      if (raw == null &&
+          pins.isEmpty &&
           (confirmed == null || (await _db.getAllObjects()).isEmpty)) {
         return null;
       }
@@ -850,7 +872,7 @@ class VaultService {
 
   static TeamLogMismatch _localDamaged(String detail) => TeamLogMismatch(
     'copy held on this phone cannot be verified ($detail); the next sync fetches it '
-    'again, held to the genesis and the head this phone saw',
+        'again, held to the genesis and the head this phone saw',
     'local_damaged',
   );
 
@@ -861,7 +883,9 @@ class VaultService {
   String? _heldGenesis(String? raw) {
     try {
       final records = jsonDecode(raw!) as List;
-      return TeamLog(verifyEd25519).replay([Map<String, dynamic>.from(records.first as Map)]).genesisHash;
+      return TeamLog(
+        verifyEd25519,
+      ).replay([Map<String, dynamic>.from(records.first as Map)]).genesisHash;
     } catch (_) {
       return null;
     }
@@ -892,9 +916,13 @@ class VaultService {
         if (row['parent_ref'] != null) row['id'] as String,
     };
     try {
-      for (final record in jsonDecode((await _db.getSetting(teamLogRecordsSetting))!) as List) {
+      for (final record
+          in jsonDecode((await _db.getSetting(teamLogRecordsSetting))!)
+              as List) {
         try {
-          final data = (jsonDecode((record as Map)['body'] as String) as Map)['data'] as Map;
+          final data =
+              (jsonDecode((record as Map)['body'] as String) as Map)['data']
+                  as Map;
           for (final key in [data['dek_id'], data['prev_dek_id']]) {
             if (key is String) ids.add(key);
           }
@@ -918,7 +946,10 @@ class VaultService {
       final parent = row['parent_ref'] as String?;
       return switch (row['object_type']) {
         'dek' => parent == null && !teamKeys.contains(id),
-        'node' => parent == null ? _nodes[id]?.personal == true : _inPersonalTree(parent),
+        'node' =>
+          parent == null
+              ? _nodes[id]?.personal == true
+              : _inPersonalTree(parent),
         'entry' => _inPersonalTree(parent),
         _ => false,
       };
@@ -1050,8 +1081,9 @@ class VaultService {
     if (refusal != null) {
       // INV-7: a refused log refuses the team, never a write in the personal
       // tree (which holds no team folder), from and to.
-      bool personal(String? parent) =>
-          parent == null ? _nodes[id]?.personal == true : _inPersonalTree(parent);
+      bool personal(String? parent) => parent == null
+          ? _nodes[id]?.personal == true
+          : _inPersonalTree(parent);
       final held = await _db.getObject(id);
       if (personal(parentRef) &&
           (held == null || personal(held['parent_ref'] as String?))) {
@@ -1951,14 +1983,20 @@ class VaultService {
         final replaced = _deks[sealedWith] == null
             ? await _ownWrappedDek(sealedWith) ??
                   await _keptUnsentDek(sealedWith) ??
-                  (team == null ? null : await _ownEnvelopeDek(sealedWith, team))
+                  (team == null
+                      ? null
+                      : await _ownEnvelopeDek(sealedWith, team))
             : null;
         final opening = replaced ?? _deks[sealedWith];
         var dekId = sealedWith;
         if (opening != null && team != null) {
           final to =
               (syncCore('reseal_targets', {
-                            'team': syncCoreTeam(team, _userId ?? ''),
+                            'team': syncCoreTeam(
+                              team,
+                              _userId ?? '',
+                              keys: [sealedWith],
+                            ),
                             'held': _deks.keys.toList(),
                             'keys': [sealedWith],
                           })
@@ -1971,7 +2009,9 @@ class VaultService {
         Map<String, dynamic>? meta;
         for (
           var sealedAt = tombstone;
-          opening != null && dek != null && sealedAt >= 0 &&
+          opening != null &&
+              dek != null &&
+              sealedAt >= 0 &&
               sealedAt > tombstone - 256;
           sealedAt--
         ) {
@@ -2304,7 +2344,9 @@ class VaultService {
         _crypto.zeroize(own);
         continue;
       }
-      kept[dekId] = base64Encode(_crypto.wrapDEK(key, dekId, _kek!, _kekDekId!));
+      kept[dekId] = base64Encode(
+        _crypto.wrapDEK(key, dekId, _kek!, _kekDekId!),
+      );
     }
     final after = jsonEncode(kept);
     if (after != before) await _db.setSetting(_unsentKeysSetting, after);
@@ -2330,7 +2372,8 @@ class VaultService {
     final sk = _encryptionSecretKey;
     if (sk == null || _userId == null) return null;
     for (final row in await _db.getObjectsByType('envelope')) {
-      if (row['parent_ref'] != dekId || row['target_user_id'] != _userId) continue;
+      if (row['parent_ref'] != dekId || row['target_user_id'] != _userId)
+        continue;
       final sender = team.members[row['signer_id'] as String? ?? ''];
       if (sender == null) continue;
       final payload = row['payload'] as Uint8List;
@@ -2365,7 +2408,9 @@ class VaultService {
   Future<void> _resealUnsent() async {
     final team = teamLog?.team;
     if (team == null || _signingSecretKey == null) return;
-    Map<String, Object?>? coreTeam;
+    // Review 8bc70f7 M8: the held keys and the whole team went to the core
+    // again for each unsent write. Opening a replaced key adds none to _deks.
+    final held = _deks.keys.toList();
     for (final row in await _db.getDirtyObjects()) {
       final type = row['object_type'] as String;
       if ((type != 'node' && type != 'entry') || row['is_deleted'] == 1)
@@ -2386,8 +2431,12 @@ class VaultService {
       // _loadDEKs). A revoked account opens no replaced key.
       final to =
           (syncCore('reseal_targets', {
-                        'team': coreTeam ??= syncCoreTeam(team, _userId ?? ''),
-                        'held': _deks.keys.toList(),
+                        'team': syncCoreTeam(
+                          team,
+                          _userId ?? '',
+                          keys: [sealed],
+                        ),
+                        'held': held,
                         'keys': [sealed],
                       })
                       as List)

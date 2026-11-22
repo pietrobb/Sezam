@@ -254,7 +254,7 @@ class DEKManager:
         # A key the log replaced opens while the log lets this account hold
         # the folder's current one (unlock_dek).
         if not teamlog.may_hold_key(team, user_id, dek_id) and not sync_core.call(
-                "may_open_superseded", team=sync_core.team_input(team, user_id), key=dek_id):
+                "may_open_superseded", team=sync_core.team_input(team, user_id, [dek_id]), key=dek_id):
             raise TeamKeyRefused("The confirmed team log does not permit this key")
         return team
 

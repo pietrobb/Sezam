@@ -297,7 +297,7 @@ def _rekey_due(vault: Vault, team, me: str, user_id: str) -> bool:
     keys = [row["dek_id"] for row in vault.db.fetchall(
         "SELECT DISTINCT dek_id FROM access_envelopes WHERE created_by = ? AND user_id = ?", (me, user_id)
     )]
-    return sync_core.call("rekey_due", team=sync_core.team_input(team, me), keys=keys)
+    return sync_core.call("rekey_due", team=sync_core.team_input(team, me, keys), keys=keys)
 
 
 @oplock.held  # INV-6: writes the revocation queue (oplock.require)

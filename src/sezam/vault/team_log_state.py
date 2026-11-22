@@ -6,11 +6,12 @@ without a change of behaviour; team_log_local re-exports every name.
 """
 
 from __future__ import annotations
+import contextlib
 import copy
 import hashlib
 import logging
 import re
-from typing import Optional
+from typing import Iterator, Optional
 from .. import teamlog
 from . import outbox
 from ..crypto.keys import compute_fingerprint
@@ -207,12 +208,46 @@ _REPLAYED: dict[bytes, teamlog.TeamState] = {}
 _REPLAYED_MAX = 16
 
 
+@contextlib.contextmanager
+def log_read_once(db) -> Iterator[None]:
+    """Within, the local team log of ``db`` is read and replayed once, and
+    every later local_team_state / team_key_ids returns that answer (the same
+    state object: read it, never change it).
+
+    Only for work that writes no team log row and no meta its checks read,
+    inside one transaction. Review 8bc70f7 M8: a re-key over 40 000 folders
+    unlocked each retired key, and each unlock read, hashed and copied the
+    whole log again.
+    """
+    if getattr(db, "_team_log_once", None) is not None:
+        yield
+        return
+    db._team_log_once = {}
+    try:
+        yield
+    finally:
+        db._team_log_once = None
+
+
+def _read_once(db, name: str, read):
+    once = getattr(db, "_team_log_once", None)
+    if once is None:
+        return read()
+    if name not in once:
+        once[name] = read()
+    return once[name]
+
+
 def local_team_state(db) -> Optional[teamlog.TeamState]:
     """The replayed local log of ``db``, or None while it holds none.
 
     The one place a team operation reads the log, so the one place it is
     refused (INV-7): a copy that conflicts with the account keys or is damaged.
     """
+    return _read_once(db, "state", lambda: _local_team_state(db))
+
+
+def _local_team_state(db) -> Optional[teamlog.TeamState]:
     forgotten_genesis(db)
     anchor = db.get_meta(ACCOUNT_ANCHOR_META)
     if anchor is not None and _anchor_conflicts(db, anchor):
@@ -258,6 +293,10 @@ def team_key_ids(db) -> set[str]:
     """Every key a team envelope or a record of the local copy names, read
     without replaying it: what is not here is personal and opens by the KEK
     alone, whatever the state of the team log (INV-7)."""
+    return _read_once(db, "key_ids", lambda: _team_key_ids(db))
+
+
+def _team_key_ids(db) -> set[str]:
     ids = {row["dek_id"] for row in db.fetchall("SELECT DISTINCT dek_id FROM access_envelopes")}
     for row in db.fetchall("SELECT body FROM team_log"):
         try:

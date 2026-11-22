@@ -3,8 +3,39 @@
 // and web bindings to the same answers.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sezam_mobile/services/sync_core.dart';
+import 'package:sezam_mobile/services/team_log.dart';
 
 void main() {
+  // Review 8bc70f7 M8: each unsent write sent the whole team to the core.
+  // Asked about one key, only that key's folder goes, and the answer is the
+  // one the whole team gives.
+  test('a reseal question carries only the folder of its key', () {
+    final team = TeamState();
+    for (var f = 0; f < 50; f++) {
+      team.folders['f$f'] = [
+        for (var g = 0; g < 3; g++) ['k$f.$g', 'admin'],
+      ];
+      for (var g = 0; g < 3; g++) {
+        team.dekIndex['k$f.$g'] = ['f$f', g];
+      }
+    }
+    final held = ['k7.0', 'k7.2', 'k9.1'];
+    final narrow = syncCoreTeam(team, 'u', keys: ['k7.0']);
+    expect((narrow['folders'] as Map).keys, ['f7']);
+    expect(
+      syncCore('reseal_targets', {
+        'team': narrow,
+        'held': held,
+        'keys': ['k7.0'],
+      }),
+      syncCore('reseal_targets', {
+        'team': syncCoreTeam(team, 'u'),
+        'held': held,
+        'keys': ['k7.0'],
+      }),
+    );
+  });
+
   test('the bundled core answers', () {
     expect(
       syncCore('next_cursor', {

@@ -2538,11 +2538,19 @@ function resetSession() {
 
 // The verified team log as the shared sync core reads it (core/src/reseal.rs):
 // each folder's keys, oldest first, and the keys the log lets `userId` hold.
-function syncCoreTeam(team, userId) {
+// With `keys`, only the folders that name one of them: the log names a key in
+// one folder only, and the core's answer about a key reads that folder alone
+// (review 8bc70f7 M8: each queued write sent every folder of the team).
+function syncCoreTeam(team, userId, keys = null) {
     const TL = globalThis.SezamTeamLog;
+    const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+    const folders = keys === null
+        ? Object.entries(team.folders)
+        : [...new Set(keys.filter(k => own(team.dekIndex, k)).map(k => team.dekIndex[k][0]))]
+            .filter(folder => own(team.folders, folder)).map(folder => [folder, team.folders[folder]]);
     return {
-        folders: Object.fromEntries(Object.entries(team.folders).map(([folder, gens]) => [folder, gens.map(g => g[0])])),
-        may_hold: Object.keys(team.dekIndex).filter(id => TL.mayHoldKey(team, userId, id)),
+        folders: Object.fromEntries(folders.map(([folder, gens]) => [folder, gens.map(g => g[0])])),
+        may_hold: folders.flatMap(([, gens]) => gens.map(g => g[0])).filter(id => TL.mayHoldKey(team, userId, id)),
     };
 }
 
@@ -5639,9 +5647,11 @@ async function retryAllWebDirtyObjects() {
     const oversized = oversizedQueuedObjects();
     const waiting = [];
     const waitingForLog = [];
+    let context = {};
     for (const object of pending) {
         if (!oversized.includes(object)) {
-            const resealed = await resealUnderFolderSuccessor(object);
+            const resealed = await resealUnderFolderSuccessor(object, object.version, context);
+            if (['dek', 'dek_archive'].includes(object.object_type)) context = {};  // the keys may change
             if (!resealed) {
                 waiting.push(object.id);  // stays queued until the new key arrives
                 continue;
@@ -7192,12 +7202,26 @@ function payloadDekId(vaultObj) {
 }
 
 /**
+ * What every reseal of one pass reads: whether the log is trusted, the signed
+ * archives' successors and the keys held. Review 8bc70f7 M8: read again for
+ * each write (each archive unwrapped, the log's founder walked), a pass over
+ * many writes was quadratic.
+ */
+function resealContext(_sodium) {
+    return {
+        trusted: Boolean(state.teamLog?.team) && webTeamLogTrusted(_sodium),
+        successors: provenDekSuccessors(),
+        held: Object.keys(state.deks),
+    };
+}
+
+/**
  * Stateful test SM70: a change queued here before its folder was re-keyed
  * (a member removed) still named the folder's old DEK, which the removed
  * member holds; Retry sent it as it was. Sealed again under the folder's
  * current DEK, the way the desktop reseals its unsent items.
  */
-async function resealUnderFolderSuccessor(vaultObj, version = vaultObj.version) {
+async function resealUnderFolderSuccessor(vaultObj, version = vaultObj.version, context = {}) {
     const dekId = payloadDekId(vaultObj);
     const dekObject = dekId && state.syncObjects?.[dekId];
     const oldKey = state.deks[dekId] || state.supersededDeks?.[dekId];
@@ -7209,10 +7233,10 @@ async function resealUnderFolderSuccessor(vaultObj, version = vaultObj.version) 
     // for a team folder the log's current key. The shared core decides
     // (capability review run 365), as on the desktop and phone.
     const _sodium = await ensureSodium();
-    const team = state.teamLog?.team && webTeamLogTrusted(_sodium) ? syncCoreTeam(state.teamLog.team, state.userId) : null;
-    const [to] = globalThis.SezamSyncCore.call('reseal_targets', {
-        team, successors: provenDekSuccessors(), held: Object.keys(state.deks), keys: [dekId],
-    });
+    context.pass ??= resealContext(_sodium);  // a caller's {} is filled once per pass
+    const { trusted, successors, held } = context.pass;
+    const team = trusted ? syncCoreTeam(state.teamLog.team, state.userId, [dekId]) : null;
+    const [to] = globalThis.SezamSyncCore.call('reseal_targets', { team, successors, held, keys: [dekId] });
     if (to.send === 'as_is') {
         return vaultObj;  // not a re-keyed DEK, or still the folder's current one
     }
@@ -7266,8 +7290,9 @@ async function resealOwnWritesUnderSuccessors() {
     }
     const ownKeys = new Set(state.kekDekIds || []);
     let sent = 0;
+    const context = {};  // only nodes and entries are pushed below: one read for the pass
     for (const held of due.values()) {
-        const resealed = await resealUnderFolderSuccessor(held, Number(held.version) + 1);
+        const resealed = await resealUnderFolderSuccessor(held, Number(held.version) + 1, context);
         if (!resealed || resealed === held) continue;  // as it is, or the new key is not here yet
         if (!own.has(held.id) && !ownKeys.has(payloadDekId(resealed))) continue;  // a member's
         try {

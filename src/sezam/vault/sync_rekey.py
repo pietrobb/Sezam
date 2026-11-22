@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import struct
 import time
-from typing import Optional
+from typing import Optional, Union
 
 from nacl.exceptions import CryptoError
 
@@ -25,6 +25,7 @@ from .sync_common import (
     vouched_access_level,
 )
 from .team_log_local import local_team_state, projected_team_state
+from .team_log_state import log_read_once
 
 # Last team-log seq whose member.keys records this device sealed keys for.
 ROTATION_SEALED_META = "team_rotation_sealed_seq"
@@ -625,16 +626,27 @@ class RekeyMixin:
         if not retired:
             return
 
-        def successor(blob: bytes, folder_id: str) -> Optional[tuple[str, bytes, bytearray]]:
+        def retired_dek(blob: bytes) -> Optional[bytes]:
             try:
                 dek_id = parse_envelope(blob).dek_id
             except ValueError:
                 return None
-            old_id = bytes_to_ulid(dek_id)
-            if old_id not in retired:
+            return dek_id if bytes_to_ulid(dek_id) in retired else None
+
+        targets: dict = {}
+
+        def successor(blob: bytes, folder_id: str) -> Optional[tuple[str, bytes, bytearray]]:
+            dek_id = retired_dek(blob)
+            if dek_id is None:
                 return None
-            new_id, new = self._successor_dek(dek_id, self._dek_mgr.unlock_dek(old_id), folder_id)
-            return (old_id, new_id, new) if new_id != dek_id else None
+            old_id = bytes_to_ulid(dek_id)
+            self._dek_mgr.unlock_dek(old_id)
+            to = targets.get((dek_id, folder_id))
+            if to is None:
+                return None
+            if isinstance(to, Exception):
+                raise to
+            return old_id, ulid_to_bytes(to[0]), to[1]
 
         def reseal(blob: bytes, object_id: str, version: int, new_version: int, kind: BlobKind,
                    old_id: str, new_id: bytes, new: bytearray) -> bytes:
@@ -686,56 +698,66 @@ class RekeyMixin:
         resealed: list[str] = []
         self._db.begin()
         try:
-            for row in self._db.fetchall(
-                f"SELECT id, parent_id, encrypted_meta, version, {outbox.queued('nodes')} AS queued, "
-                + mine.format(t="nodes") + " FROM nodes WHERE is_deleted = 0"
-            ):
-                blob = bytes(row["encrypted_meta"])
-                # A folder's name is sealed with its parent's key (a root's with its own).
-                found = due(row, blob, row["parent_id"] or row["id"])
-                if found is None:
-                    continue
-                old_id, new_id, new = found
-                version = row["version"] + (0 if row["queued"] else 1)
-                outbox.queue_write(self._db, row["id"])
-                self._db.execute(
-                    "UPDATE nodes SET encrypted_meta = ?, version = ? WHERE id = ?",
-                    (reseal(blob, row["id"], row["version"], version, BlobKind.NODE_META,
-                            old_id, new_id, new),
-                     version, row["id"]),
+            # One read of the log for every key this unlocks (review 8bc70f7 M8).
+            with log_read_once(self._db):
+                nodes = self._db.fetchall(
+                    f"SELECT id, parent_id, encrypted_meta, version, {outbox.queued('nodes')} AS queued, "
+                    + mine.format(t="nodes") + " FROM nodes WHERE is_deleted = 0"
                 )
-                resealed.append(row["id"])
-            for row in self._db.fetchall(
-                "SELECT id, node_id, dek_id, encrypted_meta, encrypted_data, version, "
-                f"{outbox.queued('entries')} AS queued, "
-                + mine.format(t="entries") + " FROM entries WHERE is_deleted = 0"
-            ):
-                meta = bytes(row["encrypted_meta"])
-                found = due(row, meta, row["node_id"])
-                if found is None:
-                    continue
-                old_id, new_id, new = found
-                version = row["version"] + (0 if row["queued"] else 1)
-                outbox.queue_write(self._db, row["id"])
-                self._db.execute(
-                    "UPDATE entries SET encrypted_meta = ?, encrypted_data = ?, dek_id = ?, "
-                    "version = ? WHERE id = ?",
-                    (
-                        reseal(meta, row["id"], row["version"], version, BlobKind.ENTRY_META,
-                               old_id, new_id, new),
-                        reseal(bytes(row["encrypted_data"]), row["id"], row["version"], version,
-                               BlobKind.ENTRY_DATA, old_id, new_id, new),
-                        bytes_to_ulid(new_id) if row["dek_id"] == old_id else row["dek_id"],
-                        version, row["id"],
-                    ),
+                entries = self._db.fetchall(
+                    "SELECT id, node_id, dek_id, encrypted_meta, encrypted_data, version, "
+                    f"{outbox.queued('entries')} AS queued, "
+                    + mine.format(t="entries") + " FROM entries WHERE is_deleted = 0"
                 )
-                resealed.append(row["id"])
-            if resealed:
-                # Stateful test SM33: a resealed own write in a folder deleted
-                # elsewhere was refused ('parent folder is deleted') on every
-                # push; the pull had revived such folders before this ran.
-                self._revive_folders_of_unsent()
-            self._db.commit()
+                sealed = [(bytes(r["encrypted_meta"]), r["parent_id"] or r["id"]) for r in nodes]
+                sealed += [(bytes(r["encrypted_meta"]), r["node_id"]) for r in entries]
+                targets.update(self._successor_targets([
+                    (dek_id, folder_id) for blob, folder_id in sealed
+                    if (dek_id := retired_dek(blob)) is not None
+                ]))
+                for row in nodes:
+                    blob = bytes(row["encrypted_meta"])
+                    # A folder's name is sealed with its parent's key (a root's with its own).
+                    found = due(row, blob, row["parent_id"] or row["id"])
+                    if found is None:
+                        continue
+                    old_id, new_id, new = found
+                    version = row["version"] + (0 if row["queued"] else 1)
+                    outbox.queue_write(self._db, row["id"])
+                    self._db.execute(
+                        "UPDATE nodes SET encrypted_meta = ?, version = ? WHERE id = ?",
+                        (reseal(blob, row["id"], row["version"], version, BlobKind.NODE_META,
+                                old_id, new_id, new),
+                         version, row["id"]),
+                    )
+                    resealed.append(row["id"])
+                for row in entries:
+                    meta = bytes(row["encrypted_meta"])
+                    found = due(row, meta, row["node_id"])
+                    if found is None:
+                        continue
+                    old_id, new_id, new = found
+                    version = row["version"] + (0 if row["queued"] else 1)
+                    outbox.queue_write(self._db, row["id"])
+                    self._db.execute(
+                        "UPDATE entries SET encrypted_meta = ?, encrypted_data = ?, dek_id = ?, "
+                        "version = ? WHERE id = ?",
+                        (
+                            reseal(meta, row["id"], row["version"], version, BlobKind.ENTRY_META,
+                                   old_id, new_id, new),
+                            reseal(bytes(row["encrypted_data"]), row["id"], row["version"], version,
+                                   BlobKind.ENTRY_DATA, old_id, new_id, new),
+                            bytes_to_ulid(new_id) if row["dek_id"] == old_id else row["dek_id"],
+                            version, row["id"],
+                        ),
+                    )
+                    resealed.append(row["id"])
+                if resealed:
+                    # Stateful test SM33: a resealed own write in a folder deleted
+                    # elsewhere was refused ('parent folder is deleted') on every
+                    # push; the pull had revived such folders before this ran.
+                    self._revive_folders_of_unsent()
+                self._db.commit()
         except Exception:
             self._db.rollback()
             raise
@@ -942,32 +964,82 @@ class RekeyMixin:
         resealed the local copy under the DEK it was written with. After a
         member re-key that is the DEK the removed member holds, so the kept
         copy went to the server readable with the revoked key."""
-        row = self._db.fetchone(
-            "SELECT scope, node_id FROM deks WHERE id = ?", (bytes_to_ulid(dek_id),)
-        )
-        if folder_id is None or row is None or row["scope"] != "folder" or row["node_id"]:
+        to = self._successor_targets([(dek_id, folder_id)]).get((dek_id, folder_id))
+        if to is None:
             return dek_id, dek
-        try:
-            current_id, current = self._dek_mgr.get_dek_for_node(folder_id)
-        except KeyError:
-            return dek_id, dek
-        if current_id is None:
-            return dek_id, dek
+        if isinstance(to, Exception):
+            raise to
+        return ulid_to_bytes(to[0]), to[1]
+
+    def _successor_targets(
+        self, wanted: list[tuple[bytes, Optional[str]]]
+    ) -> dict[tuple[bytes, Optional[str]], Union[tuple[str, bytearray], Exception]]:
+        """_successor_dek for many writes: for each (dek_id, folder_id) that
+        goes out under another key, that key's id and DEK, or the error its
+        write raises (an absent pair goes out as it is).
+
+        Review 8bc70f7 M8: asked once per write, each ask replayed the log and
+        sent the core every folder of the team, so one re-key over 40 000 items
+        took minutes. The log is read and the core asked once for all.
+        """
+        asks: dict[tuple[bytes, Optional[str]], Union[tuple[str, str, bytearray], Exception]] = {}
+        for dek_id, folder_id in dict.fromkeys(wanted):
+            row = self._db.fetchone(
+                "SELECT scope, node_id FROM deks WHERE id = ?", (bytes_to_ulid(dek_id),)
+            )
+            if folder_id is None or row is None or row["scope"] != "folder" or row["node_id"]:
+                continue
+            try:
+                current_id, current = self._dek_mgr.get_dek_for_node(folder_id)
+            except KeyError:
+                continue
+            except Exception as exc:  # raised where this write is sealed, as before
+                asks[(dek_id, folder_id)] = exc
+                continue
+            if current_id is not None:
+                asks[(dek_id, folder_id)] = (bytes_to_ulid(dek_id), current_id, current)
+        out: dict = {pair: ask for pair, ask in asks.items() if isinstance(ask, Exception)}
+        # One core call per set of asks whose keys do not chain into each other
+        # or name one retired key with two current ones (in practice one call).
+        rounds: list[tuple[dict[tuple, tuple[str, str, bytearray]], dict[str, str], set[str]]] = []
+        for pair, ask in asks.items():
+            if isinstance(ask, Exception):
+                continue
+            old_id, current_id, _ = ask
+            for batch, olds, currents in rounds:
+                if olds.get(old_id, current_id) == current_id and old_id not in currents \
+                        and current_id not in olds:
+                    break
+            else:
+                batch, olds, currents = {}, {}, set()
+                rounds.append((batch, olds, currents))
+            batch[pair] = ask
+            olds[old_id] = current_id
+            currents.add(current_id)
+        if not rounds:
+            return out
         # The shared core decides (capability review run 365): the folder's
         # current key, and for a team folder only one the log lets us hold.
-        to = sync_core.call(
-            "reseal_targets",
-            team=sync_core.team_input(local_team_state(self._db), self._user_id),
-            successors={bytes_to_ulid(dek_id): current_id}, held=[current_id], keys=[bytes_to_ulid(dek_id)],
-        )[0]
-        if to["send"] == "wait" or (to["send"] == "reseal" and to["key"] != current_id):
-            # Review c78fd19: this went out under the retired key, which the
-            # removed member still reads.
-            raise RuntimeError(
-                f"Folder {folder_id} has a new key this device does not hold yet; "
-                "the change waits. Sync again."
+        team = local_team_state(self._db)
+        for batch, olds, currents in rounds:
+            pairs = list(batch)
+            keys = [batch[p][0] for p in pairs]
+            answers = sync_core.call(
+                "reseal_targets", team=sync_core.team_input(team, self._user_id, keys),
+                successors=olds, held=sorted(currents), keys=keys,
             )
-        return (ulid_to_bytes(current_id), current) if to["send"] == "reseal" else (dek_id, dek)
+            for pair, to in zip(pairs, answers):
+                _, current_id, current = batch[pair]
+                if to["send"] == "wait" or (to["send"] == "reseal" and to["key"] != current_id):
+                    # Review c78fd19: this went out under the retired key, which
+                    # the removed member still reads.
+                    out[pair] = RuntimeError(
+                        f"Folder {pair[1]} has a new key this device does not hold yet; "
+                        "the change waits. Sync again."
+                    )
+                elif to["send"] == "reseal":
+                    out[pair] = (current_id, current)
+        return out
 
     def _restore_held_edits(self, held: dict, resp: dict) -> None:
         """Bring back the local edits a rebased re-key held, as conflicts (M1).
