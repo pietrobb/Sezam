@@ -2401,7 +2401,13 @@ class SyncMachine(RuleBasedStateMachine):
                     f"{device}: the lie {lie} made folder {node_id}'s key {dek_id} a {scope} key"
                     f" (honest: {honest})\n" + self._trace())
             else:
-                assert scope == old or (old, scope) in {("folder", "tier2"), ("folder", "root")}, (
+                # Seed 828282 (#438 (7)): a folder's old key taken for tier 2
+                # while its archive was withheld is retired once the archive
+                # comes (_retire_keys_taken_for_tier2): the archive opening to
+                # it is the device's own proof, whatever order the keys came in.
+                retired = (old, scope, node_id) == ("tier2", "folder", None) and (
+                    dev.vault.dek_mgr.successor_of(dek_id) is not None)
+                assert scope == old or retired or (old, scope) in {("folder", "tier2"), ("folder", "root")}, (
                     f"{device}: the lie {lie} relabelled its DEK {dek_id} {old} -> {scope}\n"
                     + self._trace())
         if made is not None and outcome == "accepted" and not took_over:
