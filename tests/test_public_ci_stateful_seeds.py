@@ -103,3 +103,33 @@ def test_a_pull_that_left_folders_out_does_not_keep_its_etag(loopback_server):  
         machine._settle(lambda _obj: "server")
     finally:
         machine.teardown()
+
+
+def test_a_rekey_batch_lets_go_of_an_entry_moved_out_on_both_sides(loopback_server):  # noqa: F811
+    """Seed 828282 (#438): A edited an entry of the folder it shared with m7,
+    the second admin revoked m7 and A's re-key of the folder stayed unsent. B
+    moved the entry to another folder, A moved it there too and deleted it.
+    Neither rebase pass looked at a copy outside the re-keyed folders on both
+    sides: the batch sent it at its old base and every push of A was refused
+    ("Atomic re-key batch conflict")."""
+    SecondAdminMachine.server = loopback_server
+    machine = SecondAdminMachine()
+    try:
+        vault = machine.devices["A"].vault
+        folder = machine._folders("A")[0]
+        entry = next(e for e in machine._entries("A") if snapshot(vault)[e][2] == folder)
+        # F2, under the shared folder but sealed with a key of its own.
+        target = next(f for f in machine._folders("A") if f != folder)
+        (admin,) = machine._second_admins()
+        member = next(u for u in machine._active_members() if u not in machine.admins)
+        machine.edit_entry(_Scripted(device="A", entry=entry))
+        machine.second_admin_revokes(_Scripted(admin=admin, member=member), None)
+        assert member in machine.revoked, machine._trace()
+        machine.push(_Scripted(device="A"), "before")
+        machine.move_entry(_Scripted(device="B", entry=entry, target=target))
+        machine.push(_Scripted(device="B"), None)
+        machine.move_entry(_Scripted(device="A", entry=entry, target=target))
+        machine.delete_entry(_Scripted(device="A", entry=entry))
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()

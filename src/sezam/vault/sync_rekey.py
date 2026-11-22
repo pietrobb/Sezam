@@ -162,6 +162,7 @@ class RekeyMixin:
             )
         }
         settled: set[str] = set()
+        visited: set[str] = set()
         revoked_holders = self._revoked_unpinned_holders(list(dek_map), revoked_user_id)
         revoked_holders |= queued_for_removal(self._db)
 
@@ -229,6 +230,7 @@ class RekeyMixin:
                     tuple(folder_ids) * 2 + tuple(moved_out),
                 ):
                     node_id = row["id"]
+                    visited.add(node_id)
                     if row["queued"]:
                         shadow = shadows.get(node_id) if node_id in object_ids else None
                         if shadow is None:
@@ -318,6 +320,7 @@ class RekeyMixin:
                     tuple(folder_ids) + tuple(moved_out),
                 ):
                     entry_id = row["id"]
+                    visited.add(entry_id)
                     if row["queued"]:
                         shadow = shadows.get(entry_id) if entry_id in object_ids else None
                         if shadow is None:
@@ -453,6 +456,18 @@ class RekeyMixin:
                     )
                     object_ids.add(new_env_id)
 
+            # Seed 828282 (#438): a batch copy moved out of the re-keyed folders
+            # here, and out of them on the server too, was looked at by neither
+            # pass; resent at its old base it sank the batch on every push. As
+            # an edit outside the folders (SM37) it leaves the batch and stays
+            # a conflict with the server copy.
+            object_ids -= {
+                oid for oid in shadows
+                if oid in object_ids and oid not in visited and (
+                    self._db.fetchone("SELECT 1 FROM nodes WHERE id = ?", (oid,))
+                    or self._db.fetchone("SELECT 1 FROM entries WHERE id = ?", (oid,))
+                )
+            }
             if settled:
                 marks = ",".join("?" * len(settled))
                 self._db.execute(
