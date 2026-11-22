@@ -106,6 +106,66 @@ void main() {
             expect(vault.teamLog?.team.genesisHash, genesis, reason: label);
           }
         }
+        // The unlock: a sign-in with a fault at each request of a clean one.
+        // Only the sign-in's own requests may keep it locked; once open, the
+        // personal tree is there, and nothing is forgotten.
+        Future<AuthResult> signIn() async {
+          await auth.lock();
+          await net.settle();
+          await handshake(dir, 'move${moves++}');
+          return auth.unlockWithPassword(
+              serverUrl: server, username: cfg['username'] as String, password: cfg['password'] as String);
+        }
+        final signInStart = net.paths.length;
+        final clean = await signIn();
+        expect(clean.success, isTrue, reason: clean.error);
+        await net.settle();
+        final signin = net.paths.sublist(signInStart);
+        File('$dir/signins.txt').writeAsStringSync('${signin.length * 3}');
+        await handshake(dir, 'signins');
+        const ownRequests = {'/api/meta', '/api/auth/challenge', '/api/auth/verify'};
+        for (var k = 0; k < signin.length; k++) {
+          for (final fault in ['network', '500', '503']) {
+            final label = 'sign-in: $fault at request $k (${signin[k]})';
+            String? faulted;
+            final at = net.paths.length;
+            net.onSend = (path) {
+              if (net.paths.length - 1 - at != k) return;
+              faulted = path;
+              if (fault == 'network') {
+                net.failPath = path;
+              } else {
+                net.refuseStatus = int.parse(fault);
+                net.refusePath = path;
+              }
+            };
+            final opened = await signIn();
+            await net.settle();
+            net.onSend = null;
+            net.refuseStatus = 401;
+            final refusal = vault.teamLogRefusal;
+            expect(refusal?.offersForget ?? false, isFalse, reason: '$label: ${refusal?.cause}');
+            expect(await readConfirmedTeamGenesis(uid), confirmed, reason: label);
+            if (!opened.success || sync.token == null) {
+              // Opened offline at most (this phone's own vault), never by a team request.
+              expect(ownRequests, contains(faulted), reason: '$label: ${opened.error}');
+              if (opened.success) {
+                expect(vault.nodes[personal.id]?.name, 'mine', reason: label);
+                await auth.lock();
+                await net.settle();
+              }
+              final again = await auth.unlockWithPassword(
+                  serverUrl: server, username: cfg['username'] as String, password: cfg['password'] as String);
+              expect(again.success, isTrue, reason: again.error);
+              await net.settle();
+            }
+            expect(await sync.pinnedTeamGenesis(), pins, reason: label);
+            expect(vault.nodes[personal.id]?.name, 'mine', reason: label);
+            await sync.sync();
+            expect(vault.teamLogRefusal, isNull, reason: label);
+            expect(await sync.getDirtyObjectCount(), 0, reason: label);
+          }
+        }
         await auth.lock();
         await net.settle();
       }, () => net);

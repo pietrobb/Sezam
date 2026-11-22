@@ -13,6 +13,7 @@ from tests.test_team_log_desktop import team, _found_with_bob  # noqa: F401
 from tests.web_tab import WebTab
 
 FAULTS = ({"mode": "before"}, {"mode": "after"}, {"mode": "status", "status": 500}, {"mode": "status", "status": 503})
+SIGN_IN = {"/api/meta", "/api/auth/challenge", "/api/auth/verify", "/api/sync"}
 FORGET_CAUSES = {"confirmed_genesis", "log_gone", "other_genesis", "anchor_conflict"}
 
 
@@ -88,5 +89,45 @@ def test_a_fault_at_any_request_of_a_web_save_or_pull_never_forgets(team, server
                 assert again["error"] is None and not again["view"]["dirty"], (label, again)
                 assert not again["view"]["teamLogRefused"], (label, again)
                 assert again["view"]["teamLogPins"] == pins, label
+        profile = tab.close()
     finally:
         tab.kill()
+
+    # The unlock: a reload signs in on the same profile, with a fault at each
+    # request of a clean sign-in. Only the sign-in's own requests may keep it
+    # locked; once open, the personal tree is there, and nothing is forgotten.
+    tab = WebTab(url, tmp_path / "login-clean.log", idb=profile)
+    try:
+        move()
+        clean = tab.do("login", username="admin", password=PASSWORD)
+        assert clean["error"] is None and not clean["view"]["teamLogRefused"], clean
+        profile = tab.close()
+    finally:
+        tab.kill()
+    signin = sorted({(c["method"], c["path"]) for c in clean["calls"]})
+    assert ("GET", "/api/team-log") in signin, signin
+    for method, path in signin:
+        for fault in FAULTS:
+            label = f"{fault} at login {method} {path}"
+            move()
+            tab = WebTab(url, tmp_path / f"login-{len(label)}-{fault['mode']}.log", idb=profile)
+            try:
+                login = tab.do("login", username="admin", password=PASSWORD,
+                               fail={"method": method, "path": path, **fault})
+                assert login["failure"]["fired"], label
+                assert not login["confirms"], (label, login["confirms"])
+                assert login["view"]["teamLogCause"] not in FORGET_CAUSES, (label, login["view"]["teamLogCause"])
+                if login["view"]["unlocked"]:
+                    assert login["view"]["teamLogPins"] == pins, (label, login["view"]["teamLogPins"])
+                    assert any(e["password"] == "c" for e in login["view"]["entries"]), (label, login["error"])
+                else:
+                    # The page holds no vault of its own: without the server's
+                    # parameters, the sign-in or the vault there is no unlock.
+                    assert path in SIGN_IN, (label, login["error"])
+                    login = tab.do("login", username="admin", password=PASSWORD)
+                again = tab.do("refresh")
+                assert again["error"] is None and not again["view"]["teamLogRefused"], (label, again)
+                assert again["view"]["teamLogPins"] == pins, label
+                profile = tab.close()
+            finally:
+                tab.kill()

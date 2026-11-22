@@ -12,7 +12,8 @@ from tests.test_team_log_desktop import team, _found_with_bob  # noqa: F401
 
 
 class _Rounds:
-    """The phone's steps: one log move, then as many as it says it has rounds."""
+    """The phone's steps: a log move before each round it says it has, then
+    before each sign-in."""
 
     def __init__(self, work, move):
         self._work, self._move = work, move
@@ -20,8 +21,12 @@ class _Rounds:
     def items(self):
         yield "move0", self._move
         yield "rounds", lambda: None
-        count = int((self._work / "rounds.txt").read_text(encoding="utf-8"))
-        for i in range(1, count + 1):
+        moves = int((self._work / "rounds.txt").read_text(encoding="utf-8"))
+        for i in range(1, moves + 2):  # the rounds and the clean sign-in
+            yield f"move{i}", self._move
+        yield "signins", lambda: None
+        signins = int((self._work / "signins.txt").read_text(encoding="utf-8"))
+        for i in range(moves + 2, moves + 2 + signins):
             yield f"move{i}", self._move
 
 

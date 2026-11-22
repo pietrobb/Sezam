@@ -2954,10 +2954,18 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         const signerId = obj.signature_user_id || obj.owner_id;
         if (signerId) signerIds.add(signerId);
     }
+    // R15-P4 rule 1: keys that did not come (no answer, a 5xx, none served)
+    // withhold that signer's objects from this pull and refuse the team for it,
+    // never the vault: this account's own key is the one its password opened.
+    const signerKeys = new Map();
+    const unreachableSigners = [];
     for (const signerId of signerIds) {
-        if (!await getUserSigningPks(signerId)) {
-            throw new Error(`REJECT sync response — TOFU failed for signer ${signerId}`);
+        let keys = await getUserSigningPks(signerId);
+        if (!keys) {
+            unreachableSigners.push(signerId);
+            if (signerId === state.userId && state.keypair?.signingPk) keys = [state.keypair.signingPk];
         }
+        if (keys) signerKeys.set(signerId, keys);
     }
 
     // The log this pull brings decides which keys it retired (capability run
@@ -2973,12 +2981,18 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
             teamLog = await syncWebTeamLog(
                 teamLogHead, state.teamLog || null, state.syncCheckpoint?.team_log || null, _sodium);
         } catch (err) {
-            if (!err.teamLogCause) throw err;
-            teamLogRefusal ||= err;
+            // R15-P4 rule 1: a log that did not come (no answer, a 5xx) refuses
+            // the team for this pull, never the vault: a sign-in opens the
+            // personal tree, and it is no mismatch, so nothing offers a forget.
+            teamLogRefusal ||= err.teamLogCause ? err : teamLogUnreachable(`The team log (${err.message || err})`);
         }
     }
+    if (unreachableSigners.length && !teamLogRefusal) {
+        teamLogRefusal = teamLogUnreachable(`The keys of ${unreachableSigners.join(', ')}`);
+    }
     if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
-    if (teamLogRefusal && teamLogRefusal.message !== state.teamLogRefusal?.message) alert(teamLogRefusal.message);
+    if (teamLogRefusal && teamLogRefusal.teamLogCause !== 'unreachable' &&
+            teamLogRefusal.message !== state.teamLogRefusal?.message) alert(teamLogRefusal.message);
     if (state.teamLogRefusal && !teamLogRefusal && !isFullPull) {
         // The refused pulls dropped the team keys and a delta pull does not
         // resend their envelopes: once the team's log is served again, all is pulled.
@@ -3001,8 +3015,9 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         if (!sigHex || !signerId) {
             throw new Error(`REJECT object ${obj.id} — missing signature or signer (fail-closed)`);
         }
-        const sigPks = state.userKeys[signerId] || await getUserSigningPks(signerId);
-        if (!sigPks || sigPks.length === 0) {
+        const sigPks = signerKeys.get(signerId);
+        if (!sigPks) continue;  // withheld this pull (the team is refused above); never applied
+        if (sigPks.length === 0) {
             throw new Error(`REJECT object ${obj.id} — no signing key for signer ${signerId} (fail-closed)`);
         }
         const payloadBytes = base64ToBytes(obj.payload || '');
@@ -3655,6 +3670,14 @@ async function performTOFUChecks() {
             // out to show (INV-7), not its "Admin required". Nothing is sealed
             // to a member under a refused log, so no peer pin is needed now.
             if (err.status === 403 && state.teamLogRefusal) return;
+            // R15-P4 rule 1: a list that did not come (no answer, a 5xx) never
+            // keeps the vault shut; the next pull asks again, and every key
+            // sealed to a member is checked against its pin where it is fetched
+            // (getUserSigningPks, getVerifiedEncryptionPkForRekey).
+            if (!err.status || err.status >= 500) {
+                console.warn('The user list did not come; the members\' keys are checked again on the next sync:', err);
+                return;
+            }
             throw err;
         }
         for (const user of users) {
@@ -7977,6 +8000,17 @@ function teamLogMismatch(detail, cause) {
     err.teamLogCause = cause;
     err.teamLogLost = lost;
     return err;
+}
+
+/** What the team needs did not come this pull (`what`: the log, or a signer's
+ * keys; no answer, a 5xx): the team waits for the next pull; no mismatch,
+ * nothing lost, no forget offered. */
+function teamLogUnreachable(what) {
+    const refusal = new Error(`${what} did not come from the server; ` +
+        'the team waits for the next sync, the personal tree is open');
+    refusal.teamLogCause = 'unreachable';
+    refusal.teamLogLost = false;
+    return refusal;
 }
 
 /**

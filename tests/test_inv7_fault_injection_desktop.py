@@ -68,7 +68,7 @@ def _cycle(client) -> dict:
     return errors
 
 
-def _requests_of_a_round(bob_client, bob, mine, team_moves) -> list[str]:
+def _requests_of_a_round(bob_client, bob, mine, team_moves, sign_in) -> list[str]:
     seen, real = [], bob_client._request
 
     def tracing(method, path, *args, **kwargs):
@@ -77,6 +77,8 @@ def _requests_of_a_round(bob_client, bob, mine, team_moves) -> list[str]:
 
     team_moves()
     bob.create_entry(mine, "traced", [{"key": "password", "value": "v"}])
+    if sign_in:
+        bob_client._token = None  # the first round after an unlock signs in
     bob_client._request = tracing
     try:
         assert _cycle(bob_client) == {}
@@ -85,11 +87,13 @@ def _requests_of_a_round(bob_client, bob, mine, team_moves) -> list[str]:
     return seen
 
 
+@pytest.mark.parametrize("sign_in", [False, True], ids=["session", "sign_in"])
 @pytest.mark.parametrize("fault", ["connection", "500", "503"])
-def test_a_fault_at_any_request_never_forgets_and_never_holds_the_personal_tree(team, fault):  # noqa: F811
+def test_a_fault_at_any_request_never_forgets_and_never_holds_the_personal_tree(team, fault, sign_in):  # noqa: F811
     db, _, bob, bob_client, mine, _, team_moves = _member_in_team(team)
-    requests = _requests_of_a_round(bob_client, bob, mine, team_moves)
+    requests = _requests_of_a_round(bob_client, bob, mine, team_moves, sign_in)
     assert "GET /api/team-log" in requests, requests  # the round reaches the log
+    assert ("POST /api/auth/verify" in requests) == sign_in, requests
     pins = [bob.db.get_meta(k) for k in PINS]
     real = bob_client._request
     for at in range(len(requests)):
@@ -106,6 +110,8 @@ def test_a_fault_at_any_request_never_forgets_and_never_holds_the_personal_tree(
                 raise ServerError(int(fault), '{"detail": "injected"}')
             return real(method, path, *args, **kwargs)
 
+        if sign_in:
+            bob_client._token = None
         bob_client._request = faulty
         try:
             errors = _cycle(bob_client)
