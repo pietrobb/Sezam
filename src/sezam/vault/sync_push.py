@@ -313,11 +313,15 @@ class PushMixin:
         return result
 
     def _push_once(self) -> dict:
+        # Review e443cbc #436 (precedence rule 1): whatever fails in the team
+        # log check (a refused copy, a founder not confirmed yet, a pinned log
+        # the server does not answer for, an error in the check) holds back
+        # the team's changes only.
         try:
             local_team_state(self._db)
-        except TeamLogMismatch as refusal:
+            self.require_trusted_team_log()
+        except Exception as refusal:  # noqa: BLE001 - every failed check is a refusal here
             return self._push_personal_while_refused(refusal)
-        self.require_trusted_team_log()
         if not self._token:
             self.authenticate()
 
@@ -490,10 +494,12 @@ class PushMixin:
             resp = {**resp, "rekey_too_large": rekey_too_large}
         return resp
 
-    def _push_personal_while_refused(self, refusal: TeamLogMismatch) -> dict:
+    def _push_personal_while_refused(self, refusal: Exception) -> dict:
         """INV-7: a refused team log holds back only the team's changes. The
         personal tree's go out; the rest stays queued and the refusal names its
-        way out. A re-key or key change is one unit with the team's keys and waits whole."""
+        way out. A re-key or key change is one unit with the team's keys and waits whole.
+        A failure that is no TeamLogMismatch is raised after the push in any case,
+        so its caller still sees it (a founder to confirm, a server to retry)."""
         if pending_states.rekey_batch(self._db) or self.has_pending_key_change():
             raise refusal
         if not self._token:
@@ -522,7 +528,7 @@ class PushMixin:
             resp = {**part, "accepted": resp["accepted"] + list(part.get("accepted", [])),
                     "conflicts": resp["conflicts"] + list(part.get("conflicts", []))}
         waiting = len(collected) - len(objects)
-        if waiting:
+        if waiting or not isinstance(refusal, TeamLogMismatch):
             # Callers must learn the team's changes did not go (a grant reads "no error" as sent).
             refusal.args = (f"{len(resp['accepted'])} personal change(s) went out; {waiting} wait "
                             f"for the team log. {refusal}",)
