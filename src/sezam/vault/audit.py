@@ -20,7 +20,7 @@ from nacl.signing import SigningKey
 
 from ..crypto.aead import BlobKind, encrypt
 from ..models import new_ulid, ulid_to_bytes
-from .db import VaultDB
+from .db import IdentityChangedElsewhere, VaultDB
 
 
 class AuditLog:
@@ -53,6 +53,34 @@ class AuditLog:
         Returns:
             Audit record ULID.
         """
+        with self._db.transaction(immediate=True):
+            return self._append(
+                actor_id, action, signing_key, encrypted_details,
+                detail_plaintext, audit_dek, audit_dek_id,
+            )
+
+    def _require_bound_signer(self, actor_id: str, signing_key: SigningKey) -> None:
+        """Review e443cbc R15 (goal #438, R13-10): only grant_folder_access and
+        _audit_log checked the identity before they wrote. The re-key after a
+        removal signed its record here directly, and a process another one had
+        rebound signed it under the dead id; the server refused the record and
+        every push stuck on it. Every signed record comes through here."""
+        stored_id = self._db.get_meta("user_id")
+        stored_pk = self._db.get_meta("signing_pk")
+        if (stored_id and stored_id != actor_id) or (
+            stored_pk and stored_pk != bytes(signing_key.verify_key).hex()
+        ):
+            raise IdentityChangedElsewhere(
+                "Another Sezam program bound this vault to another account identity; "
+                "lock the vault and unlock it again."
+            )
+        self._db.require_generation()
+
+    def _append(
+        self, actor_id, action, signing_key, encrypted_details,
+        detail_plaintext, audit_dek, audit_dek_id,
+    ) -> str:
+        self._require_bound_signer(actor_id, signing_key)
         record_id = new_ulid()
         now_ms = int(time.time() * 1000)
 

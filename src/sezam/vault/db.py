@@ -33,6 +33,10 @@ class VaultChangedElsewhere(RuntimeError):
     """Another process changed the vault's keys or account after this one opened it."""
 
 
+class IdentityChangedElsewhere(VaultChangedElsewhere):
+    """Another process bound the vault to another account id or keypair."""
+
+
 # What a process loads at unlock and keeps in memory: the KEK, the keypair and
 # its wrap, the account id, the key epoch and the server. A change of any of
 # them gives the vault a new generation (docs/DESIGN_TEAM_LOG.md §8, H10).

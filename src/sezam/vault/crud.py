@@ -28,7 +28,7 @@ from ..models import (
 )
 from . import oplock, outbox, pending_states
 from .audit import AuditLog
-from .db import VaultChangedElsewhere, VaultDB
+from .db import IdentityChangedElsewhere, VaultDB
 from .dek import DEKManager
 from .key_rotation import (
     make_journal,
@@ -352,10 +352,6 @@ def require_usable_password(password: str) -> None:
 
 class VaultLocked(Exception):
     """Raised when vault operations are attempted while locked."""
-
-
-class IdentityChangedElsewhere(VaultChangedElsewhere):
-    """Another process bound the vault to another account id or keypair."""
 
 
 class OrgRecoveryExistsError(Exception):
