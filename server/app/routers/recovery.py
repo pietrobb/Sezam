@@ -184,6 +184,12 @@ async def _store_recovery_blob_in(
     wrapped_kek_bytes: bytes, recovery_signing_pk: bytes, now_ms: int,
 ) -> None:
     async with conn.cursor() as cur:
+        # Review e443cbc, goal #440: the lock a team log append takes, before
+        # any read. The blob ranks by the log head read below (log_seq); an
+        # org.recovery append committing after this store's snapshot left the
+        # blob one record short, so the log's key, with no blob, was current.
+        await cur.execute("SELECT next_seq FROM commit_counter WHERE id = 1 FOR UPDATE")
+        await cur.fetchone()
         # Review 7c10379 (R7-H): a locking read of the blob before the
         # first setup found no row and took a gap lock; admins storing at
         # once then deadlocked on the INSERT (MariaDB: 5 of 6 parallel
