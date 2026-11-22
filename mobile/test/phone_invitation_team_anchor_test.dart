@@ -365,7 +365,27 @@ void main() {
           // read: it takes the honest log); records that lie store nothing.
           final held = await db.getSetting(teamLogRecordsSetting);
           if (held == null) {
-            expect(await db.getAllObjects(), before);
+            // Nothing came in. INV-7 (R15-P4): what the refused log leaves to
+            // this phone (its own keys) may have gone out; it changes only from
+            // queued to sent.
+            // Before 093d317 nothing went out: the sync stopped at the pull.
+            final after = {for (final r in await db.getAllObjects()) r['id'] as String: r};
+            expect(after.keys.toSet(), {for (final r in before) r['id'] as String});
+            // (The phone is locked here; its own keys are the root-level keys
+            // it queued itself, sendableWhileRefused's 'dek' rule.)
+            for (final row in before) {
+              final now = after[row['id']]!;
+              if (now['queued'] == row['queued']) {
+                expect(now, row);
+                continue;
+              }
+              expect([row['queued'], now['queued'], row['object_type'], row['parent_ref']],
+                  [1, 0, 'dek', isNull], reason: '${row['id']}');
+              // Only the bookkeeping of a sent row changes.
+              const sent = ['queued', 'commit_seq', 'base_version', 'base_hash'];
+              expect({...now}..removeWhere((k, _) => sent.contains(k)),
+                  {...row}..removeWhere((k, _) => sent.contains(k)));
+            }
           } else {
             final records = [for (final r in jsonDecode(held) as List) Map<String, dynamic>.from(r as Map)];
             expect(TeamLog.recordHash(records.first), genesis);
