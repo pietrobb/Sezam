@@ -61,9 +61,23 @@ void main() {
         final damaged = await auth.unlockOffline(password: password);
         expect(damaged.success, isTrue, reason: damaged.error);
         expect(vault.teamLogRefusal?.cause, 'local_damaged');
+        // INV-7: the copy failing to come (here 503, both fetches of the
+        // background sync the write starts) never holds the personal change
+        // back. Before: the sync threw at the fetch before its push, so nothing
+        // went out on any sync while the server did not serve the log.
+        var refusals = 2;
+        net.refuseStatus = 503;
+        net.onSend = (path) {
+          if (path == '/api/team-log' && refusals-- > 0) net.refusePath = path;
+        };
         final written = await vault.createEntry(parentRef: personal.id, name: 'while-damaged', fields: const []);
         await net.settle();
-        // The way out: the next sync fetches the copy again before it pushes.
+        net.onSend = null;
+        net.refuseStatus = 401;
+        expect(await sync.getDirtyObjectCount(), 0, reason: 'the personal change went out');
+        expect(refusals, lessThan(1), reason: 'both fetches of the copy were refused');
+        expect(vault.teamLogRefusal?.cause, 'local_damaged');
+        // The way out: the next sync fetches the copy again.
         await sync.sync();
         expect(vault.teamLogRefusal, isNull);
         expect(vault.teamLog?.team.genesisHash, genesis);

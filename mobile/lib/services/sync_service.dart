@@ -2620,8 +2620,16 @@ class SyncService {
 
   Future<SyncResult> _syncOnce() async {
     PushResult pushResult;
-    // INV-7: a damaged copy refuses the push; the pull fetches it again first.
-    if (_vault.teamLogRefusal?.cause == 'local_damaged') await pull();
+    // INV-7: a damaged copy holds the team's rows back; the pull fetches it
+    // again first so they go too. That fetch failing never holds the personal
+    // tree's back: the push sends them, the pull below fetches again (and throws).
+    if (_vault.teamLogRefusal?.cause == 'local_damaged') {
+      try {
+        await pull();
+      } on Exception {
+        // Reported by the pull after the push.
+      }
+    }
     try {
       pushResult = await push();
     } on KeyEpochStaleException {
