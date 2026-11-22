@@ -180,12 +180,13 @@ def test_a_delta_pull_never_takes_an_object_back():
         webPulledIsStale(held, pulled(5, 'h5'), 10),
         webPulledIsStale(held, pulled(6, 'h6'), 10),
         webPulledIsStale(undefined, pulled(1, 'h1'), 10),
-        webPulledIsStale(tomb, pulled(3, 'h3'), 50),  // its tombstone was collected (SM8)
-        webPulledIsStale(tomb, pulled(3, 'h3'), 10),
+        webPulledIsStale(tomb, pulled(5, 'other'), 50),  // its tombstone was collected (SM8)
+        webPulledIsStale(tomb, pulled(5, 'other'), 10),
+        webPulledIsStale(tomb, pulled(3, 'h3'), 50),  // INV-3: older, whatever the floor
       ];
     """
     assert _run(["webPulledIsStale"], f"(async () => {{ {script} }})()") == [
-        True, True, False, False, False, False, True,
+        True, True, False, False, False, False, True, True,
     ]
     pull = _function("pullAndBuildTreeLocked")
     guard = pull.index("webPulledIsStale(state.syncObjects?.[obj.id], obj, gcFloorSeq)")

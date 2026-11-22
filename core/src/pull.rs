@@ -130,23 +130,29 @@ pub enum HeldDecision {
 /// What a pulled copy does to the copy held (review c78fd19: the web and the
 /// phone took a folder or entry back to an older version, so a server could
 /// serve an old, validly signed password again; the desktop kept its copy).
-/// A newer version is stored; so is any copy over a tombstone the server
-/// collected below its GC floor (stateful tests SM8, SM21: a version number
-/// may then come back), unless a write of it waits here.
+/// A newer version is stored; so is another copy of the version of a
+/// tombstone the server collected below its GC floor (stateful tests SM8,
+/// SM21: that version number may then come back), unless a write of it waits
+/// here. An older version never is: the floor is unsigned, and a server
+/// serving an old, validly signed copy again over a tombstone brought a
+/// deleted password back (INV-3, tests/test_inv3_replay_over_tombstone.py).
 pub fn against_held(held: Option<&Held>, pulled: &Version, gc_floor_seq: i64) -> HeldDecision {
     let Some(held) = held else {
         return HeldDecision::Apply;
     };
+    if pulled.version > held.version {
+        return HeldDecision::Apply;
+    }
+    if pulled.version < held.version {
+        return HeldDecision::KeepHeld;
+    }
     let collected = held.is_deleted
         && !held.queued
         && held
             .commit_seq
             .is_some_and(|seq| seq > 0 && seq <= gc_floor_seq);
-    if pulled.version > held.version || collected {
+    if collected && pulled.hash != held.hash {
         return HeldDecision::Apply;
-    }
-    if pulled.version < held.version {
-        return HeldDecision::KeepHeld;
     }
     if !pulled.hash.is_empty() && !held.hash.is_empty() && pulled.hash != held.hash {
         return HeldDecision::Equivocation;
@@ -323,30 +329,32 @@ mod tests {
         // SM8: the server collected the tombstone at seq 5, floor 7.
         let tomb = held(4, "t", true, Some(5));
         assert_eq!(
-            against_held(Some(&tomb), &v(2, "b"), 7),
-            HeldDecision::Apply
-        );
-        assert_eq!(
             against_held(Some(&tomb), &v(4, "x"), 7),
             HeldDecision::Apply
         );
+        assert_eq!(against_held(Some(&tomb), &v(4, "t"), 7), HeldDecision::Same);
+        // INV-3: an older version is a replay whatever the unsigned floor says.
+        assert_eq!(
+            against_held(Some(&tomb), &v(2, "b"), 7),
+            HeldDecision::KeepHeld
+        );
         // Above the floor, or a write of it waits, or the seq is not known.
         assert_eq!(
-            against_held(Some(&tomb), &v(2, "b"), 4),
-            HeldDecision::KeepHeld
+            against_held(Some(&tomb), &v(4, "x"), 4),
+            HeldDecision::Equivocation
         );
         let queued = Held {
             queued: true,
             ..tomb.clone()
         };
         assert_eq!(
-            against_held(Some(&queued), &v(2, "b"), 7),
-            HeldDecision::KeepHeld
+            against_held(Some(&queued), &v(4, "x"), 7),
+            HeldDecision::Equivocation
         );
         let unknown = held(4, "t", true, None);
         assert_eq!(
-            against_held(Some(&unknown), &v(2, "b"), 7),
-            HeldDecision::KeepHeld
+            against_held(Some(&unknown), &v(4, "x"), 7),
+            HeldDecision::Equivocation
         );
     }
 

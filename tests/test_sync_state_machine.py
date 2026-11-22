@@ -324,7 +324,8 @@ def _tamper_once(client, method: str, path_prefix: str, mutate, every: bool = Fa
 
 # What a lying server may make a client do: refuse. A crash type means the
 # client was not ready for the lie.
-LIES = ["replay", "replay_envelope", "epoch_up", "epoch_down", "scope", "dek_order", "weak_kdf", "access_up"]
+LIES = ["replay", "replay_envelope", "epoch_up", "epoch_down", "scope", "dek_order", "weak_kdf", "access_up",
+        "gc_floor"]
 REFUSALS = (RuntimeError, ValueError, KeyEpochStale)
 
 
@@ -2123,8 +2124,36 @@ class SyncMachine(RuleBasedStateMachine):
 
     # ── a malicious server: one lying reply, then honest again ──
 
-    def _lie(self, data, lie: str, epoch: int):
+    def _lie(self, data, lie: str, epoch: int, db=None):
         """The reply change for ``lie``, or None when it has nothing to work on."""
+        if lie == "gc_floor":
+            # R15 #428 (INV-3): gc_floor_seq is unsigned. An older, validly
+            # signed version of something the device deleted comes again in a
+            # reply that brings a new commit, the floor above the tombstone.
+            tombs = {
+                row["id"]: row["version"] for table in ("nodes", "entries")
+                for row in db.fetchall(f"SELECT id, version FROM {table} WHERE is_deleted = 1")  # noqa: S608
+            }
+            obj_id = self._pick(data, sorted(
+                i for i, version in tombs.items() if (self.wire.get(i) and min(self.wire[i]) < version)
+            ), "revived")
+            if obj_id is None:
+                return None
+            old = copy.deepcopy(self.wire[obj_id][min(self.wire[obj_id])])
+            self.log.append(f"server: serves {old.get('object_type')} {obj_id} v{old['version']} again "
+                            f"over its tombstone v{tombs[obj_id]}, GC floor above it")
+            self.revived = (obj_id, "nodes" if old.get("object_type") == "node" else "entries")
+
+            def revive(reply):
+                seq = reply.get("max_commit_seq")
+                if reply.get("has_more") or not isinstance(seq, int) \
+                        or seq <= int(db.get_meta("last_known_commit_seq") or 0):
+                    return reply
+                coverage_event("server revives a tombstone with a GC floor lie")
+                reply.setdefault("objects", []).append({**old, "commit_seq": seq})
+                reply["gc_floor_seq"] = seq
+                return reply
+            return revive
         if lie in ("replay", "replay_envelope"):
             kinds = {"envelope"} if lie == "replay_envelope" else {"node", "entry", "dek", "envelope"}
             obj_id = self._pick(data, [
@@ -2188,7 +2217,7 @@ class SyncMachine(RuleBasedStateMachine):
         device = self._device(data)
         others = sorted(set(self.devices) - {device})
         made = None
-        if lie in ("scope", "dek_order") and others:
+        if lie in ("scope", "dek_order", "gc_floor") and others:
             # The reply carries a key this device does not hold yet: a folder
             # another device of the account just made (with a tier-2 entry,
             # so a second key names it).
@@ -2217,7 +2246,8 @@ class SyncMachine(RuleBasedStateMachine):
         before = keys()
         epoch = int(meta.get_meta("key_epoch") or 0)
         self.honest_scopes: dict[str, str | None] = {}
-        mutate = self._lie(data, lie, epoch)
+        self.revived = None
+        mutate = self._lie(data, lie, epoch, meta)
         if mutate is None:
             return
         scopes = lambda: {row["id"]: (row["scope"], row["node_id"]) for row in meta.fetchall(  # noqa: E731
@@ -2269,6 +2299,11 @@ class SyncMachine(RuleBasedStateMachine):
             )
         if not took_over:
             assert keys() == before, f"{device}: the lie {lie} changed its keys\n" + self._trace()
+        if self.revived is not None:
+            obj_id, table = self.revived
+            row = meta.fetchone(f"SELECT is_deleted FROM {table} WHERE id = ?", (obj_id,))  # noqa: S608
+            assert row is None or row["is_deleted"], (
+                f"{device}: an old version over a GC floor lie brought deleted {obj_id} back\n" + self._trace())
         # A DEK's role is never the server's word: a key held keeps its label
         # but for what the device derives itself (tier 2 from the entry
         # binding, root from the adopted root node), and a key it did not hold
@@ -3518,6 +3553,31 @@ def test_sync_state_machine_password_change_after_a_lying_full_resync(loopback_s
             "the lie had no old wraps to send\n" + machine._trace())
         machine.change_password(_Scripted(device="A"), None)
         assert "A" in machine.resync_due, "A's password change named no full resync\n" + machine._trace()
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_gc_floor_lie_over_a_tombstone(loopback_server, monkeypatch):
+    """R15 #428 (INV-3): random runs seldom line up a tombstone, an older
+    version of it on the wire and another device's new commit. A deletes an
+    entry B made; the server serves B's version 1 again with B's next folder
+    and a GC floor above A's tombstone. Before the fix A had the entry back."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        machine.create_folder(_Scripted(device="B", parent="ROOT"))
+        folder = machine._folders("B")[0]
+        machine.create_entry(_Scripted(device="B", folder=folder))
+        machine.push(_Scripted(device="B"), None)
+        machine.pull(_Scripted(device="A"), None)
+        entry = machine._entries("A")[0]
+        machine.delete_entry(_Scripted(device="A", entry=entry))
+        machine.push(_Scripted(device="A"), None)
+        machine.pull(_Scripted(device="A"), None)
+        machine.server_lies(_Scripted(device="A", maker="B", revived=entry), "gc_floor")
+        assert any("over its tombstone" in line for line in machine.log), machine._trace()
+        assert entry in machine._entries("A", deleted=True), machine._trace()
     finally:
         machine.teardown()
 

@@ -139,8 +139,10 @@ void main() {
     expect(stale(null, 1, 'h1'), isFalse);
     // A queued change meets every copy in the core's decision.
     expect(stale(held(queued: 1), 4, 'h4'), isFalse);
-    // A tombstone the server collected may come back (SM8).
-    expect(stale(held(deleted: 1), 3, 'h3', floor: 50), isFalse);
-    expect(stale(held(deleted: 1), 3, 'h3'), isTrue);
+    // A tombstone the server collected may come back (SM8) at its version.
+    expect(stale(held(deleted: 1), 5, 'other', floor: 50), isFalse);
+    expect(stale(held(deleted: 1), 5, 'other'), isTrue);
+    // INV-3: never as an older version, whatever the unsigned floor says.
+    expect(stale(held(deleted: 1), 3, 'h3', floor: 50), isTrue);
   });
 }
