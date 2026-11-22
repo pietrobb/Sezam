@@ -174,6 +174,7 @@ class VaultDB:
         # it wrote itself (a rolled-back write leaves the pinned one stored).
         self._generations: set[Optional[str]] = set()
         self._txn_lock = None  # the vault lock held for the open transaction
+        self._txn_owner: Optional[int] = None  # the thread whose transaction holds it
         self._local = threading.local()  # .brake: depth of brake() in this thread
 
     @property
@@ -413,7 +414,9 @@ class VaultDB:
     def _ordered(self, sql: str):
         """INV-6: the vault lock for a statement that writes, taken before
         the statement guard (the order every holder takes them in)."""
-        if self._braking() or sql.lstrip()[:6].upper() in ("SELECT", "PRAGMA"):
+        if self._txn_owner == threading.get_ident() or self._braking():
+            return nullcontext()  # this thread's transaction holds it (or the brake)
+        if sql.lstrip()[:6].upper() in ("SELECT", "PRAGMA"):
             return nullcontext()
         return oplock.exclusive(self.path, implicit=True)
 
@@ -516,10 +519,10 @@ class VaultDB:
             if not self._braking():
                 lock = oplock.exclusive(self.path, implicit=True)
                 lock.__enter__()
-                self._txn_lock = lock
+                self._txn_lock, self._txn_owner = lock, threading.get_ident()
         elif not open_now and self._txn_held:
             self._txn_held = False
-            lock, self._txn_lock = self._txn_lock, None
+            lock, self._txn_lock, self._txn_owner = self._txn_lock, None, None
             try:
                 if lock is not None:
                     lock.__exit__(None, None, None)
