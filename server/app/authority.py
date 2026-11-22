@@ -298,7 +298,8 @@ CACHE_READS: dict[str, str] = {
     "authority:team_admin": "NO_LOG: the cache is the only answer before a genesis",
     "dependencies:_authenticate_user": "passed to team_admin as the NO_LOG answer; the request's is_admin is team_admin's",
     "personal_tree:ever_admin": "passed to team_admin as the NO_LOG answer; with a log, team_admin and the log's authors decide",
-    "team_log:_user_row": "restore: passed to admin_by as the NO_LOG answer (the server lost its log)",
+    "team_log:_user_row": "restore: the founder anchor of a restored genesis (no log answers before it); "
+                          "who puts back a lost rotation is the held or the uploaded log's admin",
     "routers.auth:_abandoned_bootstrap_id": "NO_LOG by construction: one account without keys has signed no genesis",
     "routers.auth:registration_resume": "put in the onboarding session; every request replaces it (dependencies)",
     "routers.auth:auth_verify": "put in the session and the login reply; every request replaces it (dependencies)",

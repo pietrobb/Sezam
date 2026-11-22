@@ -672,10 +672,13 @@ def _uploader_team_admin(uploader, before: TeamState, current: TeamState, user_i
     # own and took the member's place in the team. Such a rotation comes back
     # only from the admin; a member's device still puts back the rest (a lone
     # admin's org.recovery, review 8595ec1 #4).
-    # INV-1: the log this server holds says who the admin is here; the users
-    # row only once the server lost all of it (authority.admin_by).
+    # INV-1: the log this server holds says who the admin is here; once the
+    # server lost all of it, the signed log uploaded (capability run 453: a
+    # users row older than the handover named the founder). The users row
+    # only when no log names anyone (authority.admin_by).
     active = uploader is not None and uploader[0] == "active"
-    return active and (authority.admin_by(before, user_id, bool(uploader[1])) or core.is_admin(current, user_id))
+    held = before if before is not None and before.members else current
+    return active and (authority.admin_by(held, user_id, bool(uploader[1])) or core.is_admin(current, user_id))
 
 
 async def _refuse_restored_keys(
