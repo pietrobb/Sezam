@@ -323,7 +323,9 @@ def _raw_connections(fn):
 # needs its reason and a test in the commit (ROOT_CAUSE_PLAN section 5).
 LOCK_SITES = {
     ("sezam/cli.py", "abandon_rekey", "oplock.exclusive"),
+    ("sezam/vault/ai_access.py", "anchor_home", "oplock.exclusive"),
     ("sezam/vault/ai_access.py", "raise_floor", "oplock.exclusive"),
+    ("sezam/vault/ai_access.py", "rehome_anchor", "oplock.exclusive"),
     ("sezam/vault/crud.py", "Vault.adopt_account_kek", "@oplock.held"),
     ("sezam/vault/crud.py", "Vault.change_password", "@oplock.held"),
     ("sezam/vault/crud.py", "Vault.grant_folder_access", "@oplock.held"),
