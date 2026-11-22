@@ -189,8 +189,8 @@ def test_a_delta_pull_never_takes_an_object_back():
         True, True, False, False, False, False, True, True,
     ]
     pull = _function("pullAndBuildTreeLocked")
-    guard = pull.index("webPulledIsStale(state.syncObjects?.[obj.id], obj, gcFloorSeq)")
-    assert pull.rindex("if (!isFullPull) {", 0, guard) > pull.index("verifiedObjects.push(obj);")
+    guard = pull.index("webPulledIsStale(held, obj, gcFloorSeq)")
+    assert pull.rindex("if (heldCopies) {", 0, guard) > pull.index("verifiedObjects.push(obj);")
     assert guard < pull.index("reconcileWebDirtyState(")
 
 

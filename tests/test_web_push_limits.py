@@ -43,7 +43,7 @@ async function attempt(fn) {
 def test_an_item_over_1_mib_is_never_queued():
     result = _run(
         ["assertNotStackedOnConflict", "assertTeamLogAllowsWrite", "syncPayloadBytes", "assertSyncObjectFits",
-         "pushEncryptedVaultObject", "pushEncryptedVaultObjectLocked", "webBase", "withWebBase", "isSameSyncVersion"],
+         "pushEncryptedVaultObject", "pushEncryptedVaultObjectLocked", "renumberedAboveBase", "webBase", "withWebBase", "isSameSyncVersion"],
         STUBS + """
         const big = await attempt(() => pushEncryptedVaultObject(obj('B', 1100 * 1024)));
         const bigQueued = Object.keys(state.outbox).length;

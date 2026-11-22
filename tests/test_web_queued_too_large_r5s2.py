@@ -16,7 +16,7 @@ from tests.test_web_push_limits import STUBS, _run
 
 PUSH = [
     "assertNotStackedOnConflict", "assertTeamLogAllowsWrite", "syncPayloadBytes", "assertSyncObjectFits",
-    "pushEncryptedVaultObject", "pushEncryptedVaultObjectLocked", "webBase", "withWebBase", "isSameSyncVersion",
+    "pushEncryptedVaultObject", "pushEncryptedVaultObjectLocked", "renumberedAboveBase", "webBase", "withWebBase", "isSameSyncVersion",
 ]
 
 

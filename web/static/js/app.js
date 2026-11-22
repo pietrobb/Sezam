@@ -2501,6 +2501,7 @@ function resetSession() {
     state.syncCheckpointLoaded = false;
     state.syncObjects = null;
     state.heldBeforeRestore = null;
+    state.fullPullHeld = null;
     state.teamLog = null;
     state.teamLogRefusal = null;
     state.teamLogDamaged = null;
@@ -2927,6 +2928,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         }
         state.syncCheckpoint = null;
         state.heldBeforeRestore = state.syncObjects;
+        state.fullPullHeld = null;  // the user takes the restored server's state
         state.syncObjects = null;
         return pullAndBuildTreeLocked(session);
     }
@@ -3045,6 +3047,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         // The refused pulls dropped the team keys and a delta pull does not
         // resend their envelopes: once the team's log is served again, all is pulled.
         state.teamLogRefusal = null;
+        state.fullPullHeld = state.syncObjects;  // M7: the full pull meets what was held
         state.syncObjects = null;
         return pullAndBuildTreeLocked(session);
     }
@@ -3123,15 +3126,27 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         }
         verifiedObjects.push(obj);
     }
-    if (!isFullPull) {
+    // Review 8bc70f7 M7: a full pull (Use the server's version, a 410, the
+    // team log served again) took an older copy than the one held here: it
+    // started from nothing. It meets what this page held as a delta pull
+    // does; only a restore the user accepted takes the server's state.
+    const heldCopies = isFullPull ? (restoredDetail ? null : state.syncObjects || state.fullPullHeld) : state.syncObjects;
+    const keptHeld = {};
+    if (heldCopies) {
         const gcFloor = Number(data.gc_floor_seq);
         const gcFloorSeq = Number.isSafeInteger(gcFloor) ? gcFloor : 0;
         for (let i = verifiedObjects.length - 1; i >= 0; i--) {
             const obj = verifiedObjects[i];
+            const held = heldCopies[obj.id];
             // A queued change meets every copy in the shared core's decision.
-            if (!state.outbox[obj.id] && webPulledIsStale(state.syncObjects?.[obj.id], obj, gcFloorSeq)) {
-                console.warn(`Kept ${obj.id} v${state.syncObjects[obj.id].version}: the server sent v${obj.version}`);
-                verifiedObjects.splice(i, 1);
+            if (!state.outbox[obj.id] && webPulledIsStale(held, obj, gcFloorSeq)) {
+                console.warn(`Kept ${obj.id} v${held.version}: the server sent v${obj.version}`);
+                if (isFullPull) {
+                    keptHeld[obj.id] = held;  // decrypted below as the copy held
+                    verifiedObjects[i] = held;
+                } else {
+                    verifiedObjects.splice(i, 1);
+                }
             }
         }
     }
@@ -3161,6 +3176,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     for (const obj of verifiedObjects) {
         candidateSyncObjects[obj.id] = syncObjectRecord(obj);
     }
+    Object.assign(candidateSyncObjects, keptHeld);  // the record as held (its verified signer)
     await verifyAuditGraph(candidateSyncObjects, _sodium);
     const stateHash = await computeWebStateHash(candidateSyncObjects, _sodium);
     const liveStateHash = await computeWebStateHash(liveSyncObjects(candidateSyncObjects), _sodium);
@@ -3188,8 +3204,10 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
             throw new Error(`${err.message}. ${t('sync.rollback_cancelled')}`);
         }
         state.syncCheckpoint = null;
-        if (state.syncObjects) state.heldBeforeRestore = state.syncObjects;
-        if (!isFullPull) {
+        const priorHeld = state.syncObjects || state.fullPullHeld;
+        if (priorHeld) state.heldBeforeRestore = priorHeld;
+        state.fullPullHeld = null;  // M7: an accepted restore takes the server's state
+        if (!isFullPull || Object.keys(keptHeld).length) {
             state.syncObjects = null;
             return pullAndBuildTreeLocked(session);
         }
@@ -3451,6 +3469,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     state.allEntries = candidateAllEntries;
     state.allNodes = candidateAllNodes;
     state.syncObjects = candidateSyncObjects;
+    state.fullPullHeld = null;
     for (const [id, base] of Object.entries(state.acceptedBases)) {
         if (Number(candidateSyncObjects[id]?.version) >= base.version) delete state.acceptedBases[id];
     }
@@ -5435,9 +5454,10 @@ async function saveWebDirtyState(objects, conflicts, _sodium, ops = state.outbox
         // a member's pending removal too. What this tab changed since it last
         // read or wrote the record goes over the stored queue; the rest of it
         // (the other tab's work) stays, and joins this tab's queue.
+        const written = JSON.parse(JSON.stringify({ objects, conflicts, ops, sent: state.outboxSent || {} }));
         const merged = mergeWebDirtyState(
             state.outboxBaseline || openWebDirtyState(null, _sodium),
-            { objects, conflicts, ops, sent: state.outboxSent || {} },
+            written,
             opens ? openWebDirtyState(live, _sodium) : openWebDirtyState(null, _sodium),
         );
         const empty = !Object.keys(merged.objects).length && !Object.keys(merged.conflicts).length &&
@@ -5459,10 +5479,13 @@ async function saveWebDirtyState(objects, conflicts, _sodium, ops = state.outbox
             tx.onabort = () => reject(tx.error || new Error('Dirty state write aborted'));
         });
         // The callers hold these very objects (or make them the session's).
-        replaceWebKeyed(objects, merged.objects);
-        replaceWebKeyed(conflicts, merged.conflicts);
-        ops.splice(0, ops.length, ...merged.ops);
-        state.outboxSent = merged.sent;
+        // Review 8bc70f7 M7: what this tab queued while the record was
+        // written (another save, a Retry) stays over it; the next save writes it.
+        const now = mergeWebDirtyState(written, { objects, conflicts, ops, sent: state.outboxSent || {} }, merged);
+        replaceWebKeyed(objects, now.objects);
+        replaceWebKeyed(conflicts, now.conflicts);
+        ops.splice(0, ops.length, ...now.ops);
+        state.outboxSent = now.sent;
         state.outboxBaseline = JSON.parse(JSON.stringify(merged));
     });
 }
@@ -5768,7 +5791,9 @@ async function discardWebConflictedChanges(ids) {
         await saveWebDirtyState(outbox, conflicts, _sodium);
         state.outbox = outbox;
         state.syncConflicts = conflicts;
-        // A delta pull would not resend server objects we already saw.
+        // A delta pull would not resend server objects we already saw. M7:
+        // the full pull still meets the copies held here.
+        state.fullPullHeld = state.syncObjects;
         state.syncObjects = null;
         await pullAndBuildTreeLocked();
     });
@@ -7101,8 +7126,33 @@ function withWebBase(vaultObj) {
     return { ...vaultObj, base_version: base.version, base_payload_hash: base.payload_hash };
 }
 
+/**
+ * Review 8bc70f7 M7: an edit saved after a push of the same item whose reply
+ * was lost (or while it was out) has that push's version number: the tree had
+ * not moved on. The pull takes the landed push as its base (adopt_as_base),
+ * and a write not above its base was refused as not newer on every Retry.
+ * Sealed again one above its base, as the desktop's edits always are.
+ */
+async function renumberedAboveBase(vaultObj) {
+    if (!['node', 'entry'].includes(vaultObj.object_type) || vaultObj.base_version == null ||
+            Number(vaultObj.version) > Number(vaultObj.base_version)) {
+        return vaultObj;
+    }
+    const dekId = payloadDekId(vaultObj);
+    if (!dekId || !state.deks[dekId]) return vaultObj;  // refused as before; the queue keeps it
+    const _sodium = await ensureSodium();
+    const bytes = base64ToBytes(vaultObj.payload);
+    const payloadData = vaultObj.object_type === 'entry'
+        ? decryptEntryPayload(bytes, vaultObj.id, vaultObj.version, state.deks, _sodium)
+        : decryptEnvelope(bytes, vaultObj.id, vaultObj.version, state.deks, _sodium);
+    const sealed = await sealVaultObject({
+        ...vaultObj, payloadData, dekId, version: Number(vaultObj.base_version) + 1,
+    });
+    return { ...sealed, base_version: vaultObj.base_version, base_payload_hash: vaultObj.base_payload_hash };
+}
+
 async function pushEncryptedVaultObjectLocked(vaultObj) {
-    vaultObj = withWebBase(vaultObj);
+    vaultObj = await renumberedAboveBase(withWebBase(vaultObj));
     assertNotStackedOnConflict(vaultObj);
     assertTeamLogAllowsWrite(vaultObj);
     // Never queued: it could never be sent (review 526419e #1).

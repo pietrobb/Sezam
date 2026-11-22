@@ -13,7 +13,7 @@ from tests.test_review_web import pytestmark  # noqa: F401
 
 FUNCTIONS = [
     "assertNotStackedOnConflict", "assertTeamLogAllowsWrite", "syncPayloadBytes", "assertSyncObjectFits",
-    "pushEncryptedVaultObject", "pushEncryptedVaultObjectLocked", "webBase", "withWebBase", "isSameSyncVersion",
+    "pushEncryptedVaultObject", "pushEncryptedVaultObjectLocked", "renumberedAboveBase", "webBase", "withWebBase", "isSameSyncVersion",
 ]
 
 
