@@ -13,8 +13,8 @@ Modes:
   range BASE HEAD [--verify-red]  check every commit in BASE..HEAD (CI);
                                 --verify-red also runs each red command on
                                 its <sha>, with the commit's own test files,
-                                and requires it to fail there (pytest exit 1,
-                                or a hang past --timeout)
+                                and requires it to fail there (pytest exit 1;
+                                a run past --timeout is no failure)
 Enable the hook once per clone: git config core.hooksPath .githooks
 """
 from __future__ import annotations
@@ -103,7 +103,8 @@ def verify_red(commit: str, sha: str, command: str, repo: Path, timeout: int) ->
             done = subprocess.run([sys.executable, *argv[1:]], cwd=work, env=env,
                                   capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired:
-            return ""  # a hang is red too (review e443cbc H1)
+            # Slow is not red (capability run 448): a test for a hang bounds it itself.
+            return f"'{command}' on {sha}: timed out after {timeout} s, no test failed"
         if done.returncode == 1:
             return ""
         tail = (done.stdout + done.stderr).strip().splitlines()[-3:]

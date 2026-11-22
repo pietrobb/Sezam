@@ -128,3 +128,13 @@ def test_ci_refuses_a_red_sha_that_is_not_an_ancestor(repo):
     assert _commit(repo, _message(red="Red on deadbeef: python -m pytest -q tests/test_calc.py")).returncode == 0
     problems = cd.check_range(base, _head(repo), repo, verify=True, timeout=120)
     assert len(problems) == 1 and "not a commit" in problems[0], problems
+
+
+@needs_git
+def test_a_red_line_that_only_runs_long_is_no_red(repo):
+    """Capability run 448: a run past the timeout proves no test failed."""
+    base = _head(repo)
+    (repo / "tests" / "test_calc.py").write_text("import time\n\n\ndef test_slow():\n    time.sleep(30)\n")
+    assert _commit(repo, _message(red=f"Red on {base[:9]}: python -m pytest -q tests/test_calc.py")).returncode == 0
+    problems = cd.check_range(base, _head(repo), repo, verify=True, timeout=3)
+    assert len(problems) == 1 and "timed out" in problems[0], problems

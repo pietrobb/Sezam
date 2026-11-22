@@ -8,9 +8,9 @@ branch of the same code (the other client, append vs restore).
 
 Each mutant replaces one exact piece of code (it must occur once, else the
 mutant no longer fits the code and the check fails) and names the tests that
-must fail on it. A mutant is killed when pytest fails (exit 1) or hangs past
-the timeout; passing tests, or an error that is not a test failure, fail the
-check.
+must fail on it. A mutant is killed only when pytest fails (exit 1); passing
+tests, a run past the timeout, or an error that is not a test failure, fail the
+check. A test for a hang must bound it itself (test_r15_rotation_cycle.py).
 
     python scripts/mutants.py                 # all, in a scratch worktree of HEAD
     python scripts/mutants.py --only R1 R2    # some
@@ -228,7 +228,8 @@ def check(work: Path, mutant: Mutant, timeout: int) -> str:
             cwd=work, env=env, capture_output=True, text=True, timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        return ""  # a hang is a kill (R7: the walk never ends)
+        # Slow is not red: only a failing test proves the mutant is caught.
+        return f"timed out after {timeout} s, not proven killed (no test failed)"
     finally:
         (work / mutant.path).write_text(original, encoding="utf-8")
     if done.returncode == 1:
