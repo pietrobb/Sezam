@@ -782,10 +782,18 @@ class SyncService {
 
     // Review e4cd15a (low): the server's name migration may have moved this
     // account off the name it signed in with; the answer carries the current
-    // one, which every later login of this phone uses.
-    final currentName = authData['username'] as String?;
+    // one, which every later login of this phone uses. The name is unsigned
+    // (INV-3, review e443cbc #428): it is kept only once this phone's key
+    // logs in under it, so a lie cannot lock the phone out.
+    final rawName = authData['username'];
+    final currentName = rawName is String && rawName.isNotEmpty
+        ? rawName
+        : null;
     _signedInAs = username;
-    _accountName = (currentName != null && currentName.isNotEmpty)
+    _accountName =
+        currentName != null &&
+            (currentName == username ||
+                await _logsInAs(currentName, signingSecretKey))
         ? currentName
         : null;
     if (_accountName != null && _accountName != username) {
@@ -880,6 +888,49 @@ class SyncService {
 
   String? _signedInAs;
   String? _accountName;
+
+  /// Whether the server lets [signingSecretKey] log in under [name]; the
+  /// session of that login replaces the current one.
+  Future<bool> _logsInAs(String name, Uint8List signingSecretKey) async {
+    try {
+      final challengeResp = await _http.post(
+        Uri.parse('$_serverUrl/api/auth/challenge'),
+        headers: _headers(),
+        body: jsonEncode({'username': name}),
+      );
+      if (challengeResp.statusCode != 200) {
+        return false;
+      }
+      final challengeHex =
+          (jsonDecode(challengeResp.body) as Map<String, dynamic>)['challenge']
+              as String;
+      final signature = _crypto.signAuthChallenge(
+        hexToBytes(challengeHex),
+        signingSecretKey,
+      );
+      final verifyResp = await _http.post(
+        Uri.parse('$_serverUrl/api/auth/verify'),
+        headers: _headers(),
+        body: jsonEncode({
+          'username': name,
+          'challenge': challengeHex,
+          'signature': bytesToHex(signature),
+        }),
+      );
+      if (verifyResp.statusCode != 200) {
+        return false;
+      }
+      final token =
+          (jsonDecode(verifyResp.body) as Map<String, dynamic>)['token'];
+      if (token is! String || token.isEmpty) {
+        return false;
+      }
+      _token = token;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   static String? _rotatedAccountName(String body) {
     try {
