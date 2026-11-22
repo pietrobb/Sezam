@@ -91,10 +91,10 @@ def _nodes(root_owner: str) -> dict:
         "userId": ME,
         "deks": {"PDEK": "x"},
         "nodes": {
-            "ROOT": {"id": "ROOT", "parent_ref": None, "_undecryptable": True, "owner_id": root_owner},
-            "TEAM": {"id": "TEAM", "parent_ref": "ROOT", "owner_id": ADMIN},
+            "ROOT": {"id": "ROOT", "parent_ref": None, "_undecryptable": True, "owner_id": root_owner, "signer": root_owner},
+            "TEAM": {"id": "TEAM", "parent_ref": "ROOT", "owner_id": ADMIN, "signer": ADMIN},
             "MINE": {"id": "MINE", "parent_ref": "ROOT", "personal": True, "dekId": "PDEK"},
-            "SUB": {"id": "SUB", "parent_ref": "MINE", "owner_id": ME, "dekId": "PDEK"},
+            "SUB": {"id": "SUB", "parent_ref": "MINE", "owner_id": ME, "signer": ME, "dekId": "PDEK"},
         },
     }
 
@@ -116,7 +116,7 @@ def test_own_unreadable_ancestor_still_fails_closed():
     })()"""
     assert _run(_function("resolveInheritedPersonalDekId"), script, _nodes(ME)) == "Parent folder is unavailable."
     unknown = _nodes(ADMIN)
-    del unknown["nodes"]["ROOT"]["owner_id"]
+    del unknown["nodes"]["ROOT"]["signer"]
     assert _run(_function("resolveInheritedPersonalDekId"), script, unknown) == "Parent folder is unavailable."
 
 
@@ -126,7 +126,7 @@ def test_member_login_migration_passes_a_shared_folder():
     state["rootDekId"] = None
     state["allNodes"] = list(state["nodes"].values())
     state["allEntries"] = [
-        {"id": "MYENTRY", "parent_ref": "TEAM", "owner_id": ME, "dekId": "TEAMDEK"},
+        {"id": "MYENTRY", "parent_ref": "TEAM", "owner_id": ME, "signer": ME, "dekId": "TEAMDEK"},
     ]
     script = """(async () => {
       let pushed = 0;
@@ -136,8 +136,8 @@ def test_member_login_migration_passes_a_shared_folder():
     assert _run(source, script, state) == {"migrated": False, "pushed": 0}
 
 
-def test_pull_keeps_the_owner_of_an_unreadable_node():
+def test_pull_keeps_the_signer_of_an_unreadable_node():
     pull = _function("pullAndBuildTreeLocked")
     line = next(x for x in pull.splitlines() if "_undecryptable: true, parent_ref" in x
                 and "osobne" in x)
-    assert "owner_id: obj.owner_id" in line
+    assert "signer: verifiedSigner(obj)" in line

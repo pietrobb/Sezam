@@ -424,12 +424,13 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             "(envelopeValid), a re-key carries 'write' only from an envelope this browser made",
             ("unauthorizedWrites", "keyEnvelopesForUser")),
         "PullObject.owner_id": Field(
-            DECIDES, "kept raw beside the verified signer: resolveInheritedPersonalDekId walks past an "
-            "unreadable folder named another's instead of failing closed, migrateLegacyPersonalDescendants "
-            "repairs only what names this account; the signer of a personal object is its only possible "
-            "author (TL7), so both should ask the signer; goal #439. As the signer fallback it is checked "
-            "like signature_user_id",
-            ("resolveInheritedPersonalDekId", "migrateLegacyPersonalDescendants")),
+            HINT, "who wrote a copy is its verified signer (pullAndBuildTreeLocked's verifiedSigner: the "
+            "signature checked at pull, "
+            "or this account for a queued change), which resolveInheritedPersonalDekId and "
+            "migrateLegacyPersonalDescendants ask (a personal object is signed by its author only, TL7); "
+            "owner_id is left to canEditObject's edit UI, every receiver checks the write by signature "
+            "(unauthorizedWrites). As the signer fallback it is checked like signature_user_id",
+            ("pullAndBuildTreeLocked", "resolveInheritedPersonalDekId", "migrateLegacyPersonalDescendants")),
         "PullObject.scope": Field(
             HINT, "a label: it picks which items below this account's personal root move to its personal "
             "key (migrateLegacyPersonalDescendants), the root key among the ones this KEK opened, and an "

@@ -3461,18 +3461,18 @@ let state = {{
   deks: {{ PERSONAL_DEK: new Uint8Array(32), ROOT_DEK: new Uint8Array(32) }},
   nodes: {{
     personal: {{ id: 'personal', name: 'Personal', personal: true, dekId: 'PERSONAL_DEK', parent_ref: null }},
-    child: {{ id: 'child', name: 'Child', owner_id: 'CURRENT_USER', dekId: 'ROOT_DEK', parent_ref: 'personal' }},
-    grandchild: {{ id: 'grandchild', name: 'Grandchild', owner_id: 'CURRENT_USER', dekId: 'ROOT_DEK', parent_ref: 'child' }},
-    shared: {{ id: 'shared', name: 'Shared', owner_id: 'CURRENT_USER', dekId: 'ROOT_DEK', parent_ref: null }},
-    foreignRoot: {{ id: 'foreignRoot', owner_id: 'OTHER_USER', _undecryptable: true, parent_ref: null }},
-    foreignChild: {{ id: 'foreignChild', name: 'Visible legacy child', owner_id: 'OTHER_USER', dekId: 'ROOT_DEK', parent_ref: 'foreignRoot' }},
+    child: {{ id: 'child', name: 'Child', owner_id: 'CURRENT_USER', signer: 'CURRENT_USER', dekId: 'ROOT_DEK', parent_ref: 'personal' }},
+    grandchild: {{ id: 'grandchild', name: 'Grandchild', owner_id: 'CURRENT_USER', signer: 'CURRENT_USER', dekId: 'ROOT_DEK', parent_ref: 'child' }},
+    shared: {{ id: 'shared', name: 'Shared', owner_id: 'CURRENT_USER', signer: 'CURRENT_USER', dekId: 'ROOT_DEK', parent_ref: null }},
+    foreignRoot: {{ id: 'foreignRoot', owner_id: 'OTHER_USER', signer: 'OTHER_USER', _undecryptable: true, parent_ref: null }},
+    foreignChild: {{ id: 'foreignChild', name: 'Visible legacy child', owner_id: 'OTHER_USER', signer: 'OTHER_USER', dekId: 'ROOT_DEK', parent_ref: 'foreignRoot' }},
   }},
-  entries: {{ secret: {{ id: 'secret', name: 'Secret', owner_id: 'CURRENT_USER', dekId: 'ROOT_DEK', parent_ref: 'grandchild', version: 1, fields: [{{ key: 'password', value: 'secret' }}] }} }},
+  entries: {{ secret: {{ id: 'secret', name: 'Secret', owner_id: 'CURRENT_USER', signer: 'CURRENT_USER', dekId: 'ROOT_DEK', parent_ref: 'grandchild', version: 1, fields: [{{ key: 'password', value: 'secret' }}] }} }},
 }};
 state.allNodes = Object.values(state.nodes);
 state.allEntries = [
   state.entries.secret,
-  {{ id: 'foreign', owner_id: 'OTHER_USER', parent_ref: 'foreignRoot' }},
+  {{ id: 'foreign', owner_id: 'OTHER_USER', signer: 'OTHER_USER', parent_ref: 'foreignRoot' }},
   {{ id: 'opaque', _undecryptable: true, parent_ref: 'missing' }},
 ];
 {resolver}

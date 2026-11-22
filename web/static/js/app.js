@@ -3215,6 +3215,11 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     }
 
     // Step 2: Decrypt node and entry objects
+    // INV-3 (review e443cbc): who wrote each copy is the account whose
+    // signature verified above (syncObjectRecord), or this one for a change
+    // still queued here; owner_id is the server's unsigned ACL owner.
+    const verifiedSigner = obj => (reconciledDirtyState.outbox[obj.id]
+        ? state.userId : candidateSyncObjects[obj.id]?.signer || null);
     const decryptedNodes = [];
     const decryptedEntries = [];
 
@@ -3227,16 +3232,16 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
                 // New format: encrypted envelope
                 const meta = decryptEnvelope(payloadBytes, obj.id, obj.version || 1, candidateDeks, _sodium);
                 const isPersonal = !!(meta && meta.personal);
-                decryptedNodes.push({ id: obj.id, ...meta, personal: isPersonal, dekId: nodeDekId, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, write_policy: obj.write_policy || 'owner_only' });
+                decryptedNodes.push({ id: obj.id, ...meta, personal: isPersonal, dekId: nodeDekId, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only' });
             } else {
                 // Legacy format: plaintext base64 JSON (transition support)
                 const payload = JSON.parse(atob(obj.payload));
-                decryptedNodes.push({ id: obj.id, ...payload, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, write_policy: obj.write_policy || 'owner_only' });
+                decryptedNodes.push({ id: obj.id, ...payload, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only' });
             }
         } catch (err) {
             console.warn('Failed to decrypt node', obj.id, err.message);
             // Node could not be decrypted — likely a personal folder of another user
-            decryptedNodes.push({ id: obj.id, name: '(osobne \u2014 zasifrovane)', _undecryptable: true, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id });
+            decryptedNodes.push({ id: obj.id, name: '(osobne \u2014 zasifrovane)', _undecryptable: true, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj) });
         }
     }
 
@@ -3248,22 +3253,23 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
                 // in one ENTRY_DATA blob. Read it directly for backward compatibility.
                 const entryDekId = new TextDecoder().decode(payloadBytes.slice(3, 29)).replace(/\0/g, '');
                 const decrypted = decryptEnvelope(payloadBytes, obj.id, obj.version || 1, candidateDeks, _sodium);
-                decryptedEntries.push({ id: obj.id, ...decrypted, dekId: entryDekId, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, write_policy: obj.write_policy || 'owner_only' });
+                decryptedEntries.push({ id: obj.id, ...decrypted, dekId: entryDekId, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only' });
             } else if (payloadBytes.length >= 4 + 53 && payloadBytes[4] === ENVELOPE_ALG && payloadBytes[5] === SCHEMA_VERSION) {
                 // Canonical two-envelope framing: u32be(meta_len) || meta_env || data_env
                 const entryDekId = new TextDecoder().decode(payloadBytes.slice(7, 33)).replace(/\0/g, '');
                 const decrypted = decryptEntryPayload(payloadBytes, obj.id, obj.version || 1, candidateDeks, _sodium);
-                decryptedEntries.push({ id: obj.id, ...decrypted, dekId: entryDekId, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, write_policy: obj.write_policy || 'owner_only' });
+                decryptedEntries.push({ id: obj.id, ...decrypted, dekId: entryDekId, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only' });
             } else {
                 // Legacy format: plaintext base64 JSON
                 const payload = JSON.parse(atob(obj.payload));
-                decryptedEntries.push({ id: obj.id, ...payload, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, write_policy: obj.write_policy || 'owner_only' });
+                decryptedEntries.push({ id: obj.id, ...payload, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only' });
             }
         } catch (err) {
             console.warn('Failed to decrypt entry', obj.id, err.message);
             decryptedEntries.push({
                 id: obj.id, name: t('tree.encrypted_entry'), _undecryptable: true,
-                fields: [], tags: [], parent_ref: obj.parent_ref, version: obj.version || 1
+                fields: [], tags: [], parent_ref: obj.parent_ref, version: obj.version || 1,
+                signer: verifiedSigner(obj),
             });
         }
     }
@@ -3608,7 +3614,8 @@ async function migrateLegacyPersonalDescendants() {
     };
 
     const repair = async (obj, objectType) => {
-        if (obj._undecryptable || (obj.owner_id && obj.owner_id !== state.userId)) return;
+        // INV-3: only what this account signed, never what owner_id names.
+        if (obj._undecryptable || obj.signer !== state.userId) return;
         let inheritedDekId;
         try {
             inheritedDekId = resolveInheritedPersonalDekId(obj.parent_ref);
@@ -3644,7 +3651,7 @@ async function migrateLegacyPersonalDescendants() {
 
 // Keys the web adds to a decrypted object; never part of its encrypted payload.
 const CLIENT_OBJECT_KEYS = new Set([
-    'id', 'dekId', 'parent_ref', 'version', 'owner_id', 'write_policy', '_undecryptable',
+    'id', 'dekId', 'parent_ref', 'version', 'owner_id', 'signer', 'write_policy', '_undecryptable',
 ]);
 
 function storedPayload(obj) {
@@ -9139,7 +9146,9 @@ function resolveInheritedPersonalDekId(parentRef) {
             // Review 2052248 #8: a team member cannot read the admin's folders
             // above a shared one. Another user's folder is never OUR personal
             // folder, so keep walking; our own unreadable folder fails closed.
-            if (!node.owner_id || node.owner_id === state.userId) {
+            // INV-3: "another user's" is who signed it (a personal folder is
+            // signed by its author only, TL7), never the server's owner_id.
+            if (!node.signer || node.signer === state.userId) {
                 throw new Error('Parent folder is unavailable.');
             }
             nodeId = node.parent_ref;

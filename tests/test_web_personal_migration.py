@@ -61,7 +61,7 @@ AI_META = {
 SCRIPT = f"""
 (async () => {{
   const dek = n => Uint8Array.from({{ length: 32 }}, () => n);
-  const own = {{ owner_id: '{ME}', write_policy: 'owner_only' }};
+  const own = {{ owner_id: '{ME}', signer: '{ME}', write_policy: 'owner_only' }};
   const nodes = [
     {{ id: '{P}', name: 'Private', personal: true, dekId: '{PDEK}', parent_ref: null,
        version: 1, ...own }},
@@ -70,7 +70,7 @@ SCRIPT = f"""
   ];
   const entries = [
     {{ id: '{OLD}', name: 'legacy', tags: ['x'], fields: [{{ key: 'password', value: 'pw' }}],
-       dekId: '{ROOT_DEK}', parent_ref: '{P}', version: 2, owner_id: '{ME}',
+       dekId: '{ROOT_DEK}', parent_ref: '{P}', version: 2, owner_id: '{ME}', signer: '{ME}',
        write_policy: 'any_member', allowed_actions: ['read', 'ssh'], tier: 1 }},
     {{ id: '{T2}', name: 'ssh key', tags: [], fields: [{{ key: 'key', value: 'k' }}],
        dekId: '{TIER2_DEK}', parent_ref: '{P}', version: 1, ...own, ...{json.dumps(AI_META)} }},
