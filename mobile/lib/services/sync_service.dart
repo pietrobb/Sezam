@@ -20,6 +20,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/vault_models.dart';
+import 'auth_service.dart';
 import 'crypto_service.dart';
 import 'database_service.dart';
 import 'key_rotation.dart';
@@ -355,6 +356,12 @@ class SyncService {
 
   String? _serverUrl;
   String? _token;
+
+  /// INV-8: whether a typed password opens the unlocked vault (the account
+  /// password check of [forgetTeamLogPin]). Replaced only by unit tests whose
+  /// vault was opened with a bare KEK.
+  Future<bool> Function(String password) passwordOpensVault =
+      (password) => AuthService().passwordOpensUnlockedVault(password);
 
   // Review d615826: the app syncs after unlock, on pull-to-refresh and after
   // changes; overlapping syncs ran their pushes and pulls interleaved on one
@@ -2544,7 +2551,17 @@ class SyncService {
   /// phone had no way out). Then they are exported ([latestUnsentExport]),
   /// dropped, and the next sync asks for a full resync, which puts the
   /// server's copy back in place of the edits.
-  Future<List<String>> forgetTeamLogPin(String typed, {bool discardUnsent = false}) => _exclusive(() async {
+  ///
+  /// INV-8: [password] must open the unlocked vault ([passwordOpensVault]),
+  /// before anything else ([WrongPasswordRefusesForget]).
+  Future<List<String>> forgetTeamLogPin(
+    String typed, {
+    required String password,
+    bool discardUnsent = false,
+  }) => _exclusive(() async {
+    if (!await passwordOpensVault(password)) {
+      throw const WrongPasswordRefusesForget();
+    }
     final userId = _vault.userId!;
     final pins = await _pinnedTeamGenesis();
     if (pins.isEmpty) throw StateError('This phone pins no team log; nothing to forget.');
@@ -2971,6 +2988,15 @@ class UnsentChangesBlockForget implements Exception {
 
   @override
   String toString() => 'This phone holds $count unsent changes the lost team log no longer takes.';
+}
+
+/// INV-8 (review e443cbc): the forget, and the drop of unsent changes with
+/// it, only with the account password (as on desktop and web).
+class WrongPasswordRefusesForget implements Exception {
+  const WrongPasswordRefusesForget();
+
+  @override
+  String toString() => 'Nesprávne heslo účtu. Nič nebolo zabudnuté ani zahodené.';
 }
 
 /// INV-8: the server's team log is not lost (this phone follows it, or it

@@ -58,6 +58,8 @@ void main() {
       initPhoneCrypto();
     }, () => client);
     sync.setToken('jwt');
+    // A bare KEK opens this vault: the INV-8 password check is the app's.
+    sync.passwordOpensVault = (password) async => password == 'pw';
     await vault.unlock(
       kek: Uint8List(32),
       signingSecretKey: Uint8List(64),
@@ -95,7 +97,7 @@ void main() {
       }
     }
     try {
-      await sync.forgetTeamLogPin(typed);
+      await sync.forgetTeamLogPin(typed, password: 'pw');
     } catch (_) {
       return false;
     }

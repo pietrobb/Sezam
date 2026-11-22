@@ -110,8 +110,14 @@ void main() {
         final pins = await sync.pinnedTeamGenesis();
         expect(pins, ([genesis, other]..sort()));
         // Each conflicting pin is typed; one alone forgets nothing.
-        await expectLater(sync.forgetTeamLogPin(genesis.substring(0, 16)), throwsA(isA<FormatException>()));
-        expect(await sync.forgetTeamLogPin('${genesis.substring(0, 16)} ${other.substring(0, 16)}'), pins);
+        await expectLater(sync.forgetTeamLogPin(genesis.substring(0, 16), password: password), throwsA(isA<FormatException>()));
+        // INV-8 (review e443cbc): never without the account password.
+        for (final wrong in ['', '${password}x']) {
+          await expectLater(sync.forgetTeamLogPin('${genesis.substring(0, 16)} ${other.substring(0, 16)}', password: wrong),
+              throwsA(isA<WrongPasswordRefusesForget>()));
+        }
+        expect(await sync.pinnedTeamGenesis(), pins);
+        expect(await sync.forgetTeamLogPin('${genesis.substring(0, 16)} ${other.substring(0, 16)}', password: password), pins);
         expect(vault.teamLogRefusal, isNull);
         expect(await readAccountTeamGenesis(uid), isNull);
         expect(await readConfirmedTeamGenesis(uid), isNull);
@@ -146,7 +152,7 @@ void main() {
         // Only the unreadable list remembered that `other` (still in the keys,
         // step 2) was left: it is a named conflict again, forgotten as before.
         expect(vault.teamLogRefusal?.cause, 'anchor_conflict');
-        expect(await sync.forgetTeamLogPin('${genesis.substring(0, 16)} ${other.substring(0, 16)}'),
+        expect(await sync.forgetTeamLogPin('${genesis.substring(0, 16)} ${other.substring(0, 16)}', password: password),
             ([genesis, other]..sort()));
         expect(vault.teamLogRefusal, isNull);
         await sync.sync();
@@ -178,7 +184,7 @@ void main() {
           if (vault.teamLogRefusal?.cause == 'anchor_conflict') {
             // As in step 3: only the replaced list remembered leaving `other`.
             expect(record, 'forgotten');
-            await sync.forgetTeamLogPin('${genesis.substring(0, 16)} ${other.substring(0, 16)}');
+            await sync.forgetTeamLogPin('${genesis.substring(0, 16)} ${other.substring(0, 16)}', password: anchored);
           }
           expect(vault.teamLogRefusal, isNull, reason: record);
           await sync.sync();
@@ -223,7 +229,7 @@ void main() {
           expect(await readConfirmedTeamGenesis(uid), other, reason: '$held: the server keys never move the pin');
           expect(await readAccountTeamGenesis(uid), genesis, reason: held);
           // The way out, on the vault just opened.
-          expect(await sync.forgetTeamLogPin('${genesis.substring(0, 16)} ${other.substring(0, 16)}'),
+          expect(await sync.forgetTeamLogPin('${genesis.substring(0, 16)} ${other.substring(0, 16)}', password: anchored),
               ([genesis, other]..sort()));
           expect(vault.teamLogRefusal, isNull, reason: held);
           await sync.sync();

@@ -124,9 +124,15 @@ def test_the_web_vault_opens_and_only_the_team_waits(team, server, tmp_path, sta
 
         # The way out, from the vault the sign-in opened.
         if state == "anchor_names_other":
-            typo = tab.do("forget_pin", typed=genesis[:16], confirm=True)
+            both = f"{genesis[:16]} {OTHER_GENESIS[:16]}"
+            typo = tab.do("forget_pin", typed=genesis[:16], password=PASSWORD, confirm=True)
             assert "team.forget_typed" in (typo["error"] or "") or "every one" in (typo["error"] or ""), typo
-            left = tab.do("forget_pin", typed=f"{genesis[:16]} {OTHER_GENESIS[:16]}", confirm=True)
+            # INV-8 (review e443cbc): the forget only with the account password.
+            for wrong in ("", PASSWORD + "x"):
+                denied = tab.do("forget_pin", typed=both, password=wrong, confirm=True)
+                assert "forget_wrong_password" in (denied["error"] or ""), denied
+                assert denied["view"]["teamLogPins"] == typo["view"]["teamLogPins"], denied
+            left = tab.do("forget_pin", typed=both, password=PASSWORD, confirm=True)
             assert not _readable(left["view"], "team-only"), left
             out = tab.do("founder", open=True, fingerprint=fingerprint)
         elif state == "anchor_damaged":

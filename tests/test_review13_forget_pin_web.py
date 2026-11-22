@@ -28,6 +28,7 @@ def _run(script: str):
       const me = {json.dumps(_secrets(B))};
       state.userId = {json.dumps(B.uid)};
       state.kek = newKek;
+      globalThis.currentPasswordProof = async p => (p === 'pw' ? 'ab' : null);
       state.sessionSerial = 1;
       state.keypair = {{ signingSk: hexToBytes(me.signingSk), signingPk: hexToBytes(me.signingPk),
                         encryptionSk: hexToBytes(me.encryptionSk) }};
@@ -43,7 +44,7 @@ def _run(script: str):
         }} catch (err) {{ return err.message; }}
       }};
       const forget = async typed => {{
-        try {{ return await forgetWebTeamLogPinLocked(typed, 1, sodium); }} catch (err) {{ return err.message; }}
+        try {{ return await forgetWebTeamLogPinLocked(typed, 'pw', 1, sodium); }} catch (err) {{ return err.message; }}
       }};
       // This browser followed and confirmed the old log.
       state.teamLog = old;

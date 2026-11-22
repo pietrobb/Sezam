@@ -1752,7 +1752,7 @@ async function handleLogin(e) {
         if (state.keypair.confirmedGenesis) await importAccountTeamAnchor(_sodium);
         // The password just opened the keypair and signed in: it authorizes
         // leaving the pinned team log before the pull that would refuse it.
-        if (forgetTyped) await forgetTeamLogPinAtLogin(forgetTyped, loginSession, _sodium);
+        if (forgetTyped) await forgetTeamLogPinAtLogin(forgetTyped, password, loginSession, _sodium);
         // 8. Pull vault and build tree
         await pullAndBuildTree();
         await settleUnfinishedKekRotation(unfinishedRotation, meta);
@@ -1814,9 +1814,9 @@ async function handleLogin(e) {
 
 /** Review 8bc70f7 H4: "Forget the pinned team log" on the sign-in screen, for a
  * login that fails on a lost team log; runs once the login's password signed in. */
-async function forgetTeamLogPinAtLogin(typed, session, _sodium) {
+async function forgetTeamLogPinAtLogin(typed, password, session, _sodium) {
     if (!window.confirm(t('team.forget_confirm'))) throw new Error(t('team.forget_cancelled'));
-    await withWebSyncLock(() => forgetWebTeamLogPinLocked(typed, session, _sodium));
+    await withWebSyncLock(() => forgetWebTeamLogPinLocked(typed, password, session, _sodium));
     const input = document.getElementById('login-team-forget-genesis');
     if (input) input.value = '';
     document.getElementById('login-team-forget')?.classList.add('hidden');
@@ -7733,9 +7733,13 @@ async function webTeamLogRefusal(_sodium) {
     return null;
 }
 
-/** Drop this browser's team log pin; call with the sync lock held. */
-async function forgetWebTeamLogPinLocked(typed, session, _sodium) {
+/** Drop this browser's team log pin; call with the sync lock held.
+ * INV-8 (review e443cbc): the forget, and the drop of unsent changes with
+ * it, only with this account's password, on every screen and every client. */
+async function forgetWebTeamLogPinLocked(typed, password, session, _sodium) {
     const ended = () => session !== state.sessionSerial || !state.kek;
+    if (ended()) throw new Error(t('team.stale'));
+    if (!await currentPasswordProof(password)) throw new Error(t('team.forget_wrong_password'));
     if (ended()) throw new Error(t('team.stale'));
     await loadWebLocalStateLocked(session, _sodium);
     const pins = webPinnedTeamGenesis();
@@ -7793,13 +7797,16 @@ async function handleForgetTeamPin(event) {
     const input = document.getElementById('team-forget-genesis');
     const error = document.getElementById('team-trust-error');
     const typed = input.value;
+    const passwordInput = document.getElementById('team-forget-password');
+    const password = passwordInput ? passwordInput.value : '';
+    if (passwordInput) passwordInput.value = '';
     error.classList.add('hidden');
     try {
         if (!window.confirm(t('team.forget_confirm'))) return;
         const _sodium = await ensureSodium();
         const session = state.sessionSerial;
         await withWebSyncLock(async () => {
-            await forgetWebTeamLogPinLocked(typed, session, _sodium);
+            await forgetWebTeamLogPinLocked(typed, password, session, _sodium);
             await pullAndBuildTreeLocked(session);
         });
         input.value = '';

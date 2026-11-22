@@ -217,10 +217,10 @@ void main() {
               final typed = '${genesis.substring(0, 16)} ${'cd' * 8}';
               // Asked before the unsent edit the left log no longer takes goes.
               await expectLater(
-                sync.forgetTeamLogPin(typed),
+                sync.forgetTeamLogPin(typed, password: currentPassword),
                 throwsA(isA<UnsentChangesBlockForget>()),
               );
-              await sync.forgetTeamLogPin(typed, discardUnsent: true);
+              await sync.forgetTeamLogPin(typed, password: currentPassword, discardUnsent: true);
               // The way out exported the unsent edit; the full resync it
               // requires puts the server's copy back in its place.
               await sync.fullResync(confirmed: true);

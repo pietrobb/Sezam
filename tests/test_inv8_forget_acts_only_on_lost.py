@@ -119,6 +119,7 @@ WEB_SCRIPT = """
     for (const c of cases) {
         state.userId = %s;
         state.kek = newKek;
+        globalThis.currentPasswordProof = async p => (p === 'pw' ? 'ab' : null);
         state.sessionSerial = 1;
         state.keypair = { signingSk: hexToBytes(me.signingSk), signingPk: hexToBytes(me.signingPk),
                           encryptionSk: hexToBytes(me.encryptionSk) };
@@ -139,7 +140,7 @@ WEB_SCRIPT = """
         let typed = pins.length ? pins[0] : '0'.repeat(16);
         for (const pin of pins) while (!pin.startsWith(typed)) typed = typed.slice(0, -1);
         try {
-            await forgetWebTeamLogPinLocked(typed, 1, sodium);
+            await forgetWebTeamLogPinLocked(typed, 'pw', 1, sodium);
             out[c.name] = webPinnedTeamGenesis().length === 0;
         } catch (err) {
             out[c.name] = false;

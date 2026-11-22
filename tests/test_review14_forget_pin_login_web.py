@@ -50,7 +50,7 @@ def test_after_forgetting_a_server_without_log_is_a_mismatch():
         state.confirmedTeamGenesis = null;  // only the log copy and the checkpoint pin it
         apiFetch = async () => ({ head: null, records: [] });  // the server lost the log
         const before = await syncWebTeamLog(null, null, null, sodium);
-        await forgetWebTeamLogPinLocked(want.slice(0, 16), 1, sodium);
+        await forgetWebTeamLogPinLocked(want.slice(0, 16), 'pw', 1, sodium);
         let after;
         try { after = await syncWebTeamLog(null, null, null, sodium); } catch (err) { after = err.message; }
         state.syncCheckpointLoaded = false;  // the next session reads it back
@@ -80,11 +80,11 @@ def test_forgetting_at_sign_in_checks_the_queue_no_pull_loaded_yet():
         exportWebDirtyObjects = objects => { exported.push(...objects.map(o => o.id)); };
         // Declined: nothing is dropped. A typo: the queue is never touched.
         let declined, typo;
-        try { await forgetWebTeamLogPinLocked(want.slice(0, 16), 1, sodium); } catch (err) { declined = err.message; }
+        try { await forgetWebTeamLogPinLocked(want.slice(0, 16), 'pw', 1, sodium); } catch (err) { declined = err.message; }
         const keptPins = webPinnedTeamGenesis();
-        try { await forgetWebTeamLogPinLocked('0'.repeat(16), 1, sodium); } catch (err) { typo = err.message; }
+        try { await forgetWebTeamLogPinLocked('0'.repeat(16), 'pw', 1, sodium); } catch (err) { typo = err.message; }
         answer = true;
-        const left = await forgetWebTeamLogPinLocked(want.slice(0, 16), 1, sodium);
+        const left = await forgetWebTeamLogPinLocked(want.slice(0, 16), 'pw', 1, sodium);
         return { keptPins, declined, typo, asked, exported, left, stored, pins: webPinnedTeamGenesis() };
     """)
     want = result["keptPins"]
@@ -100,7 +100,7 @@ def test_the_sign_in_screen_offers_the_way_out():
     login = _function("handleLogin")
     assert login.index("getElementById('login-team-forget-genesis')") < login.index("resetSession();")
     anchor = login.index("await importAccountTeamAnchor(_sodium)")
-    forget = login.index("await forgetTeamLogPinAtLogin(forgetTyped, loginSession, _sodium)")
+    forget = login.index("await forgetTeamLogPinAtLogin(forgetTyped, password, loginSession, _sodium)")
     assert login.index("state.kek = kek;") < anchor < forget < login.index("await pullAndBuildTree();")
     catch = login[login.index("} catch (err) {"):]
     assert "getElementById('login-team-forget')" in catch and "err.teamLogLost" in catch
@@ -111,7 +111,7 @@ def test_the_sign_in_screen_offers_the_way_out():
     assert "window.confirm(t('team.forget_confirm'))" in at_login
     # Review e443cbc H2: the export and drop live in the forget itself, so the
     # vault's Team trust forget has them too.
-    assert "forgetWebTeamLogPinLocked(typed, session, _sodium)" in at_login
+    assert "forgetWebTeamLogPinLocked(typed, password, session, _sodium)" in at_login
     forget_locked = _function("forgetWebTeamLogPinLocked")
     assert forget_locked.index("exportWebDirtyObjects(objects)") < forget_locked.index("saveWebDirtyState(")
     index = (ROOT / "web/templates/index.html").read_text(encoding="utf-8")

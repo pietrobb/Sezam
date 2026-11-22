@@ -49,6 +49,7 @@ SCRIPT = """
         asked = []; exported = []; saved = null;
         state.userId = %s;
         state.kek = newKek;
+        globalThis.currentPasswordProof = async p => (p === 'pw' ? 'ab' : null);
         state.sessionSerial = 1;
         state.keypair = { signingSk: hexToBytes(me.signingSk), signingPk: hexToBytes(me.signingPk),
                           encryptionSk: hexToBytes(me.encryptionSk) };
@@ -71,6 +72,7 @@ SCRIPT = """
         let typed = pins.length ? pins[0] : '0'.repeat(16);
         for (const pin of pins) while (!pin.startsWith(typed)) typed = typed.slice(0, -1);
         elements['team-forget-genesis'] = { value: typed, textContent: '', classList: { add() {}, remove() {} } };
+        elements['team-forget-password'] = { value: 'pw', textContent: '', classList: { add() {}, remove() {} } };
         await handleForgetTeamPin({ preventDefault() {} });
         out[c.name] = {
             left: pins.length > 0 && webPinnedTeamGenesis().length === 0,

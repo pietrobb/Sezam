@@ -27,6 +27,7 @@ void main() {
               as Map<String, dynamic>;
       final uid = cfg['user_id'] as String;
       final old = cfg['genesis'] as String;
+      final password = cfg['password'] as String;
       await setUpPhone('$dir/app');
       final net = Net();
       await http.runWithClient(() async {
@@ -61,7 +62,7 @@ void main() {
         expect(await sync.pinnedTeamGenesis(), [old]);
         final other = old.replaceRange(0, 1, old[0] == '0' ? '1' : '0');
         for (final typed in ['', old.substring(0, 15), other.substring(0, 16)]) {
-          await expectLater(sync.forgetTeamLogPin(typed), throwsA(isA<FormatException>()));
+          await expectLater(sync.forgetTeamLogPin(typed, password: password), throwsA(isA<FormatException>()));
         }
         expect(await sync.pinnedTeamGenesis(), [old]);
 
@@ -70,9 +71,17 @@ void main() {
         final unsent = await vault.createEntry(
             parentRef: vault.rootNodeId!, name: 'unsent-at-forget', fields: const []);
         final typed = old.substring(0, 16).toUpperCase();
-        await expectLater(sync.forgetTeamLogPin(typed), throwsA(isA<UnsentChangesBlockForget>()));
+        // INV-8 (review e443cbc): neither the forget nor the drop without the password.
+        final dirty = await sync.getDirtyObjectCount();
+        for (final wrong in ['', '${password}x']) {
+          await expectLater(sync.forgetTeamLogPin(typed, password: wrong, discardUnsent: true),
+              throwsA(isA<WrongPasswordRefusesForget>()));
+        }
+        expect(await sync.getDirtyObjectCount(), dirty);
         expect(await sync.pinnedTeamGenesis(), [old]);
-        expect(await sync.forgetTeamLogPin(typed, discardUnsent: true), [old]);
+        await expectLater(sync.forgetTeamLogPin(typed, password: password), throwsA(isA<UnsentChangesBlockForget>()));
+        expect(await sync.pinnedTeamGenesis(), [old]);
+        expect(await sync.forgetTeamLogPin(typed, password: password, discardUnsent: true), [old]);
         expect(await sync.getDirtyObjectCount(), 0);
         final export = await sync.latestUnsentExport();
         expect(export?.readAsStringSync(), contains(unsent.id));

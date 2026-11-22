@@ -160,10 +160,12 @@ const tabActions = {
     }
     return document.getElementById('team-trust-error');
   },
-  // Team trust's "Forget the pinned team log": the typed genesis, then the
-  // risk confirmation answered with step.confirm.
+  // Team trust's "Forget the pinned team log": the typed genesis and the
+  // account password (INV-8), then the risk confirmation answered with step.confirm.
   async forget_pin(step) {
     document.getElementById('team-forget-genesis').value = step.typed;
+    const password = document.getElementById('team-forget-password');
+    if (password) password.value = step.password ?? '';
     await page('handleForgetTeamPin')({ preventDefault() {} });
     return document.getElementById('team-trust-error');
   },

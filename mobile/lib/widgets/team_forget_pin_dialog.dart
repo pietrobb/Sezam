@@ -14,12 +14,14 @@ class TeamForgetPinDialog extends StatefulWidget {
 
 class _TeamForgetPinDialogState extends State<TeamForgetPinDialog> {
   final _genesis = TextEditingController();
+  final _password = TextEditingController();
   bool _saving = false;
   String? _error;
 
   @override
   void dispose() {
     _genesis.dispose();
+    _password.dispose();
     super.dispose();
   }
 
@@ -32,12 +34,12 @@ class _TeamForgetPinDialogState extends State<TeamForgetPinDialog> {
     try {
       final sync = SyncService();
       try {
-        await sync.forgetTeamLogPin(_genesis.text);
+        await sync.forgetTeamLogPin(_genesis.text, password: _password.text);
       } on UnsentChangesBlockForget catch (e) {
         // Review 8bc70f7 M2: these never reach the lost log; without a way
         // to drop them the phone stayed on the mismatch for good.
         if (!mounted || !await _confirmDiscard(e.count)) return;
-        await sync.forgetTeamLogPin(_genesis.text, discardUnsent: true);
+        await sync.forgetTeamLogPin(_genesis.text, password: _password.text, discardUnsent: true);
         final export = await sync.latestUnsentExport();
         if (mounted && export != null) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -102,6 +104,15 @@ class _TeamForgetPinDialogState extends State<TeamForgetPinDialog> {
               decoration: const InputDecoration(
                 labelText: 'Pripnutý genesis, každý (aspoň prvých 16 znakov, oddelené medzerou)',
               ),
+            ),
+            // INV-8: only with the account password, as on desktop and web.
+            TextField(
+              controller: _password,
+              enabled: !_saving,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: const InputDecoration(labelText: 'Heslo účtu'),
             ),
             if (_error != null)
               Text(

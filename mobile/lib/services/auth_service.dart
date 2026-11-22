@@ -2839,6 +2839,10 @@ class AuthService {
     return accountKdfParams(meta);
   }
 
+  /// INV-8 (review e443cbc): an emergency action (forget the team log pin,
+  /// drop unsent changes) asks for the account password, as on desktop and web.
+  Future<bool> passwordOpensUnlockedVault(String password) => _passwordOpensUnlockedVault(password);
+
   /// True only when [password] derives (under the local salt/params) the KEK
   /// the unlocked vault runs on.
   Future<bool> _passwordOpensUnlockedVault(String password) async {
