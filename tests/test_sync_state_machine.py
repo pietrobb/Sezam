@@ -353,6 +353,8 @@ class SyncMachine(RuleBasedStateMachine):
         self.url = self.server.url
         self.tokens = itertools.count(1)
         self.devices: dict[str, Device] = {}
+        # The field the server lies in right now (server_lies_in_a_field).
+        self.field_lie: str | None = None
         self.events: dict[int, Event] = {}
         self.producers: dict[tuple, set[int]] = defaultdict(set)
         self.names: dict[str, set[str]] = defaultdict(set)
@@ -755,6 +757,11 @@ class SyncMachine(RuleBasedStateMachine):
         except Exception as exc:
             what = "abandon its pending change" if abandon else "take the key change over"
             self.log.append(f"{device}: {what} raised {type(exc).__name__}: {exc}")
+            if self.field_lie is not None and isinstance(exc, REFUSALS):
+                # The server lies in a field the key change is read from (e.g. a
+                # damaged RecoverResponse.encrypted_keypair): refusing is the
+                # right answer; the next call without the lie takes it over.
+                raise
             raise AssertionError(
                 f"{device}: cannot {what} with the account password: {exc!r}\n" + self._trace()
             ) from exc
@@ -1855,6 +1862,7 @@ class SyncMachine(RuleBasedStateMachine):
         dev.client.token = None  # a login too
         outcomes = []
         SyncClient._request = lying
+        self.field_lie = key
         try:
             for step in ("push", "pull"):
                 try:
@@ -1867,6 +1875,7 @@ class SyncMachine(RuleBasedStateMachine):
                     raise AssertionError(f"{device}: a lie in {key} crashed its {step}: {exc!r}\n"
                                          + self._trace()) from exc
         finally:
+            self.field_lie = None
             SyncClient._request = real
             first._request = own
         coverage_event(f"server lies in {key}" if lied else "server lies in a field it did not send")

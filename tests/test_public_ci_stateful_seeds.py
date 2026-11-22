@@ -133,3 +133,27 @@ def test_a_rekey_batch_lets_go_of_an_entry_moved_out_on_both_sides(loopback_serv
         machine._settle(lambda _obj: "server")
     finally:
         machine.teardown()
+
+
+def test_a_damaged_account_keypair_while_taking_a_rotation_over_is_a_refusal(loopback_server):  # noqa: F811
+    """Seed 828282 rerun on 303ca39 (#438): A rotated the account identity, so
+    B's push said the account keys changed; the server then sent B a damaged
+    RecoverResponse.encrypted_keypair. B refused ("Server keypair cannot be
+    opened"), but the test took any failure of the take-over with the password
+    for a dead end. Under that lie it is a refusal; without it B takes the
+    rotation over and syncs."""
+    SecondAdminMachine.server = loopback_server
+    machine = SecondAdminMachine()
+    try:
+        machine.rotate_identity(_Scripted(device="A"), None)
+        machine.push(_Scripted(device="A"), None)
+        machine.track_member_keys()  # an invariant: Hypothesis runs it after each rule
+        machine.server_lies_in_a_field(
+            _Scripted(device="B"), key="RecoverResponse.encrypted_keypair", how=0
+        )
+        assert any("Server keypair cannot be opened" in line for line in machine.log), machine._trace()
+        machine.push(_Scripted(device="B"), None)
+        assert any(line.startswith("B: took the account keys over") for line in machine.log), machine._trace()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
