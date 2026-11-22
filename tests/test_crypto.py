@@ -3103,11 +3103,14 @@ console.log(JSON.stringify({{
   unwrapped: Array.from(unwrapped),
 }}));
 """
+        # stdin, not argv: Windows refuses command lines over 32 KB (WinError 206).
         result = subprocess.run(
-            [node_cmd(), "-e", script],
+            [node_cmd(), "-"],
+            input=script,
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
         observed = json.loads(result.stdout)
         expected_aad = build_aad(

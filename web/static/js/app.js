@@ -518,6 +518,41 @@ async function savePreAnchorHistory(userId, states) {
     }));
 }
 
+// INV-3 (review e443cbc): the password states this browser saw open this
+// account's keys (salt + params + the KEK's check, the pre-anchor entry
+// format). Org recovery records the forgotten password from here: the one
+// bound to the recovered KEK, never the server's unsigned salt and params.
+async function rememberWebKdfState(_sodium) {
+    const userId = state.userId;
+    const kdf = state.kdf;
+    if (!userId || !kdf?.argon2_salt || !kdf.argon2_params || !state.kek) return;
+    try {
+        const stored = await idbKeysRequest('readonly', store => store.get(`kdf_states:${userId}`));
+        const known = stored && typeof stored.states === 'string' ? hexToBytes(stored.states) : null;
+        const states = addPreAnchor(known, hexToBytes(kdf.argon2_salt), kdf.argon2_params,
+            state.kek.subarray(0, 32), _sodium);
+        await idbKeysRequest('readwrite', store => store.put({ id: `kdf_states:${userId}`, states: bytesToHex(states) }));
+    } catch (err) {
+        // INV-7: never refuses the sign-in; a recovery then publishes no anchor.
+        console.warn('Password state not remembered', err.message || err);
+    }
+}
+
+// The remembered state whose KEK is `kek` (one pre-anchor entry), or null.
+async function webKdfStateOf(userId, kek, _sodium) {
+    const stored = await idbKeysRequest('readonly', store => store.get(`kdf_states:${userId}`));
+    if (!stored || typeof stored.states !== 'string') return null;
+    let entries;
+    try { entries = parsePreAnchor(hexToBytes(stored.states)); } catch { return null; }
+    const check = preAnchorCheck(kek, _sodium);
+    const entry = entries.find(e => _sodium.memcmp(e.check, check));
+    if (!entry) return null;
+    const one = new Uint8Array(1 + PRE_ANCHOR_ENTRY_LEN);
+    one[0] = 1;
+    one.set(entry.raw, 1);
+    return one;
+}
+
 function encodeAccountKeypair(keypairData, confirmedGenesis, _sodium, preAnchor = null) {
     if (typeof confirmedGenesis !== 'string' || !/^[0-9a-f]{64}$/.test(confirmedGenesis) ||
             !(keypairData instanceof Uint8Array) || ![64, 96].includes(keypairData.length)) {
@@ -1716,6 +1751,7 @@ async function handleLogin(e) {
         state.token = authResp.token;
         state.userId = signedInUserId(authResp, signedIn.userId);
         state.isAdmin = authResp.is_admin;
+        await rememberWebKdfState(_sodium);
         // Start periodic JWT refresh
         startJwtRefreshTimer();
 
@@ -2158,6 +2194,7 @@ async function handleBootstrap(e) {
         state.token = authResp.token;
         state.userId = signedInUserId(authResp, state.userId);
         state.isAdmin = authResp.is_admin;
+        await rememberWebKdfState(_sodium);
 
         // Start periodic JWT refresh
         startJwtRefreshTimer();
@@ -2276,6 +2313,7 @@ async function pollForApproval(username, keys, statusEl, errorEl) {
             state.token = authResp.token;
             state.userId = signedInUserId(authResp, keys.userId);
             state.isAdmin = authResp.is_admin;
+            await rememberWebKdfState(_sodium);
             handedOver = true;
             errorEl.classList.add('hidden');
 
@@ -7914,6 +7952,7 @@ async function publishWebTeamAnchorLocked(password, newPassword, session, _sodiu
         state.kdf = { argon2_salt: journal.argon2_salt, argon2_params: argon2Params };
         state.keypair.confirmedGenesis = genesis;
         state.keypair.preAnchor = preAnchor;
+        await rememberWebKdfState(_sodium);
         await saveToIndexedDB({ encrypted_keypair: journal.encrypted_keypair, user_id: userId });
     } finally {
         _sodium.memzero(newKek);
@@ -10647,21 +10686,24 @@ async function handleOrgRecovery(threshold, totalShares) {
         kpData.set(signingSk, 0);
         kpData.set(encryptionSk, 64);
         // Review 1141a20 H2: also publish this browser's independent pin for new devices.
-        const publishedGenesis = confirmedGenesis || await loadConfirmedTeamGenesis(_sodium) || null;
+        let publishedGenesis = confirmedGenesis || await loadConfirmedTeamGenesis(_sodium) || null;
         let publishedPreAnchor = knownPreAnchor;
         if (!confirmedGenesis) {
             // The recovered KEK's password state opened the bundle without the
-            // anchor: recorded with the salt + params the server holds for it,
-            // published now or by this browser's later publication.
-            const accountMeta = await (await fetch(
-                API_BASE + '/api/meta?username=' + encodeURIComponent(keypairResp.username))).json();
-            if (accountMeta.argon2_params && String(accountMeta.argon2_salt).toLowerCase() ===
-                    String(keypairResp.argon2_salt).toLowerCase()) {
-                publishedPreAnchor = addPreAnchor(knownPreAnchor, hexToBytes(keypairResp.argon2_salt),
-                    accountMeta.argon2_params, recoveredKek, _sodium);
+            // anchor: recorded, published now or by this browser's later
+            // publication. INV-3 (review e443cbc): with the salt + params this
+            // browser saw that password open (bound to the recovered KEK by
+            // its check), never the server's unsigned argon2_salt / params: a
+            // wrong pair hides the forgotten password from passwordReopensPreAnchor.
+            const left = await webKdfStateOf(keypairResp.user_id, recoveredKek, _sodium);
+            if (left) {
+                publishedPreAnchor = mergePreAnchor(knownPreAnchor, left);
                 await savePreAnchorHistory(keypairResp.user_id, publishedPreAnchor);
-            } else if (publishedGenesis) {
-                throw new Error(t('error.kdf_params_unsupported'));
+            } else {
+                // Unknown here: an anchor published now could not refuse that
+                // password again. The bundle stays without it, as it came; a
+                // device that knew the password publishes it with its state.
+                publishedGenesis = null;
             }
             if (publishedGenesis && await passwordReopensPreAnchor(newPassword, publishedPreAnchor, _sodium)) {
                 _sodium.memzero(kpData);
@@ -10727,6 +10769,7 @@ async function handleOrgRecovery(threshold, totalShares) {
             state.keypair.confirmedGenesis = publishedGenesis;
             state.keypair.preAnchor = publishedPreAnchor;
         }
+        await rememberWebKdfState(_sodium);
 
         _sodium.memzero(recoverySigningKeypair.privateKey);
         _sodium.memzero(recoveryKey);

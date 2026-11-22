@@ -488,10 +488,10 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
                               "commit_seq is the pulled object's") for key in (
             "PushObjectResult.commit_seq", "PushObjectResult.error", "PushObjectResult.code")},
         "MetaResponse.argon2_params": Field(
-            DECIDES, "for the KDF clamped to the hard floor and refused above the account maximum; but org "
-            "recovery records the raw params in the pre-anchor beside the unsigned "
-            "OrgRecoveryKeypairResponse.argon2_salt (only below the floor is refused): the same finding, "
-            "goal #439", ("accountKdfParams", "passwordReopensPreAnchor")),
+            HINT, "for the KDF clamped to the hard floor and refused above the account maximum, and the "
+            "keypair wrap opens under them (AEAD); org recovery records the forgotten password with the "
+            "state this browser saw it open (webKdfStateOf, bound to the recovered KEK), never these",
+            ("accountKdfParams", "webKdfStateOf")),
         "MetaResponse.argon2_salt": Field(
             HINT, "the salt the keypair wrap opens under (AEAD); none is no such user, another one than a "
             "password-change journal's stops its resume", ("deriveLoginKey",)),
@@ -578,11 +578,9 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             HINT, "the recovered keys sign in under it, and only they answer, for the account signedInUserId "
             "checks", ("signedInUserId",)),
         "OrgRecoveryKeypairResponse.argon2_salt": Field(
-            DECIDES, "a recovered bundle without the anchor is recorded in the pre-anchor under this salt and "
-            "the meta's params, both unsigned (equal to each other is no check): a wrong one keeps "
-            "passwordReopensPreAnchor from seeing the old password chosen again, so a server keeping the old "
-            "bundle without the anchor can serve it to a new device; goal #439",
-            ("handleOrgRecovery", "passwordReopensPreAnchor")),
+            UNREAD, "a recovered bundle without the anchor is recorded under the state this browser saw the "
+            "forgotten password open (webKdfStateOf, bound to the recovered KEK); with none known no anchor "
+            "is published"),
         "OrgRecoveryKeypairResponse.signing_pk": Field(UNREAD, "the signing key read is the recovered keys' own"),
     },
     "mobile": {

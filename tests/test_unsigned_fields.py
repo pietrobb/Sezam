@@ -40,9 +40,6 @@ KNOWN_CLIENT_DECIDES = {
     # #443: the retired key's bound, as on the desktop (the web keeps it per session).
     ("web", "GET /api/users/{user_id}/keys .archived_keys"),
     ("mobile", "GET /api/users/{user_id}/keys .archived_keys"),
-    # #439: org recovery records the pre-anchor under the server's salt and params.
-    ("web", "OrgRecoveryKeypairResponse.argon2_salt"),
-    ("web", "MetaResponse.argon2_params"),
 }
 
 # Open INV-3 findings: a client decision rests on these unsigned fields.
