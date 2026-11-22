@@ -131,6 +131,30 @@ def test_ci_refuses_a_red_sha_that_is_not_an_ancestor(repo):
 
 
 @needs_git
+def test_a_red_line_of_a_core_change_runs_on_the_core_before_it(repo):
+    """R15 #428 (43dc4cb): CI installs the head's sync core, so a fix in core/
+    ran its red line on the fixed core and passed on the commit before. A
+    stand-in core (core/py, one module): its test passes where it is not
+    built for the worktree (the installed, fixed core) and fails on the old one."""
+    py = repo / "core" / "py"
+    (py / "fakecore").mkdir(parents=True)
+    (py / "pyproject.toml").write_text(
+        '[build-system]\nrequires = ["setuptools>=61"]\nbuild-backend = "setuptools.build_meta"\n\n'
+        '[project]\nname = "fakecore"\nversion = "0"\n\n[tool.setuptools]\npackages = ["fakecore"]\n')
+    (py / "fakecore" / "__init__.py").write_text("ANSWER = 1\n")
+    _git(repo, "add", "core")
+    _git(repo, "commit", "-q", "--no-verify", "-m", "core")
+    base = _head(repo)
+    (py / "fakecore" / "__init__.py").write_text("ANSWER = 2\n")
+    (repo / "tests" / "test_core.py").write_text(
+        "def test_answer():\n    try:\n        import fakecore\n    except ImportError:\n        return\n"
+        "    assert fakecore.ANSWER == 2\n")
+    _git(repo, "add", "core")
+    assert _commit(repo, _message(red=f"Red on {base[:9]}: python -m pytest -q tests/test_core.py")).returncode == 0
+    assert cd.check_range(base, _head(repo), repo, verify=True, timeout=120) == []
+
+
+@needs_git
 def test_a_red_line_that_only_runs_long_is_no_red(repo):
     """Capability run 448: a run past the timeout proves no test failed."""
     base = _head(repo)

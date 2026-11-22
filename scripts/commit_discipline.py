@@ -98,7 +98,15 @@ def verify_red(commit: str, sha: str, command: str, repo: Path, timeout: int) ->
                                      check=True, capture_output=True).stdout
             (work / path).parent.mkdir(parents=True, exist_ok=True)
             (work / path).write_bytes(content)
-        env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(work / "src"), str(work)]))
+        paths = [str(work / "src"), str(work)]
+        if _git("diff", "--name-only", f"{commit}^", commit, "--", "core", cwd=repo).split():
+            # The code before a commit to the shared core includes that core:
+            # the installed one is the commit's own (CI installs HEAD's).
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--no-deps", "--target",
+                            str(work / ".sync-core"), str(work / "core" / "py")], check=True,
+                           capture_output=True)
+            paths.insert(0, str(work / ".sync-core"))
+        env = dict(os.environ, PYTHONPATH=os.pathsep.join(paths))
         try:
             done = subprocess.run([sys.executable, *argv[1:]], cwd=work, env=env,
                                   capture_output=True, text=True, timeout=timeout)
