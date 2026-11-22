@@ -282,6 +282,17 @@ class TeamLogMixin:
             self._refuse_as_served(server_head, pinned, TeamLogMismatch(
                 "The server's team log starts with another genesis than this device pinned.", "other_genesis"
             ))
+        try:
+            return self._catch_up_team_log(local, held, pinned, server_head)
+        except TeamLogMismatch as exc:
+            if local is None or exc.cause not in ("went_back", "differs", "does_not_replay"):
+                raise
+            adopted = self._adopt_own_account_fork(local, server_head)
+            if adopted is None:
+                raise
+            return adopted
+
+    def _catch_up_team_log(self, local, held, pinned, server_head: dict) -> teamlog.TeamState:
         local_seq = local.head_seq if local is not None else held[0] if held is not None else -1
         if server_head.get("seq", -1) < local_seq:
             raise TeamLogMismatch(
@@ -330,6 +341,63 @@ class TeamLogMixin:
                 self._store_team_log(fetched, state)
         if raced:
             return self._sync_team_log(server_head)
+        return state
+
+    # A record of these kinds is queued again as the change it made; a
+    # genesis or member.keys is bound to the head it was signed on.
+    _REQUEUED_KINDS = frozenset({
+        "member.add", "member.role", "member.remove", "access.set", "folder.key", "org.recovery",
+    })
+
+    def _adopt_own_account_fork(self, local: teamlog.TeamState, server_head: dict) -> Optional[teamlog.TeamState]:
+        """Follow a server log that forks from the local copy where both sides
+        are this account's own records; the local ones are queued again.
+
+        Goal #442 (bg344 random run of TeamLogMachine on a3f84bb): the server
+        lost its log, and the admin's device A put back its shorter copy with
+        the link of its own rotation; B, which held the grant A had not
+        pulled, stayed on 'went back' for good. The server cannot sign as
+        this account, so either side is a choice of this account's devices:
+        the server's is followed, and nothing of B's is lost - each change
+        it made goes out again on the new head (or is set aside, shown by
+        'sezam team-log queue'). None (the mismatch stands) for any other fork.
+        """
+        records: list[dict] = []
+        for _ in range(FETCH_PAGES):
+            page = self._request("GET", f"/api/team-log?since={len(records) - 1}", auth=True).get("records") or []
+            page = page[:max(server_head["seq"] + 1 - len(records), 0)]
+            if not page:
+                break
+            records.extend(page)
+            if len(records) > server_head["seq"]:
+                break
+        rows = self._db.fetchall("SELECT body, hash FROM team_log ORDER BY seq")
+        fork = next((i for i, (row, record) in enumerate(zip(rows, records))
+                     if teamlog.record_hash(record) != row["hash"]), None)
+        if not fork:  # another genesis, or the server's log is a prefix of this copy
+            return None
+        lost = [teamlog.parse_body(row["body"]) for row in rows[fork:]]
+        theirs = [teamlog.parse_body(record["body"]) for record in records[fork:]]
+        if any(body["author"] != self._user_id for body in lost + theirs) or any(
+                body["type"] not in self._REQUEUED_KINDS for body in lost):
+            return None
+        try:
+            state = teamlog.replay(records)
+        except teamlog.TeamLogError:
+            return None
+        if (state.head_seq != server_head["seq"] or state.head_hash != server_head.get("hash")
+                or teamlog.admin_policy_refusal(state)):
+            return None
+        batch = new_ulid()  # set aside together or not at all, as they were made
+        requeued = [[body["type"], {**body["data"], "_batch": batch}] for body in lost]
+        with self._db.transaction(immediate=True):
+            if self._local_head_seq() != local.head_seq:
+                return None  # another process moved the copy meanwhile: the next pull compares again
+            self._db.execute("DELETE FROM team_log WHERE seq >= ?", (fork,))
+            self._store_team_log(records[fork:], state)
+            _set_queued_changes(self._db, requeued + queued_changes(self._db))
+        logger.warning("Followed the server's team log from record %s, written by another device of this "
+                       "account; %s own change(s) queued again", fork, len(requeued))
         return state
 
     def _refuse_as_served(self, server_head: Optional[dict], genesis: Optional[str], lost: TeamLogMismatch):

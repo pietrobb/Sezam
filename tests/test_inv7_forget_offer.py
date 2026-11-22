@@ -56,7 +56,10 @@ def _seq(record: dict) -> int:
 
 class _Device(TeamLogMixin):
     """The desktop's team log follower over a real vault database; the server
-    serves ``served`` and refuses every restore (a restore that lands is INV-2)."""
+    serves ``served`` and refuses every restore (a restore that lands is INV-2).
+    Its account wrote none of the records, so no fork is its own (goal #442)."""
+
+    _user_id = None
 
     def __init__(self, db: VaultDB, served: list[dict]):
         self._db = db
