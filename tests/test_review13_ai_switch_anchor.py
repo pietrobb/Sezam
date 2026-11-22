@@ -18,13 +18,21 @@ import pytest
 from sezam import cli
 from sezam.mcp.approval import ApprovalManager
 from sezam.mcp.broker import MCPBroker
-from sezam.mcp.remote_policy import RemotePolicyPoller
+from sezam.mcp.remote_policy import RemotePolicyPoller, anchor_message
 from sezam.vault import ai_access
 from sezam.vault.crud import Vault
 from tests.test_ai_s1b_control import _FakeSSH, _code
 from tests.test_integration_client_server import PASSWORD, _client, _vault
 from tests.test_integration_client_server import server  # noqa: F401  (fixture)
 from tests.test_review7_ai_switch_replay_h6 import _copy_rows, _write_rows
+
+
+def signed_anchor(vault, anchor: str, epoch: int, mac: str) -> dict:
+    """An anchor write as the broker sends it (R14-M3: signed by the account)."""
+    signature = vault.keypair.to_nacl_signing_key().sign(
+        anchor_message(vault.db.get_meta("user_id"), anchor, epoch, mac)
+    ).signature.hex()
+    return {"anchor": anchor, "epoch": epoch, "mac": mac, "signature": signature}
 
 
 def _broker(vault) -> MCPBroker:
@@ -90,7 +98,7 @@ def test_the_new_off_is_anchored_without_waiting_for_the_poll_interval(laptop):
 
     held = ai_access.read_state(laptop).epoch + 1
     client = _client(laptop, laptop.db.get_meta("server_url"))
-    anchor = ai_access.anchor_id(laptop)
+    anchor = ai_access.anchor_home(laptop).anchor
     for _ in range(200):
         found = client._request("GET", f"/api/ai-anchor/{anchor}", auth=True)["anchor"]
         if found and found["epoch"] == held:
@@ -106,10 +114,10 @@ def test_server_never_lowers_an_anchor_and_keeps_it_per_account(laptop, server, 
     url, _ = server
     client = _client(laptop, url)
     anchor = "ab" * 32
-    body = {"anchor": anchor, "epoch": 5, "mac": "cd" * 32}
+    body = signed_anchor(laptop, anchor, 5, "cd" * 32)
     assert client._request("PUT", "/api/ai-anchor", body, auth=True)["anchor"]["epoch"] == 5
     with pytest.raises(RuntimeError, match="409"):
-        client._request("PUT", "/api/ai-anchor", {**body, "epoch": 4}, auth=True)
+        client._request("PUT", "/api/ai-anchor", signed_anchor(laptop, anchor, 4, "cd" * 32), auth=True)
     assert client._request("PUT", "/api/ai-anchor", body, auth=True)["anchor"]["epoch"] == 5
     stored = client._request("GET", f"/api/ai-anchor/{anchor}", auth=True)["anchor"]
     assert stored == {"anchor": anchor, "epoch": 5, "mac": "cd" * 32}
@@ -118,10 +126,8 @@ def test_server_never_lowers_an_anchor_and_keeps_it_per_account(laptop, server, 
 def test_a_forged_anchor_is_ignored(laptop):
     """The server cannot raise it: an anchor without the KEK's MAC counts as none."""
     client = _client(laptop, laptop.db.get_meta("server_url"))
-    anchor = ai_access.anchor_id(laptop)
-    client._request(
-        "PUT", "/api/ai-anchor", {"anchor": anchor, "epoch": 99, "mac": "00" * 32}, auth=True
-    )
+    anchor = ai_access.anchor_home(laptop).anchor
+    client._request("PUT", "/api/ai-anchor", signed_anchor(laptop, anchor, 99, "00" * 32), auth=True)
     broker = _broker(laptop)
     assert _allowed(broker)
     _stop(broker)

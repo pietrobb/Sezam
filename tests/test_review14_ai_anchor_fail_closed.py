@@ -29,6 +29,7 @@ from tests.test_review13_ai_switch_anchor import (
     _code,
     _stop,
     laptop,  # noqa: F401  (fixture)
+    signed_anchor,
 )
 
 
@@ -135,7 +136,7 @@ def test_the_anchor_id_is_sealed_not_made_of_host_and_path(laptop):  # noqa: F81
     broker = _broker(laptop)
     assert _allowed(broker)
     home = ai_access.anchor_home(laptop)
-    assert home is not None and home.anchor == ai_access.anchor_id(laptop)
+    assert home is not None and home.anchor == ai_access.anchor_home(laptop).anchor
     assert home.anchor != ai_access.legacy_anchor_id(laptop)
     assert home.server_url == laptop.db.get_meta("server_url")
     _stop(broker)
@@ -149,9 +150,9 @@ def test_an_anchor_kept_under_the_old_id_still_counts(laptop):  # noqa: F811
     epoch = ai_access.read_state(laptop).epoch + 3
     legacy = ai_access.legacy_anchor_id(laptop)
     client = _client(laptop, laptop.db.get_meta("server_url"))
-    client._request("PUT", "/api/ai-anchor", {
-        "anchor": legacy, "epoch": epoch, "mac": ai_access.anchor_mac(laptop, legacy, epoch),
-    }, auth=True)
+    client._request("PUT", "/api/ai-anchor", signed_anchor(
+        laptop, legacy, epoch, ai_access.anchor_mac(laptop, legacy, epoch)
+    ), auth=True)
     _write_rows(laptop, saved)
     broker = _broker(laptop)
     assert _refused(broker) == "ai_disabled"
@@ -166,3 +167,28 @@ def test_ai_on_moves_the_anchor_to_the_new_server(laptop):  # noqa: F811
     ai_access.enable(laptop, "cli")
     moved = ai_access.anchor_home(laptop)
     assert moved.server_url == "http://127.0.0.1:9" and moved.anchor == home.anchor
+
+
+def test_an_account_token_alone_cannot_push_the_anchor_out(laptop):  # noqa: F811
+    """An agent with the account's JWT (not its signing key): new anchors
+    until the oldest is deleted, or a higher epoch with a MAC no broker takes."""
+    from server.app.routers.ai_policy import MAX_ANCHORS_PER_USER
+    from tests.test_integration_client_server import _client
+
+    broker = _broker(laptop)
+    assert _allowed(broker)  # the vault's anchor home is made
+    _ai_off_elsewhere(laptop)
+    broker.remote_policy.poll_once()  # its 'off' anchored
+    _stop(broker)
+    anchor = ai_access.anchor_home(laptop).anchor
+    client = _client(laptop, laptop.db.get_meta("server_url"))
+    held = client._request("GET", f"/api/ai-anchor/{anchor}", auth=True)["anchor"]
+    for i in range(MAX_ANCHORS_PER_USER + 1):
+        with pytest.raises(RuntimeError, match="422"):
+            client._request("PUT", "/api/ai-anchor", {
+                "anchor": f"{i:064x}", "epoch": 1, "mac": "00" * 32,
+            }, auth=True)
+    bad = {**signed_anchor(laptop, anchor, held["epoch"] + 50, "00" * 32), "signature": "11" * 64}
+    with pytest.raises(RuntimeError, match="400"):
+        client._request("PUT", "/api/ai-anchor", bad, auth=True)
+    assert client._request("GET", f"/api/ai-anchor/{anchor}", auth=True)["anchor"] == held

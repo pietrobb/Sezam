@@ -287,15 +287,6 @@ def rehome_anchor(vault: "Vault") -> None:
         ))
 
 
-def anchor_id(vault: "Vault") -> str | None:
-    """The sealed anchor home's id (vault unlocked and on a server, else None)."""
-    try:
-        home = anchor_home(vault)
-    except AnchorUnverifiable:
-        return None
-    return home.anchor if home else None
-
-
 def anchor_mac(vault: "Vault", anchor: str, epoch: int) -> str | None:
     """What a server-held anchor must carry: the server cannot raise it."""
     kek = _vault_kek(vault)

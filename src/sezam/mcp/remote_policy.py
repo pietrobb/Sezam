@@ -67,6 +67,18 @@ def policy_message(user_id: str, enabled: bool, epoch: int) -> bytes:
     return POLICY_CONTEXT + user + bytes([1 if enabled else 0]) + epoch.to_bytes(8, "big")
 
 
+ANCHOR_CONTEXT = b"sezam-ai-anchor-v1"
+
+
+def anchor_message(user_id: str, anchor: str, epoch: int, mac: str) -> bytes:
+    """What an anchor write is signed over (server/app/routers/ai_policy.py)."""
+    user = user_id.encode("ascii")
+    if len(user) != 26:
+        raise ValueError("user_id must be a 26-character ULID")
+    return (ANCHOR_CONTEXT + user + bytes.fromhex(anchor) + epoch.to_bytes(8, "big")
+            + bytes.fromhex(mac))
+
+
 def sign_policy(signing_key: SigningKey, user_id: str, enabled: bool, epoch: int) -> str:
     return signing_key.sign(policy_message(user_id, enabled, epoch)).signature.hex()
 
@@ -203,8 +215,13 @@ class ServerAnchor:
             floor = broker.off_floor()
             if floor <= held:
                 return
-            body = {"anchor": anchor, "epoch": floor,
-                    "mac": ai_access.anchor_mac(vault, anchor, floor)}
+            mac = ai_access.anchor_mac(vault, anchor, floor)
+            if mac is None:
+                raise ai_access.AnchorUnverifiable("the vault is locked")
+            body = {"anchor": anchor, "epoch": floor, "mac": mac, "signature": (
+                vault.keypair.to_nacl_signing_key()
+                .sign(anchor_message(home.user_id, anchor, floor, mac)).signature.hex()
+            )}
             try:
                 _authed(client, "PUT", "/api/ai-anchor", body)
             except RuntimeError as exc:

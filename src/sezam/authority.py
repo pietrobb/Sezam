@@ -222,7 +222,10 @@ SYNC: dict[str, Op] = {
 
 # ── Functions of sezam.vault the CLI, GUI and MCP call ("module:function") ──
 FUNCTIONS: dict[str, Op] = {
-    "ai_access:anchor_id": read("tests/test_review13_ai_switch_anchor.py"),
+    "ai_access:anchor_expected": read(part_of=("sezam.mcp.broker:MCPBroker._await_anchor",)),
+    "ai_access:anchor_home": local("seals the AI switch anchor's home (id, server, account) under the KEK",
+                                   "tests/test_review14_ai_anchor_fail_closed.py"),
+    "ai_access:legacy_anchor_id": read(part_of=("sezam.mcp.remote_policy:ServerAnchor.sync",)),
     "ai_access:anchor_mac": read(part_of=("sezam.mcp.remote_policy:ServerAnchor.sync",)),
     "ai_access:disable": local("turns AI access off (signed local switch)", "tests/test_review7_two_brokers_disable.py"),
     "ai_access:enable": local("turns AI access on (signed local switch)", "tests/test_review10_ai_enable_race.py"),

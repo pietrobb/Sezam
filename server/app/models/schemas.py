@@ -368,6 +368,13 @@ class AIAnchor(BaseModel):
     mac: str = Field(pattern=HEX_KEY)
 
 
+class AIAnchorPut(AIAnchor):
+    """Review 8bc70f7 R14-M3: signed by the account's signing key, so the
+    account's JWT alone (an agent holding a token) can neither push an
+    anchor out nor bury it under a higher epoch."""
+    signature: str = Field(pattern=HEX_SIGNATURE)  # Ed25519 hex
+
+
 class AIAnchorResponse(BaseModel):
     anchor: Optional[AIAnchor] = None
 

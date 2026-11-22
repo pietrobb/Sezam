@@ -64,7 +64,7 @@ Server: 57 routes, 36 of them change something.
 | `POST /api/org-recovery/keypair` | consumes the challenge and an attempt | anyone holding the proof the checks verify (no session): the reconstructed recovery key over the challenge | `routers.recovery:_consume_keypair_attempt`<br>`routers.recovery:_recovery_keys` | test_server_spec.py<br>test_review11_org_recovery_current.py |
 | `PUT /api/ai-policy` | the caller's AI kill switch (higher epoch only) | a signed-in account (full session), signed by the account key | `dependencies:require_full_jwt` | test_ai_s1e_remote_policy.py |
 | `GET /api/ai-policy` | — | a signed-in account (full session) | `dependencies:require_full_jwt` | test_ai_s1e_remote_policy.py |
-| `PUT /api/ai-anchor` | raises one of the caller's vault anchors (never lowers, never another account's) | a signed-in account (full session) | `dependencies:require_full_jwt` | test_review13_ai_switch_anchor.py |
+| `PUT /api/ai-anchor` | raises one of the caller's vault anchors (never lowers, never another account's) | a signed-in account (full session), signed by the account key | `dependencies:require_full_jwt` | test_review13_ai_switch_anchor.py<br>test_review14_ai_anchor_fail_closed.py |
 | `GET /api/ai-anchor/{anchor}` | — | a signed-in account (full session) | `dependencies:require_full_jwt` | test_review13_ai_switch_anchor.py |
 | `GET /health` | — | anyone | — | test_server_spec.py |
 | `GET /` | — | anyone | — | test_server_spec.py |
@@ -277,10 +277,12 @@ Keyed `module:function` under `sezam.vault`.
 
 | Operation | Changes | Who may | Decided by | Tests / run by |
 |---|---|---|---|---|
-| `ai_access:anchor_id` | — | — | — | test_review13_ai_switch_anchor.py |
+| `ai_access:anchor_expected` | — | — | — | run by `sezam.mcp.broker:MCPBroker._await_anchor` |
+| `ai_access:anchor_home` | seals the AI switch anchor's home (id, server, account) under the KEK | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review14_ai_anchor_fail_closed.py |
 | `ai_access:anchor_mac` | — | — | — | run by `sezam.mcp.remote_policy:ServerAnchor.sync` |
 | `ai_access:disable` | turns AI access off (signed local switch) | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review7_two_brokers_disable.py |
 | `ai_access:enable` | turns AI access on (signed local switch) | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review10_ai_enable_race.py |
+| `ai_access:legacy_anchor_id` | — | — | — | run by `sezam.mcp.remote_policy:ServerAnchor.sync` |
 | `ai_access:raise_floor` | raises the AI switch's epoch floor | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `sezam.mcp.broker:MCPBroker.raise_floor` |
 | `ai_access:read_state` | — | — | — | test_review6_ai_switch_mac.py |
 | `ai_access:record_remote_applied` | notes the remote kill switch's epoch applied | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `sezam.mcp.remote_policy:apply_policy` |

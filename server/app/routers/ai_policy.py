@@ -29,6 +29,7 @@ from ..dependencies import get_db, require_full_jwt
 from ..models.schemas import (
     HEX_KEY,
     AIAnchor,
+    AIAnchorPut,
     AIAnchorResponse,
     AIPolicy,
     AIPolicyPut,
@@ -120,19 +121,48 @@ async def get_ai_policy(
 MAX_ANCHORS_PER_USER = 32
 
 
+ANCHOR_CONTEXT = b"sezam-ai-anchor-v1"
+
+
+def anchor_message(user_id: str, anchor: str, epoch: int, mac: str) -> bytes:
+    """Shared with sezam.mcp.remote_policy.anchor_message."""
+    user = user_id.encode("ascii")
+    if len(user) != 26:
+        raise ValueError("user_id must be a 26-character ULID")
+    return (ANCHOR_CONTEXT + user + bytes.fromhex(anchor) + epoch.to_bytes(8, "big")
+            + bytes.fromhex(mac))
+
+
 @router.put("/ai-anchor", response_model=AIAnchorResponse)
 async def put_ai_anchor(
-    req: AIAnchor,
+    req: AIAnchorPut,
     db: Database = Depends(get_db),
     user: dict = Depends(require_full_jwt),
 ):
-    """Raise a vault's anchor. Never lowered: a lower epoch is 409."""
+    """Raise a vault's anchor. Never lowered: a lower epoch is 409.
+
+    Review 8bc70f7 R14-M3: any holder of the account's JWT could write
+    anchors: create new ones until the account's oldest (the real one) was
+    deleted, or store a higher epoch with a MAC no broker accepts, after which
+    the real 'off' could not be anchored again. A write now needs the
+    account's current signing key."""
     user_id = user["sub"]
     anchor = req.anchor.lower()
     now_ms = int(time.time() * 1000)
 
     async def _apply(conn) -> AIAnchor:
         async with conn.cursor() as cur:
+            await cur.execute("SELECT signing_pk FROM users WHERE id = %s", (user_id,))
+            row = await cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=401, detail="User not found")
+            try:
+                VerifyKey(bytes(row[0])).verify(
+                    anchor_message(user_id, anchor, req.epoch, req.mac.lower()),
+                    bytes.fromhex(req.signature),
+                )
+            except (BadSignatureError, ValueError):
+                raise HTTPException(status_code=400, detail="invalid ai_anchor signature")
             await cur.execute(
                 "SELECT user_id, epoch, mac FROM ai_anchors WHERE anchor_key = %s FOR UPDATE",
                 (anchor,),

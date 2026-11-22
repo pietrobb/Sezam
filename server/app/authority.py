@@ -266,7 +266,8 @@ ROUTES: dict[str, Route] = {
     "GET /api/ai-policy": Route("", SESSION, ("dependencies:require_full_jwt",), ("tests/test_ai_s1e_remote_policy.py",)),
     "PUT /api/ai-anchor": Route(
         "raises one of the caller's vault anchors (never lowers, never another account's)",
-        SESSION, ("dependencies:require_full_jwt",), ("tests/test_review13_ai_switch_anchor.py",),
+        SESSION + ", signed by the account key", ("dependencies:require_full_jwt",),
+        ("tests/test_review13_ai_switch_anchor.py", "tests/test_review14_ai_anchor_fail_closed.py"),
     ),
     "GET /api/ai-anchor/{anchor}": Route("", SESSION, ("dependencies:require_full_jwt",),
                                          ("tests/test_review13_ai_switch_anchor.py",)),
