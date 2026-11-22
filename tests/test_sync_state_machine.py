@@ -2504,9 +2504,12 @@ class SyncMachine(RuleBasedStateMachine):
         return [(uid, key) for uid, key in self.leaked_signers
                 if uid in current and bytes(key.verify_key) != current[uid]]
 
+    # Hypothesis picks a rule by its place in the rules sorted by name: a new
+    # rule named to sort last keeps the saved counterexamples
+    # (property_seeds.txt) fitting.
     @precondition(lambda self: self._retired_signers())
     @rule(data=st.data(), how=st.sampled_from(["new_device", "full_resync", "web"]))
-    def server_holds_a_leaked_retired_key(self, data, how):
+    def with_a_leaked_retired_key_the_server_forges(self, data, how):
         """Goal #443 (review e443cbc R15, INV-3): the server holds a signing
         key an identity rotation retired. It serves the next version of a live
         object that key signed, signed with it, and stretches
@@ -3899,7 +3902,7 @@ def test_sync_state_machine_server_holds_a_leaked_retired_key(loopback_server, m
                         if o.get("object_type") == "entry" and not o.get("is_deleted")
                         and o.get("signature_user_id") == admin)
         assert signed, machine._trace()
-        machine.server_holds_a_leaked_retired_key(
+        machine.with_a_leaked_retired_key_the_server_forges(
             _Scripted(**{"leaked key": 0, "object": signed[0], "device": "B"}), how)
         machine._settle(lambda _obj: "server")
     finally:
