@@ -297,3 +297,69 @@ Set<String> unauthorizedWrites(
         row['id'] as String,
   };
 }
+
+/// INV-7, rule 3 of the INV-5/INV-7 precedence (docs/ROOT_CAUSE_PLAN.md):
+/// the folders and items that show while the team log is refused. Only this
+/// account's personal tree: a top-level personal root it signed, under a key
+/// it holds, and what it signed below, under that root's key (an item also
+/// under a tier-2 key of its own it holds). No rule from before the log
+/// decides: a folder the server brings, a plaintext one and the
+/// organisation's tree do not show. Parity with the web's
+/// refusedLogPersonalKeys and webInPersonalTree.
+Set<String> refusedLogPersonalTree(
+  List<Map<String, dynamic>> rows,
+  String? ownUserId, {
+  required Set<String> personalNodes,
+  required Map<String, String?> dekIds,
+  required Set<String> heldDekIds,
+  required Set<String> tier2Entries,
+}) {
+  final byId = {for (final row in rows) row['id'] as String: row};
+  // A row never pulled (no verified signer) written before this vault was
+  // connected names the temporary 'local' identity.
+  bool own(Map<String, dynamic> row) {
+    final signer = _signer(row, ownUserId);
+    return ownUserId != null &&
+        (signer == ownUserId || (row['signer_id'] == null && signer == 'local'));
+  }
+  final rootKeys = <String, String?>{};
+
+  /// The key of the personal root above folder [id] (itself included), when
+  /// each folder on the way is this account's, under that key.
+  String? rootKey(String id) {
+    if (rootKeys.containsKey(id)) return rootKeys[id];
+    rootKeys[id] = null; // a cycle names no root
+    final row = byId[id];
+    final dekId = dekIds[id];
+    String? key;
+    if (row != null && row['object_type'] == 'node' && dekId != null && own(row)) {
+      final parent = row['parent_ref'] as String?;
+      if (parent == null) {
+        key = personalNodes.contains(id) && heldDekIds.contains(dekId) ? dekId : null;
+      } else {
+        final above = rootKey(parent);
+        key = above == dekId ? above : null;
+      }
+    }
+    return rootKeys[id] = key;
+  }
+
+  final shown = <String>{};
+  for (final row in rows) {
+    final id = row['id'] as String;
+    if (!dekIds.containsKey(id)) continue;
+    if (row['object_type'] == 'node') {
+      if (rootKey(id) != null) shown.add(id);
+    } else if (row['object_type'] == 'entry' && own(row)) {
+      final parent = row['parent_ref'] as String?;
+      final key = parent == null ? null : rootKey(parent);
+      final dekId = dekIds[id];
+      if (key != null &&
+          (dekId == key ||
+              (tier2Entries.contains(id) && dekId != null && heldDekIds.contains(dekId)))) {
+        shown.add(id);
+      }
+    }
+  }
+  return shown;
+}

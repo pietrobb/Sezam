@@ -697,6 +697,26 @@ class VaultService {
       }
     }
 
+    // INV-7: while the log is refused only the personal tree shows; the
+    // rules from before the log no longer decide (a server's folder, a
+    // plaintext one, the organisation's tree under a key it holds).
+    if (teamLogRefusal != null) {
+      final shown = refusedLogPersonalTree(
+        allObjects,
+        _userId,
+        personalNodes: {for (final n in _nodes.values) if (n.personal) n.id},
+        dekIds: {
+          for (final n in _nodes.values) n.id: n.dekId,
+          for (final e in _entries.values) e.id: e.dekId,
+        },
+        heldDekIds: _deks.keys.toSet(),
+        tier2Entries: {for (final e in _entries.values) if (e.tier == 2) e.id},
+      );
+      _nodes.removeWhere((id, _) => !shown.contains(id));
+      _entries.removeWhere((id, _) => !shown.contains(id));
+      if (!_nodes.containsKey(_rootNodeId)) _rootNodeId = null;
+    }
+
     _folderDekIds
       ..clear()
       ..addAll(

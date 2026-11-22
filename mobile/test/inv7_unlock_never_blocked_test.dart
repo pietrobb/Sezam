@@ -135,6 +135,26 @@ void main() {
         expect(vault.nodes[f1]?.name, 'shared', reason: 'the trusted log lets F1 open');
         expect(vault.entries[orgEntry.id]?.name, 'org');
 
+        // What a server brings meanwhile, signed by an account of its own:
+        // plaintext folders (one called personal) and an item in this
+        // account's personal folder. Review e443cbc: the refused log fell
+        // back to the rules from before any log, where the account that
+        // signs a top-level folder is an admin, and all of it showed.
+        const stranger = '01JM00000000000000000000S9';
+        const fakeRoot = '01JR000000000000000000000F';
+        const fakePersonal = '01JR000000000000000000000P';
+        const fakeEntry = '01JE000000000000000000000F';
+        const plantedEntry = '01JE000000000000000000000P';
+        Uint8List plain(Map<String, dynamic> json) => Uint8List.fromList(utf8.encode(jsonEncode(json)));
+        await db.upsertObject(id: fakeRoot, objectType: 'node', ownerId: stranger, version: 1, queued: false,
+            payload: plain({'name': 'Bank'}));
+        await db.upsertObject(id: fakePersonal, objectType: 'node', ownerId: stranger, version: 1, queued: false,
+            payload: plain({'name': 'mine too', 'personal': true}));
+        await db.upsertObject(id: fakeEntry, objectType: 'entry', ownerId: stranger, version: 1, queued: false,
+            parentRef: fakeRoot, payload: plain({'name': 'Bank login', 'fields': []}));
+        await db.upsertObject(id: plantedEntry, objectType: 'entry', ownerId: stranger, version: 1, queued: false,
+            parentRef: personal.id, payload: plain({'name': 'planted', 'fields': []}));
+
         await breakIt(state, db, b, genesis);
         final copy = await db.getSetting(teamLogRecordsSetting);
         vault.lock();
@@ -144,6 +164,15 @@ void main() {
         expect(vault.nodes, isNot(contains(f1)), reason: 'no team key opens from a refused log');
         expect(vault.nodes[personal.id]?.name, 'mine');
         expect(vault.entries[kept.id]?.name, 'kept');
+        expect(vault.nodes[sub.id]?.name, 'sub');
+        expect(vault.entries[gone.id]?.name, 'gone');
+        // INV-7 rule 3: only the personal tree; no rule from before the log decides.
+        for (final id in [fakeRoot, fakePersonal, orgRoot]) {
+          expect(vault.nodes, isNot(contains(id)), reason: '$id: not this account\'s personal tree');
+        }
+        for (final id in [fakeEntry, plantedEntry, orgEntry.id]) {
+          expect(vault.entries, isNot(contains(id)), reason: '$id: not this account\'s personal tree');
+        }
 
         // Each personal operation, in the personal tree.
         final ops = <String, Future<Object?> Function()>{
@@ -160,18 +189,20 @@ void main() {
         }
         expect(vault.entries[kept.id]?.name, 'kept-2');
 
-        // Team operations are refused with the cause, never queued.
+        // Team operations are refused, never queued: the organisation's tree
+        // and a server's folder do not open.
         final dirty = (await db.getDirtyObjects()).length;
         final team = <String, Future<Object?> Function()>{
           'create entry in the org root': () => vault.createEntry(parentRef: orgRoot, name: 'x', fields: const []),
           'create folder in the org root': () => vault.createNode(name: 'x', parentRef: orgRoot),
           'update an org entry': () => vault.updateEntry(entryId: orgEntry.id, name: 'x'),
-          'delete an org entry': () => vault.deleteEntry(orgEntry.id),
+          'create entry in a server folder': () => vault.createEntry(parentRef: fakeRoot, name: 'x', fields: const []),
         };
         for (final op in team.entries) {
-          await expectLater(op.value(),
-              throwsA(isA<TeamLogMismatch>().having((e) => e.cause, 'cause', states[state])), reason: op.key);
+          await expectLater(op.value(), throwsA(anything), reason: op.key);
         }
+        await vault.deleteEntry(orgEntry.id); // not shown: nothing to delete
+        expect((await db.getObject(orgEntry.id))?['is_deleted'], isNot(1));
         expect((await db.getDirtyObjects()).length, dirty);
 
         // Nothing fetched or forgotten meanwhile: still refused, across a restart.
@@ -188,6 +219,8 @@ void main() {
           await vault.reloadData();
           expect(vault.teamLogRefusal, isNull);
           expect(vault.nodes[f1]?.name, 'shared');
+          expect(vault.nodes[orgRoot]?.name, 'Org', reason: 'the trusted log opens the organisation again');
+          expect(vault.nodes, isNot(contains(fakeRoot)), reason: 'the log names no such admin');
         } else {
           await forgetConfirmedTeamGenesis(b, [genesis, otherGenesis]);
           await db.deleteSetting(teamLogRecordsSetting);
