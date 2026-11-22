@@ -223,16 +223,14 @@ async def _store_recovery_blob_in(
         # swapped it for garbage, so recovery failed when it was needed
         # (review d615826). Without the password it must be signed by the
         # recovery key itself, which only the shares' holders have.
-        same_key = (
-            existing is not None and existing[0] == user["sub"]
-            and existing[1] is not None and bytes(existing[1]) == recovery_signing_pk
+        # Review 8595ec1 #4: on a server restored from before the
+        # registration that is the key the team log names. Review e443cbc
+        # #438 (INV-2): only the current org recovery's key (_current_recovery),
+        # not an older one the log still names; its shares were voided.
+        _stored, current, _state = await _current_recovery(cur)
+        same_key = current is not None and current["created_by"] == user["sub"] and (
+            current["recovery_signing_pk"] == recovery_signing_pk.hex()
         )
-        # Review 8595ec1 #4: a server restored from before the
-        # registration has no blob (or an older one); the key the team log
-        # names for this admin counts as theirs.
-        if not same_key and (existing is None or existing[0] == user["sub"]):
-            logged = team_log.core.recovery_key(await team_log.load_state(cur), user["sub"])
-            same_key = logged is not None and bytes.fromhex(logged) == recovery_signing_pk
         signed_by_recovery_key = same_key and req.recovery_signature is not None and (
             _rewrap_signature_ok(req, user["sub"], wrapped_kek_bytes, recovery_signing_pk)
         )
