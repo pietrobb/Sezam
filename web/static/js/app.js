@@ -3275,19 +3275,11 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
             if (state.nodes?.[id]) candidateNodes[id] = state.nodes[id];
         }
     }
-    // INV-7: while the log is refused only this account's personal tree opens
-    // (its objects signed by this account, below a personal root), and only
-    // the keys sealing it; every other key counts as a team key.
+    // INV-7: while the log is refused only this account's personal tree opens,
+    // under its personal roots' own keys; every other key counts as a team key.
     const personalKeys = new Set();
     if (teamLogRefusal) {
-        for (const [objects, kind] of [[candidateEntries, 'entry'], [candidateNodes, 'node']]) {
-            for (const [id, obj] of Object.entries(objects)) {
-                if (obj.dekId && webInPersonalTree(candidateNodes, candidateSyncObjects, kind === 'node' ? id : obj.parent_ref) &&
-                        candidateSyncObjects[id]?.signer === state.userId) {
-                    personalKeys.add(obj.dekId);
-                }
-            }
-        }
+        for (const id of refusedLogPersonalKeys(candidateNodes, candidateSyncObjects)) personalKeys.add(id);
         for (const id of Object.keys(candidateDeks)) {
             if (!personalKeys.has(id)) refusedTeamKeys.add(id);
         }
@@ -8017,6 +8009,23 @@ function webInPersonalTree(nodes, syncObjects, id) {
         id = node.parent_ref;
     }
     return false;
+}
+
+/** The keys that stay open while the team log is refused: each personal
+ * root's own (top-level, opened, signed by this account). A personal tree
+ * has one key, its root's (TL7; the desktop folds others into it). Review
+ * e443cbc (R15-P4 rule 3): every key sealing something below a personal root
+ * counted, so a server replaying a team folder's version from before it left
+ * the personal tree opened the team key and the admin's edits resealed team
+ * items under the personal key. */
+function refusedLogPersonalKeys(nodes, syncObjects) {
+    const keys = new Set();
+    for (const [id, node] of Object.entries(nodes)) {
+        if (node.personal && !node.parent_ref && node.dekId && webInPersonalTree(nodes, syncObjects, id)) {
+            keys.add(node.dekId);
+        }
+    }
+    return keys;
 }
 
 /**
