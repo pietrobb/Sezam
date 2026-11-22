@@ -3005,6 +3005,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
 
     // Verify every object before applying any of the response; abort on any invalid object
     const verifiedObjects = [];
+    let withheld = 0;
     for (const obj of data.objects) {
         // Fail-closed (spec §8.2 pull 3a/4): every object MUST carry a valid
         // Ed25519 signature from a known owner. Missing signature, missing owner,
@@ -3016,7 +3017,10 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
             throw new Error(`REJECT object ${obj.id} — missing signature or signer (fail-closed)`);
         }
         const sigPks = signerKeys.get(signerId);
-        if (!sigPks) continue;  // withheld this pull (the team is refused above); never applied
+        if (!sigPks) {  // withheld this pull (the team is refused above); never applied
+            withheld++;
+            continue;
+        }
         if (sigPks.length === 0) {
             throw new Error(`REJECT object ${obj.id} — no signing key for signer ${signerId} (fail-closed)`);
         }
@@ -3094,6 +3098,10 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         gcFloor: Number(data.gc_floor_seq),
         stateHash,
         liveStateHash,
+        // Capability run 465: objects held back for a signer whose keys did
+        // not come make this state differ from the server's without the
+        // server changing anything; a lower seq is still a rollback.
+        served: withheld === 0,
     };
     try {
         if (restoredDetail) throw new Error(restoredDetail);
@@ -3363,7 +3371,9 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         if (Number(candidateSyncObjects[id]?.version) >= base.version) delete state.acceptedBases[id];
     }
     state.teamLog = teamLogRefusal?.teamLogCause === 'local_damaged' ? teamLog : teamUsable;
-    state.syncCheckpoint = nextCheckpoint;
+    // Capability run 465: a state with a signer's objects held back is no
+    // state of the server's; the next pull is checked against the last one that was.
+    if (!withheld) state.syncCheckpoint = nextCheckpoint;
     state.keyEpoch = responseKeyEpoch;
     if (responseKeyHash) state.keyMaterialHash = responseKeyHash;
     state.outbox = reconciledDirtyState.outbox;
@@ -7482,7 +7492,7 @@ function checkPulledStateAgainstCheckpoint(checkpoint, pulled) {
             state_hash: stateHash,
             live_state_hash: liveStateHash || null,
             gc_floor_seq: Number.isSafeInteger(pulled.gcFloor) ? pulled.gcFloor : 0,
-            served: true,
+            served: pulled.served !== false,
         },
     });
     if (verdict.state === 'rollback') {

@@ -1,4 +1,4 @@
-"""INV-7 / INV-5 precedence (docs/ROOT_CAUSE_PLAN.md, R15-P4), web against a
+﻿"""INV-7 / INV-5 precedence (docs/ROOT_CAUSE_PLAN.md, R15-P4), web against a
 real server: a fault at any request of a personal save or of the pull after
 it, while the admin moves a member's access on the desktop (no answer, a lost
 reply, 500, 503), never offers or does a forget and never moves a pin; a fault
@@ -131,3 +131,59 @@ def test_a_fault_at_any_request_of_a_web_save_or_pull_never_forgets(team, server
                 profile = tab.close()
             finally:
                 tab.kill()
+
+
+def test_another_signers_keys_that_do_not_come_at_an_unchanged_seq_offer_no_rollback(team, server, tmp_path):  # noqa: F811
+    """Capability run 465: the keys of a member who wrote what the admin sees
+    do not come at a sign-in where nothing moved since the checkpoint. That
+    member's objects wait, and the pull is no other state than the stored one:
+    no 'accept the server's state' prompt, nothing locked, nothing forgotten."""
+    from sezam.vault.revocation import grant_member, push_with_queued_revocations
+    from sezam.vault.team_log_local import CONFIRMED_GENESIS_META
+    from tests.test_team_log_desktop import _confirm_founder
+
+    _, admin, client, bob, bob_client = team
+    _found_with_bob(client, bob)
+    _confirm_founder(admin, bob)
+    genesis = client.team_state().genesis_hash
+    bob_client.pull()
+    bob.db.set_meta(CONFIRMED_GENESIS_META, genesis)
+    ops = next(n["id"] for n in admin.list_nodes() if n["name"] == "Ops")
+    grant_member(admin, client, bob.db.get_meta("user_id"), ops, "write", confirm_fingerprint=lambda _f: True)
+    push_with_queued_revocations(admin, client)
+    bob_client.pull()
+    vpn = bob.create_entry(ops, "vpn", [{"key": "password", "value": "by-bob"}])
+    pushed = bob_client.push()
+    bob_id = bob.db.get_meta("user_id")
+    assert vpn in {o["id"] for o in pushed["accepted"]}, pushed
+    keys = f"/api/users/{bob_id}/keys"
+
+    tab = WebTab(url := server[0], tmp_path / "tab.log")
+    try:
+        login = tab.do("login", username="admin", password=PASSWORD)
+        assert login["error"] is None and not login["view"]["teamLogRefused"], login
+        assert ("GET", keys) in {(c["method"], c["path"]) for c in login["calls"]}, login["calls"]
+        assert any(e["password"] == "by-bob" for e in login["view"]["entries"]), login["view"]["entries"]
+        pins = login["view"]["teamLogPins"]
+        profile = tab.close()
+    finally:
+        tab.kill()
+
+    for fault in FAULTS:
+        label = f"{fault} at login GET {keys}"
+        tab = WebTab(url, tmp_path / f"keys-{fault['mode']}-{fault.get('status', 0)}.log", idb=profile)
+        try:
+            login = tab.do("login", username="admin", password=PASSWORD, fail={"method": "GET", "path": keys, **fault})
+            assert login["failure"]["fired"], label
+            assert not login["confirms"], (label, login["confirms"])
+            assert login["error"] is None and login["view"]["unlocked"], (label, login["error"])
+            assert login["view"]["teamLogCause"] == "unreachable", (label, login["view"]["teamLogCause"])
+            assert login["view"]["teamLogPins"] == pins, label
+            again = tab.do("refresh")
+            assert again["error"] is None and not again["confirms"], (label, again["error"], again["calls"])
+            assert not again["view"]["teamLogRefused"], (label, again)
+            assert any(e["password"] == "by-bob" for e in again["view"]["entries"]), label
+            assert again["view"]["teamLogPins"] == pins, label
+            profile = tab.close()
+        finally:
+            tab.kill()
