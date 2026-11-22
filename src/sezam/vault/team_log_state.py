@@ -501,13 +501,20 @@ def publishable_anchor(db, user_id: str, keypair) -> Optional[str]:
     Only an explicit pin (invitation #g=, confirm-genesis, an anchored bundle)
     or a log trusted through our own founder lineage or a confirmed founder
     fingerprint qualifies; a merely observed genesis is never published.
+
+    Review e443cbc (goal #438): a copy this device refuses (local_damaged)
+    trusts nothing through its lineage. Raised here, it locked the vault
+    again after a Shamir recovery or a password change (INV-7).
     """
     if keypair.confirmed_genesis is not None:
         return keypair.confirmed_genesis
     confirmed = db.get_meta(CONFIRMED_GENESIS_META)
     if confirmed is not None:
         return confirmed
-    state = local_team_state(db)
+    try:
+        state = local_team_state(db)
+    except TeamLogMismatch:
+        return None
     if state is not None and log_trusted(db, user_id, keypair, state):
         return state.genesis_hash
     return None
