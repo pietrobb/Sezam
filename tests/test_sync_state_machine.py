@@ -2546,6 +2546,11 @@ class SyncMachine(RuleBasedStateMachine):
     def server_restore(self):
         """The operator restores the server database from the last backup."""
         storage, server_known = copy.deepcopy(self.backup)
+        # The team log records the restore takes from the server (goal #442).
+        def hashes(rows):
+            return {teamlog.record_hash({"body": r["body"], "sig": r["sig"]}) for r in rows}
+        self.lost_by_restore = getattr(self, "lost_by_restore", set()) | (
+            hashes(self.db._storage.get("team_log", [])) - hashes(storage.get("team_log", [])))
         self.db._storage.clear()
         self.db._storage.update(storage)
         self.server_known = server_known
@@ -3503,17 +3508,36 @@ class TeamLogMachine(SyncMachine):
 
     @invariant()
     def every_device_holds_one_log(self):
+        self._holds_one_log(settled=False)
+
+    def _check_new_device_matches(self):
+        super()._check_new_device_matches()
+        self._holds_one_log(settled=True)
+
+    def _holds_one_log(self, settled: bool):
         """No device accepted a record the true log does not have (fork,
         forgery) or a log that does not replay; the server's and each device's
-        copy are one the other's prefix (a restored server is the shorter)."""
+        copy are one the other's prefix (a restored server is the shorter).
+
+        Until it syncs, a device may hold a fork of its own account (goal
+        #442): its records after it are ones a restore took from the server,
+        and every record on both sides is this account's. Once settled, none."""
         if not hasattr(self, "db"):
             return
-        server = [teamlog.record_hash(r) for r in self._server_log()]
+        records = self._server_log()
+        server = [teamlog.record_hash(r) for r in records]
         for name, vault in self._log_vaults():
             rows = vault.db.fetchall("SELECT body, sig FROM team_log ORDER BY seq")
             local = [teamlog.record_hash({"body": r["body"], "sig": r["sig"]}) for r in rows]
             assert not set(local) & self._forged_hashes(), f"{name} holds a forged log record\n" + self._trace()
             n = min(len(local), len(server))
+            fork = next((i for i in range(n) if local[i] != server[i]), None)
+            account = vault.db.get_meta("user_id")
+            if (not settled and fork and set(local[fork:]) <= getattr(self, "lost_by_restore", set())
+                    and all(teamlog.parse_body(r["body"])["author"] == account
+                            for r in list(rows[fork:]) + records[fork:])):
+                coverage_event("a device holds its own account's fork until it syncs")
+                continue
             assert local[:n] == server[:n], (
                 f"{name}'s team log forks from the server's at record "
                 f"{next(i for i in range(n) if local[i] != server[i])}\n" + self._trace())

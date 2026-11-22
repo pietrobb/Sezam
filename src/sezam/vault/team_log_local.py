@@ -378,8 +378,10 @@ class TeamLogMixin:
             return None
         lost = [teamlog.parse_body(row["body"]) for row in rows[fork:]]
         theirs = [teamlog.parse_body(record["body"]) for record in records[fork:]]
+        links = [body for body in lost if body["type"] == "member.keys"]
+        changes = [body for body in lost if body["type"] != "member.keys"]
         if any(body["author"] != self._user_id for body in lost + theirs) or any(
-                body["type"] not in self._REQUEUED_KINDS for body in lost):
+                body["type"] not in self._REQUEUED_KINDS for body in changes) or len(links) > 1:
             return None
         try:
             state = teamlog.replay(records)
@@ -388,8 +390,10 @@ class TeamLogMixin:
         if (state.head_seq != server_head["seq"] or state.head_hash != server_head.get("hash")
                 or teamlog.admin_policy_refusal(state)):
             return None
+        if links and not self._rotation_linked_again(state, links[0]):
+            return None
         batch = new_ulid()  # set aside together or not at all, as they were made
-        requeued = [[body["type"], {**body["data"], "_batch": batch}] for body in lost]
+        requeued = [[body["type"], {**body["data"], "_batch": batch}] for body in changes]
         with self._db.transaction(immediate=True):
             if self._local_head_seq() != local.head_seq:
                 return None  # another process moved the copy meanwhile: the next pull compares again
@@ -399,6 +403,31 @@ class TeamLogMixin:
         logger.warning("Followed the server's team log from record %s, written by another device of this "
                        "account; %s own change(s) queued again", fork, len(requeued))
         return state
+
+    def _rotation_linked_again(self, state: teamlog.TeamState, body: dict) -> bool:
+        """``body`` (a member.keys lost in the fork) links to this device's keys
+        from the old ones of its unpushed identity rotation, which the log
+        ``state`` still names: the push signs it again on that head
+        (add_identity_team_record), so nothing is lost by following.
+
+        Goal #442 (bg34 targeted run on c7a0e49): the server went back to a
+        backup from before B's rotation, A then put its org recovery on the
+        restored log, and B's every push stopped on 'does not replay'.
+        """
+        data = body["data"]
+        member = state.members.get(self._user_id)
+        if (data.get("user_id") != self._user_id or member is None or not member.active
+                or (data.get("signing_pk"), data.get("encryption_pk"))
+                != (self._keypair.signing_pk.hex(), self._keypair.encryption_pk.hex())):
+            return False
+        old = self._pending_old_keypair()
+        if old is None:
+            return False
+        try:
+            old_pk = old.signing_pk.hex()
+            return member.signing_pk == old_pk and not teamlog.signing_key_retired(state, self._user_id, old_pk)
+        finally:
+            old.zeroize()
 
     def _refuse_as_served(self, server_head: Optional[dict], genesis: Optional[str], lost: TeamLogMismatch):
         """Raise ``lost`` (a cause that offers to forget the pin) only as far as
