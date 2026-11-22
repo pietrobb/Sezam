@@ -364,8 +364,6 @@ def _log_fields(sync: str, refusal: str, replay: str) -> dict[str, Field]:
 
 _NO_JSON_STATUS = ("the web reads no status in a reply body: Error.status is the HTTP code, user.status "
                    "is UserInfo's")
-_LOG_NOT_ASKED = ("taken as the account's admin flag although the team log names the admin; "
-                  "goal #439 (web and mobile)")
 
 _CHALLENGE = ("signed behind a context prefix and at a fixed length, so it is never another signed message; "
               "a lie fails the login")
@@ -410,8 +408,11 @@ _HELD_NOT_ASKED = {key: Field(UNREAD, "this client never calls /api/objects/held
 CLIENT_FIELDS: dict[str, dict[str, Field]] = {
     "web": {
         "VerifyResponse.is_admin": Field(
-            DECIDES, _LOG_NOT_ASKED + ": state.isAdmin gates the admin peer-pin check (performTOFUChecks), "
-            "the revocation re-key (buildWebRekeyBatch), Shamir setup and canEditObject"),
+            HINT, "with a team log known, admin is who the verified log says (webIsAdmin: canEditObject, "
+            "buildWebRekeyBatch, Shamir setup); a refused or pinned-not-held log makes nobody admin. It "
+            "stands only for a vault with no log at all, whose admin calls the server authorizes (S6), and "
+            "asks for the server's own admin list (performTOFUChecks), which only adds pin checks",
+            ("webIsAdmin",)),
         "VerifyResponse.key_material_hash": Field(
             HINT, "equal to the hash of the cached wrap keeps the keypair this browser opened under its "
             "password (what withholding a rotation does anyway); any other value only fetches the server's, "
@@ -585,8 +586,10 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
     },
     "mobile": {
         "VerifyResponse.is_admin": Field(
-            DECIDES, _LOG_NOT_ASKED + ": stored as sezam_is_admin (also for offline unlock) and gates "
-            "VaultEntry.canEdit for every local edit"),
+            HINT, "stored as sezam_is_admin (also for offline unlock); with a team log known, admin is who "
+            "the verified log says (VaultService.isAdmin, which VaultEntry.canEdit asks), a refused log makes "
+            "nobody admin; it stands only for a vault with no log at all (S6)",
+            ("isAdmin",)),
         "MetaResponse.argon2_web_params": Field(
             HINT, "refused outside the server policy's bounds, never guessed", ("accountKdfParams",)),
         "PullObject.access_level": Field(

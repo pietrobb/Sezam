@@ -1402,7 +1402,7 @@ class AuthService {
       await _refreshBiometricKek(kek);
       // New items must be wrapped under the KEK the stored salt derives.
       final userId = _vault.userId!;
-      final isAdmin = _vault.isAdmin;
+      final isAdmin = _vault.serverSaysAdmin;
       await _vault.unlock(
         kek: Uint8List.fromList(kek),
         signingSecretKey: Uint8List.fromList(normalized.sublist(0, 64)),
@@ -2140,7 +2140,7 @@ class AuthService {
             encryptionPk: copy(_vault.encryptionPublicKey),
             encryptionSk: copy(_vault.encryptionSecretKey),
             userId: _vault.userId ?? '',
-            isAdmin: _vault.isAdmin,
+            isAdmin: _vault.serverSaysAdmin,
           )
         : null;
     final savedKeys = {

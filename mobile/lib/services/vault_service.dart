@@ -264,7 +264,7 @@ class VaultService {
   Uint8List? _encryptionSecretKey;
   Uint8List? _encryptionPublicKey;
   String? _userId;
-  bool _isAdmin = false;
+  bool _serverAdmin = false;
   String? _rootNodeId;
 
   // The organisation's signed team log, replayed (null while it has none).
@@ -280,7 +280,19 @@ class VaultService {
   String? get rootNodeId => _rootNodeId;
   String? get kekDekId => _kekDekId;
   String? get userId => _userId;
-  bool get isAdmin => _isAdmin;
+  /// INV-3 (review e443cbc): admin as the verified team log says (as on the
+  /// desktop). The server's unsigned is_admin ([serverSaysAdmin], kept for
+  /// offline unlock too) only stands while this phone knows no team log at
+  /// all, where the server authorizes that vault's admin calls itself (S6);
+  /// a refused log makes nobody admin here.
+  bool get isAdmin {
+    final team = teamLog?.team;
+    if (team != null) return _userId != null && TeamLog.isAdmin(team, _userId!);
+    return teamLogRefusal == null && _serverAdmin;
+  }
+
+  /// The server's role for this account, passed again to a re-unlock.
+  bool get serverSaysAdmin => _serverAdmin;
   Uint8List? get signingSecretKey => _signingSecretKey;
   Uint8List? get signingPublicKey => _signingPublicKey;
   Uint8List? get encryptionPublicKey => _encryptionPublicKey;
@@ -352,7 +364,7 @@ class VaultService {
     _signingSecretKey = signingSecretKey;
     _signingPublicKey = signingPublicKey;
     _encryptionSecretKey = encryptionSecretKey;
-    _isAdmin = isAdmin;
+    _serverAdmin = isAdmin;
     _userId = userId;
     _rootDekId = null;
     _rootNodeId = null;
@@ -409,7 +421,7 @@ class VaultService {
     _rootDekId = null;
     _kekDekId = null;
     _userId = null;
-    _isAdmin = false;
+    _serverAdmin = false;
     _rootNodeId = null;
     _kekMatchesServer = false;
     teamLog = null;
@@ -436,7 +448,7 @@ class VaultService {
       throw StateError('Cannot register an already connected vault');
     }
     _userId = userId;
-    _isAdmin = false;
+    _serverAdmin = false;
   }
 
   // ── Load encrypted data ──
@@ -1331,7 +1343,7 @@ class VaultService {
 
     final existing = _entries[entryId];
     if (existing == null) throw StateError('Entry not found: $entryId');
-    if (!existing.canEdit(_userId, _isAdmin)) {
+    if (!existing.canEdit(_userId, isAdmin)) {
       throw StateError('Entry is read-only');
     }
     ensureEditBase(existing, expectedVersion);
@@ -2055,7 +2067,7 @@ class VaultService {
 
     final existing = _entries[entryId];
     if (existing == null) return;
-    if (!existing.canEdit(_userId, _isAdmin)) {
+    if (!existing.canEdit(_userId, isAdmin)) {
       throw StateError('Entry is read-only');
     }
 

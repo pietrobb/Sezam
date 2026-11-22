@@ -3676,6 +3676,9 @@ async function performTOFUChecks() {
     }
 
     // Admin key-list failures must not silently skip peer pin verification.
+    // INV-3: the server's is_admin only asks for its own admin list (which it
+    // authorizes) to add these pin checks; no admin decision rests on it
+    // (webIsAdmin), and every key sealed to a member is checked where fetched.
     if (state.isAdmin && state.token) {
         let users;
         try {
@@ -3906,7 +3909,7 @@ async function getVerifiedEncryptionPkForRekey(userId, _sodium) {
 }
 
 async function buildWebRekeyBatch(revokedUserId, _sodium) {
-    if (!state.isAdmin || !state.syncObjects || !state.keypair?.encryptionSk || !state.kek) {
+    if (!webIsAdmin() || !state.syncObjects || !state.keypair?.encryptionSk || !state.kek) {
         throw new Error('A complete unlocked admin snapshot is required for revocation');
     }
     const activeObjects = Object.values(state.syncObjects).filter(obj => !obj.is_deleted);
@@ -4591,9 +4594,23 @@ function folderAccessLevelForObject(obj) {
     return level;
 }
 
+/**
+ * INV-3 (review e443cbc): this account is admin as the verified team log says
+ * (as on the desktop). The server's unsigned is_admin (state.isAdmin) only
+ * stands while this browser knows no team log at all, where the server
+ * authorizes that vault's admin calls itself (S6); a refused log, or one
+ * pinned and not held yet, makes nobody admin here.
+ */
+function webIsAdmin() {
+    const team = state.teamLog?.team;
+    if (team) return !!state.userId && globalThis.SezamTeamLog.isAdmin(team, state.userId);
+    if (state.teamLogRefusal || webPinnedTeamGenesis().length) return false;
+    return state.isAdmin === true;
+}
+
 function canEditObject(obj) {
     if (!obj) return false;
-    if (state.isAdmin) return true;
+    if (webIsAdmin()) return true;
     if (!obj.owner_id) return false;
     if (obj.owner_id === state.userId) return true;
     if (obj.write_policy === 'shared') {
@@ -10068,7 +10085,7 @@ function shamirReconstruct(shares) {
 // ── Org Recovery Setup (admin) ──
 
 async function openShamirSetupModal() {
-    if (!state.isAdmin || !state.kek) {
+    if (!webIsAdmin() || !state.kek) {
         alert(t('recovery.admin_required'));
         return;
     }

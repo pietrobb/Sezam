@@ -1967,8 +1967,8 @@ class TestCrossClientExplicitFullResync:
         assert "delete state.outbox[vaultObj.id]" in src
         assert src.count("apiFetch('/api/sync'") >= 2
         assert "const candidateEntries = isFullPull ? {}" in pull
-        assert "await saveSyncCheckpoint(nextCheckpoint, _sodium)" in pull
-        checkpoint_pos = pull.index("await saveSyncCheckpoint(nextCheckpoint, _sodium)")
+        assert "await saveSyncCheckpoint(withheld" in pull
+        checkpoint_pos = pull.index("await saveSyncCheckpoint(withheld")
         assert checkpoint_pos < pull.index("state.entries = candidateEntries")
         assert "if (isFullPull) state.outbox = {}" not in pull
         assert "while (data.has_more === true)" in pull
@@ -2105,9 +2105,9 @@ class TestWebTofuFailClosed:
             "class TofuKeyChangeError", 1
         )[1].split("/**\n * Show a MITM warning modal", 1)[0]
 
-        tofu_pos = pull.index("if (!await getUserSigningPks(signerId))")
+        tofu_pos = pull.index("let keys = await getUserSigningPks(signerId)")
         verify_pos = pull.index("const verifiedObjects = []")
-        checkpoint_pos = pull.index("await saveSyncCheckpoint(nextCheckpoint, _sodium)")
+        checkpoint_pos = pull.index("await saveSyncCheckpoint(withheld")
         assert tofu_pos < verify_pos < checkpoint_pos
         assert "state.userKeys = {};" in src
 
@@ -2538,7 +2538,7 @@ class TestWebRollbackCheckpoint:
         assert "throw new Error(`ROLLBACK DETECTED" in check
         assert "throw new Error(\n        `STATE MISMATCH" in check
         check_pos = pull.index("checkPulledStateAgainstCheckpoint(")
-        save_pos = pull.index("await saveSyncCheckpoint(nextCheckpoint, _sodium)")
+        save_pos = pull.index("await saveSyncCheckpoint(withheld")
         seq_pos = pull.index("state.syncCheckpoint = nextCheckpoint")
         assert check_pos < save_pos < seq_pos
         assert "lastCommitSeq" not in src  # S2: the checkpoint is the only pull state
@@ -3218,6 +3218,10 @@ console.log(JSON.stringify({{
         helpers = "function folderAccessLevelForObject" + src.split(
             "function folderAccessLevelForObject", 1
         )[1].split("function renderEntry", 1)[0]
+        # INV-3 (review e443cbc): webIsAdmin asks whether a team log is pinned.
+        helpers += "\nfunction webPinnedTeamGenesis" + src.split(
+            "function webPinnedTeamGenesis", 1
+        )[1].split("\n}\n", 1)[0] + "\n}\n"
         harness = f"""
 let state = {{
   isAdmin: false,
@@ -3272,7 +3276,7 @@ if (!canEditObject(entry)) throw new Error('admin denied edit');
         assert "ADD COLUMN access_level TEXT" in mobile_db
         assert "'access_level': accessLevel" in mobile_db
         assert "'access_level': pullObj.accessLevel" in mobile_sync
-        assert mobile_vault.count("if (!existing.canEdit(_userId, _isAdmin))") == 2
+        assert mobile_vault.count("if (!existing.canEdit(_userId, isAdmin))") == 2
         assert "folderByDek[object['parent_ref']]" in mobile_vault
 
     def test_web_audit_inner_signature_and_dag_fail_closed(self):
