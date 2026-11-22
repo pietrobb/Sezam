@@ -284,12 +284,16 @@ class VaultService {
   /// desktop). The server's unsigned is_admin ([serverSaysAdmin], kept for
   /// offline unlock too) only stands while this phone knows no team log at
   /// all, where the server authorizes that vault's admin calls itself (S6);
-  /// a refused log makes nobody admin here.
+  /// a refused log, or one pinned (anchor, confirmed, checkpoint) but not
+  /// held yet (capability run 473), makes nobody admin here.
   bool get isAdmin {
     final team = teamLog?.team;
     if (team != null) return _userId != null && TeamLog.isAdmin(team, _userId!);
-    return teamLogRefusal == null && _serverAdmin;
+    return teamLogRefusal == null && !_teamGenesisPinned && _serverAdmin;
   }
+
+  /// Set by [_loadTeamLog]: this phone knows a team log exists.
+  bool _teamGenesisPinned = false;
 
   /// The server's role for this account, passed again to a re-unlock.
   bool get serverSaysAdmin => _serverAdmin;
@@ -426,6 +430,7 @@ class VaultService {
     _kekMatchesServer = false;
     teamLog = null;
     teamLogRefusal = null;
+    _teamGenesisPinned = false;
     _deks.clear();
     _folderDekIds.clear();
     _nodes.clear();
@@ -829,6 +834,7 @@ class VaultService {
           'anchor_conflict',
         );
       }
+      _teamGenesisPinned = anchor != null || confirmed != null || pins.isNotEmpty;
       if (raw == null && pins.isEmpty &&
           (confirmed == null || (await _db.getAllObjects()).isEmpty)) {
         return null;

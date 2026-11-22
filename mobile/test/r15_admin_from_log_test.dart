@@ -74,4 +74,37 @@ void main() {
       'no log, server member': no,
     });
   });
+
+  // Capability run 473: a phone that knows a team log exists (the account
+  // anchor, a confirmed genesis) before it holds a copy, e.g. a sign-in before
+  // its pull, is no vault without a log: the server's flag makes nobody admin
+  // there, as webIsAdmin's pinned_no_copy.
+  test('pinned to a team log but holding no copy yet: the server makes nobody admin', () async {
+    final genesis = TeamLog(vault.verifyEd25519).replay(records).genesisHash;
+    Future<Map<String, Object?>> pinnedOnly(String userId, Future<void> Function() pin) async {
+      await pin();
+      await vault.unlock(
+        kek: Uint8List(32),
+        signingSecretKey: Uint8List(64),
+        signingPublicKey: Uint8List(32),
+        userId: userId,
+        isAdmin: true,
+      );
+      return {
+        'copy': vault.teamLog != null,
+        'refused': vault.teamLogRefusal != null,
+        'admin': vault.isAdmin,
+        'edit': theirs.canEdit(userId, vault.isAdmin),
+      };
+    }
+
+    const no = {'copy': false, 'refused': false, 'admin': false, 'edit': false};
+    expect({
+      'confirmed genesis, empty vault': await pinnedOnly('member-confirmed', () => confirmTeamGenesis('member-confirmed', genesis)),
+      'account anchor': await pinnedOnly('member-anchor', () => recordAccountTeamGenesis('member-anchor', genesis)),
+    }, {
+      'confirmed genesis, empty vault': no,
+      'account anchor': no,
+    });
+  });
 }
