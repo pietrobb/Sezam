@@ -4,7 +4,8 @@ In sudoers a command written without arguments may be run with any, so
 'ai-host-setup --sudo-command /usr/bin/systemctl' let the AI account run
 'sudo systemctl edit --full ssh' and so get root. A command without
 arguments now gets '""' (sudoers: no arguments at all); one with arguments
-is matched exactly as before.
+is matched exactly as before. (systemctl itself is now listed only with an
+action and a unit, R14-M4; an operator's script stands in.)
 """
 
 # ruff: noqa: F811  (pytest fixture imported from the S3b tests)
@@ -21,9 +22,9 @@ from tests.test_review6_sudoers_escape import _rule
 
 
 def test_a_command_without_arguments_allows_none(ca_pem):
-    rule = _rule(host_setup_script(_entry(ca_pem), "Servers/Web-AI", sudo_command="/usr/bin/systemctl"))
+    rule = _rule(host_setup_script(_entry(ca_pem), "Servers/Web-AI", sudo_command="/usr/local/sbin/deploy"))
 
-    assert rule == 'ai-web ALL=(root) NOPASSWD: /usr/bin/systemctl ""'
+    assert rule == 'ai-web ALL=(root) NOPASSWD: /usr/local/sbin/deploy ""'
 
 
 def test_a_command_with_arguments_is_matched_exactly(ca_pem):
@@ -49,7 +50,7 @@ VISUDO = shutil.which("visudo")
 
 @pytest.mark.skipif(not (VISUDO or _wsl_visudo()), reason="needs visudo (or WSL with sudo)")
 def test_visudo_accepts_the_rule(ca_pem, tmp_path):
-    rule = _rule(host_setup_script(_entry(ca_pem), "p", sudo_command="/usr/bin/systemctl"))
+    rule = _rule(host_setup_script(_entry(ca_pem), "p", sudo_command="/usr/local/sbin/deploy"))
     if VISUDO:
         path = tmp_path / "rule"
         path.write_text(rule + "\n")

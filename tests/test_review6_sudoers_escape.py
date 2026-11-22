@@ -3,7 +3,8 @@ let ':' and '=' into sudoers.
 
 In a sudoers Cmnd an unescaped ':' ends the command and starts another rule
 and '=' separates hosts from commands, so
-``--sudo-command "/bin/true x : ALL = NOPASSWD: ALL"`` gave the AI account
+``--sudo-command "/bin/true x : ALL = NOPASSWD: ALL"`` (now an operator's
+script: a system program runs only from a list, R14-M4) gave the AI account
 root. Both are now escaped ('\\:' '\\='), so they stay plain argument
 characters; ``--flag=value`` still works.
 """
@@ -21,7 +22,7 @@ import pytest
 from sezam.mcp.host_setup import host_setup_script
 from tests.test_ai_s3b_host_setup import _entry, _lines, ca_pem  # noqa: F401  (fixture)
 
-INJECTION = "/bin/true x : ALL = NOPASSWD: ALL"
+INJECTION = "/usr/local/sbin/deploy x : ALL = NOPASSWD: ALL"
 
 
 def _rule(script: str) -> str:
@@ -36,15 +37,15 @@ def test_colon_and_equals_cannot_start_a_second_rule(ca_pem):  # noqa: F811
     assert head == "ai-web ALL=(root)"
     # Every ':' and '=' of the command is escaped: none ends the Cmnd.
     assert re.search(r"(?<!\\)[:=]", command) is None
-    assert command == "/bin/true x \\: ALL \\= NOPASSWD\\: ALL"
+    assert command == "/usr/local/sbin/deploy x \\: ALL \\= NOPASSWD\\: ALL"
 
 
 def test_flag_with_value_is_kept_escaped(ca_pem):  # noqa: F811
     rule = _rule(host_setup_script(
-        _entry(ca_pem), "Servers/Web-AI", sudo_command="/usr/bin/systemctl --no-pager=1 reload nginx"
+        _entry(ca_pem), "Servers/Web-AI", sudo_command="/usr/local/sbin/deploy --env=1 reload"
     ))
 
-    assert rule.endswith("NOPASSWD: /usr/bin/systemctl --no-pager\\=1 reload nginx")
+    assert rule.endswith("NOPASSWD: /usr/local/sbin/deploy --env\\=1 reload")
 
 
 @pytest.mark.skipif(

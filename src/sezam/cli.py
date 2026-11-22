@@ -3953,7 +3953,11 @@ def ssh_agent(
 @click.option(
     "--sudo-command",
     default=None,
-    help="Allow exactly this one command as root via sudo, e.g. '/bin/systemctl reload nginx'.",
+    help=(
+        "Allow exactly this one command as root via sudo, e.g. '/bin/systemctl reload nginx'. "
+        "A system program only as systemctl/service/nginx/apachectl in a listed shape; "
+        "anything else as a root-owned script, e.g. /usr/local/sbin/deploy."
+    ),
 )
 def ai_host_setup(path: str, web_root: Optional[str], sudo_command: Optional[str]):
     """Print (never run) the commands that prepare a server for an AI account

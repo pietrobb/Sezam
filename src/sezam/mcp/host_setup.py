@@ -54,6 +54,49 @@ _INTERPRETER = re.compile(
 )
 
 
+# Programs that run the program named by their arguments: never a sudo command.
+_WRAPPER = re.compile(
+    r"busybox|env|sudo|su|doas|runuser|xargs|nohup|timeout|nice|ionice|setsid|stdbuf|chroot|script|expect"
+)
+
+# Review 8bc70f7 R14-M4: where the system's programs live. One of them is a
+# sudo command only in a shape of _SYSTEM_COMMANDS; a list of what is unsafe
+# missed 'make install' (the Makefile where the AI starts sudo), 'git pull'
+# (its hooks), 'systemctl status' (a pager: '!sh') and 'tee /etc/sudoers'.
+_TOOL_DIRS = (
+    "/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/local/bin", "/usr/games", "/usr/local/games",
+    "/lib", "/lib32", "/lib64", "/usr/lib", "/usr/lib32", "/usr/lib64", "/usr/libexec", "/usr/share", "/snap",
+)
+_UNIT = r"[A-Za-z0-9_@][A-Za-z0-9_.@-]*"
+_APACHE = re.compile(r"graceful|configtest|-k graceful")
+# Exact argument shapes, none of which pages, edits or reads the caller's
+# directory; the unit is fixed by the operator in the sudoers rule.
+_SYSTEM_COMMANDS = {
+    "systemctl": re.compile(rf"(restart|reload|try-restart|reload-or-restart|start|stop) {_UNIT}"),
+    "service": re.compile(rf"{_UNIT} (restart|reload|start|stop)"),
+    "nginx": re.compile(r"-t|-s reload"),
+    "apachectl": _APACHE,
+    "apache2ctl": _APACHE,
+}
+
+
+def _system_program(path: str) -> bool:
+    return any(path.startswith(top + "/") for top in _TOOL_DIRS)
+
+
+def _not_listed() -> HostSetupError:
+    shapes = (
+        "systemctl restart|reload|try-restart|reload-or-restart|start|stop <unit>, "
+        "service <unit> restart|reload|start|stop, nginx -t, nginx -s reload, "
+        "apachectl|apache2ctl graceful|configtest"
+    )
+    return HostSetupError(
+        f"--sudo-command may run a system program only as one of: {shapes}. For anything else "
+        "write a root-owned script outside the system directories (e.g. /usr/local/sbin/deploy) "
+        "and give that, or '/bin/sh /usr/local/sbin/deploy'."
+    )
+
+
 def _root_only_path(path: str, what: str, web_root: Optional[str]) -> None:
     parts = path.split("/")[1:]
     if any(p in ("", ".", "..") for p in parts):
@@ -66,10 +109,12 @@ def _root_only_path(path: str, what: str, web_root: Optional[str]) -> None:
         )
 
 
-def _sudo_paths(command: str, web_root: Optional[str]) -> list[str]:
+def _sudo_paths(command: str, web_root: Optional[str]) -> tuple[list[str], Optional[str]]:
     """The program of a --sudo-command and every path among its arguments,
     refused where the AI may rewrite them; the printed script checks each
-    of them on the host as well (_ROOT_ONLY).
+    of them on the host as well (_ROOT_ONLY). With them the operator's
+    script the command runs (None for a listed system command), which the
+    host must not resolve to a system program (_NOT_A_SYSTEM_PROGRAM).
 
     Review 1141a20: '--web-root /var/www/site --sudo-command
     /var/www/site/deploy.sh' gave root to whatever the AI wrote into
@@ -89,14 +134,26 @@ def _sudo_paths(command: str, web_root: Optional[str]) -> list[str]:
                 "--sudo-command arguments that name files must be absolute paths "
                 "(a relative one is resolved where the AI runs sudo)."
             )
-    if _INTERPRETER.fullmatch(program.rsplit("/", 1)[1].lower()) and not (
-        args and args[0].startswith("/")
-    ):
-        raise HostSetupError(
-            "--sudo-command may run a shell or interpreter only with a script given "
-            "by an absolute path as its first argument (e.g. /bin/sh /usr/local/sbin/deploy)."
-        )
-    return paths
+    name = program.rsplit("/", 1)[1].lower()
+    if _INTERPRETER.fullmatch(name):
+        if _WRAPPER.fullmatch(name) or not _system_program(program):
+            raise _not_listed()
+        if not (args and args[0].startswith("/")):
+            raise HostSetupError(
+                "--sudo-command may run a shell or interpreter only with a script given "
+                "by an absolute path as its first argument (e.g. /bin/sh /usr/local/sbin/deploy)."
+            )
+        script = args[0]
+    elif _system_program(program):
+        listed = _SYSTEM_COMMANDS.get(name)
+        if listed is None or not listed.fullmatch(" ".join(args)):
+            raise _not_listed()
+        return paths, None
+    else:
+        script = program
+    if _system_program(script):
+        raise _not_listed()
+    return paths, script
 
 
 # Shell check run on the host before the sudoers rule is installed: the
@@ -116,6 +173,19 @@ _ROOT_ONLY = r"""sezam_root_only() {
     done
   done
 }"""
+
+# R14-M4 on the host: the operator's script is not a system program under
+# another name (a symlink /usr/local/sbin/deploy -> /usr/bin/make).
+_NOT_A_SYSTEM_PROGRAM = (
+    "sezam_not_a_system_program() {\n"
+    '  r=$(readlink -f -- "$1" || printf \'%s\' "$1")\n'
+    '  case "$r" in\n'
+    "    " + "|".join(f"{top}/*" for top in _TOOL_DIRS) + ")\n"
+    '      echo "Sezam: $1 is the system program $r; --sudo-command runs a system program only as listed." >&2\n'
+    "      return 1;;\n"
+    "  esac\n"
+    "}"
+)
 
 
 _RESERVED_USERS = {"root", "daemon", "bin", "sys", "nobody", "sshd"}
@@ -246,7 +316,7 @@ def host_setup_script(
             "(no wildcards, quotes or sudoers syntax)."
         )
     root = _web_root(web_root) if web_root is not None else None
-    sudo_paths = _sudo_paths(sudo_command, root) if sudo_command is not None else []
+    sudo_paths, sudo_script = _sudo_paths(sudo_command, root) if sudo_command is not None else ([], None)
 
     q = shlex.quote
     ca_file = f"/etc/ssh/sezam_ai_ca_{user}.pub"
@@ -307,6 +377,7 @@ def host_setup_script(
             "#    could rewrite them.",
             _ROOT_ONLY,
             *(f"sezam_root_only {q(p)}" for p in sudo_paths),
+            *((_NOT_A_SYSTEM_PROGRAM, f"sezam_not_a_system_program {q(sudo_script)}") if sudo_script else ()),
             f"printf '%s\\n' {q(f'{user} ALL=(root) NOPASSWD: {_sudoers_command(sudo_command)}')} > {staged}",
             f"visudo -cf {staged}",
             f"chmod 0440 {staged}",

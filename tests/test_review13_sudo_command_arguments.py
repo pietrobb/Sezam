@@ -49,5 +49,5 @@ def test_a_root_owned_script_is_checked_on_the_host_too(ca_pem):
 
 
 def test_plain_commands_still_pass(ca_pem):
-    for command in ("/usr/bin/systemctl reload nginx", "/usr/bin/systemctl", "/usr/sbin/nginx -t"):
+    for command in ("/usr/bin/systemctl reload nginx", "/usr/local/sbin/deploy", "/usr/sbin/nginx -t"):
         host_setup_script(_entry(ca_pem), "p", web_root="/var/www/site", sudo_command=command)
