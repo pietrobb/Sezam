@@ -347,7 +347,9 @@ void main() {
     final asked = <int>[];
     expect(await sync([], confirmedGenesis: genesis, asked: asked), contains('confirmed genesis'));
     expect(await sync(recs, head: headOf(recs), confirmedGenesis: 'ff' * 32, asked: asked), contains('confirmed genesis'));
-    expect(asked, isEmpty);
+    // Goal #440: only the first page, whose genesis decides the cause (the
+    // head is unsigned); nothing past it.
+    expect(asked, [-1, -1]);
     final good = await sync(recs, head: headOf(recs), confirmedGenesis: genesis) as LocalTeamLog;
     expect(good.team.genesisHash, genesis);
     final seen = records('remove_member_before_rekey');

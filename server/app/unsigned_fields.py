@@ -50,8 +50,12 @@ _ID = "the server's own row id; the client acts on it only towards the server"
 _SHOWN = "shown to the user only"
 _NO_LOG_GRANT = ("with a team log the level is checked against it; a vault without one (several users "
                  "before the log) takes an envelope's 'write' as a write grant: ROOT_CAUSE_PLAN S6, phase 3")
-_FORGET_FROM_HEAD = ("one of the causes that offer to forget the pin (MISMATCH_CAUSES; the offer carries RISK: "
-                     "and needs the pinned genesis typed), chosen from this unsigned head: goal #440")
+_FORGET_FROM_HEAD = ("a cause that offers to forget the pin (log_gone, other_genesis, confirmed_genesis) is "
+                     "named only as far as the records served from seq 0 bear it out: a first record that is "
+                     "this device's genesis makes the head a lie (head_genesis, no offer), and the forget asks "
+                     "the same check again (goal #440, tests/vectors/team_log_mismatch.json). What is left, no "
+                     "record at all, is the server withholding its whole log, and the offer it gets carries "
+                     "RISK: and needs the pinned genesis typed (INV-8)")
 _USER_LIST_FP = ("the desktop user table and the web user list show the pinned key's fingerprint, not the "
                  "server's (tests/test_inv3_team_table_fingerprint.py, tests/test_inv3_web_user_list_fingerprint.py)")
 
@@ -170,9 +174,9 @@ FIELDS: dict[str, Field] = {
         (), ("server_lies_into_full_resync:check_token",)),
     "PullResponse.max_token": Field(HINT, "rollback anchor: a made-up one only makes a later pull see a rollback and ask for a full resync", (), ("server_lies_into_full_resync:check_token",)),
     "PullResponse.team_log_head": Field(
-        DECIDES, "the log is fetched and checked record by record and an older head is refused, but no "
-        "head at all is the cause log_gone: " + _FORGET_FROM_HEAD,
-        _LOG, ("server_lies_about_the_log:old head",)),
+        HINT, "the log is fetched and checked record by record and an older head is refused; "
+        + _FORGET_FROM_HEAD, _LOG + ("vault.team_log_local:TeamLogMixin._refuse_as_served",),
+        ("server_lies_about_the_log:old head",)),
     "PullObject.id": _signed(*_OBJECT_SIG),
     "PullObject.object_type": _signed(*_OBJECT_SIG),
     "PullObject.payload": _signed(*_OBJECT_SIG),
@@ -212,16 +216,17 @@ FIELDS: dict[str, Field] = {
         _LOG, ("server_lies_about_the_log:truncate", "server_lies_about_the_log:drop a record",
                "server_lies_about_the_log:reorder")),
     "TeamLogResponse.head": Field(
-        DECIDES, "compared with the head of the records it names, but none is log_gone where the forget "
-        "is checked again (TeamLogMixin team_log_refusal): " + _FORGET_FROM_HEAD,
-        _LOG, ("server_lies_about_the_log:old head",)),
+        HINT, "compared with the head of the records it names, where the forget is checked again "
+        "(TeamLogMixin team_log_refusal); " + _FORGET_FROM_HEAD,
+        _LOG + ("vault.team_log_local:TeamLogMixin._refuse_as_served",), ("server_lies_about_the_log:old head",)),
     "TeamLogRecord.body": _signed(*_LOG, lies=("server_lies_about_the_log:forged record",)),
     "TeamLogRecord.sig": _signed(*_LOG, lies=("server_lies_about_the_log:forged record",)),
     "TeamLogHead.seq": Field(HINT, "compared with the verified records", _LOG, ("server_lies_about_the_log:old head",)),
     "TeamLogHead.hash": Field(HINT, "compared with the verified records", _LOG, ("server_lies_about_the_log:old head",)),
     "TeamLogHead.genesis_hash": Field(
-        DECIDES, "compared with the pinned genesis; another one is other_genesis or confirmed_genesis: "
-        + _FORGET_FROM_HEAD, _LOG, ("server_lies_about_the_log:other genesis",)),
+        HINT, "compared with the pinned genesis; " + _FORGET_FROM_HEAD,
+        _LOG + ("vault.team_log_local:TeamLogMixin._refuse_as_served",),
+        ("server_lies_about_the_log:other genesis",)),
     # ── Shares ──────────────────────────────────────────────────────────────
     "ShareResponse.encrypted_blob": Field(UNREAD, "not read by the desktop"),
     "ShareResponse.view_count": Field(UNREAD, _SHOWN),
@@ -337,8 +342,8 @@ def _pull_fields(sig_checks: tuple[str, ...], pull: str, log: str) -> dict[str, 
         "PullResponse.check_token": Field(HINT, _FULL_RESYNC, (pull,)),
         "PullResponse.key_material_hash": Field(HINT, _KEY_HASH, (pull,)),
         "PullResponse.team_log_head": Field(
-            DECIDES, "the log is fetched and checked record by record against this device's pins and an "
-            "older head is refused, but no head at all is log_gone: " + _FORGET_FROM_HEAD, (log,)),
+            HINT, "the log is fetched and checked record by record against this device's pins and an "
+            "older head is refused; " + _FORGET_FROM_HEAD, (log,)),
     }
 
 
@@ -348,8 +353,8 @@ def _log_fields(sync: str, refusal: str, replay: str) -> dict[str, Field]:
             HINT, "every record is replayed and verified onto this device's head; a short or reordered page "
             "is refused (short_of_head, does_not_replay)", (sync, replay)),
         "TeamLogResponse.head": Field(
-            DECIDES, "compared with the replayed records, but none is log_gone where the forget is checked "
-            "again: " + _FORGET_FROM_HEAD, (refusal,)),
+            HINT, "compared with the replayed records, where the forget is checked again; "
+            + _FORGET_FROM_HEAD, (refusal, sync)),
         "TeamLogRecord.body": _signed(replay),
         "TeamLogRecord.sig": _signed(replay),
         "TeamLogHead.seq": Field(
@@ -357,8 +362,7 @@ def _log_fields(sync: str, refusal: str, replay: str) -> dict[str, Field]:
             "short_of_head, none of which offers forget", (sync,)),
         "TeamLogHead.hash": Field(HINT, "as .seq: differs or short_of_head, never forget", (sync,)),
         "TeamLogHead.genesis_hash": Field(
-            DECIDES, "compared with the pin; another one is other_genesis or confirmed_genesis: "
-            + _FORGET_FROM_HEAD, (sync,)),
+            HINT, "compared with the pin; " + _FORGET_FROM_HEAD, (sync,)),
     }
 
 

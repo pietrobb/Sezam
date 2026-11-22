@@ -28,15 +28,12 @@ SOURCES = {
 }
 
 # Open INV-3 findings in the web and mobile clients: access_level is the
-# vault without a log (S6), commit_seq is #443 and the log head #440, as on
-# the desktop.
+# vault without a log (S6), commit_seq is #443, as on the desktop.
 KNOWN_CLIENT_DECIDES = {
     ("web", "PullObject.commit_seq"),
     ("mobile", "PullObject.commit_seq"),
     ("web", "PullObject.access_level"),
     ("mobile", "PullObject.access_level"),
-    *((client, key) for client in ("web", "mobile") for key in (
-        "PullResponse.team_log_head", "TeamLogResponse.head", "TeamLogHead.genesis_hash")),
     # #443: the retired key's bound, as on the desktop (the web keeps it per session).
     ("web", "GET /api/users/{user_id}/keys .archived_keys"),
     ("mobile", "GET /api/users/{user_id}/keys .archived_keys"),
@@ -51,10 +48,6 @@ KNOWN_DECIDES = {
     "GET /api/users/{user_id}/keys .archived_keys",
     "PullObject.commit_seq",
     "PullObject.access_level",
-    # Goal #440: the causes that offer to forget the pin come from the head.
-    "PullResponse.team_log_head",
-    "TeamLogResponse.head",
-    "TeamLogHead.genesis_hash",
 }
 
 

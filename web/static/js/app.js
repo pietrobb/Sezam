@@ -8159,6 +8159,27 @@ function refusedLogPersonalKeys(nodes, syncObjects) {
 async function syncWebTeamLog(head, local, pin, _sodium) {
     const TL = globalThis.SezamTeamLog;
     const fail = (detail, cause) => { throw teamLogMismatch(detail, cause); };
+    // Goal #440: a cause that offers to forget the pin only as far as the
+    // records served bear it out, never on the unsigned head alone. No record
+    // while the head says none is the log gone; a first record that is
+    // `genesis` makes the head a lie; another genesis is the loss named.
+    const failAsServed = async (shownHead, genesis, detail, cause) => {
+        const resp = await apiFetch('/api/team-log?since=-1');
+        const served = Array.isArray(resp?.records) ? resp.records : [];
+        if (!served.length) {
+            if (!shownHead) fail(detail, cause);
+            fail('does not reach the head it announced', 'short_of_head');
+        }
+        let first;
+        try {
+            first = TL.replay(served.slice(0, 1), _sodium).genesisHash;
+        } catch (err) {
+            fail(`does not replay: ${err.message}`, 'does_not_replay');
+        }
+        if (first === genesis) fail('head names another genesis than the records it serves', 'head_genesis');
+        if (cause === 'log_gone') fail('starts with another genesis than this browser saw', 'other_genesis');
+        fail(detail, cause);
+    };
     const localSeq = local ? local.team.headSeq : -1;
     const confirmed = state.confirmedTeamGenesis;
     if (local && (!head || head.seq < localSeq)) {
@@ -8170,10 +8191,13 @@ async function syncWebTeamLog(head, local, pin, _sodium) {
         if (restored !== false) head = restored;
     }
     if (confirmed && (!head || head.genesis_hash !== confirmed)) {
-        fail('does not match the externally confirmed genesis', 'confirmed_genesis');
+        await failAsServed(head, confirmed, 'does not match the externally confirmed genesis', 'confirmed_genesis');
     }
     if (!head) {
-        if (local || pin) fail('is gone (a server restored from a backup, or another server)', 'log_gone');
+        if (local || pin) {
+            await failAsServed(null, local?.team.genesisHash || pin?.genesis_hash || null,
+                               'is gone (a server restored from a backup, or another server)', 'log_gone');
+        }
         // Review 8bc70f7 M2: a browser that left a log does not fall back to
         // the rules from before any log because a server sends none.
         if (state.forgottenTeamGenesis?.length) {
@@ -8183,7 +8207,9 @@ async function syncWebTeamLog(head, local, pin, _sodium) {
         return null;
     }
     const pinned = local?.team.genesisHash || pin?.genesis_hash || null;
-    if (pinned && head.genesis_hash !== pinned) fail('starts with another genesis than this browser saw', 'other_genesis');
+    if (pinned && head.genesis_hash !== pinned) {
+        await failAsServed(head, pinned, 'starts with another genesis than this browser saw', 'other_genesis');
+    }
     const seen = Math.max(localSeq, Number.isSafeInteger(pin?.seq) ? pin.seq : -1);
     if (!Number.isSafeInteger(head.seq) || head.seq < seen) fail(`went back (head ${head.seq} < ${seen})`, 'went_back');
     if (local && head.seq === localSeq) {

@@ -23,24 +23,28 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_only_a_missing_or_new_log_offers_to_forget_it():
     result = _run("""
-        const attempt = async (head, local, pin) => {
+        // The records the server serves go with the head it announces: the
+        // head alone is unsigned (goal #440).
+        const attempt = async (head, local, pin, served = OLD) => {
+            apiFetch = async () => ({ records: served });
             try { await syncWebTeamLog(head, local, pin, sodium); return null; }
             catch (err) { return { lost: err.teamLogLost === true, message: err.message }; }
         };
-        apiFetch = async () => ({ records: OLD });
         const forked = { ...teamLogPin(old.team), hash: 'f'.repeat(64) };
         const behind = { ...teamLogPin(old.team), seq: old.team.headSeq - 1, hash: 'e'.repeat(64) };
         state.confirmedTeamGenesis = null;
         return {
-            gone: await attempt(null, old, teamLogPin(old.team)),
-            reseeded: await attempt(teamLogPin(fresh), old, teamLogPin(old.team)),
+            gone: await attempt(null, old, teamLogPin(old.team), []),
+            reseeded: await attempt(teamLogPin(fresh), old, teamLogPin(old.team), NEW),
             forked: await attempt(forked, old, teamLogPin(old.team)),
             behind: await attempt(behind, null, teamLogPin(old.team)),
+            no_head_over_the_log: await attempt(null, old, teamLogPin(old.team)),
+            head_names_fresh_over_the_log: await attempt(teamLogPin(fresh), old, teamLogPin(old.team)),
         };
     """)
     assert result["gone"]["lost"] and result["reseeded"]["lost"], result
     assert "Forget the pinned team log" in result["reseeded"]["message"]
-    for refused in ("forked", "behind"):
+    for refused in ("forked", "behind", "no_head_over_the_log", "head_names_fresh_over_the_log"):
         assert result[refused]["message"].startswith("TEAM LOG MISMATCH"), result
         assert not result[refused]["lost"] and "Forget" not in result[refused]["message"], result
 

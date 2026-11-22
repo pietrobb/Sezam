@@ -259,15 +259,16 @@ class TeamLogMixin:
             if restored is not False:
                 server_head = restored
         if confirmed is not None and (server_head is None or server_head.get("genesis_hash") != confirmed):
-            raise TeamLogMismatch(
+            self._refuse_as_served(server_head, confirmed, TeamLogMismatch(
                 "The server's team log differs from the independently confirmed genesis.", "confirmed_genesis"
-            )
+            ))
         if server_head is None:
             if local is not None or held is not None or pinned:
-                raise TeamLogMismatch(
+                self._refuse_as_served(None, pinned or (local.genesis_hash if local is not None else None),
+                                       TeamLogMismatch(
                     "The server no longer has the team log this device holds "
                     "(restored from a backup, or another server).", "log_gone"
-                )
+                ))
             if forgotten_genesis(self._db) and not self._founding_team_log:
                 # Review 8bc70f7 M2: a device that left a log does not fall
                 # back to the rules from before any log because a server sends none.
@@ -278,9 +279,9 @@ class TeamLogMixin:
                 )
             return None
         if pinned and server_head.get("genesis_hash") != pinned:
-            raise TeamLogMismatch(
+            self._refuse_as_served(server_head, pinned, TeamLogMismatch(
                 "The server's team log starts with another genesis than this device pinned.", "other_genesis"
-            )
+            ))
         local_seq = local.head_seq if local is not None else held[0] if held is not None else -1
         if server_head.get("seq", -1) < local_seq:
             raise TeamLogMismatch(
@@ -296,7 +297,9 @@ class TeamLogMixin:
         for _ in range(FETCH_PAGES):
             since = state.head_seq if state is not None else -1
             resp = self._request("GET", f"/api/team-log?since={since}", auth=True)
-            records = resp.get("records") or []
+            # Appended after this pull's head: the next pull takes it (as the
+            # page and the phone do, goal #440).
+            records = (resp.get("records") or [])[:max(server_head["seq"] - since, 0)]
             if not records:
                 break
             try:
@@ -328,6 +331,31 @@ class TeamLogMixin:
         if raced:
             return self._sync_team_log(server_head)
         return state
+
+    def _refuse_as_served(self, server_head: Optional[dict], genesis: Optional[str], lost: TeamLogMismatch):
+        """Raise ``lost`` (a cause that offers to forget the pin) only as far as
+        the records the server serves bear it out, never on its unsigned head
+        alone (goal #440): no record while the head says none is the log gone;
+        a first record that is ``genesis`` makes the head a lie (head_genesis);
+        another genesis is ``lost``, or other_genesis for a log called gone."""
+        records = self._request("GET", "/api/team-log?since=-1", auth=True).get("records") or []
+        if not records:
+            if server_head is None:
+                raise lost
+            raise TeamLogMismatch("The server's team log does not reach the head it announced.", "short_of_head")
+        try:
+            served = teamlog.replay(records[:1]).genesis_hash
+        except teamlog.TeamLogError as exc:
+            raise TeamLogMismatch(f"The server's team log does not replay: {exc}", "does_not_replay") from exc
+        if served == genesis:
+            raise TeamLogMismatch(
+                "The server's team log head names another genesis than the records it serves.", "head_genesis"
+            )
+        if lost.cause == "log_gone":
+            raise TeamLogMismatch(
+                "The server's team log starts with another genesis than this device pinned.", "other_genesis"
+            )
+        raise lost
 
     def _put_back_lost_team_log(self, server_head: Optional[dict]) -> None:
         """A server restored from a backup gets the log records it lost now.

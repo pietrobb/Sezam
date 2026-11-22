@@ -34,7 +34,7 @@ from sezam.vault.team_log_local import (
     CONFIRMED_GENESIS_META, FORGOTTEN_GENESIS_META, GENESIS_META, RISK_MARKER, TeamLogMismatch, TeamLogMixin,
     forgotten_genesis, local_team_state,
 )
-from tests.team_log_mismatch_vectors import _head, _servers
+from tests.team_log_mismatch_vectors import _servers
 from tests.test_integration_client_server import PASSWORD, _vault
 
 SERVERS = _servers()
@@ -317,10 +317,13 @@ def test_a_damaged_copy_is_fetched_again_under_its_pins(tmp_path, state, served)
     # exactly as for the intact copy: a damaged copy changes nothing else.
     holds = {"same": None, "extended": None, "none": "confirmed_genesis", "behind": "went_back",
              "forked": "differs", "another_genesis": "confirmed_genesis", "short_of_head": "short_of_head",
-             "forged": "does_not_replay", "two_admins": "refused_at_head"}[served]
+             "forged": "does_not_replay", "two_admins": "refused_at_head",
+             # Goal #440: what the records carry decides, not the unsigned head.
+             "no_head_over_the_log": "head_genesis", "no_head_over_another_genesis": "confirmed_genesis",
+             "head_names_another_genesis": "head_genesis", "records_past_the_head": None}[served]
     assert (refusal.cause if refusal else None) == holds, str(refusal)
-    if holds is None:
-        assert local_team_state(vault.db).head_hash == _head(SERVERS[served][0])["hash"]
+    if holds is None:  # followed up to the head the server announced
+        assert local_team_state(vault.db).head_hash == SERVERS[served][1]["hash"]
 
 
 @pytest.mark.parametrize("value", ["{", "42", '"' + "a" * 64 + '"', '["zz"]', '{"a": 1}', "[1]"])

@@ -77,7 +77,9 @@ def test_invitation_anchor_rejects_missing_or_other_genesis_before_fetch():
         return { refusals, fetched };
     })()""", log, served=Log().genesis(D))
     assert all(message.startswith("TEAM LOG MISMATCH") for message in result["refusals"])
-    assert result["fetched"] == []
+    # Goal #440: only the first page, whose genesis decides the cause (the
+    # head is unsigned); nothing past it.
+    assert result["fetched"] == ["/api/team-log?since=-1"] * 2
 
 
 def test_a_fresh_browser_replays_the_whole_log_in_pages():
@@ -131,6 +133,9 @@ def test_a_shorter_log_than_the_pinned_one_is_refused():
 def test_a_server_without_the_log_this_browser_saw_is_refused():
     seen = Log().genesis().member(B)
     assert "is gone" in _mismatch(
+        "await syncWebTeamLog(null, null, teamLogPin(teamOf(RECORDS)), sodium);", seen, served=Log())
+    # Goal #440: no head over the records of the same log is a lie, not a loss.
+    assert "head names another genesis" in _mismatch(
         "await syncWebTeamLog(null, null, teamLogPin(teamOf(RECORDS)), sodium);", seen)
     other = Log().genesis(D)
     assert "another genesis" in _mismatch("""

@@ -415,6 +415,32 @@ Future<LocalTeamLog?> syncTeamLog({
   Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)? restore,
 }) async {
   Never fail(String detail, String cause) => throw TeamLogMismatch(detail, cause);
+  // Goal #440: a cause that offers to forget the pin only as far as the
+  // records served bear it out, never on the unsigned head alone. No record
+  // while the head says none is the log gone; a first record that is
+  // [genesis] makes the head a lie; another genesis is the loss named.
+  Future<Never> failAsServed(
+      Map<String, dynamic>? shownHead, String? genesis, String detail, String cause) async {
+    final served = await fetchPage(-1);
+    if (served.isEmpty) {
+      if (shownHead == null) fail(detail, cause);
+      fail('does not reach the head it announced', 'short_of_head');
+    }
+    final String first;
+    try {
+      first = log.replay(served.take(1).toList()).genesisHash;
+    } catch (e) {
+      fail('does not replay: $e', 'does_not_replay');
+    }
+    if (first == genesis) {
+      fail('head names another genesis than the records it serves', 'head_genesis');
+    }
+    if (cause == 'log_gone') {
+      fail('starts with another genesis than this device saw', 'other_genesis');
+    }
+    fail(detail, cause);
+  }
+
   final localSeq = local?.team.headSeq ?? -1;
   if (restore != null && local != null) {
     // R9-E: a server restored from a backup lost records this phone
@@ -424,11 +450,12 @@ Future<LocalTeamLog?> syncTeamLog({
     head = await _restoreTeamLog(head, local, pin, restore);
   }
   if (confirmedGenesis != null && confirmedGenesis != head?['genesis_hash']) {
-    fail('does not match the confirmed genesis', 'confirmed_genesis');
+    await failAsServed(head, confirmedGenesis, 'does not match the confirmed genesis', 'confirmed_genesis');
   }
   if (head == null) {
     if (local != null || pin != null) {
-      fail('is gone (a server restored from a backup, or another server)', 'log_gone');
+      await failAsServed(null, local?.team.genesisHash ?? pin?['genesis_hash'] as String?,
+          'is gone (a server restored from a backup, or another server)', 'log_gone');
     }
     // Review 8bc70f7 M2: a phone that left a log does not fall back to the
     // rules from before any log because a server sends none.
@@ -440,7 +467,7 @@ Future<LocalTeamLog?> syncTeamLog({
   }
   final pinned = local?.team.genesisHash ?? pin?['genesis_hash'] as String?;
   if (pinned != null && head['genesis_hash'] != pinned) {
-    fail('starts with another genesis than this device saw', 'other_genesis');
+    await failAsServed(head, pinned, 'starts with another genesis than this device saw', 'other_genesis');
   }
   final pinSeq = pin?['seq'] as int? ?? -1;
   final seen = localSeq > pinSeq ? localSeq : pinSeq;

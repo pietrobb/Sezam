@@ -3385,11 +3385,21 @@ class TeamLogMachine(SyncMachine):
         pins = (vault.db.get_meta(GENESIS_META), vault.db.get_meta(CONFIRMED_GENESIS_META))
         work = [json.dumps(c, sort_keys=True) for c in queued_changes(vault.db)] + [
             json.dumps(c, sort_keys=True) for c in set_aside_changes(vault.db)]
+        refusal = None
         try:
             client._refresh_team_log()  # the log part of a pull, without its objects
             outcome = "followed"
         except Exception as exc:  # fail-closed is fine; what it kept is checked below
             outcome = f"refused ({type(exc).__name__})"
+            refusal = exc
+        true_genesis = teamlog.record_hash(true[0])
+        if lie == "other genesis" and pins[0] == true_genesis and pins[1] in (None, true_genesis):
+            # Goal #440: the head alone is unsigned; over the device's own log
+            # it is a lie, never the log lost (no forget offered).
+            from sezam.vault.team_log_local import MISMATCH_CAUSES, TeamLogMismatch
+
+            assert isinstance(refusal, TeamLogMismatch) and not MISMATCH_CAUSES[refusal.cause], (
+                f"{name}: a head naming another genesis over its own log -> {refusal!r}\n" + self._trace())
         coverage_event(f"server lies about the log: {lie} -> {outcome.split(' ')[0]}")
         self.log.append(f"server: {lie} in the log served to {name} -> {outcome}")
         after = (vault.db.get_meta(GENESIS_META), vault.db.get_meta(CONFIRMED_GENESIS_META))
@@ -3443,7 +3453,11 @@ class TeamLogMachine(SyncMachine):
         coverage_event(f"forget-pin while the log is not lost: {lie}")
         self.log.append(f"{name}: forget-pin ({lie or 'honest server'}) -> {outcome}")
         assert pinned_genesis(vault) == pins, f"{name}: a refused forget-pin changed the pins\n" + self._trace()
-        assert [tuple(r) for r in vault.db.fetchall("SELECT seq, hash FROM team_log ORDER BY seq")] == rows, (
+        # The check before the forget may catch the copy up along the true log
+        # (up to the head the server announces, goal #440), never anything else.
+        after = [tuple(r) for r in vault.db.fetchall("SELECT seq, hash FROM team_log ORDER BY seq")]
+        true_rows = [(seq, teamlog.record_hash(r)) for seq, r in enumerate(self._server_log())]
+        assert after[:len(rows)] == rows and after == true_rows[:len(after)], (
             f"{name}: a refused forget-pin changed the log copy\n" + self._trace())
 
     @rule(data=st.data(), race=st.sampled_from([None, *FORGERIES, *LOST_LOG_FORGERIES]),

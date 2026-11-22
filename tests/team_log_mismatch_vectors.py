@@ -15,7 +15,12 @@ answer an oracle gives that knows nothing of any client's code:
   carries "risk_marker" wherever it is shown;
 * anything else that does not continue what the device saw (behind, a fork,
   does not replay, short of its head, TL7) is a server that lies: refused, and
-  forgetting is never offered.
+  forgetting is never offered;
+* the head the pull announces is unsigned (goal #440): "lost" or "another
+  genesis" is what the served records carry, checked against the device's
+  genesis. A head that says no log, or names another genesis, over records
+  that start with the device's own genesis is a lie (head_genesis), and records
+  past the announced head were appended after the pull: followed up to it.
 
 "causes" is the one list of why a device refuses, and whether forgetting is
 offered for it; the desktop (MISMATCH_CAUSES), the page and the phone carry it.
@@ -58,6 +63,7 @@ def _servers() -> dict:
     forged = _team().records + [_team().member(D).records[-1] | {"sig": E.sk.sign(b"x").signature.hex()}]
     two_admins = _team().add("member.role", A, {"user_id": C.uid, "role": "admin"}).records
     reseeded = Log().genesis(D).member(B, by=D).records
+    lying_genesis = _head(team) | {"genesis_hash": _head(reseeded)["genesis_hash"]}
     return {
         "none": ([], None),
         "same": (team, _head(team)),
@@ -68,6 +74,13 @@ def _servers() -> dict:
         "short_of_head": (team, _head(extended)),
         "forged": (forged, _head(extended)),
         "two_admins": (two_admins, _head(two_admins)),
+        # Goal #440: the head is unsigned. A head that says "no log" or names
+        # another genesis over records that carry the team's own is a lie, and
+        # records past the head were appended after the pull.
+        "no_head_over_the_log": (team, None),
+        "no_head_over_another_genesis": (reseeded, None),
+        "head_names_another_genesis": (team, lying_genesis),
+        "records_past_the_head": (extended, _head(team)),
     }
 
 
@@ -78,6 +91,17 @@ def _oracle(device: str, server: str) -> dict:
     holds = device in ("holds", "holds_confirmed")
     confirmed = device in ("holds_confirmed", "confirmed_only")
     anchored = holds or confirmed  # the device names a genesis
+    if server == "head_names_another_genesis":
+        return {"refused": "head_genesis", "forget": False}
+    if server == "records_past_the_head":
+        return {"follows": 2}
+    if server.startswith("no_head_over_"):
+        if anchored:
+            # What the records carry decides, never the unsigned head alone.
+            if server == "no_head_over_the_log":
+                return {"refused": "head_genesis", "forget": False}
+            return {"refused": "confirmed_genesis" if confirmed else "other_genesis", "forget": True, "risk": True}
+        server = "none"  # a device that names no genesis does not look past a missing head
     if server == "none":
         if confirmed:
             return {"refused": "confirmed_genesis", "forget": True, "risk": True}
