@@ -1,14 +1,14 @@
-// Review 688edcb V4: an archived (leaked) identity key vouches only for
-// objects committed before its rotation. The phone takes the bound
-// (retired_seq) from GET /api/users/:id/keys, pins the first one it saw so the
-// server cannot stretch it later, and drops an archive whose rotation the old
-// key itself did not authorize.
+// Review 688edcb V4: the phone drops an archive whose rotation the old key
+// itself did not authorize. Goal #443: an archived (leaked) identity key
+// vouches only for what a voucher list of the current key names; the bound
+// the server serves (retired_seq) is not read.
 
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sezam_mobile/services/crypto_service.dart';
+import 'package:sezam_mobile/services/key_vouchers.dart';
 import 'package:sezam_mobile/services/sync_service.dart';
 
 import 'support/real_server_phone.dart';
@@ -73,63 +73,37 @@ void main() {
     );
   }
 
-  Future<List<Uint8List>> resolve(
-    Map<String, dynamic> keys,
-    Map<String, int> bounds,
-    Map<String, String> settings,
-  ) => SyncService.resolveAuthorSigningKeys(
-    ownerId: owner,
-    currentUserId: 'local-user',
-    currentUserSigningPk: Uint8List(32),
-    loadKnownKey: (_) async => null,
-    fetchPublicKeys: (_) async => keys,
-    saveKnownKey: (_) async {},
-    archiveBoundsOut: bounds,
-    loadSetting: (key) async => settings[key],
-    saveSetting: (key, value) async => settings[key] = value,
-  );
+  Future<List<Uint8List>> resolve(Map<String, dynamic> keys) =>
+      SyncService.resolveAuthorSigningKeys(
+        ownerId: owner,
+        currentUserId: 'local-user',
+        currentUserSigningPk: Uint8List(32),
+        loadKnownKey: (_) async => null,
+        fetchPublicKeys: (_) async => keys,
+        saveKnownKey: (_) async {},
+      );
 
-  test('archived key vouches only up to its rotation, current key always', () {
-    final current = Uint8List.fromList(List<int>.filled(32, 1));
-    final archived = Uint8List.fromList(List<int>.filled(32, 2));
-    final bounds = {bytesToHex(archived): 10};
-    bool may(Uint8List pk, int since, int seq) =>
-        SyncService.keyMayVouch(pk, bounds, sinceSeq: since, commitSeq: seq);
+  test('an archived key vouches only for a vouched entry, the current key always', () async {
+    final keys = rotated(retiredSeq: 1000000).keys;
+    final ring = await resolve(keys);
+    expect(ring, hasLength(2));
+    final listed = keyVoucherKey('01JOBJ00000000000000000001', 3, 'ab' * 32);
+    bool may(Uint8List pk, Set<String> vouched, String entry) =>
+        SyncService.keyMayVouch(pk, ring, () => vouched, entry);
 
-    expect(may(current, 0, 999), isTrue);
-    expect(may(archived, 0, 10), isTrue);
-    expect(may(archived, 0, 11), isFalse);
-    // A delta from seq 10 on never carries what the old key could sign.
-    expect(may(archived, 10, 10), isFalse);
-  });
-
-  test('the first bound is pinned; a later, larger one is ignored', () async {
-    final first = rotated(retiredSeq: 10);
-    final bounds = <String, int>{};
-    final settings = <String, String>{};
-    final ring = await resolve(first.keys, bounds, settings);
-    final oldHex = bytesToHex(first.oldSigningPk);
-    expect(ring.map(bytesToHex), contains(oldHex));
-    expect(bounds[oldHex], 10);
-
-    final archive =
-        (first.keys['archived_keys'] as List).single as Map<String, dynamic>;
-    archive['retired_seq'] = 1000000;
-    final stretched = <String, int>{};
-    await resolve(first.keys, stretched, settings);
-    expect(stretched[oldHex], 10);
-  });
-
-  test('without a bound the archived key vouches for nothing pulled', () async {
-    final legacy = rotated(retiredSeq: null);
-    final bounds = <String, int>{};
-    await resolve(legacy.keys, bounds, {});
-    expect(bounds[bytesToHex(legacy.oldSigningPk)], 0);
+    expect(may(ring.first, const {}, listed), isTrue);
+    expect(may(ring.last, {listed}, listed), isTrue);
+    // Whatever retired_seq the server serves, nothing unlisted counts.
+    expect(may(ring.last, const {}, listed), isFalse);
+    expect(
+      may(ring.last, {listed}, keyVoucherKey('01JOBJ00000000000000000001', 4, 'ab' * 32)),
+      isFalse,
+    );
   });
 
   test('an archive the old key did not authorize is not trusted', () async {
     final forged = rotated(forgeAuthorization: true);
-    final ring = await resolve(forged.keys, {}, {});
+    final ring = await resolve(forged.keys);
     expect(ring, hasLength(1));
     expect(
       ring.map(bytesToHex),

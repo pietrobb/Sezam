@@ -130,11 +130,20 @@ FIELDS: dict[str, Field] = {
     "GET /api/users/{user_id}/keys .encryption_pk": Field(
         HINT, "pinned with the signing key", _TOFU, ("server_swaps_a_member_key",)),
     "GET /api/users/{user_id}/keys .archived_keys": Field(
-        DECIDES,
-        "the keys are certified by their successor (key_ring_from_response), but retired_seq, the last "
-        "commit_seq a retired key vouches for, is unsigned and pinned on first sight only: a server holding "
-        "a leaked retired key serves a high bound to a device that has not seen one",
-        ("vault.sync_common:key_ring_from_response", "vault.sync_client:SyncClient._remember_archive_bounds")),
+        SIGNED,
+        "each key is certified by its successor; retired_seq is not read: a retired key counts only for "
+        "what the current key's voucher lists name (goal #443)",
+        ("vault.sync_common:key_ring_from_response", "vault.sync_vouchers:VoucherMixin._remember_retired_keys",
+         "vault.sync_vouchers:VoucherMixin._vouched")),
+    "GET /api/users/{user_id}/key-vouchers .signing_pk": Field(
+        UNREAD, "the lists are checked against the signer's pinned current key, not this one"),
+    "GET /api/users/{user_id}/key-vouchers .lists": _signed("key_vouchers:vouched"),
+    "POST /api/users/me/key-vouchers .status": Field(UNREAD),
+    "GET /api/users/me/signed-objects .objects": Field(
+        HINT, "a voucher list names only entries whose signature this device verifies: under the current "
+        "key, or under a retired one where a list of the current key already names them; a lie only leaves "
+        "an object out", ("key_vouchers:vouched",)),
+    "GET /api/users/me/signed-objects .more": Field(HINT, "a lie only ends the paging early or asks for an empty page"),
     "POST /api/users/{user_id}/unlock-recovery .expires_at": Field(UNREAD, _SHOWN),
     "POST /api/users/{user_id}/unlock-recovery .status": Field(UNREAD),
     "POST /api/users/{user_id}/unlock-recovery .unlock_code": Field(UNREAD, "handed to the member out of band"),
@@ -199,11 +208,9 @@ FIELDS: dict[str, Field] = {
         HINT, "a DEK's role is derived by the device; the label only names a key it did not hold",
         (), ("server_lies:scope", "server_lies:dek_order")),
     "PullObject.commit_seq": Field(
-        DECIDES,
-        "a retired key's signature counts only for commit_seq at or below its bound, and the server sets "
-        "both the object's commit_seq and the bound (see .archived_keys); held as the copy's seq it picks "
-        "only between copies of one version (core/src/pull.rs against_held)",
-        _OBJECT_SIG),
+        HINT,
+        "held as the copy's seq it picks only between copies of one version (core/src/pull.rs against_held); "
+        "a retired key's signature no longer depends on it, only on the voucher lists (goal #443)"),
     "PullObject.modified_at": Field(HINT, "a full resync records a conflict for the user or sends this device's newer copy over the server's, which the server could drop that copy anyway (withholding)"),
     "HeldResponse.objects": Field(HINT, "only whether a pending re-key landed: a lie stops resending it (withholding) or resends it, which the server refuses"),
     "HeldObject.id": Field(HINT, "see HeldResponse.objects"),
@@ -314,8 +321,10 @@ FIELDS: dict[str, Field] = {
 
 _SIGNED_FIELDS = ("id", "object_type", "payload", "payload_hash", "parent_ref", "target_user_id", "version",
                   "is_deleted", "client_signature")
-_RETIRED_BOUND = ("a retired key's signature counts only for commit_seq at or below its bound, and the server "
-                  "sets both (see .archived_keys): goal #443, as on the desktop")
+_HELD_SEQ = ("held as the copy's seq it picks only between copies of one version (the shared core's "
+             "against_held) and moves the cursor, as on the desktop; ")
+_NO_BOUND = ("not read for a signature any more: a retired key counts only for what the current key's voucher "
+             "lists name (goal #443)")
 _SIGNER = "only picks whose pinned keys verify the signature; a wrong one fails the check"
 _PAGING = "paging: a lie ends or repeats the pull, which withholding may do anyway"
 _CURSOR = ("the cursor: a lower one repeats, a higher one skips commits (withholding), as on the desktop "
@@ -327,11 +336,11 @@ _KEY_HASH = ("another hash ends the session or asks for the password, and the ke
              "opens only under it (AEAD)")
 
 
-def _pull_fields(sig_checks: tuple[str, ...], pull: str, log: str) -> dict[str, Field]:
+def _pull_fields(sig_checks: tuple[str, ...], pull: str, log: str, commit_seq: Field) -> dict[str, Field]:
     return {
         **{f"PullObject.{name}": _signed(*sig_checks) for name in _SIGNED_FIELDS},
         "PullObject.signature_user_id": Field(HINT, _SIGNER, sig_checks),
-        "PullObject.commit_seq": Field(DECIDES, _RETIRED_BOUND, sig_checks),
+        "PullObject.commit_seq": commit_seq,
         "PullObject.write_policy": Field(HINT, "only the edit UI ('shared' with a write envelope); every "
                                                "receiver checks the write against the team log"),
         "PullResponse.objects": Field(HINT, _EACH_CHECKED, (pull,)),
@@ -377,6 +386,13 @@ _SETUP = {
 }
 _RECOVER_REST = {key: Field(UNREAD, "only encrypted_keypair and user_id of the recover reply are read") for key in (
     "RecoverResponse.argon2_params", "RecoverResponse.argon2_salt")}
+
+
+_VOUCHER_FIELDS = (
+    "GET /api/users/{user_id}/key-vouchers .signing_pk", "GET /api/users/{user_id}/key-vouchers .lists",
+    "POST /api/users/me/key-vouchers .status", "GET /api/users/me/signed-objects .objects",
+    "GET /api/users/me/signed-objects .more",
+)
 
 
 def _not_called(path: str, *keys: str) -> dict[str, Field]:
@@ -467,7 +483,7 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             "POST /api/users/{user_id}/unlock-recovery .status", "PUT /api/me/kdf-params .status",
             "PUT /api/me/keypair .status")},
         **_pull_fields(("verifyObjectSignature", "pullAndBuildTreeLocked"), "pullAndBuildTreeLocked",
-                       "syncWebTeamLog"),
+                       "syncWebTeamLog", Field(HINT, _HELD_SEQ + _NO_BOUND, ("webPulledIsStale",))),
         "PullObject.modified_at": Field(UNREAD, "the name is a field of a decrypted entry, not the server's"),
         **_log_fields("syncWebTeamLog", "webTeamLogRefusal", "replay"),
         **_HELD_NOT_ASKED,
@@ -539,9 +555,13 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         "GET /api/users/{user_id}/keys .encryption_pk": Field(
             HINT, "pinned with the signing key", ("getUserSigningPks", "getVerifiedEncryptionPkForRekey")),
         "GET /api/users/{user_id}/keys .archived_keys": Field(
-            DECIDES, "certified by their successor as on the desktop, but retired_seq is unsigned and kept only "
-            "for the session (state.archivedKeyBounds, cleared at sign-out): each new session takes the "
-            "server's bound for a leaked retired key; goal #443", ("getUserSigningPks",)),
+            SIGNED, "certified by their successor as on the desktop; retired_seq is not read: " + _NO_BOUND,
+            ("getUserSigningPks", "verifyArchivedKeyChain", "fetchVouchedEntries")),
+        "GET /api/users/{user_id}/key-vouchers .signing_pk": Field(
+            UNREAD, "the lists are checked against the signer's pinned current key, not this one"),
+        "GET /api/users/{user_id}/key-vouchers .lists": _signed("vouchedEntries", "fetchVouchedEntries"),
+        **_not_called("/api/users/me/key-vouchers and signed-objects (only the desktop rotates identities)",
+                      *_VOUCHER_FIELDS[2:]),
         # ── Shares, audit, AI ──
         "ShareResponse.encrypted_blob": _signed("decryptShareBlob"),
         **_not_called("/api/shares or POST /api/share (the browser only opens a share link)",
@@ -614,7 +634,8 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         "PushResponse.commit_token": Field(UNREAD, "the name is the phone's own checkpoint field; the token "
                                            "comes from the pull's max_token"),
         "RecoverResponse.key_epoch": Field(UNREAD, "the recover reply's epoch is not read; the pull's is"),
-        **_pull_fields(("buildSyncSignatureData", "keyMayVouch"), "_pull", "syncTeamLog"),
+        **_pull_fields(("buildSyncSignatureData", "keyMayVouch"), "_pull", "syncTeamLog",
+                       Field(HINT, _HELD_SEQ + _NO_BOUND, ("rowsTheServerLost",))),
         "PullObject.modified_at": Field(
             HINT, "kept as the row's time; the queue orders only this phone's own edits, stamped here"),
         **_log_fields("syncTeamLog", "_teamLogRefusal", "replay"),
@@ -677,8 +698,13 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         "GET /api/users/{user_id}/keys .encryption_pk": Field(
             HINT, "pinned with the signing key", ("resolveAuthorSigningKeys",)),
         "GET /api/users/{user_id}/keys .archived_keys": Field(
-            DECIDES, "certified by their successor as on the desktop, but retired_seq is unsigned and pinned "
-            "on first sight only (archived_key_bound:*): goal #443", ("resolveAuthorSigningKeys",)),
+            SIGNED, "certified by their successor as on the desktop; retired_seq is not read: " + _NO_BOUND,
+            ("resolveAuthorSigningKeys", "keyMayVouch", "vouchedEntries")),
+        "GET /api/users/{user_id}/key-vouchers .signing_pk": Field(
+            UNREAD, "the lists are checked against the signer's pinned current key, not this one"),
+        "GET /api/users/{user_id}/key-vouchers .lists": _signed("vouchedEntries", "_fetchKeyVoucherLists"),
+        **_not_called("/api/users/me/key-vouchers and signed-objects (only the desktop rotates identities)",
+                      *_VOUCHER_FIELDS[2:]),
         # ── Shares, audit, AI ──
         "ShareResponse.encrypted_blob": _signed("consumeShareLink"),
         "POST /api/share .id": Field(

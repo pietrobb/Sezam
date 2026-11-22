@@ -141,6 +141,19 @@ ROUTES: dict[str, Route] = {
     "GET /api/users/{user_id}/keys": Route(
         "", READER, ("dependencies:get_team_log_reader",), ("tests/test_server_spec.py",),
     ),
+    "GET /api/users/{user_id}/key-vouchers": Route(
+        "", READER, ("dependencies:get_team_log_reader",), ("tests/test_key_vouchers_server.py",),
+        "only the lists of the account's current key; clients check each signature",
+    ),
+    "POST /api/users/me/key-vouchers": Route(
+        "adds a key voucher list (key_vouchers)",
+        ROTATION + "; the list must be signed by the account's current key",
+        ("dependencies:get_rotation_user", "key_vouchers:store"), ("tests/test_key_vouchers_server.py",),
+    ),
+    "GET /api/users/me/signed-objects": Route(
+        "", ROTATION, ("dependencies:get_rotation_user",), ("tests/test_key_vouchers_server.py",),
+        "the caller's own signatures only, without payloads",
+    ),
     "PATCH /api/users/{user_id}/approve": Route(
         "activates a pending account (status)", ADMIN, ("dependencies:require_admin",),
         ("tests/test_server_spec.py",),

@@ -17,6 +17,8 @@ RUN python -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.t
 COPY --chown=sezam:sezam server /app/server
 # The team log rules are one file shared with the clients (docs/DESIGN_TEAM_LOG.md).
 COPY --chown=sezam:sezam src/sezam/teamlog.py /app/server/app/teamlog_core.py
+# So are the key voucher lists of retired identity keys (goal #443).
+COPY --chown=sezam:sezam src/sezam/key_vouchers.py /app/server/app/key_vouchers_core.py
 COPY --chown=sezam:sezam web /app/web
 
 USER sezam

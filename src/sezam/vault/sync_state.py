@@ -6,6 +6,7 @@ Part of SyncClient (sync_client.py); split out without a change of behaviour.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import struct
 import time
@@ -41,6 +42,19 @@ class SyncStateMixin:
         Includes every locally represented sync object, including tombstones,
         access envelopes, DEK archives, and audit records.
         """
+        return compute_state_hash(self._local_objects())
+
+    def _held_entries(self) -> set[tuple[str, int, str]]:
+        """(id, version, payload_hash) of every server copy this device holds
+        (goal #443: what it may vouch for under the account's current key)."""
+        return {
+            (obj_id, version, hashlib.sha256(payload).hexdigest())
+            for obj_id, version, payload in self._local_objects()
+        }
+
+    def _local_objects(self) -> list[tuple[str, int, bytes]]:
+        """(id, version, payload) of every locally represented sync object, as
+        the server holds it (a queued row's server copy)."""
         objects: list[tuple[str, int, bytes]] = []
         server_shadows = {
             row["object_id"]: row
@@ -87,8 +101,7 @@ class SyncStateMixin:
             "signature FROM audit_log"
         ):
             objects.append((row["id"], 2, self._serialize_audit_row(row)))
-
-        return compute_state_hash(objects)
+        return objects
 
     def _get_checkpoint_dek(self) -> tuple[Optional[str], Optional[bytearray]]:
         """Get the audit DEK for checkpoint encryption.

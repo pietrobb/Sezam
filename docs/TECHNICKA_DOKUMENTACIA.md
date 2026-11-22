@@ -1285,7 +1285,7 @@ def compute_state_hash(objects: list) -> str:
 
 **Viac vlastných zápisov, ktoré obnovený server stratil (stavový test SM17).** SM13 chytil len cudziu kópiu s rovnakou verziou. Keď zariadenie zapísalo objekt viackrát (verzia o 2 a viac vyššia) a iné zariadenie po obnove zapísalo nad zálohou nižšiu verziu, full resync ju považoval za kópiu, ktorú zariadenie už prekonalo, a ďalší push ju bez konfliktu prepísal. Nová tabuľka `object_sent_base` drží ku každej odoslanej verzii verziu cudzej kópie, z ktorej zápis vychádza; `object_sent_version` si nad vlastným potvrdeným zápisom drží celý reťazec vlastných zápisov od nej. Kópia servera nad touto verziou, ktorá nie je vlastným zápisom, je konflikt.
 
-**Hranica archivovaného kľúča zo stratenej rotácie (stavový test SM18).** Hranica (`archived_key_bounds`, review 688edcb V4) sa pripína na najnižší `retired_seq`. Zariadenie si ju pripne pri vlastnej rotácii; keď ju obnovený server stratil, starý kľúč bol znova kľúčom účtu a objekty ním podpísané po obnove boli pri každom full resync odmietnuté ako falošné. Full resync po zistenom rollbacku (`server_rollback_head`) teraz pripnuté hranice vlastného účtu zahodí a naučí sa ich znova zo servera. Útočník so serverom tým nič nezíska: po rollbacku zariadenie aj tak preberá kľúčový materiál účtu zo servera s heslom (SM14).
+**Hranica archivovaného kľúča zo stratenej rotácie (stavový test SM18).** Hranica (`archived_key_bounds`, review 688edcb V4) sa pripína na najnižší `retired_seq`. Zariadenie si ju pripne pri vlastnej rotácii; keď ju obnovený server stratil, starý kľúč bol znova kľúčom účtu a objekty ním podpísané po obnove boli pri každom full resync odmietnuté ako falošné. Full resync po zistenom rollbacku (`server_rollback_head`) teraz pripnuté hranice vlastného účtu zahodí a naučí sa ich znova zo servera. Útočník so serverom tým nič nezíska: po rollbacku zariadenie aj tak preberá kľúčový materiál účtu zo servera s heslom (SM14). Od cieľa #443 sa hranice nepripínajú vôbec: vyradený kľúč platí len pre verzie zo zoznamov key vouchers (sekcia 10.2, krok 3).
 
 **Vyradený kľúč po obnove servera (capability review, behy 294 a 300).** Obnova zo zálohy spred rotácie identity vráti do `users` kľúč K0, ktorý denník (`member.keys`) už vyradil; prihlásiť sa ním vie zariadenie, ktoré rotovalo (drží K0 v žurnáli rotácie), aj stratené či ukradnuté zariadenie, kvôli ktorému sa rotovalo (drží len K0). Relácia s takým kľúčom (`dependencies._authenticate_user`, `team_log.key_retired`) nesmie pushovať okrem samotnej rotácie na kľúče denníka, zapisovať do denníka ani pozývať (403 `identity_key_retired`). Objekty (`GET /api/sync`, push a stage rotácie) smie čítať len relácia, ktorej prihlásenie podpísal aj aktuálny kľúč denníka: `/api/auth/verify` prijme `current_key_signature` (Ed25519 nad `sezam-current-key-proof-v1 || challenge`) a token nesie claim `kcur`. Desktop ho posiela pri prihlásení starým kľúčom zo žurnálu (`sync_common.auth_verify_body`). Bez dôkazu dostane relácia rozsah `key_retired`, ktorý vidí len denník a verejné kľúče (`get_team_log_reader`). Rotácia identity DEK priečinkov nemení, len ich prebalí, takže predtým zariadenie s K0 rozšifrovalo aj položky zapísané inými členmi po obnove. Klienti (desktop, web, mobil) navyše overujú podpisy proti denníku, nie proti kľúču, ktorý server vyhlási za aktuálny (`signing_key_retired` / `TeamLog.signingKeyRetired`). Testy: `tests/test_review9_retired_key_after_restore.py` (vrátane `mobile/test/phone_retired_key_test.dart`); nové prípady behu 300 zlyhajú na 4a16a93.
 
@@ -1564,16 +1564,38 @@ Klient má starý KEK, server má encrypted_keypair wrappovaný novým KEK-om. R
        key_epoch, token_epoch + 1 (staré tokeny neplatia)
    --> archivovaný kľúč sa nesmie vrátiť ako nový (409)
 3. Klienti overujú staré podpisy cez certifikovaný archív (GET /api/users/:id/keys).
-   Archív vracia aj authorization_signature (ak je, musí platiť starým kľúčom)
-   a retired_seq. Archivovaný kľúč (review 688edcb V4) dosvedčí len objekt
-   s since < commit_seq <= retired_seq — nové DEK, obálky ani záznamy, ktoré
-   niekto s uniknutým kľúčom podpíše po rotácii, desktop/web/mobil odmietnu
-   (celý pull zlyhá). Desktop a mobil si prvý videný retired_seq pripnú
-   (meta archived_key_bounds / nastavenie archived_key_bound:*), neskôr väčší
-   ignorujú; web drží väčšiu hranicu len počas relácie. Archív bez retired_seq
-   (server pred V4) nedosvedčí žiadny stiahnutý objekt; pri upgrade servera
-   dostanú staré archívy retired_seq = vtedajší head. Zvyšok rizika: klient,
-   ktorý rotáciu ešte nevidel, verí prvému retired_seq od servera.
+   Archív vracia aj authorization_signature (ak je, musí platiť starým kľúčom).
+   Podpis archivovaného (vyradeného) kľúča platí len pre presnú verziu objektu,
+   ktorú menuje zoznam „key vouchers“ (review e443cbc R15, cieľ #443, INV-3):
+   - Správa zoznamu: doména `sezam-key-vouchers-v1` + user_id + signer_pk +
+     zoradené položky (id, version u64, payload_hash 32 B); podpis AKTUÁLNYM
+     kľúčom účtu, ktorý zoznam posiela (`src/sezam/key_vouchers.py`, JS v app.js,
+     Dart `mobile/lib/services/key_vouchers.dart`, spoločné vektory
+     `tests/vectors/key_vouchers.json`).
+   - Server: tabuľka `key_vouchers`; GET /api/users/:id/key-vouchers vráti len
+     zoznamy podpísané aktuálnym kľúčom účtu, POST /api/users/me/key-vouchers
+     zoznam pridá (aditívne, podpis aktuálnym kľúčom volajúceho), GET
+     /api/users/me/signed-objects dá zariadeniu živé verzie, ktoré účet podpísal.
+     Rotácia identity v pushi nesie zoznam podpísaný NOVÝM kľúčom a uloží ho v tej
+     istej transakcii; keď v ňom chýba živý objekt starého kľúča, server vráti 409
+     `key_vouchers_incomplete`.
+   - Klient (desktop `sync_vouchers.py`, web, mobil) uzná podpis vyradeného kľúča
+     pre (id, version, payload_hash), ak ho menuje zoznam podpísaný aktuálnym
+     kľúčom (a) účtu podpisovateľa, (b) vlastného účtu zariadenia, (c) aktuálneho
+     admina z overeného tímového denníka, alebo ak zariadenie túto verziu samo
+     drží overenú (desktop, mobil; full resync tak nestratí overené kópie). Inak
+     pull zlyhá a chyba menuje účet, ktorého vyradený kľúč objekt podpísal.
+   - `retired_seq` (archív) a `commit_seq` (objekt) sú slová servera: klient ich
+     na rozhodnutie nečíta (`server/app/unsigned_fields.py`: UNREAD / HINT).
+     Pripínanie hraníc (`archived_key_bounds`) zaniklo.
+   - Rotácie spred #443 a neaktívne účty (capability review run 480): každý
+     desktop pošle zoznam verzií vyradených kľúčov, ktoré drží, pri prvom sync s
+     #443 a po každej rotácii, ktorú uvidí. Člen, ktorý takú verziu nikdy nedržal
+     a nedrží ju ani jeho účet ani admin, ju dostane, až keď sa synchronizuje
+     podpisovateľ, admin alebo iné zariadenie jeho účtu.
+   - Testy: `tests/test_key_vouchers_*.py` (vektory, server, desktop, web,
+     telefón) a pravidlo stavového testu `server_holds_a_leaked_retired_key`
+     (nové zariadenie, full resync, web).
    Ostatní členovia dostanú TOFU varovanie a nový fingerprint si overia s používateľom;
    po potvrdení desktop drží aj certifikovaný reťazec starých kľúčov.
    Iné zariadenie toho istého účtu so starým keypairom: /api/auth/verify vráti

@@ -18,16 +18,19 @@ import os
 import secrets
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from .. import authority, team_log
+from .. import authority, key_vouchers, team_log
 from ..auth import create_jwt, unlock_code_hash
 from ..config import JWTKeyManager, ServerConfig
 from ..errors import TEAM_LOG_REQUIRED, ApiError
 from ..database import Database
-from ..dependencies import get_config, get_db, get_jwt_manager, get_team_log_reader, require_admin, require_full_jwt
+from ..dependencies import (
+    get_config, get_db, get_jwt_manager, get_rotation_user, get_team_log_reader, require_admin, require_full_jwt,
+)
 from ..models.schemas import (
     InviteResponse,
+    KeyVoucherList,
     RegisterRequest,
     RegisterResponse,
     UserInfo,
@@ -327,6 +330,79 @@ async def get_user_keys(
         "encryption_pk": row[1].hex() if row[1] else None,
         "archived_keys": archived_keys,
     }
+
+
+async def _current_signing_pk(cur, user_id: str) -> bytes:
+    await cur.execute("SELECT signing_pk FROM users WHERE id = %s", (user_id,))
+    row = await cur.fetchone()
+    if not row or not row[0]:
+        raise HTTPException(status_code=404, detail="User not found")
+    return bytes(row[0])
+
+
+@router.get("/{user_id}/key-vouchers")
+async def get_key_vouchers(
+    user_id: str,
+    db: Database = Depends(get_db),
+    user: dict = Depends(get_team_log_reader),
+):
+    """Goal #443: the voucher lists of the account's current key, the only
+    ones under which clients take a retired key's signature."""
+    async with db.acquire() as conn:
+        async with conn.cursor() as cur:
+            signing_pk = await _current_signing_pk(cur, user_id)
+            lists = await key_vouchers.lists_of(cur, user_id, signing_pk)
+    return {"signing_pk": signing_pk.hex(), "lists": lists}
+
+
+@router.post("/me/key-vouchers")
+async def post_key_vouchers(
+    body: KeyVoucherList,
+    db: Database = Depends(get_db),
+    user: dict = Depends(get_rotation_user),
+):
+    """Goal #443: add a voucher list signed by the account's current key (a
+    rotation from before #443 gets its list on the next sync)."""
+    async with db.transaction() as conn:
+        async with conn.cursor() as cur:
+            signing_pk = await _current_signing_pk(cur, user["sub"])
+            await key_vouchers.store(
+                cur, user["sub"], signing_pk, body.model_dump(), int(time.time() * 1000)
+            )
+    return {"status": "ok"}
+
+
+SIGNED_OBJECTS_PAGE = 1000
+
+
+@router.get("/me/signed-objects")
+async def get_signed_objects(
+    after: str = Query(default="", pattern=r"^(?:[0-9A-Za-z]{26})?$"),
+    db: Database = Depends(get_db),
+    user: dict = Depends(get_rotation_user),
+):
+    """Goal #443: the live versions the caller's account signed, without
+    payloads: what its next voucher list may name. Paged by id."""
+    async with db.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT id, object_type, parent_ref, target_user_id, is_deleted, version, "
+                "payload_hash, client_signature, commit_seq FROM vault_objects "
+                "WHERE signature_user_id = %s AND id > %s ORDER BY id LIMIT %s",
+                (user["sub"], after, SIGNED_OBJECTS_PAGE),
+            )
+            rows = list(await cur.fetchall())
+    objects = [
+        {
+            "id": obj_id, "object_type": object_type, "parent_ref": parent_ref,
+            "target_user_id": target_user_id, "is_deleted": int(is_deleted or 0),
+            "version": version, "payload_hash": payload_hash,
+            "signature": bytes(signature).hex() if signature else None, "commit_seq": commit_seq,
+        }
+        for (obj_id, object_type, parent_ref, target_user_id, is_deleted, version,
+             payload_hash, signature, commit_seq) in rows
+    ]
+    return {"objects": objects, "more": len(rows) == SIGNED_OBJECTS_PAGE}
 
 
 @router.patch("/{user_id}/approve")

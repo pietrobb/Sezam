@@ -80,6 +80,20 @@ CREATE TABLE IF NOT EXISTS user_key_material_archive (
     INDEX idx_ukma_user_time (user_id, archived_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
+-- Goal #443: the object versions a retired identity key still vouches for,
+-- each list signed by the key that was the account's current one (clients
+-- count only the lists of today's key, src/sezam/key_vouchers.py).
+CREATE TABLE IF NOT EXISTS key_vouchers (
+    id              VARCHAR(26) PRIMARY KEY,
+    user_id         VARCHAR(26) NOT NULL,
+    signing_pk      BINARY(32) NOT NULL,
+    entries         LONGTEXT NOT NULL,
+    signature       BINARY(64) NOT NULL,
+    created_at      BIGINT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_kv_user_key (user_id, signing_pk)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
 CREATE TABLE IF NOT EXISTS vault_objects (
     id              VARCHAR(26) PRIMARY KEY,
     object_type     VARCHAR(20) NOT NULL,

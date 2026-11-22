@@ -1,0 +1,236 @@
+"""Key vouchers on the desktop (review e443cbc R15, goal #443, INV-3).
+
+A retired identity key stays in its account's key ring so that what it signed
+before the rotation still verifies. Which objects that is was decided by the
+server's ``retired_seq`` and each object's ``commit_seq``: a server holding a
+leaked retired key signed any object with it and served both numbers to a
+device that had not pinned a bound (a new device, a full resync).
+
+Now a retired key's signature counts only for an (id, version, payload_hash)
+named by a voucher list (src/sezam/key_vouchers.py) signed by the current key
+of the signer's account, of this device's own account, or of a current admin
+of the verified team log, or held by this device itself. The identity rotation
+of this device carries the lists, signed by the new key, of every live object
+the old key signed (and of those the old key's lists named); the server
+refuses a rotation that leaves one out.
+
+A rotation from before #443 has no list, and its account may never sync again
+(an inactive member, web only, not updated). So every device posts a list of
+the versions it holds (it verified them) on its first sync with #443 and after
+each identity rotation in the team, signed by its account's key: the
+account's other and new devices take them over a full resync, and an admin's
+list vouches for every member (capability review run 480). A member who never
+held such an object gets it once the signer, an admin or another device of
+their own account has synced; until then the pull says so.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+from typing import Iterator, Optional
+
+from nacl.exceptions import BadSignatureError
+from nacl.signing import VerifyKey
+
+from .. import key_vouchers, teamlog
+from .sync_common import server_error
+
+logger = logging.getLogger(__name__)
+
+# Entries per list: a list of ~110 bytes per entry stays well under the
+# server's 16 MiB body limit, with the rotation's batch beside it.
+VOUCHERS_PER_LIST = 20_000
+# The keys of this account and its team this device last posted the list of
+# the versions it holds under (_post_legacy_vouchers).
+LEGACY_CHECKED_META = "key_vouchers_checked"
+# Every retired key of any account this device has seen.
+RETIRED_SEEN_META = "key_vouchers_retired_seen"
+
+
+def voucher_entry(obj: dict) -> Optional[key_vouchers.Entry]:
+    """(id, version, payload_hash) of a served object, or None when malformed."""
+    obj_id, version, payload_hash = obj.get("id"), obj.get("version", 1), obj.get("payload_hash")
+    if not isinstance(obj_id, str) or not isinstance(payload_hash, str):
+        return None
+    if isinstance(version, bool) or not isinstance(version, int):
+        return None
+    return (obj_id, version, payload_hash.lower())
+
+
+class VoucherMixin:
+    """Mixed into SyncClient."""
+
+    def _remember_retired_keys(self, user_id: str, response: dict) -> None:
+        """The account's retired keys, and its current key whose lists count.
+
+        ``response`` is /api/users/{id}/keys, already checked: its signing_pk
+        is the pinned key (or, for this account, the local key or the one that
+        authorized this device's pending rotation).
+        """
+        retired: set[bytes] = set()
+        archives = response.get("archived_keys")
+        for archive in archives if isinstance(archives, list) else []:
+            if isinstance(archive, dict) and isinstance(archive.get("signing_pk"), str):
+                retired.add(bytes.fromhex(archive["signing_pk"]))
+        self._retired_keys[user_id] = frozenset(retired)
+        self._voucher_keys[user_id] = bytes.fromhex(response["signing_pk"])
+        self._vouched_cache.clear()
+        seen = set(self._db.get_meta_json(RETIRED_SEEN_META) or [])
+        if not {pk.hex() for pk in retired} <= seen:
+            # The next sync posts this device's list (_post_legacy_vouchers).
+            self._db.set_meta_json(RETIRED_SEEN_META, sorted(seen | {pk.hex() for pk in retired}))
+
+    def _is_retired(self, user_id: str, signing_pk: bytes) -> bool:
+        return bytes(signing_pk) in self._retired_keys.get(user_id, frozenset())
+
+    def _lists_of(self, poster_id: str, key: Optional[bytes]) -> frozenset:
+        """What the lists ``poster_id`` signed with ``key`` name; empty without one."""
+        if key is None:
+            return frozenset()
+        cached = self._lists_cache.get((poster_id, key))
+        if cached is not None:
+            return cached
+        try:
+            response = self._request("GET", f"/api/users/{poster_id}/key-vouchers", auth=True) or {}
+        except RuntimeError as exc:  # a server from before #443: no list
+            logger.warning("No key vouchers of %s: %s", poster_id, exc)
+            response = {}
+        cached = key_vouchers.vouched(poster_id, key, response.get("lists"))
+        self._lists_cache[(poster_id, key)] = cached
+        return cached
+
+    def _vouched(self, user_id: str) -> frozenset:
+        """What a retired key of ``user_id`` still vouches for: what the lists
+        of the account's current key, of this account's key or of a current
+        admin of the verified team log name, and the versions this device holds."""
+        cached = self._vouched_cache.get(user_id)
+        if cached is not None:
+            return cached
+        out = set(self._lists_of(user_id, self._voucher_keys.get(user_id)))
+        out |= self._lists_of(self._user_id, bytes(self._keypair.signing_pk))
+        state = self.team_state()
+        for admin_id, member in (state.members.items() if state is not None else ()):
+            if member.active and member.signing_pk and teamlog.is_admin(state, admin_id):
+                out |= self._lists_of(admin_id, bytes.fromhex(member.signing_pk))
+        if self._held_cache is None:
+            self._held_cache = frozenset(self._held_entries())
+        out |= self._held_cache
+        cached = frozenset(out)
+        self._vouched_cache[user_id] = cached
+        return cached
+
+    def _reset_vouchers(self) -> None:
+        """Before a pull or full resync: lists and held versions are read again."""
+        self._lists_cache.clear()
+        self._vouched_cache.clear()
+        self._held_cache = None
+        self._unvouched.clear()
+
+    def _rejected(self, obj: dict, generic: str = "invalid or unverifiable signature") -> str:
+        """Why a pulled object did not verify, for the error."""
+        signer = self._unvouched.get(obj.get("id"))
+        if signer is None:
+            return generic
+        return (
+            f"{generic}: a retired key of {signer} signed it and no "
+            f"voucher list names it; it verifies once {signer}, a team admin or another "
+            "device of this account that holds it has synced"
+        )
+
+    def _signed_by(self, obj: dict, signing_pk: bytes) -> bool:
+        """Whether ``signing_pk`` signed this served object's canonical fields."""
+        signature = obj.get("signature") or obj.get("client_signature")
+        if not isinstance(signature, str) or not isinstance(obj.get("payload_hash"), str):
+            return False
+        try:
+            canonical = self._build_signature_payload(
+                id=obj["id"], object_type=obj["object_type"], parent_ref=obj.get("parent_ref"),
+                target_user_id=obj.get("target_user_id"), is_deleted=obj.get("is_deleted", 0),
+                version=obj.get("version", 1), payload_hash=obj["payload_hash"],
+            )
+            VerifyKey(bytes(signing_pk)).verify(canonical, bytes.fromhex(signature))
+        except (BadSignatureError, ValueError, KeyError, TypeError):
+            return False
+        return True
+
+    def _signed_objects(self) -> Iterator[dict]:
+        """The live versions this account signed (no payloads), by id."""
+        after = ""
+        while True:
+            page = self._request("GET", f"/api/users/me/signed-objects?after={after}", auth=True) or {}
+            objects = [obj for obj in page.get("objects") or [] if isinstance(obj, dict)]
+            yield from objects
+            last = objects[-1].get("id") if objects else None
+            if not page.get("more") or not isinstance(last, str) or last <= after:
+                return
+            after = last
+
+    def _signed_lists(self, entries: list) -> list[dict]:
+        signing_key = self._keypair.to_nacl_signing_key()
+        return [
+            key_vouchers.sign_vouchers(self._user_id, signing_key, entries[start:start + VOUCHERS_PER_LIST])
+            for start in range(0, len(entries), VOUCHERS_PER_LIST)
+        ]
+
+    def _rotation_vouchers(self) -> list[dict]:
+        """Lists for this device's identity rotation, signed by the new key:
+        every live object the old key signed, and every one a list of the old
+        key named that a retired key signed."""
+        ring = self._get_signing_pks(self._user_id)
+        old = self._rotation_authorizer
+        if old is None:
+            if self._keypair.signing_pk in ring:
+                # The rotation landed and its reply was lost (SM43): its lists
+                # went with it; the server answers that it needs new keys.
+                return []
+            raise RuntimeError("The key this device's identity rotation retires is not known yet")
+        vouched = self._vouched(self._user_id)
+        retired = self._retired_keys.get(self._user_id, frozenset())
+        entries = []
+        for obj in self._signed_objects():
+            entry = voucher_entry(obj)
+            if entry is None:
+                continue
+            if self._signed_by(obj, old) or (
+                entry in vouched and any(self._signed_by(obj, pk) for pk in retired)
+            ):
+                entries.append(entry)
+        return self._signed_lists(entries)
+
+    def _voucher_fingerprint(self) -> str:
+        """This account's key, every member's key in the verified team log and
+        every retired key this device has seen: a rotation anywhere changes it."""
+        state = self.team_state()
+        keys = sorted(f"{uid}:{m.signing_pk}" for uid, m in state.members.items()) if state else []
+        keys += self._db.get_meta_json(RETIRED_SEEN_META) or []
+        return hashlib.sha256("\n".join([self._keypair.signing_pk.hex(), *keys]).encode()).hexdigest()
+
+    def _post_legacy_vouchers(self) -> None:
+        """A list of the versions this device holds that its account's lists do
+        not name yet, signed by its current key: posted on the first sync with
+        #443 and after it sees an identity rotation in the team, for rotations whose
+        accounts never sync again. Neither retired_seq nor commit_seq is read."""
+        fingerprint = self._voucher_fingerprint()
+        if self._db.get_meta(LEGACY_CHECKED_META) == fingerprint or self._pending_identity() is not None:
+            return
+        self._get_signing_pks(self._user_id)
+        if self._voucher_keys.get(self._user_id) != self._keypair.signing_pk:
+            return
+        if self._held_cache is None:
+            self._held_cache = frozenset(self._held_entries())
+        if not self._held_cache:
+            return  # a new device: what it would vouch for, it has not seen yet
+        own_key = bytes(self._keypair.signing_pk)
+        try:
+            new = sorted(self._held_cache - self._lists_of(self._user_id, own_key))
+            for voucher_list in self._signed_lists(new):
+                self._request("POST", "/api/users/me/key-vouchers", voucher_list, auth=True)
+        except RuntimeError as exc:
+            if not server_error(exc, 404):
+                raise
+            logger.warning("Key vouchers not posted: a server from before #443")
+            return
+        self._db.set_meta(LEGACY_CHECKED_META, fingerprint)
+        self._lists_cache.pop((self._user_id, own_key), None)
+        self._vouched_cache.clear()

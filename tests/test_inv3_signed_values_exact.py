@@ -28,7 +28,6 @@ class _Device:
     """The parts of SyncClient _verify_object_signature asks."""
 
     _user_id = "01HUSERZZZZZZZZZZZZZZZZZZZ"
-    _verify_since_seq = 0
     _build_signature_payload = staticmethod(PushMixin._build_signature_payload)
 
     def __init__(self, pk):
@@ -40,8 +39,8 @@ class _Device:
     def _get_signing_pks(self, _user):
         return [self._pk]
 
-    def _archive_bound(self, *_):
-        return None
+    def _is_retired(self, *_):
+        return False
 
     def _log_retired_key(self, *_):
         return False

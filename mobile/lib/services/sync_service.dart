@@ -24,6 +24,7 @@ import 'auth_service.dart';
 import 'crypto_service.dart';
 import 'database_service.dart';
 import 'key_rotation.dart';
+import 'key_vouchers.dart';
 import 'sync_checkpoint.dart';
 import 'sync_core.dart';
 import 'sync_limits.dart';
@@ -360,8 +361,8 @@ class SyncService {
   /// INV-8: whether a typed password opens the unlocked vault (the account
   /// password check of [forgetTeamLogPin]). Replaced only by unit tests whose
   /// vault was opened with a bare KEK.
-  Future<bool> Function(String password) passwordOpensVault =
-      (password) => AuthService().passwordOpensUnlockedVault(password);
+  Future<bool> Function(String password) passwordOpensVault = (password) =>
+      AuthService().passwordOpensUnlockedVault(password);
 
   // Review d615826: the app syncs after unlock, on pull-to-refresh and after
   // changes; overlapping syncs ran their pushes and pulls interleaved on one
@@ -405,9 +406,6 @@ class SyncService {
     required Future<Map<String, dynamic>> Function(String userId)
     fetchPublicKeys,
     required Future<void> Function(Map<String, dynamic> key) saveKnownKey,
-    Map<String, int>? archiveBoundsOut,
-    Future<String?> Function(String key)? loadSetting,
-    Future<void> Function(String key, String value)? saveSetting,
   }) async {
     final Map<String, dynamic>? existing;
     final Map<String, dynamic> remote;
@@ -467,7 +465,6 @@ class SyncService {
         if (authorizationHex != null && authorizationHex is! String) {
           throw const FormatException('malformed archived key authorization');
         }
-        final retiredSeq = archive['retired_seq'];
         candidates.add(
           _ArchivedKeyCandidate(
             signingPk: archivedSigningPk,
@@ -478,7 +475,6 @@ class SyncService {
                 authorizationHex is String && authorizationHex.isNotEmpty
                 ? hexToBytes(authorizationHex)
                 : null,
-            retiredSeq: retiredSeq is int ? retiredSeq : null,
           ),
         );
       }
@@ -527,29 +523,6 @@ class SyncService {
           trusted.add(MapEntry(c.signingPk, c.encryptionPk));
           archivedSigningKeys.add(c.signingPk);
           progress = true;
-        }
-      }
-      // An archived key vouches only for objects committed up to its
-      // rotation. The first bound seen is pinned, so a server holding the
-      // leaked key cannot stretch it later; without one (a server from
-      // before V4) it vouches for no pulled object.
-      if (archiveBoundsOut != null) {
-        for (final c in candidates) {
-          if (!archivedSigningKeys.any((k) => _sameBytes(k, c.signingPk))) {
-            continue;
-          }
-          final keyHex = bytesToHex(c.signingPk);
-          final settingKey = 'archived_key_bound:$ownerId:$keyHex';
-          final pinned = int.tryParse(
-            (loadSetting == null ? null : await loadSetting(settingKey)) ?? '',
-          );
-          var bound = pinned;
-          final served = c.retiredSeq;
-          if (served != null && (bound == null || served < bound)) {
-            bound = served;
-            if (saveSetting != null) await saveSetting(settingKey, '$served');
-          }
-          archiveBoundsOut[keyHex] = bound ?? 0;
         }
       }
     } catch (e) {
@@ -653,18 +626,19 @@ class SyncService {
     saveKnownKey: _db.upsertKnownKey,
   );
 
-  /// Review 688edcb V4: whether [signingPk] may vouch for an object with
-  /// [commitSeq] in a pull that started after [sinceSeq]. Current keys (not
-  /// in [archiveBounds]) always may; an archived key only for what was
-  /// committed before its rotation, and never for a seq the delta excludes.
+  /// Goal #443: whether [signingPk] of a signer whose key ring is [ring]
+  /// (current key first, as resolveAuthorSigningKeys returns it) may vouch
+  /// for the object [entryKey] names (keyVoucherKey). The current key always
+  /// may; a retired one only for what a list of the current key names
+  /// ([vouched]), never for whatever the server dates before its rotation.
   static bool keyMayVouch(
     Uint8List signingPk,
-    Map<String, int> archiveBounds, {
-    required int sinceSeq,
-    required int commitSeq,
-  }) {
-    final bound = archiveBounds[bytesToHex(signingPk)];
-    return bound == null || (sinceSeq < commitSeq && commitSeq <= bound);
+    List<Uint8List> ring,
+    Set<String> Function() vouched,
+    String entryKey,
+  ) {
+    if (ring.isNotEmpty && _sameBytes(ring.first, signingPk)) return true;
+    return vouched().contains(entryKey);
   }
 
   /// Must match server/app/auth.py:key_rotation_message.
@@ -695,6 +669,39 @@ class SyncService {
       difference |= left[i] ^ right[i];
     }
     return difference == 0;
+  }
+
+  /// keyVoucherKey of every version this phone holds as the server copy (it
+  /// verified them): a queued row's base and the row itself.
+  static Set<String> heldVoucherKeys(List<Map<String, dynamic>> rows) => {
+    for (final row in rows) ...[
+      if (row['payload_hash'] is String && row['version'] is int)
+        keyVoucherKey(
+          row['id'] as String,
+          row['version'] as int,
+          row['payload_hash'] as String,
+        ),
+      if (row['base_hash'] is String && row['base_version'] is int)
+        keyVoucherKey(
+          row['id'] as String,
+          row['base_version'] as int,
+          row['base_hash'] as String,
+        ),
+    ],
+  };
+
+  /// The voucher lists of [userId]'s current key (goal #443); a server from
+  /// before them has none, which vouches for nothing.
+  Future<Object?> _fetchKeyVoucherLists(String userId) async {
+    final response = await _http.get(
+      Uri.parse(
+        '$_serverUrl/api/users/${Uri.encodeComponent(userId)}/key-vouchers',
+      ),
+      headers: _authHeaders(),
+    );
+    if (response.statusCode == 404) return const [];
+    _checkResponse(response, 'fetchKeyVouchers');
+    return (jsonDecode(response.body) as Map<String, dynamic>)['lists'];
   }
 
   Future<Map<String, dynamic>> _fetchPublicKeys(String userId) async {
@@ -817,7 +824,9 @@ class SyncService {
     final userId = _vault.userId;
     final key = signingPk ?? _vault.signingPublicKey;
     final member = userId == null ? null : _vault.teamLog?.team.members[userId];
-    return member != null && member.active && key != null &&
+    return member != null &&
+        member.active &&
+        key != null &&
         member.signingPk == bytesToHex(key);
   }
 
@@ -832,7 +841,10 @@ class SyncService {
     final signingSk = _vault.signingSecretKey;
     final signingPk = _vault.signingPublicKey;
     final encryptionPk = _vault.encryptionPublicKey;
-    if (userId == null || signingSk == null || signingPk == null || encryptionPk == null) {
+    if (userId == null ||
+        signingSk == null ||
+        signingPk == null ||
+        encryptionPk == null) {
       throw StateError('Unlock the vault first');
     }
     final challengeResp = await _http.post(
@@ -842,9 +854,15 @@ class SyncService {
     );
     _checkResponse(challengeResp, 'rejoin challenge');
     final challengeHex =
-        (jsonDecode(challengeResp.body) as Map<String, dynamic>)['challenge'] as String;
+        (jsonDecode(challengeResp.body) as Map<String, dynamic>)['challenge']
+            as String;
     final message = rejoinMessage(
-      hexToBytes(challengeHex), userId, username, signingPk, encryptionPk, keyEpoch,
+      hexToBytes(challengeHex),
+      userId,
+      username,
+      signingPk,
+      encryptionPk,
+      keyEpoch,
     );
     final response = await _http.post(
       Uri.parse('$_serverUrl/api/auth/rejoin'),
@@ -859,12 +877,14 @@ class SyncService {
         'signature': bytesToHex(_crypto.signChallenge(message, signingSk)),
       }),
     );
-    if (response.statusCode == 409 && _errorCode(response) == 'username_taken') {
+    if (response.statusCode == 409 &&
+        _errorCode(response) == 'username_taken') {
       throw UsernameTakenException(username);
     }
     if (response.statusCode == 409) return false;
     _checkResponse(response, 'rejoin');
-    _token = (jsonDecode(response.body) as Map<String, dynamic>)['token'] as String;
+    _token =
+        (jsonDecode(response.body) as Map<String, dynamic>)['token'] as String;
     return true;
   }
 
@@ -875,16 +895,21 @@ class SyncService {
     _ensureConfigured();
     final challenge = await _http.post(
       Uri.parse('$_serverUrl/api/auth/challenge'),
-      headers: _headers(), body: jsonEncode({'username': username}),
+      headers: _headers(),
+      body: jsonEncode({'username': username}),
     );
     _checkResponse(challenge, 'registration challenge');
-    final challengeHex = (jsonDecode(challenge.body) as Map)['challenge'] as String;
+    final challengeHex =
+        (jsonDecode(challenge.body) as Map)['challenge'] as String;
     final response = await _http.post(
       Uri.parse('$_serverUrl/api/auth/registration-resume'),
       headers: _headers(),
       body: jsonEncode({
-        'username': username, 'challenge': challengeHex,
-        'signature': bytesToHex(_crypto.signAuthChallenge(hexToBytes(challengeHex), signingSecretKey)),
+        'username': username,
+        'challenge': challengeHex,
+        'signature': bytesToHex(
+          _crypto.signAuthChallenge(hexToBytes(challengeHex), signingSecretKey),
+        ),
       }),
     );
     _checkResponse(response, 'registration resume');
@@ -1031,9 +1056,14 @@ class SyncService {
     // INV-7: a log refused at unlock holds back the team's rows only, each
     // reported with the refusal (its cause and way out); the personal tree's go.
     final refused = _vault.userId == null ? null : _vault.teamLogRefusal;
-    final sendable = refused == null ? null : await _vault.sendableWhileRefused();
+    final sendable = refused == null
+        ? null
+        : await _vault.sendableWhileRefused();
     if (_vault.userId != null && refused == null) {
-      requireConfirmedGenesis(await readConfirmedTeamGenesis(_vault.userId!), _vault.teamLog?.team.genesisHash);
+      requireConfirmedGenesis(
+        await readConfirmedTeamGenesis(_vault.userId!),
+        _vault.teamLog?.team.genesisHash,
+      );
     }
 
     // R9-G: what waits here sealed with a folder key a re-key replaced goes
@@ -1051,14 +1081,17 @@ class SyncService {
     // Review 8595ec1 (R10-F): a row the log does not let out yet stays
     // queued and is reported, as an oversized one; it used to throw for the
     // whole push, so none of the phone's other changes went out.
-    final held = {for (final row in await _db.getAllObjects()) row['id'] as String: row};
+    final held = {
+      for (final row in await _db.getAllObjects()) row['id'] as String: row,
+    };
     for (final row in dirtyRows) {
       if (sendable != null && !sendable(row)) {
         errors.add("${row['id']}: $refused");
         continue;
       }
       try {
-        if (sendable == null) await _vault.assertTrustedTeamWrites([row], heldRows: held);
+        if (sendable == null)
+          await _vault.assertTrustedTeamWrites([row], heldRows: held);
       } on TeamLogRefused catch (e) {
         errors.add("${row['id']}: $e");
         continue;
@@ -1362,7 +1395,11 @@ class SyncService {
         final staging = await _http.post(
           Uri.parse('$_serverUrl/api/sync/stage'),
           headers: _authHeaders(),
-          body: jsonEncode({'batch_id': batchId, 'start': staged, 'objects': chunk}),
+          body: jsonEncode({
+            'batch_id': batchId,
+            'start': staged,
+            'objects': chunk,
+          }),
         );
         _checkResponse(staging, 'stage');
         staged += chunk.length;
@@ -1755,7 +1792,8 @@ class SyncService {
         'resync is required',
       );
     }
-    if (!fullResync && await _db.getSetting(forgottenLogResyncSetting) != null) {
+    if (!fullResync &&
+        await _db.getSetting(forgottenLogResyncSetting) != null) {
       throw const FullResyncRequiredException(
         'Unsent changes were exported and dropped when this phone left the lost team log; '
         "a full resync puts the server's copy back in their place",
@@ -1888,7 +1926,9 @@ class SyncService {
     // 294), as on the desktop: a fresh phone holds no log of its own yet.
     final teamLog = await _syncTeamLog(teamLogHead, checkpoint);
     final authorKeys = <String, List<Uint8List>>{};
-    final archiveBounds = <String, Map<String, int>>{};
+    final vouchedBySigner = <String, Set<String>>{};
+    final listsByPoster = <String, Set<String>>{};
+    Set<String>? held;
     final verified = <Map<String, dynamic>>[];
     final stateReplacements = <Map<String, dynamic>>[];
     // Review 8595ec1 (R10-C): what the log refused for want of write access
@@ -1951,12 +1991,39 @@ class SyncService {
               loadKnownKey: _db.getKnownKey,
               fetchPublicKeys: _fetchPublicKeys,
               saveKnownKey: _db.upsertKnownKey,
-              archiveBoundsOut: archiveBounds.putIfAbsent(signerId, () => {}),
-              loadSetting: _db.getSetting,
-              saveSetting: _db.setSetting,
             );
         authorKeys[signerId] = authorPks;
-        final signerBounds = archiveBounds[signerId] ?? const <String, int>{};
+        if (authorPks.length > 1 && !vouchedBySigner.containsKey(signerId)) {
+          // Capability review run 480: an account that rotated before #443
+          // and never syncs again has no list; this account's own lists (its
+          // other devices hold the versions), a current admin's, and what
+          // this phone holds vouch as well.
+          Future<Set<String>> listsOf(String poster, Uint8List key) async =>
+              listsByPoster['$poster:${bytesToHex(key)}'] ??= vouchedEntries(
+                poster,
+                key,
+                await _fetchKeyVoucherLists(poster),
+              );
+          final out = {
+            ...await listsOf(signerId, authorPks.first),
+            ...await listsOf(currentUserId, signingPk),
+          };
+          final team = teamLog?.team;
+          for (final MapEntry(key: adminId, value: member)
+              in team?.members.entries ?? <MapEntry<String, TeamMember>>[]) {
+            if (TeamLog.isAdmin(team!, adminId) &&
+                member.signingPk.isNotEmpty) {
+              out.addAll(await listsOf(adminId, hexToBytes(member.signingPk)));
+            }
+          }
+          held ??= heldVoucherKeys(await _db.getAllObjects());
+          vouchedBySigner[signerId] = out..addAll(held);
+        }
+        final entryKey = keyVoucherKey(
+          pullObj.id,
+          pullObj.version,
+          pullObj.payloadHash,
+        );
 
         bool sigValid;
         try {
@@ -1974,11 +2041,11 @@ class SyncService {
             (authorPk) =>
                 keyMayVouch(
                   authorPk,
-                  signerBounds,
-                  sinceSeq: lastSeq,
-                  commitSeq: pullObj.commitSeq,
+                  authorPks,
+                  () => vouchedBySigner[signerId] ?? const <String>{},
+                  entryKey,
                 ) &&
-                (signerBounds.containsKey(bytesToHex(authorPk)) ||
+                (!_sameBytes(authorPks.first, authorPk) ||
                     !TeamLog.signingKeyRetired(
                       teamLog?.team,
                       signerId,
@@ -2336,7 +2403,8 @@ class SyncService {
     final conflicts = conflictRows.map(PullConflict.fromMap).toList();
     _vault.teamLog = teamLog;
     // INV-7: the copy fetched again ends the refusal; the team keys open now.
-    if (_vault.teamLogRefusal != null && _vault.isUnlocked) await _vault.reloadData();
+    if (_vault.teamLogRefusal != null && _vault.isUnlocked)
+      await _vault.reloadData();
     // After the commit: a revived copy lost to a crash here is judged again.
     if (noWriteAccess.isEmpty) {
       await _db.deleteSetting(teamLogNoWriteAccessSetting);
@@ -2388,7 +2456,9 @@ class SyncService {
         local: _vault.teamLog,
         pin: checkpoint?['team_log'] as Map<String, dynamic>?,
         confirmedGenesis: await readConfirmedTeamGenesis(_vault.userId!),
-        leftEarlierLog: (await readForgottenTeamGenesis(_vault.userId!)).isNotEmpty,
+        leftEarlierLog: (await readForgottenTeamGenesis(
+          _vault.userId!,
+        )).isNotEmpty,
         ownUserId: _vault.userId,
         fetchPage: (since) async {
           final response = await _http.get(
@@ -2412,7 +2482,8 @@ class SyncService {
           // 409 (its head is not the one it announced: another device put
           // them back meanwhile, or a lie) throws too: the next pull compares again.
           _checkResponse(response, 'team log restore');
-          return (jsonDecode(response.body) as Map<String, dynamic>)['head'] as Map<String, dynamic>?;
+          return (jsonDecode(response.body) as Map<String, dynamic>)['head']
+              as Map<String, dynamic>?;
         },
       );
     } on TeamLogMismatch catch (e) {
@@ -2427,7 +2498,9 @@ class SyncService {
 
   Future<TeamLogMismatch?> _teamLogRefusal() async {
     final response = await _http.get(
-      Uri.parse('$_serverUrl/api/team-log?since=${_vault.teamLog?.team.headSeq ?? -1}'),
+      Uri.parse(
+        '$_serverUrl/api/team-log?since=${_vault.teamLog?.team.headSeq ?? -1}',
+      ),
       headers: _authHeaders(),
     );
     _checkResponse(response, 'team log');
@@ -2451,7 +2524,10 @@ class SyncService {
   /// has a checkpoint without a pin, and taking an anchor password over must
   /// bring the log. Review c78fd19 #4: [kek] is the KEK the unlock about to
   /// run derived; without one the checkpoint is not read and the unlock decides.
-  Future<void> prepareInitialTeamLog(String userId, {Uint8List? kek}) => _exclusive(() async {
+  Future<void> prepareInitialTeamLog(
+    String userId, {
+    Uint8List? kek,
+  }) => _exclusive(() async {
     final String? genesis;
     try {
       genesis = await readConfirmedTeamGenesis(userId);
@@ -2470,26 +2546,38 @@ class SyncService {
     }
     if (genesis == null && pin == null) return;
     try {
-      verifiedTeamLogCopy(await _db.getSetting(teamLogRecordsSetting), genesis,
-          [?pin], _vault.verifyEd25519);
+      verifiedTeamLogCopy(
+        await _db.getSetting(teamLogRecordsSetting),
+        genesis,
+        [?pin],
+        _vault.verifyEd25519,
+      );
       return;
     } catch (_) {
       // Missing or not verified: fetched again below under the same pins.
     }
     Future<Map<String, dynamic>> page(int since) async {
       final response = await _http.get(
-        Uri.parse('$_serverUrl/api/team-log?since=$since'), headers: _authHeaders());
+        Uri.parse('$_serverUrl/api/team-log?since=$since'),
+        headers: _authHeaders(),
+      );
       _checkResponse(response, 'initial team log');
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
+
     final first = await page(-1);
     final verified = await syncTeamLog(
       log: TeamLog(_vault.verifyEd25519),
       head: first['head'] as Map<String, dynamic>?,
-      local: null, pin: pin, confirmedGenesis: genesis,
+      local: null,
+      pin: pin,
+      confirmedGenesis: genesis,
       fetchPage: (since) async {
         final body = since == -1 ? first : await page(since);
-        return [for (final r in body['records'] as List) Map<String, dynamic>.from(r as Map)];
+        return [
+          for (final r in body['records'] as List)
+            Map<String, dynamic>.from(r as Map),
+        ];
       },
     );
     await _db.setSetting(teamLogRecordsSetting, jsonEncode(verified!.records));
@@ -2501,8 +2589,10 @@ class SyncService {
 
   Future<List<String>> _pinnedTeamGenesis() async {
     final userId = _vault.userId;
-    if (userId == null || _vault.currentKek == null) throw StateError('Vault must be unlocked');
-    final pin = (await _loadSyncCheckpoint())?['team_log'] as Map<String, dynamic>?;
+    if (userId == null || _vault.currentKek == null)
+      throw StateError('Vault must be unlocked');
+    final pin =
+        (await _loadSyncCheckpoint())?['team_log'] as Map<String, dynamic>?;
     // Unreadable trust records are no pin to type (run 412); an unreadable
     // list of left hashes hides nothing.
     Future<T?> readable<T>(Future<T> Function(String) read) async {
@@ -2512,7 +2602,9 @@ class SyncService {
         return null;
       }
     }
-    final forgotten = await readable(readForgottenTeamGenesis) ?? const <String>[];
+
+    final forgotten =
+        await readable(readForgottenTeamGenesis) ?? const <String>[];
     final anchor = await _storedKeypairAnchor(userId);
     return ({
       if (anchor != null && !forgotten.contains(anchor)) anchor,
@@ -2534,7 +2626,11 @@ class SyncService {
     if (await storage.read(key: 'sezam_user_object_id') != userId) return null;
     final local = await storage.read(key: 'sezam_encrypted_keypair');
     if (local == null || local.isEmpty) return null;
-    final account = _crypto.openAccountKeypair(hexToBytes(local), _vault.currentKek!, userId);
+    final account = _crypto.openAccountKeypair(
+      hexToBytes(local),
+      _vault.currentKek!,
+      userId,
+    );
     _crypto.zeroize(account.keypairData);
     return account.confirmedGenesis;
   }
@@ -2565,16 +2661,24 @@ class SyncService {
     }
     final userId = _vault.userId!;
     final pins = await _pinnedTeamGenesis();
-    if (pins.isEmpty) throw StateError('This phone pins no team log; nothing to forget.');
+    if (pins.isEmpty)
+      throw StateError('This phone pins no team log; nothing to forget.');
     // INV-7: conflicting pins (anchor_conflict: the account keys name another
     // log than this phone holds) are left together, each one typed.
-    final parts = typed.replaceAll(',', ' ').toLowerCase().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final parts = typed
+        .replaceAll(',', ' ')
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
     if (parts.isEmpty ||
         parts.any((part) => part.length < forgetPinMinChars) ||
         !pins.every((pin) => parts.any(pin.startsWith)) ||
         !parts.every((part) => pins.any((pin) => pin.startsWith(part)))) {
-      throw FormatException('Type the pinned genesis, every one (at least its first $forgetPinMinChars '
-          'characters), to forget it: ${pins.join(', ')}');
+      throw FormatException(
+        'Type the pinned genesis, every one (at least its first $forgetPinMinChars '
+        'characters), to forget it: ${pins.join(', ')}',
+      );
     }
     // INV-8: only a log this phone refuses as lost now (teamLogMismatchForget),
     // never a fork; asked before any unsent change is dropped.
@@ -2584,7 +2688,10 @@ class SyncService {
     if (unsent > 0 && !discardUnsent) throw UnsentChangesBlockForget(unsent);
     // Only what the file holds is dropped: an edit saved meanwhile stays queued.
     final exported = unsent > 0 ? await _exportDirtyObjects() : null;
-    final dropped = [for (final o in exported?.objects ?? const <Map<String, dynamic>>[]) o['id'] as String];
+    final dropped = [
+      for (final o in exported?.objects ?? const <Map<String, dynamic>>[])
+        o['id'] as String,
+    ];
     final checkpoint = await _loadSyncCheckpoint();
     // Left first: a crash below never takes it back from the account bundle.
     await forgetConfirmedTeamGenesis(userId, pins);
@@ -2838,10 +2945,14 @@ class SyncService {
       );
       _checkResponse(challengeResp, 'challenge');
       final challenge =
-          (jsonDecode(challengeResp.body) as Map<String, dynamic>)['challenge'] as String;
+          (jsonDecode(challengeResp.body) as Map<String, dynamic>)['challenge']
+              as String;
       body['challenge'] = challenge;
       body['signature'] = bytesToHex(
-        _crypto.signAuthChallenge(hexToBytes(challenge), signedBy.signingSecretKey),
+        _crypto.signAuthChallenge(
+          hexToBytes(challenge),
+          signedBy.signingSecretKey,
+        ),
       );
     }
     final response = await _http.put(
@@ -2852,7 +2963,8 @@ class SyncService {
     _checkResponse(response, 'uploadKeypair');
     if (signedBy != null) {
       // Older sessions are revoked with this upload.
-      final token = (jsonDecode(response.body) as Map<String, dynamic>)['token'];
+      final token =
+          (jsonDecode(response.body) as Map<String, dynamic>)['token'];
       if (token is String && token.isNotEmpty) _token = token;
     }
   }
@@ -2988,7 +3100,8 @@ class UnsentChangesBlockForget implements Exception {
   final int count;
 
   @override
-  String toString() => 'This phone holds $count unsent changes the lost team log no longer takes.';
+  String toString() =>
+      'This phone holds $count unsent changes the lost team log no longer takes.';
 }
 
 /// INV-8 (review e443cbc): the forget, and the drop of unsent changes with
@@ -2997,7 +3110,8 @@ class WrongPasswordRefusesForget implements Exception {
   const WrongPasswordRefusesForget();
 
   @override
-  String toString() => 'Nesprávne heslo účtu. Nič nebolo zabudnuté ani zahodené.';
+  String toString() =>
+      'Nesprávne heslo účtu. Nič nebolo zabudnuté ani zahodené.';
 }
 
 /// INV-8: the server's team log is not lost (this phone follows it, or it
@@ -3007,7 +3121,8 @@ class TeamLogNotLost implements Exception {
   final TeamLogMismatch? refusal;
 
   @override
-  String toString() => 'Tímový denník na serveri nie je stratený, preto sa nezabúda '
+  String toString() =>
+      'Tímový denník na serveri nie je stratený, preto sa nezabúda '
       '(len denník stratený natrvalo, nikdy fork či návrat späť): ${refusal ?? 'telefón ho nasleduje'}';
 }
 
@@ -3048,7 +3163,11 @@ class UsernameTakenException extends SyncException {
   final String username;
 
   const UsernameTakenException(this.username)
-    : super(operation: 'rejoin', statusCode: 409, message: 'username taken: $username');
+    : super(
+        operation: 'rejoin',
+        statusCode: 409,
+        message: 'username taken: $username',
+      );
 }
 
 /// Review 8595ec1 #1: the server refuses the login of an account the team
@@ -3098,7 +3217,6 @@ class _ArchivedKeyCandidate {
     required this.successorSigningPk,
     required this.certificate,
     this.authorization,
-    this.retiredSeq,
   });
 
   final Uint8List signingPk;
@@ -3106,5 +3224,4 @@ class _ArchivedKeyCandidate {
   final Uint8List successorSigningPk;
   final Uint8List certificate;
   final Uint8List? authorization;
-  final int? retiredSeq;
 }

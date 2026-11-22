@@ -6,7 +6,7 @@ import base64
 import re
 import time
 import unicodedata
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from argon2 import Type, extract_parameters
 from argon2.exceptions import InvalidHashError
@@ -221,6 +221,16 @@ class KeypairUploadRequest(BaseModel):
 RecoverRequest.model_rebuild()
 
 
+class KeyVoucherList(BaseModel):
+    """Goal #443: object versions a retired identity key still vouches for,
+    as [id, version, payload_hash], signed by the account's current key
+    (src/sezam/key_vouchers.py checks the entries and the signature)."""
+
+    signing_pk: str = Field(pattern=HEX_KEY)
+    entries: list[list[Any]] = Field(max_length=200_000)
+    signature: str = Field(pattern=HEX_SIGNATURE)
+
+
 class IdentityRotation(BaseModel):
     """New identity keys (idea #11: a leaked signing/encryption key is replaced).
 
@@ -233,6 +243,9 @@ class IdentityRotation(BaseModel):
     new_encryption_pk: str = Field(pattern=HEX_KEY)
     rotation_signature: str = Field(pattern=HEX_SIGNATURE)
     authorization_signature: str = Field(pattern=HEX_SIGNATURE)
+    # Goal #443: signed by the NEW key; the old key's objects verify under
+    # them only. Stored in the push's transaction.
+    key_vouchers: list[KeyVoucherList] = Field(default_factory=list, max_length=64)
 
 
 class KeyRotationRequest(KeypairUploadRequest):

@@ -344,6 +344,7 @@ class MockCursor:
             "org_recovery_blobs": "id",
             "team_log": "seq",
             "ai_anchors": "anchor_key",
+            "key_vouchers": "id",
         }
         return pks.get(tname)
 
@@ -543,7 +544,7 @@ class MockDatabase:
             "share_pin_rate_limits", "server_audit", "provisioning_tokens", "invitation_tokens",
             "spent_challenges", "auth_challenge_limits", "org_recovery_rate_limits",
             "recovery_ip_limits", "recovery_probe_slots", "recovery_name_rations", "revoked_tokens", "write_acl", "commit_counter", "sync_state",
-            "org_recovery_blobs",
+            "org_recovery_blobs", "key_vouchers",
         ]
         for t in tables:
             if t not in self._storage:

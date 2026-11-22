@@ -28,25 +28,17 @@ SOURCES = {
 }
 
 # Open INV-3 findings in the web and mobile clients: access_level is the
-# vault without a log (S6), commit_seq is #443, as on the desktop.
+# vault without a log (S6).
 KNOWN_CLIENT_DECIDES = {
-    ("web", "PullObject.commit_seq"),
-    ("mobile", "PullObject.commit_seq"),
     ("web", "PullObject.access_level"),
     ("mobile", "PullObject.access_level"),
-    # #443: the retired key's bound, as on the desktop (the web keeps it per session).
-    ("web", "GET /api/users/{user_id}/keys .archived_keys"),
-    ("mobile", "GET /api/users/{user_id}/keys .archived_keys"),
 }
 
 # Open INV-3 findings: a client decision rests on these unsigned fields.
 # Remove a field here only when its entry stops being DECIDES.
-# The first two are one finding, goal #443: a device pulling from below a
-# retirement takes whatever a leaked retired key signs. access_level is the
-# vault without a log (ROOT_CAUSE_PLAN S6, phase 3).
+# access_level is the vault without a log (ROOT_CAUSE_PLAN S6, phase 3);
+# goal #443 closed retired_seq and commit_seq on all three clients.
 KNOWN_DECIDES = {
-    "GET /api/users/{user_id}/keys .archived_keys",
-    "PullObject.commit_seq",
     "PullObject.access_level",
 }
 

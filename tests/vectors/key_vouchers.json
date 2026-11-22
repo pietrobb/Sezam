@@ -1,0 +1,351 @@
+{
+ "_comment": "Key voucher vectors (review e443cbc, goal #443), produced by tests/key_vouchers_vectors.py from src/sezam/key_vouchers.py. Web and mobile must reproduce them; never regenerate this file to make a client pass.",
+ "user_id": "01JACC0000000000000000000F",
+ "current_signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+ "retired_signing_pk": "3ecb1718830a8b5df3ac44c310745b4865450022e317f04f0dcab4e09f5e0a14",
+ "messages": [
+  {
+   "user_id": "01JACC0000000000000000000F",
+   "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+   "entries": [
+    [
+     "01JOBJ00000000000000000001",
+     3,
+     "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+    ],
+    [
+     "01JOBJ00000000000000000002",
+     1,
+     "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+    ]
+   ],
+   "message_hex": "73657a616d2d6b65792d766f7563686572732d76310030314a4143433030303030303030303030303030303030303046250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e12070000000230314a4f424a30303030303030303030303030303030303030310000000000000003ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb30314a4f424a303030303030303030303030303030303030303200000000000000013e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+  },
+  {
+   "user_id": "01JACC0000000000000000000F",
+   "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+   "entries": [],
+   "message_hex": "73657a616d2d6b65792d766f7563686572732d76310030314a4143433030303030303030303030303030303030303046250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e120700000000"
+  },
+  {
+   "user_id": "01JACC0000000000000000000G",
+   "signing_pk": "4e5e442b1c821df896b5f0394dc58d6bf132ca7d7c2375f90252b0c1cdee6add",
+   "entries": [
+    [
+     "01JOBJ00000000000000000001",
+     3,
+     "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+    ],
+    [
+     "01JOBJ00000000000000000003",
+     1099511627776,
+     "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+    ]
+   ],
+   "message_hex": "73657a616d2d6b65792d766f7563686572732d76310030314a41434330303030303030303030303030303030303030474e5e442b1c821df896b5f0394dc58d6bf132ca7d7c2375f90252b0c1cdee6add0000000230314a4f424a30303030303030303030303030303030303030310000000000000003ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb30314a4f424a303030303030303030303030303030303030303300000100000000002e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+  }
+ ],
+ "malformed_entries": [
+  [
+   "01JOBJ0000000000000000000-",
+   1,
+   "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+  ],
+  [
+   "01JOBJ00000000000000000001",
+   -1,
+   "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+  ],
+  [
+   "01JOBJ00000000000000000001",
+   true,
+   "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+  ],
+  [
+   "01JOBJ00000000000000000001",
+   1,
+   "CA978112CA1BBDCAFAC231B39A23DC4DA786EFF8147C4E72B9807785AFEE48BB"
+  ],
+  [
+   "01JOBJ00000000000000000001",
+   1
+  ],
+  [
+   "01JOBJ0000000000000000000",
+   1,
+   "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+  ]
+ ],
+ "cases": [
+  {
+   "name": "listed by the current key",
+   "lists": [
+    {
+     "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+     "entries": [
+      [
+       "01JOBJ00000000000000000001",
+       3,
+       "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+      ],
+      [
+       "01JOBJ00000000000000000002",
+       1,
+       "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+      ]
+     ],
+     "signature": "948e55542055d4976795faa9b1c537ce461538f44a5fbda1a3ab112d874fba2e468c6f9cd59ac1c465b163d02a6acc4f0e32894c46fc601f0f5ff1f990f6e20d"
+    }
+   ],
+   "entry": [
+    "01JOBJ00000000000000000001",
+    3,
+    "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+   ],
+   "vouched": true
+  },
+  {
+   "name": "a second list by the current key adds",
+   "lists": [
+    {
+     "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+     "entries": [
+      [
+       "01JOBJ00000000000000000001",
+       3,
+       "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+      ],
+      [
+       "01JOBJ00000000000000000002",
+       1,
+       "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+      ]
+     ],
+     "signature": "948e55542055d4976795faa9b1c537ce461538f44a5fbda1a3ab112d874fba2e468c6f9cd59ac1c465b163d02a6acc4f0e32894c46fc601f0f5ff1f990f6e20d"
+    },
+    {
+     "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+     "entries": [
+      [
+       "01JOBJ00000000000000000003",
+       1099511627776,
+       "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+      ]
+     ],
+     "signature": "dfda0def37499b489f2353345d2a7818a25a0106c32f81f45415590d14d61dd90a02f4d9258b69724dce3702ed09b19325103d55e87c99a9135d7119823c8800"
+    }
+   ],
+   "entry": [
+    "01JOBJ00000000000000000003",
+    1099511627776,
+    "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+   ],
+   "vouched": true
+  },
+  {
+   "name": "not listed",
+   "lists": [
+    {
+     "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+     "entries": [
+      [
+       "01JOBJ00000000000000000001",
+       3,
+       "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+      ],
+      [
+       "01JOBJ00000000000000000002",
+       1,
+       "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+      ]
+     ],
+     "signature": "948e55542055d4976795faa9b1c537ce461538f44a5fbda1a3ab112d874fba2e468c6f9cd59ac1c465b163d02a6acc4f0e32894c46fc601f0f5ff1f990f6e20d"
+    }
+   ],
+   "entry": [
+    "01JOBJ00000000000000000003",
+    1099511627776,
+    "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+   ],
+   "vouched": false
+  },
+  {
+   "name": "another version of a listed object",
+   "lists": [
+    {
+     "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+     "entries": [
+      [
+       "01JOBJ00000000000000000001",
+       3,
+       "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+      ],
+      [
+       "01JOBJ00000000000000000002",
+       1,
+       "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+      ]
+     ],
+     "signature": "948e55542055d4976795faa9b1c537ce461538f44a5fbda1a3ab112d874fba2e468c6f9cd59ac1c465b163d02a6acc4f0e32894c46fc601f0f5ff1f990f6e20d"
+    }
+   ],
+   "entry": [
+    "01JOBJ00000000000000000001",
+    4,
+    "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+   ],
+   "vouched": false
+  },
+  {
+   "name": "another payload of a listed version",
+   "lists": [
+    {
+     "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+     "entries": [
+      [
+       "01JOBJ00000000000000000001",
+       3,
+       "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+      ],
+      [
+       "01JOBJ00000000000000000002",
+       1,
+       "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+      ]
+     ],
+     "signature": "948e55542055d4976795faa9b1c537ce461538f44a5fbda1a3ab112d874fba2e468c6f9cd59ac1c465b163d02a6acc4f0e32894c46fc601f0f5ff1f990f6e20d"
+    }
+   ],
+   "entry": [
+    "01JOBJ00000000000000000001",
+    3,
+    "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+   ],
+   "vouched": false
+  },
+  {
+   "name": "listed only by a retired key",
+   "lists": [
+    {
+     "signing_pk": "3ecb1718830a8b5df3ac44c310745b4865450022e317f04f0dcab4e09f5e0a14",
+     "entries": [
+      [
+       "01JOBJ00000000000000000003",
+       1099511627776,
+       "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+      ]
+     ],
+     "signature": "1073a83c4dec24b72a0d44fa3e4b4e3f2b3f61183c85c80c795a07b9244974903fba8d4a946fbdc392f20bee88050190beb84f9ff95bf649474d9b7acbea4e01"
+    }
+   ],
+   "entry": [
+    "01JOBJ00000000000000000003",
+    1099511627776,
+    "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+   ],
+   "vouched": false
+  },
+  {
+   "name": "a list for another account",
+   "lists": [
+    {
+     "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+     "entries": [
+      [
+       "01JOBJ00000000000000000003",
+       1099511627776,
+       "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+      ]
+     ],
+     "signature": "a49e35df40eeb4027047d72150301236ed0c1525c44d7ab22ee122c3bce0b977e48b8ea9b5db518614272537fd51229889f38051f4f24e91da607f7b45389705"
+    }
+   ],
+   "entry": [
+    "01JOBJ00000000000000000003",
+    1099511627776,
+    "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+   ],
+   "vouched": false
+  },
+  {
+   "name": "a list with an entry added after signing",
+   "lists": [
+    {
+     "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+     "entries": [
+      [
+       "01JOBJ00000000000000000001",
+       3,
+       "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+      ],
+      [
+       "01JOBJ00000000000000000002",
+       1,
+       "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+      ],
+      [
+       "01JOBJ00000000000000000003",
+       1099511627776,
+       "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+      ]
+     ],
+     "signature": "948e55542055d4976795faa9b1c537ce461538f44a5fbda1a3ab112d874fba2e468c6f9cd59ac1c465b163d02a6acc4f0e32894c46fc601f0f5ff1f990f6e20d"
+    }
+   ],
+   "entry": [
+    "01JOBJ00000000000000000003",
+    1099511627776,
+    "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+   ],
+   "vouched": false
+  },
+  {
+   "name": "a list claiming another signer",
+   "lists": [
+    {
+     "signing_pk": "3ecb1718830a8b5df3ac44c310745b4865450022e317f04f0dcab4e09f5e0a14",
+     "entries": [
+      [
+       "01JOBJ00000000000000000003",
+       1099511627776,
+       "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+      ]
+     ],
+     "signature": "dfda0def37499b489f2353345d2a7818a25a0106c32f81f45415590d14d61dd90a02f4d9258b69724dce3702ed09b19325103d55e87c99a9135d7119823c8800"
+    }
+   ],
+   "entry": [
+    "01JOBJ00000000000000000003",
+    1099511627776,
+    "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+   ],
+   "vouched": false
+  },
+  {
+   "name": "an empty list",
+   "lists": [
+    {
+     "signing_pk": "250089e993d7f95e82d085378264f95d76f3f66e2a1fe60ac07ed0a8236e1207",
+     "entries": [],
+     "signature": "669dbb4cfd608010ae6c712204ea007ee1d8a3359f7a9cbf40757a665fe3ed23696634b5d7e2d9f554bfbc0dd3d3e1cc87dbc656cd696807342814f5d40bd209"
+    }
+   ],
+   "entry": [
+    "01JOBJ00000000000000000001",
+    3,
+    "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+   ],
+   "vouched": false
+  },
+  {
+   "name": "no list",
+   "lists": [],
+   "entry": [
+    "01JOBJ00000000000000000001",
+    3,
+    "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+   ],
+   "vouched": false
+  }
+ ]
+}

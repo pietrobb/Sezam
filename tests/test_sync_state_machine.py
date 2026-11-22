@@ -388,6 +388,9 @@ class SyncMachine(RuleBasedStateMachine):
         # Org recovery (Shamir) set up on one device: (device, shares, the
         # signing key the server checks the recovery's reset proof against).
         self.org: tuple[str, list, str | None] | None = None
+        # Signing keys an identity rotation retired: (user id, key) - what a
+        # server holding one can sign (goal #443).
+        self.leaked_signers: list[tuple[str, SigningKey]] = []
         # The web client: one open tab (or None), the browser profile it
         # leaves for the next tab, what the page shows, and whether its
         # session ended (a new tab must sign in again).
@@ -1057,11 +1060,14 @@ class SyncMachine(RuleBasedStateMachine):
             self._observe(device)
             return
         self._observe(device)
+        old_signer = SigningKey(bytes(dev.vault.keypair.to_nacl_signing_key()))
         try:
             proof = dev.vault.change_password(dev.password, new, rotate_identity=rotate)
         except (ValueError, RuntimeError) as exc:
             self.log.append(f"{device}: {what} refused: {exc}")
             return
+        if rotate:
+            self.leaked_signers.append((dev.vault.db.get_meta("user_id"), old_signer))
         proof[:] = b"\x00" * len(proof)
         self.salt_password[dev.vault.db.get_meta("argon2_salt")] = new
         dev.password = new
@@ -2490,6 +2496,102 @@ class SyncMachine(RuleBasedStateMachine):
             ), (f"{device}: after a made-up {trigger} its full resync took DEK {dek_id} v{row['version']}"
                 f" (was v{version}) that its KEK no longer opens\n" + self._trace())
 
+    def _retired_signers(self) -> list[tuple[str, SigningKey]]:
+        """Leaked keys the server no longer serves as their account's current one."""
+        def raw(value) -> bytes:
+            return bytes.fromhex(value) if isinstance(value, str) else bytes(value or b"")
+        current = {u.get("id"): raw(u.get("signing_pk")) for u in self.db._storage.get("users", [])}
+        return [(uid, key) for uid, key in self.leaked_signers
+                if uid in current and bytes(key.verify_key) != current[uid]]
+
+    @precondition(lambda self: self._retired_signers())
+    @rule(data=st.data(), how=st.sampled_from(["new_device", "full_resync", "web"]))
+    def server_holds_a_leaked_retired_key(self, data, how):
+        """Goal #443 (review e443cbc R15, INV-3): the server holds a signing
+        key an identity rotation retired. It serves the next version of a live
+        object that key signed, signed with it, and stretches
+        the archive's bound (retired_seq) over it. A device that never pinned a
+        bound (a new device, a full resync, a web sign-in) may refuse or skip
+        it, never take it: no voucher list names that version."""
+        if how == "web" and not NODE:
+            return
+        retired = self._retired_signers()
+        user_id, signer = retired[self._pick(data, range(len(retired)), "leaked key")]
+        storage = self.db._storage
+        signed = {o["id"]: o for o in storage["vault_objects"]
+                  if o.get("object_type") == "entry" and not o.get("is_deleted")
+                  and o.get("signature_user_id") == user_id}
+        picked = self._pick(data, signed, "object")
+        if picked is None:
+            return
+        target = signed[picked]
+        original = copy.deepcopy(target)
+        archives = [a for a in storage.get("user_key_archives", []) if a.get("user_id") == user_id]
+        bounds = [a.get("retired_seq") for a in archives]
+        # Well-formed content (the entry's own), so only the signature check
+        # can refuse it.
+        payload_hash = target["payload_hash"]
+        version = target["version"] + 1
+        counter = storage["commit_counter"][0]
+        commit_seq = counter["next_seq"]
+        counter["next_seq"] += 1
+        canonical = SyncClient._build_signature_payload(
+            id=target["id"], object_type="entry", parent_ref=target.get("parent_ref"),
+            target_user_id=target.get("target_user_id"), is_deleted=0, version=version,
+            payload_hash=payload_hash,
+        )
+        target.update(version=version, commit_seq=commit_seq,
+                      client_signature=signer.sign(canonical).signature)
+        for archive in archives:
+            archive["retired_seq"] = 10**9
+        obj = target["id"]
+        self.log.append(f"server: signs {obj} v{version} with {user_id}'s retired key ({how})")
+        try:
+            if how == "new_device":
+                name = self._token("fresh")
+                try:
+                    vault = self._new_vault(self.tmp / name)
+                except REFUSALS as exc:
+                    outcome, held = f"refused: {exc}", None
+                else:
+                    row = vault.db.fetchone("SELECT version FROM entries WHERE id = ?", (obj,))
+                    outcome, held = "connected", row and row["version"]
+                    vault.lock()
+            elif how == "full_resync":
+                device = self._device(data)
+                client = self._command(device).client
+                blocker = client.full_resync_blocker()
+                if blocker:
+                    self.log.append(f"{device}: full resync refused: {blocker}")
+                    return
+                try:
+                    client.full_resync(confirmed=True)
+                    outcome = "full resync done"
+                except REFUSALS as exc:
+                    outcome = f"refused: {exc}"
+                row = self.devices[device].vault.db.fetchone("SELECT version FROM entries WHERE id = ?", (obj,))
+                held = row and row["version"]
+            else:
+                tab = WebTab(self.url, self.tmp / "web-leaked.log")
+                try:
+                    result = tab.do("login", username="admin", password=self._account_password(), confirm=True)
+                finally:
+                    tab.kill()
+                outcome = f"refused: {result['error']}" if result["error"] else "signed in"
+                held = version if result["error"] is None or obj not in str(result["error"]) else None
+        finally:
+            target.clear()
+            target.update(original)
+            for archive, bound in zip(archives, bounds):
+                archive["retired_seq"] = bound
+        self.log.append(f"   -> {outcome}")
+        coverage_event(f"leaked retired key ({how}): {outcome.split(':')[0]}")
+        assert held != version, (
+            f"{how}: took {obj} v{version}, signed by {user_id}'s retired key after its rotation\n"
+            + self._trace())
+        if how == "full_resync" and outcome == "full resync done":
+            self._observe(device)
+
     def _withhold_archives_from_a_new_device(self) -> None:
         """Run 157: only the re-key archive ties a folder's new key to the one
         it retired, and both name the folder. A new device whose first pull
@@ -3757,6 +3859,49 @@ def test_sync_state_machine_server_lies_about_org_recovery(loopback_server, monk
         machine._settle(lambda _obj: "server")
         # Withheld: the server never took it, and A says so.
         assert org_recovery_server.registration_issue(machine.devices["A"].vault) == "withheld", machine._trace()
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_rotation_reply_lost_then_pushed_again(loopback_server, monkeypatch):
+    """Goal #443, default run on the #443 branch: B's identity rotation landed
+    and its reply was lost. The next push carries the rotation again; its key
+    vouchers needed the key the rotation retires, which the server no longer
+    serves as the account's, and every push of B stopped there."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        machine.rotate_identity(_Scripted(device="B"), "after")
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+@pytest.mark.parametrize("how", ["new_device", "full_resync", "web"])
+def test_sync_state_machine_server_holds_a_leaked_retired_key(loopback_server, monkeypatch, how):
+    """Goal #443 (review e443cbc R15, INV-3): after A's identity rotation the
+    server signs the next version of an entry with A's retired key and serves
+    a bound over it. Before #443 a new device, a full resync and every web
+    sign-in took it (the bound and the object's commit_seq were the server's
+    word); a retired key now counts only for versions a voucher list names."""
+    if how == "web" and not NODE:
+        pytest.skip(node_problem())
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        machine.rotate_identity(_Scripted(device="A"), None)
+        machine._settle(lambda _obj: "server")
+        assert machine._retired_signers(), machine._trace()
+        admin = machine.devices["A"].vault.db.get_meta("user_id")
+        signed = sorted(o["id"] for o in machine.db._storage["vault_objects"]
+                        if o.get("object_type") == "entry" and not o.get("is_deleted")
+                        and o.get("signature_user_id") == admin)
+        assert signed, machine._trace()
+        machine.server_holds_a_leaked_retired_key(
+            _Scripted(**{"leaked key": 0, "object": signed[0], "device": "B"}), how)
+        machine._settle(lambda _obj: "server")
     finally:
         machine.teardown()
 

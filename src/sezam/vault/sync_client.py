@@ -73,6 +73,7 @@ from .sync_push import PushMixin
 from .sync_rekey import RekeyMixin
 from .sync_resync import ResyncMixin
 from .sync_state import SyncStateMixin
+from .sync_vouchers import VoucherMixin, voucher_entry
 from .sync_writers import WritersMixin
 from .team_log_local import TeamLogMixin, keep_identity_continuation
 
@@ -97,7 +98,7 @@ __all__ = [
 
 class SyncClient(
     PushMixin, RekeyMixin, PullMixin, ApplyMixin, ResyncMixin, SyncStateMixin, WritersMixin,
-    TeamLogMixin,
+    TeamLogMixin, VoucherMixin,
 ):
     """Handles sync operations with the Sezam server."""
 
@@ -115,12 +116,18 @@ class SyncClient(
         self._tofu_checked_user_ids: set[str] = set()
         self._tofu_warnings: list[dict] = []
         self._signing_key_rings: dict[str, tuple[bytes, ...]] = {}
-        self._archive_bounds: dict[str, dict[bytes, int]] = {}
+        # Goal #443: each signer's retired keys, the key whose voucher lists
+        # count (its current one) and what those lists name.
+        self._retired_keys: dict[str, frozenset[bytes]] = {}
+        self._voucher_keys: dict[str, bytes] = {}
+        self._vouched_cache: dict[str, frozenset] = {}
+        self._lists_cache: dict[tuple[str, bytes], frozenset] = {}
+        self._held_cache: Optional[frozenset] = None
+        # Objects a retired key signed that no list names: id -> signer.
+        self._unvouched: dict[str, str] = {}
         # The server's key for this account that signed this device's pending
         # identity rotation (it is current there until the rotation lands).
         self._rotation_authorizer: Optional[bytes] = None
-        # commit_seq the running pull asked to start after.
-        self._verify_since_seq = 0
         self._pulled_dek_ids: list[str] = []
         self._pulled_archive_successors: set[str] = set()
         self._new_unbound_dek_ids: set[str] = set()
@@ -774,7 +781,7 @@ class SyncClient(
                 "signature": signature_hex,
             }
             if "identity" in journal and not getattr(self, "_identity_landed", False):
-                payload["identity"] = dict(journal["identity"])
+                payload["identity"] = {**journal["identity"], "key_vouchers": self._rotation_vouchers()}
             if current_proof is not None:
                 payload["current_auth_proof"] = current_proof.hex()
             payload.update(self._recovery_proof(journal, user_id))
@@ -977,18 +984,17 @@ class SyncClient(
                 payload_hash=payload_hash,
             )
             signature_bytes = bytes.fromhex(signature_hex)
-            commit_seq = obj.get("commit_seq")
+            entry = voucher_entry(obj)
             for signing_pk in signing_pks:
-                bound = self._archive_bound(signer_id, signing_pk)
-                if bound is None and self._log_retired_key(signer_id, signing_pk):
-                    continue
-                if bound is not None and not (
-                    isinstance(commit_seq, int)
-                    and self._verify_since_seq < commit_seq <= bound
-                ):
-                    # An archived key vouches only for what was committed
-                    # before its rotation (review 688edcb V4); a delta can
-                    # not carry objects at or below the seq it started after.
+                if not self._is_retired(signer_id, signing_pk):
+                    if self._log_retired_key(signer_id, signing_pk):
+                        continue
+                elif entry is None or entry not in self._vouched(signer_id):
+                    # Goal #443: a retired key vouches only for what a voucher
+                    # list or this device's copy names, not for whatever the
+                    # server dates before its rotation (retired_seq, commit_seq).
+                    if self._signed_by(obj, signing_pk):
+                        self._unvouched[obj["id"]] = signer_id
                     continue
                 try:
                     VerifyKey(signing_pk).verify(canonical, signature_bytes)
@@ -1043,38 +1049,6 @@ class SyncClient(
 
     _key_ring_from_response = staticmethod(key_ring_from_response)
 
-    _ARCHIVE_BOUNDS_META = "archived_key_bounds"
-
-    def _remember_archive_bounds(self, user_id: str, response: dict) -> None:
-        """Review 688edcb V4: an archived key vouches only for objects
-        committed before its rotation (``retired_seq``). The first bound this
-        device sees is pinned, so a server holding the leaked key cannot later
-        stretch it over objects it signs now. An archive without a bound (a
-        server from before V4) vouches for no pulled object at all.
-        """
-        pinned_all = self._db.get_meta_json(self._ARCHIVE_BOUNDS_META) or {}
-        pinned = dict(pinned_all.get(user_id) or {})
-        bounds: dict[bytes, int] = {}
-        archives = response.get("archived_keys")
-        for archive in archives if isinstance(archives, list) else []:
-            if not isinstance(archive, dict) or not isinstance(archive.get("signing_pk"), str):
-                continue
-            key_hex = archive["signing_pk"].lower()
-            served = archive.get("retired_seq")
-            served = served if isinstance(served, int) and not isinstance(served, bool) else None
-            known = pinned.get(key_hex)
-            if served is not None and (known is None or served < known):
-                pinned[key_hex] = known = served
-            bounds[bytes.fromhex(key_hex)] = known if known is not None else 0
-        self._archive_bounds[user_id] = bounds
-        if pinned != (pinned_all.get(user_id) or {}):
-            pinned_all[user_id] = pinned
-            self._db.set_meta_json(self._ARCHIVE_BOUNDS_META, pinned_all)
-
-    def _archive_bound(self, user_id: str, signing_pk: bytes) -> Optional[int]:
-        """Last commit_seq ``signing_pk`` may sign for, or None for a current key."""
-        return self._archive_bounds.get(user_id, {}).get(bytes(signing_pk))
-
     def _authorized_our_rotation(self, signing_pk: bytes, encryption_pk: bytes) -> bool:
         """Whether these keys signed this device's pending identity rotation."""
         journal = self._pending_identity()
@@ -1111,7 +1085,7 @@ class SyncClient(
                 ring = self._key_ring_from_response(
                     user_id, signing_pk, encryption_pk, response
                 )
-                self._remember_archive_bounds(user_id, response)
+                self._remember_retired_keys(user_id, response)
                 if (
                     signing_pk != self._keypair.signing_pk
                     or encryption_pk != self._keypair.encryption_pk
@@ -1188,7 +1162,7 @@ class SyncClient(
                             ring = self._key_ring_from_response(
                                 user_id, signing_pk, encryption_pk, resp
                             )
-                            self._remember_archive_bounds(user_id, resp)
+                            self._remember_retired_keys(user_id, resp)
                         except Exception:
                             ring = (signing_pk,)
                         raise TofuKeyChangeError(
@@ -1221,7 +1195,7 @@ class SyncClient(
                 self._signing_key_rings[user_id] = self._key_ring_from_response(
                     user_id, signing_pk, encryption_pk, resp
                 )
-                self._remember_archive_bounds(user_id, resp)
+                self._remember_retired_keys(user_id, resp)
                 self._tofu_checked_user_ids.add(user_id)
                 return signing_pk
         except TofuKeyChangeError:

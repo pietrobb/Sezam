@@ -1,5 +1,9 @@
 """Stateful test finding SM18: a key bound from a lost rotation refused real objects.
 
+Goal #443 replaced the bound by voucher lists of the current key; the case
+stays: the old key's later writes must still count once the laptop rotated it
+away (its rotation vouches for them).
+
 The phone rotated the account's identity key and learned the old key's bound:
 it vouches only for objects committed before that rotation. The server was then
 restored from a backup made before the rotation, so the old key was the
@@ -33,8 +37,7 @@ def test_full_resync_after_a_lost_rotation_takes_the_old_keys_writes(server, tmp
     backup = copy.deepcopy(db._storage)
     _rotate(phone, url)
     user_id = phone.db.get_meta("user_id")
-    _client(phone, url)._get_signing_pks(user_id)  # learns (pins) the old key's bound
-    assert (phone.db.get_meta_json("archived_key_bounds") or {}).get(user_id)
+    _client(phone, url)._get_signing_pks(user_id)  # learns the old key is retired
 
     _restore(db, backup)
     _add(laptop, "written with the old key")

@@ -384,16 +384,7 @@ class ResyncMixin:
         self._tofu_checked_user_ids.clear()
         self._tofu_warnings = []
         self._signing_key_rings.clear()
-        if self._db.get_meta(SERVER_ROLLBACK_META) is not None:
-            # Stateful test SM18: the restored server lost a rotation of this
-            # account's identity, and the bound pinned from it retired the old
-            # key before objects the account signed with it after the restore
-            # (the key it then held): every full resync refused them as forged.
-            # The account's key history is the server's again (SM14).
-            pinned = self._db.get_meta_json(self._ARCHIVE_BOUNDS_META) or {}
-            if pinned.pop(self._user_id, None) is not None:
-                self._db.set_meta_json(self._ARCHIVE_BOUNDS_META, pinned)
-            self._archive_bounds.pop(self._user_id, None)
+        self._reset_vouchers()
         if not self._token:
             self.authenticate()
 
@@ -414,9 +405,9 @@ class ResyncMixin:
         # shorter or other one over (TeamLogMismatch).
         self._sync_team_log(resp.get("team_log_head"))
         self.require_trusted_team_log()
+        self._post_legacy_vouchers()
 
         allowed_types = {"node", "entry", "dek", "envelope", "dek_archive", "audit"}
-        self._verify_since_seq = 0
         for obj in objects:
             if obj.get("object_type") not in allowed_types:
                 raise RuntimeError(
@@ -424,7 +415,7 @@ class ResyncMixin:
                 )
             if not self._verify_object_signature(obj):
                 raise RuntimeError(
-                    f"Full resync rejected object {obj.get('id', '?')}: invalid signature"
+                    f"Full resync rejected object {obj.get('id', '?')}: {self._rejected(obj, 'invalid signature')}"
                 )
 
         ids_by_type = {

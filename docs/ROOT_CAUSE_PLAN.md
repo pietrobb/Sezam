@@ -83,6 +83,18 @@ nálezu sa začína otázkou, ktorý invariant porušuje. Ak taký nie je, dopln
 - **Test:** pravidlo „server klame v poli X“ pre každé pole zo zoznamu, plus pravidlá
   zadržania, starej verzie, falošného 410 a falošného rollbacku. Po kroku sa overia
   invarianty zo sekcie 4.
+- **Vyradený kľúč identity (#443):** jeho podpis platí len pre (id, version,
+  payload_hash), ktoré menuje zoznam (key vouchers) podpísaný aktuálnym kľúčom
+  (a) účtu podpisovateľa, (b) vlastného účtu zariadenia, alebo (c) aktuálneho admina
+  z overeného tímového denníka, alebo ktoré zariadenie samo drží (desktop, mobil;
+  plný resync tak nestratí overené kópie). `retired_seq` ani `commit_seq` sa nečítajú.
+  Rotácia nesie zoznamy novým kľúčom. Pre rotácie spred #443 a neaktívne účty
+  (capability review run 480) každý desktop pošle zoznam verzií, ktoré drží, pri
+  prvom sync s #443 a po každej rotácii, ktorú uvidí. Zvyšok: člen, ktorý takú
+  verziu nikdy nedržal a ktorého účet ani žiadny admin ju nedrží, ju nedostane, kým
+  sa nesynchronizuje podpisovateľ, admin alebo iné zariadenie jeho účtu. Pull to
+  vtedy povie menom podpisovateľa a dá sa zopakovať. Server spred #443 (bez
+  zoznamov) prijme od vyradeného kľúča len to, čo zariadenie drží.
 
 ### INV-4 Monotónnosť
 

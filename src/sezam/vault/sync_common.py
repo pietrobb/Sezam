@@ -151,6 +151,8 @@ COLLECTED_OBJECT = "collected_object"
 ACCOUNT_EXISTS = "account_exists"
 USERNAME_TAKEN = "username_taken"
 ORG_RECOVERY_SUPERSEDED = "org_recovery_superseded"
+INVALID_KEY_VOUCHERS = "invalid_key_vouchers"
+KEY_VOUCHERS_INCOMPLETE = "key_vouchers_incomplete"
 # SHA-256 of the server's encrypted keypair at the key epoch this device holds:
 # what its key-change push sent, or what it took over (stateful test SM30).
 SERVER_KEY_MATERIAL_META = "server_key_material_hash"
@@ -422,7 +424,8 @@ def key_ring_from_response(
     server cannot inject "historical" keys to forge old records. When the
     server has the old key's authorization of that rotation (rotations
     since review 688edcb V4), it must verify too. Which objects an archived
-    key may still vouch for is bounded separately (_archive_bound).
+    key may still vouch for is named by the current key's voucher lists
+    (sync_vouchers, goal #443).
     """
     archives = response.get("archived_keys", [])
     if not isinstance(archives, list):

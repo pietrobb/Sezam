@@ -45,6 +45,10 @@ USERNAME_TAKEN = "username_taken"
 # Review c78fd19 R13-10: a registration saved earlier names the org recovery it
 # replaces; a newer one set up meanwhile (on the web) is kept.
 ORG_RECOVERY_SUPERSEDED = "org_recovery_superseded"
+# Goal #443: a key voucher list not signed by the key it names.
+INVALID_KEY_VOUCHERS = "invalid_key_vouchers"
+# Goal #443: an identity rotation whose lists leave out an object the old key signed.
+KEY_VOUCHERS_INCOMPLETE = "key_vouchers_incomplete"
 
 ERROR_CODES = frozenset({
     HISTORY_CHANGED, STALE_KEY_EPOCH, KEY_CHANGE_MISSES_DEKS, WRONG_CURRENT_PASSWORD,
@@ -52,7 +56,8 @@ ERROR_CODES = frozenset({
     IDENTITY_ROTATION_NEEDS_NEW_KEYS, ATOMIC_BATCH_CONFLICT, IDENTITY_KEY_ROTATED,
     IDENTITY_KEY_RETIRED, TOKEN_INVALID, TOKEN_REVOKED, REVOKED_ENVELOPE,
     COLLECTED_OBJECT, TEAM_LOG_HEAD_MOVED, TEAM_LOG_REFUSED, TEAM_LOG_REQUIRED, TEAM_LOG_UNREADABLE,
-    ACCOUNT_EXISTS, USERNAME_TAKEN, ORG_RECOVERY_SUPERSEDED,
+    ACCOUNT_EXISTS, USERNAME_TAKEN, ORG_RECOVERY_SUPERSEDED, INVALID_KEY_VOUCHERS,
+    KEY_VOUCHERS_INCOMPLETE,
 })
 
 

@@ -425,11 +425,10 @@ class WritersMixin:
         objects = (resp or {}).get("objects")
         if not isinstance(objects, list):
             raise RuntimeError("Sync returned an invalid snapshot")
-        self._verify_since_seq = 0
         for obj in objects:
             if not self._verify_object_signature(obj):
                 raise RuntimeError(
-                    f"Pull rejected object {obj.get('id', '?')}: invalid or unverifiable signature"
+                    f"Pull rejected object {obj.get('id', '?')}: {self._rejected(obj)}"
                 )
         self._db.execute("BEGIN IMMEDIATE")
         try:

@@ -52,7 +52,8 @@ def test_a_full_resync_tells_another_write_at_the_base_version(loopback_server):
 
 def test_a_full_resync_does_not_reseal_a_member_queued_for_removal(loopback_server):  # noqa: F811
     """The second admin revoked m7 (re-keyed nothing). A rotated its identity
-    and revoked the second admin; both stayed queued, with m7's re-key ahead.
+    and revoked the second admin; both stayed queued, with m7's re-key ahead
+    (since c7a0e49 m7's waits for the rotation to go out).
     A full resync re-sealed A's grant to m7 under the folder key that re-key
     replaces, and every push of A was refused ("envelope references unknown
     DEK")."""
@@ -65,7 +66,9 @@ def test_a_full_resync_does_not_reseal_a_member_queued_for_removal(loopback_serv
         assert member in machine.revoked, machine._trace()
         machine.rotate_identity(_Scripted(device="A"), "before")
         machine.revoke(_Scripted(device="A", member=admin), "before")
-        assert set(revocation_queue(machine.devices["A"].vault.db)) >= {member, admin}
+        # m7's re-key waits for A's unpushed rotation (c7a0e49,
+        # queue_revoked_holders); the second admin's revocation is queued.
+        assert admin in set(revocation_queue(machine.devices["A"].vault.db)), machine._trace()
         machine.full_resync(_Scripted(device="A"))
         # No key sealed for m7 since: what A holds for m7 is the server's.
         on_server = {obj["id"] for obj in machine.db._storage["vault_objects"]}

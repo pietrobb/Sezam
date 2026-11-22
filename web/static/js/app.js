@@ -52,7 +52,8 @@ let state = {
     sodium: null,     // libsodium instance
     userKeys: {},     // user_id → Uint8Array[] current + archived signing keys
     userEncryptionKeys: {},  // user_id → Uint8Array[] X25519 keys paired with userKeys
-    archivedKeyBounds: {},   // user_id → {archived signing pk hex → last commit_seq it vouches for}
+    retiredKeys: {},         // user_id → Set of retired signing pk hex (goal #443)
+    voucherKeys: {},         // user_id → the signing pk hex whose voucher lists count (current)
 };
 
 const I18N = globalThis.SezamI18n || Object.freeze({
@@ -2514,7 +2515,8 @@ function resetSession() {
     state.syncConflicts = {};
     state.userKeys = {};
     state.userEncryptionKeys = {};
-    state.archivedKeyBounds = {};
+    state.retiredKeys = {};
+    state.voucherKeys = {};
     state.keypair = null;
     state._mitmWarnings = null;
     state.userId = null;
@@ -3043,6 +3045,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
 
     // Verify every object before applying any of the response; abort on any invalid object
     const verifiedObjects = [];
+    const vouchedBySigner = new Map();
     let withheld = 0;
     for (const obj of data.objects) {
         // Fail-closed (spec §8.2 pull 3a/4): every object MUST carry a valid
@@ -3067,24 +3070,46 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         if (actualPayloadHash !== String(obj.payload_hash || '').toLowerCase()) {
             throw new Error(`REJECT object ${obj.id} — payload_hash does not match ciphertext`);
         }
-        const bounds = state.archivedKeyBounds[signerId] || {};
-        const commitSeq = Number(obj.commit_seq);
-        const verifySince = isFullPull ? 0 : sinceSeq;
-        const mayVouch = sigPk => {
-            // Review 688edcb V4: archived keys only for what was committed
-            // before their rotation, and never below the seq this pull asked for.
+        const retired = state.retiredKeys[signerId] || new Set();
+        const vouches = async sigPk => {
             const pkHex = bytesToHex(sigPk);
-            const bound = bounds[pkHex];
-            if (bound === undefined) {
+            if (!retired.has(pkHex)) {
                 // Capability run 294: a key the log retired for this member is
                 // no current key, whatever a (restored) server says.
                 return !globalThis.SezamTeamLog.signingKeyRetired(teamLog?.team, signerId, pkHex);
             }
-            return (
-                Number.isSafeInteger(commitSeq) && verifySince < commitSeq && commitSeq <= bound
-            );
+            // Goal #443: a retired key vouches only for what a voucher list
+            // names, not for whatever the server dates before its rotation
+            // (retired_seq, commit_seq): a list of the signer's current key,
+            // of this account's key (its desktop or phone holds the versions)
+            // or of a current admin of the verified log, so that an account
+            // that rotated before #443 and never syncs again is still read
+            // (capability review run 480).
+            if (!vouchedBySigner.has(signerId)) {
+                const team = teamLog?.team;
+                const posters = [[signerId, state.voucherKeys[signerId]]];
+                if (state.keypair?.signingPk) posters.push([state.userId, bytesToHex(state.keypair.signingPk)]);
+                for (const [uid, member] of Object.entries(team?.members || {})) {
+                    if (globalThis.SezamTeamLog.isAdmin(team, uid) && member.signingPk) {
+                        posters.push([uid, member.signingPk]);
+                    }
+                }
+                const out = new Set();
+                for (const [poster, keyHex] of posters) {
+                    for (const key of await fetchVouchedEntries(poster, keyHex, _sodium)) out.add(key);
+                }
+                vouchedBySigner.set(signerId, out);
+            }
+            return vouchedBySigner.get(signerId).has(keyVoucherKey(obj.id, obj.version ?? 1, obj.payload_hash));
         };
-        if (!sigPks.some(sigPk => mayVouch(sigPk) && verifyObjectSignature(obj, sigPk, _sodium))) {
+        let verified = false;
+        for (const sigPk of sigPks) {
+            if (await vouches(sigPk) && verifyObjectSignature(obj, sigPk, _sodium)) {
+                verified = true;
+                break;
+            }
+        }
+        if (!verified) {
             throw new Error(`REJECT object ${obj.id} — invalid Ed25519 signature from signer ${signerId}`);
         }
         verifiedObjects.push(obj);
@@ -8765,6 +8790,90 @@ function keyRotationMessage(userId, oldSigningPk, oldEncryptionPk, newSigningPk,
 
 // Current key plus archived keys reachable through rotation certificates
 // signed by their successor, so the server cannot inject historical keys.
+// ── Key vouchers (goal #443, src/sezam/key_vouchers.py, tests/vectors/key_vouchers.json) ──
+
+function keyVoucherKey(id, version, payloadHash) {
+    return `${id}:${version}:${String(payloadHash || '').toLowerCase()}`;
+}
+
+function canonicalKeyVoucherEntries(entries) {
+    if (!Array.isArray(entries)) throw new Error('Voucher entries must be a list');
+    const byKey = new Map();
+    for (const entry of entries) {
+        if (!Array.isArray(entry) || entry.length !== 3) {
+            throw new Error('A voucher entry is [id, version, payload_hash]');
+        }
+        const [id, version, payloadHash] = entry;
+        if (typeof id !== 'string' || !/^[0-9A-Za-z]{26}$/.test(id)) {
+            throw new Error('A voucher entry needs a 26-character object id');
+        }
+        if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 0) {
+            throw new Error('A voucher entry needs an unsigned version');
+        }
+        if (typeof payloadHash !== 'string' || !/^[0-9a-f]{64}$/.test(payloadHash)) {
+            throw new Error('A voucher entry needs a lowercase hex SHA-256 payload hash');
+        }
+        byKey.set(keyVoucherKey(id, version, payloadHash), [id, version, payloadHash]);
+    }
+    return [...byKey.values()].sort((a, b) => (
+        a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1] || (a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0)
+    ));
+}
+
+function keyVoucherMessage(userId, signingPk, entries) {
+    if (signingPk.length !== 32) throw new Error('A voucher signing key is 32 bytes');
+    const items = canonicalKeyVoucherEntries(entries);
+    const encoder = new TextEncoder();
+    const domain = encoder.encode('sezam-key-vouchers-v1\0');
+    const user = new Uint8Array(26);
+    user.set(encoder.encode(String(userId)).slice(0, 26));
+    const out = new Uint8Array(domain.length + 26 + 32 + 4 + items.length * 66);
+    const view = new DataView(out.buffer);
+    let at = 0;
+    out.set(domain, at); at += domain.length;
+    out.set(user, at); at += 26;
+    out.set(signingPk, at); at += 32;
+    view.setUint32(at, items.length); at += 4;
+    for (const [id, version, payloadHash] of items) {
+        out.set(encoder.encode(id), at); at += 26;
+        view.setBigUint64(at, BigInt(version)); at += 8;
+        out.set(hexToBytes(payloadHash), at); at += 32;
+    }
+    return out;
+}
+
+function vouchedEntries(userId, currentSigningPk, lists, _sodium) {
+    const currentHex = bytesToHex(currentSigningPk);
+    const vouched = new Set();
+    for (const list of Array.isArray(lists) ? lists : []) {
+        try {
+            if (!list || String(list.signing_pk || '').toLowerCase() !== currentHex) continue;
+            const signature = hexToBytes(String(list.signature || ''));
+            const message = keyVoucherMessage(userId, currentSigningPk, list.entries || []);
+            if (signature.length !== 64
+                || !_sodium.crypto_sign_verify_detached(signature, message, currentSigningPk)) continue;
+            for (const [id, version, payloadHash] of canonicalKeyVoucherEntries(list.entries || [])) {
+                vouched.add(keyVoucherKey(id, version, payloadHash));
+            }
+        } catch {
+            continue;
+        }
+    }
+    return vouched;
+}
+
+async function fetchVouchedEntries(userId, currentHex, _sodium) {
+    if (!currentHex) return new Set();
+    let data;
+    try {
+        data = await apiFetch(`/api/users/${userId}/key-vouchers`);
+    } catch (err) {
+        console.warn('No key vouchers for', userId, err.message);
+        return new Set();
+    }
+    return vouchedEntries(userId, hexToBytes(currentHex), data?.lists, _sodium);
+}
+
 function verifyArchivedKeyChain(userId, currentSigningPk, currentEncryptionPk, candidates, _sodium) {
     const trusted = new Map([[bytesToHex(currentSigningPk), currentEncryptionPk]]);
     const keys = [currentSigningPk];
@@ -8844,7 +8953,6 @@ async function getUserSigningPks(userId) {
                 certificate: hexToBytes(archive.rotation_signature),
                 authorization: archive.authorization_signature
                     ? hexToBytes(archive.authorization_signature) : null,
-                retiredSeq: Number.isSafeInteger(archive.retired_seq) ? archive.retired_seq : null,
             });
         }
         const keys = candidates.length
@@ -8874,21 +8982,13 @@ async function getUserSigningPks(userId) {
         }
 
         state.userKeys[userId] = keys;
-        // Review 688edcb V4: an archived key vouches only for objects
-        // committed up to its rotation. The first bound this session saw
-        // stays (never stretched); without one it vouches for nothing pulled.
-        const trustedHex = new Set(keys.map(pk => bytesToHex(pk)));
-        const previousBounds = state.archivedKeyBounds[userId] || {};
-        const bounds = {};
-        for (const c of candidates) {
-            const signingHex = bytesToHex(c.signingPk);
-            if (!trustedHex.has(signingHex)) continue;
-            const known = previousBounds[signingHex];
-            bounds[signingHex] = c.retiredSeq === null
-                ? (known ?? 0)
-                : Math.min(c.retiredSeq, known ?? c.retiredSeq);
-        }
-        state.archivedKeyBounds = { ...state.archivedKeyBounds, [userId]: bounds };
+        // Goal #443: the archived keys vouch only for what the voucher lists
+        // of the current key name (fetchVouchedEntries); retired_seq is not read.
+        state.retiredKeys = {
+            ...state.retiredKeys,
+            [userId]: new Set(keys.map(pk => bytesToHex(pk)).filter(pkHex => pkHex !== currentSigningHex)),
+        };
+        state.voucherKeys = { ...state.voucherKeys, [userId]: currentSigningHex };
         // X25519 keys paired with the trusted signing keys (current first),
         // used to authenticate DEK envelopes from this user.
         const encryptionBySigning = new Map([[currentSigningHex, currentEncryption]]);

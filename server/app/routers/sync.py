@@ -28,7 +28,7 @@ from ..auth import (
     key_rotation_message,
     unknown_name_mac,
 )
-from .. import personal_tree, team_log
+from .. import key_vouchers, personal_tree, team_log
 from ..config import JWTKeyManager, ServerConfig
 from ..database import Database, run_transaction
 from ..dependencies import get_config, get_db, get_jwt_manager, get_rotation_user
@@ -40,6 +40,7 @@ from ..errors import (
     IDENTITY_ROTATION_NEEDS_NEW_KEYS,
     KEY_CHANGE_MISSES_DEKS,
     KEY_CHANGE_NEEDS_PROOF,
+    KEY_VOUCHERS_INCOMPLETE,
     REVOKED_ENVELOPE,
     STALE_KEY_EPOCH,
     WRONG_CURRENT_PASSWORD,
@@ -1415,6 +1416,41 @@ async def _rotate_identity(
             hashlib.sha256(new_signing_pk + new_encryption_pk).hexdigest(), user_id,
         ),
     )
+    # Goal #443: what the old key signed, vouched for by the new one.
+    vouched: set = set()
+    for voucher_list in identity.key_vouchers:
+        await key_vouchers.store(cur, user_id, new_signing_pk, voucher_list.model_dump(), now_ms)
+        vouched.update(key_vouchers.core.canonical_entries(voucher_list.entries))
+    await _require_vouched(cur, user_id, old_signing_pk, vouched)
+
+
+async def _require_vouched(cur, user_id: str, old_signing_pk: bytes, vouched: set) -> None:
+    """Goal #443: after the rotation a live object the old key signed verifies
+    only where the new key's lists name it; one pushed by another device after
+    this one fetched /api/users/me/signed-objects would be lost to every new
+    device. 409: fetch the list again."""
+    from types import SimpleNamespace
+
+    await cur.execute(
+        "SELECT id, object_type, parent_ref, target_user_id, is_deleted, version, payload_hash, "
+        "client_signature FROM vault_objects WHERE signature_user_id = %s",
+        (user_id,),
+    )
+    for obj_id, object_type, parent_ref, target_user_id, is_deleted, version, payload_hash, signature in (
+        await cur.fetchall()
+    ):
+        if not signature or (obj_id, version, str(payload_hash).lower()) in vouched:
+            continue
+        obj = SimpleNamespace(
+            id=obj_id, object_type=object_type, parent_ref=parent_ref, target_user_id=target_user_id,
+            is_deleted=int(is_deleted or 0), version=version, payload_hash=payload_hash,
+        )
+        if _verify_sync_signature(obj, bytes(signature), old_signing_pk):
+            raise ApiError(
+                409, KEY_VOUCHERS_INCOMPLETE,
+                f"The identity rotation's key vouchers leave out {obj_id} version {version}, "
+                "signed by the retired key",
+            )
 
 
 class WrongCurrentProof(ApiError):

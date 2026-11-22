@@ -931,10 +931,13 @@ class TestPullSignatureFailClosed:
             old_keypair.signing_pk, old_keypair.encryption_pk,
             current_keypair.signing_pk, current_keypair.encryption_pk,
         )).signature
+        from sezam import key_vouchers
+
+        lists = []
         monkeypatch.setattr(
             client,
             "_request",
-            lambda method, path, **kwargs: {
+            lambda method, path, **kwargs: {"lists": lists} if path.endswith("/key-vouchers") else {
                 "signing_pk": current_keypair.signing_pk.hex(),
                 "encryption_pk": current_keypair.encryption_pk.hex(),
                 "archived_keys": [
@@ -978,9 +981,15 @@ class TestPullSignatureFailClosed:
             ).signature.hex()
             return obj
 
-        assert client._verify_object_signature(signed_object(old_keypair)) is True
-        # Review 688edcb V4: nothing committed after the rotation.
-        assert client._verify_object_signature(signed_object(old_keypair, 6)) is False
+        vouched = signed_object(old_keypair)
+        lists.append(key_vouchers.sign_vouchers(
+            owner_id, current_keypair.to_nacl_signing_key(),
+            [(vouched["id"], vouched["version"], vouched["payload_hash"])],
+        ))
+        assert client._verify_object_signature(vouched) is True
+        # Goal #443: the archived key counts only for a version a list of the
+        # current key names, whatever commit_seq and retired_seq the server sends.
+        assert client._verify_object_signature(signed_object(old_keypair)) is False
         assert client._verify_object_signature(signed_object(current_keypair)) is True
         assert client._verify_object_signature(signed_object(current_keypair, 6)) is True
         assert client._verify_object_signature(signed_object(unrelated_keypair)) is False
@@ -1874,9 +1883,9 @@ class TestExplicitFullResync:
                 confirmed=True,
                 dirty_export_path=export_path,
             )
-            assert requested_paths == [
-                "/api/sync?since_commit_seq=0&full_resync=true"
-            ]
+            assert requested_paths[0] == "/api/sync?since_commit_seq=0&full_resync=true"
+            # Goal #443: then only the account's keys, for its key voucher list.
+            assert all(p.startswith("/api/users/") for p in requested_paths[1:]), requested_paths
             # Review d150605 #6: an encrypted copy of the vault, and the unsent
             # root (with its key) is kept for the next push.
             copy = sqlite3.connect(export_path)
@@ -2974,7 +2983,7 @@ class TestPasswordChangeRecovery:
         audit = src.split("async function loadAuditEntries", 1)[1]
 
         assert "await getUserSigningPks(signerId)" in pull
-        assert "sigPks.some(sigPk => mayVouch(sigPk) && verifyObjectSignature" in pull
+        assert "await vouches(sigPk) && verifyObjectSignature(obj, sigPk, _sodium)" in pull
         assert "data.archived_keys || []" in resolver
         assert "Archived key fingerprint mismatch" in resolver
         assert "userPks.some(userPk =>" in audit

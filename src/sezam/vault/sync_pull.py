@@ -111,7 +111,13 @@ class PullMixin:
         return record
 
     def _verify_audit_payload(self, obj_id: str, payload: bytes) -> dict:
-        """Return a parsed audit record only when its original signature verifies."""
+        """Return a parsed audit record only when its original signature verifies.
+
+        Any key of the actor's ring counts here (goal #443): the sync object
+        around the record carries its payload_hash, and a retired key's
+        signature of that counts only for a vouched version
+        (_verify_object_signature); another pusher sends again only records
+        it took that way."""
         record = self._parse_audit_payload(obj_id, payload)
         if obj_id in record["parent_ids"]:
             raise ValueError(f"Invalid self-referencing audit record {obj_id}")
@@ -318,17 +324,15 @@ class PullMixin:
         self._tofu_checked_user_ids.clear()
         self._tofu_warnings = []
         self._signing_key_rings.clear()
+        self._reset_vouchers()
+        self._post_legacy_vouchers()
 
         pulled = 0
         skipped = 0
         objects = resp.get("objects", [])
-        self._verify_since_seq = last_seq
         for obj in objects:
             if not self._verify_object_signature(obj):
-                raise RuntimeError(
-                    f"Pull rejected object {obj.get('id', '?')}: "
-                    "invalid or unverifiable signature"
-                )
+                raise RuntimeError(f"Pull rejected object {obj.get('id', '?')}: {self._rejected(obj)}")
 
         max_seq = resp.get("max_commit_seq", last_seq)
         rollback_warning = None
