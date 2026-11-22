@@ -7395,8 +7395,13 @@ function verifyObjectSignature(obj, signingPk, _sodium) {
             ? new TextEncoder().encode(obj.target_user_id.padEnd(26, '\0').slice(0, 26))
             : new Uint8Array(26);
 
+        // R15 #428 (INV-3): exactly the values kept, never a truncated one.
+        const isDeleted = obj.is_deleted ?? 0;
+        const version = obj.version ?? 1;
+        if (![0, 1, false, true].includes(isDeleted)) return false;
+        if (!Number.isInteger(version) || version < 0 || version > 0xFFFFFFFF) return false;
         const versionBuf = new ArrayBuffer(4);
-        new DataView(versionBuf).setUint32(0, (obj.version || 1) >>> 0, false);
+        new DataView(versionBuf).setUint32(0, version, false);
 
         const parts = [
             idBytes,
@@ -7404,7 +7409,7 @@ function verifyObjectSignature(obj, signingPk, _sodium) {
             otBytes,
             prBytes,
             tuBytes,
-            new Uint8Array([(obj.is_deleted) ? 1 : 0]),
+            new Uint8Array([isDeleted ? 1 : 0]),
             new Uint8Array(versionBuf),
             payloadHashBytes,
         ];

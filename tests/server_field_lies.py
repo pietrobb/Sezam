@@ -1,8 +1,9 @@
 """docs/ROOT_CAUSE_PLAN.md S4 (INV-3), review e443cbc goal #428: a lie in
 one field of server/app/unsigned_fields.py.
 
-Every hint the register lists without a lie of its own is changed in the
-server's replies by the state machine rule ``server_lies_in_a_field``. Which
+Every hint or signed field the register lists without a lie of its own is
+changed in the server's replies by the state machine rule
+``server_lies_in_a_field``. Which
 replies carry a field comes from the app's routes, as in
 tests/test_unsigned_fields.py.
 """
@@ -14,11 +15,12 @@ import re
 from fastapi.routing import APIRoute
 
 from server.app.main import app
-from server.app.unsigned_fields import FIELDS, HINT
+from server.app.unsigned_fields import FIELDS, HINT, SIGNED
 from tests.test_unsigned_fields import _models
 
-# The hints without a rule of their own.
-GENERIC = sorted(key for key, entry in FIELDS.items() if entry.trust == HINT and not entry.lies)
+# The hints and signed fields without a rule of their own: a lie in a signed
+# one must be refused by its check.
+GENERIC = sorted(key for key, entry in FIELDS.items() if entry.trust in (HINT, SIGNED) and not entry.lies)
 
 
 def _targets() -> dict[str, list[tuple[str, re.Pattern, frozenset | None, str]]]:

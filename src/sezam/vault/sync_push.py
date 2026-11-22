@@ -1280,7 +1280,14 @@ class PushMixin:
         """Build canonical signed data for Ed25519 signature (spec 8.2).
 
         Uses UTF-8 string encoding for IDs (matching server's _verify_sync_signature).
+
+        R15 #428 (INV-3): a value the u8/u32 fields cannot hold exactly is a
+        ValueError, so a pulled object carrying one is unverified, not a crash.
         """
+        if type(is_deleted) not in (int, bool) or is_deleted not in (0, 1):
+            raise ValueError(f"is_deleted must be 0 or 1, not {is_deleted!r}")
+        if type(version) is not int or not 0 <= version <= 0xFFFFFFFF:
+            raise ValueError(f"version must fit a u32, not {version!r}")
         id_bytes = PushMixin._id_to_bytes(id)
         ot = object_type.encode("utf-8")
         pr = PushMixin._id_to_bytes(parent_ref) if parent_ref else b"\x00" * 26

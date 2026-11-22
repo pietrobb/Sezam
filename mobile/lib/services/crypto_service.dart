@@ -933,6 +933,14 @@ class CryptoService {
     required int version,
     required String payloadHashHex,
   }) {
+    // R15 #428 (INV-3): a value the u8/u32 fields cannot hold exactly is
+    // refused, never truncated into one a signature covers.
+    if (isDeleted != 0 && isDeleted != 1) {
+      throw ArgumentError.value(isDeleted, 'isDeleted', 'must be 0 or 1');
+    }
+    if (version < 0 || version > 0xFFFFFFFF) {
+      throw ArgumentError.value(version, 'version', 'must fit a u32');
+    }
     final idBytes = _padToLength(utf8.encode(id), 26);
     final otBytes = utf8.encode(objectType);
     final parentBytes = parentRef != null
