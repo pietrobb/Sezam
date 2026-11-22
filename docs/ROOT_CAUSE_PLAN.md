@@ -150,6 +150,31 @@ nálezu sa začína otázkou, ktorý invariant porušuje. Ak taký nie je, dopln
 - **Test:** po každom kroku state machine sa overí, že ku každému aktuálnemu stavu
   existuje akcia, ktorá ho z UI ukončí a nezahodí dáta bez potvrdenia.
 
+### Prednosť INV-5 a INV-7 (review e443cbc, R15-P4)
+
+INV-5 hovorí „pri neistote odmietni“, INV-7 „nikdy nezamkni a nič nezahoď“. Keď
+kontrola tímového denníka zlyhá (výnimka, 5xx, poškodená kópia, neznámy kľúč),
+platia obe naraz takto:
+
+1. **Osobný strom sa otvorí.** Odomknutie, čítanie a zápis osobných položiek
+   a odchádzanie osobných zmien na server od denníka nezávisia (INV-7).
+2. **Tím sa odmietne.** Žiadny tímový kľúč sa nepoužije, žiadna tímová položka
+   sa nezapíše, neprebalí ani nezmaže, kým denník neprejde kontrolou (INV-5).
+   Odmietnutie platí aj pre cache tímového stavu: výsledok z cache sa použije,
+   len ak by ho prešla aj čerstvá kontrola.
+3. **Nič neznáme nie je osobné.** Položka alebo priečinok, ktorého vlastníctvo
+   určuje denník, sa pri odmietnutom denníku nepovažuje za osobný: neprebalí sa
+   pod osobný kľúč a nerozhoduje oň pravidlo spred denníka ani nepodpísané pole
+   servera (`owner_id`, `scope`, `access_level`).
+4. **Nič neznáme nie je stratené.** Zlyhanie kontroly nie je dôkaz, že server
+   denník stratil. Forget-pin, „server bol obnovený“ ani zahodenie fronty sa pri
+   ňom neponúknu ani nevykonajú; ponúkajú sa len pri príčine odvodenej
+   z podpísaných dát (INV-8).
+
+- **Test:** property test s vkladaním chýb vyhodí výnimku alebo 5xx v každom kroku
+  odomknutia a syncu na desktope, webe aj mobile. Po každom kroku platí: forget sa
+  neponúkol ani nevykonal, tímový kľúč sa nepoužil, osobné zmeny ďalej odchádzajú.
+
 ### INV-8 Núdzovú akciu nesmie vyvolať útočník
 
 - **Pravidlo:** forget-pin, „server bol obnovený“, nahradenie org recovery, reset
