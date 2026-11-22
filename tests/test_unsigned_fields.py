@@ -24,6 +24,8 @@ MACHINE = (ROOT / "tests" / "test_sync_state_machine.py").read_text(encoding="ut
 
 # Open INV-3 findings: a client decision rests on these unsigned fields.
 # Remove a field here only when its entry stops being DECIDES.
+# Both left are one finding, goal #443: a device pulling from below a
+# retirement takes whatever a leaked retired key signs.
 KNOWN_DECIDES = {
     "GET /api/users/{user_id}/keys .archived_keys",
     "PullObject.commit_seq",
