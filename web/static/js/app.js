@@ -3655,6 +3655,33 @@ async function performTOFUChecks() {
 /**
  * Render admin user list with fingerprints in the tree panel (below the tree).
  */
+/**
+ * R15 #428 (INV-3): the user list's fingerprint is the pinned key's (TOFU)
+ * or this device's own, never the server's unsigned signing_pk,
+ * encryption_pk or key_fingerprint: an admin comparing it with the member's
+ * saw the real one while the key sealed for was the server's.
+ */
+async function adminUserFingerprintHtml(user) {
+    let keys = null;
+    try {
+        if (user.id === state.userId && state.keypair && state.keypair.signingPk) {
+            const _sodium = await ensureSodium();
+            keys = [state.keypair.signingPk, _sodium.crypto_scalarmult_base(state.keypair.encryptionSk)];
+        } else {
+            const pinned = await getKnownKey(user.id);
+            if (pinned) keys = [hexToBytes(pinned.signing_pk), hexToBytes(pinned.encryption_pk)];
+        }
+        if (keys) {
+            const fp = await displayFingerprint(keys[0], keys[1]);
+            const shortHex = fp.hex.slice(0, 8) + '...' + fp.hex.slice(-4);
+            return `<span class="admin-user-fp">${fp.identicon} <span class="fingerprint-hex" title="${fp.hex}&#10;${fp.words}">${shortHex}</span></span>`;
+        }
+    } catch (err) {
+        console.warn('Fingerprint not shown:', err);
+    }
+    return `<span class="admin-user-fp">${escapeHtml(t('admin.not_pinned'))}</span>`;
+}
+
 async function renderAdminUserList(users) {
     // Only render if admin
     if (!state.isAdmin) return;
@@ -3685,19 +3712,7 @@ async function renderAdminUserList(users) {
         const userEl = document.createElement('div');
         userEl.className = 'admin-user-item';
 
-        let fpHtml = '';
-        if (user.signing_pk && user.encryption_pk) {
-            try {
-                const fp = await displayFingerprint(
-                    hexToBytes(user.signing_pk),
-                    hexToBytes(user.encryption_pk)
-                );
-                const shortHex = fp.hex.slice(0, 8) + '...' + fp.hex.slice(-4);
-                fpHtml = `<span class="admin-user-fp">${fp.identicon} <span class="fingerprint-hex" title="${fp.hex}&#10;${fp.words}">${shortHex}</span></span>`;
-            } catch {
-                fpHtml = `<span class="admin-user-fp fingerprint-hex">${escapeHtml(user.key_fingerprint?.slice(0, 12) || '')}...</span>`;
-            }
-        }
+        const fpHtml = await adminUserFingerprintHtml(user);
 
         // Action buttons based on user status
         let actionsHtml = '';
@@ -6361,6 +6376,18 @@ async function saveKnownKey(userId, signingPk, encryptionPk) {
         tx.oncomplete = resolve;
         tx.onerror = () => reject(tx.error || new Error('TOFU key write failed'));
         tx.onabort = () => reject(tx.error || new Error('TOFU key write aborted'));
+    });
+}
+
+/** The pinned {signing_pk, encryption_pk} (hex) of a user, or null; pins nothing. */
+async function getKnownKey(userId) {
+    const db = await openDB();
+    const tx = db.transaction('known_keys', 'readonly');
+    const req = tx.objectStore('known_keys').get(userId);
+    return new Promise((resolve, reject) => {
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error || new Error('TOFU key read failed'));
+        tx.onabort = () => reject(tx.error || new Error('TOFU key read aborted'));
     });
 }
 

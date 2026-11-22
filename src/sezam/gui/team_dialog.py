@@ -644,7 +644,14 @@ class TeamDialog(QDialog):
             name_item.setData(Qt.UserRole, row.get("id", ""))
             self._users_table.setItem(i, 0, name_item)
             self._users_table.setItem(i, 1, self._status_item(row.get("status", "unknown")))
-            fingerprint = row.get("key_fingerprint", "")
+            # INV-3: the server's key_fingerprint is unsigned; show the pinned key's.
+            pinned = self._vault.db.fetchone(
+                "SELECT fingerprint FROM known_keys WHERE user_id = ?", (row.get("id", ""),)
+            )
+            if row.get("id") == self._vault.db.get_meta("user_id"):
+                fingerprint = self._vault.keypair.fingerprint
+            else:
+                fingerprint = pinned["fingerprint"] if pinned else "not pinned yet"
             self._users_table.setItem(i, 2, QTableWidgetItem(fingerprint))
             self._users_table.setItem(i, 3, QTableWidgetItem("Admin" if row.get("is_admin") else "Member"))
             created = row.get("created_at", 0)
