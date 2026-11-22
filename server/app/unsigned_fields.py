@@ -175,10 +175,9 @@ FIELDS: dict[str, Field] = {
     "PullObject.signature_user_id": Field(
         HINT, "only picks whose pinned keys verify the signature; a wrong one fails the check", _OBJECT_SIG),
     "PullObject.owner_id": Field(
-        DECIDES,
-        "sync_resync: with a password change pending, a DEK labelled someone else's skips the check that "
-        "the KEK still opens it, so a server relabelling the account's own DEKs lets the resync through",
-        ("vault.sync_resync:ResyncMixin.full_resync",)),
+        HINT, "only names the signer when signature_user_id is missing, and a wrong one fails the signature "
+        "check; whose DEK it is comes from the verified signer (tests/test_inv3_resync_owner_id.py)",
+        _OBJECT_SIG),
     "PullObject.write_policy": Field(UNREAD, "not read by the desktop"),
     "PullObject.access_level": Field(
         HINT, "an envelope's write access comes from the team log", (), ("server_lies:access_up",)),

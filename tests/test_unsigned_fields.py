@@ -27,7 +27,6 @@ MACHINE = (ROOT / "tests" / "test_sync_state_machine.py").read_text(encoding="ut
 KNOWN_DECIDES = {
     "GET /api/users/{user_id}/keys .archived_keys",
     "PullObject.commit_seq",
-    "PullObject.owner_id",
 }
 
 

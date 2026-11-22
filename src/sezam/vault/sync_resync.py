@@ -733,7 +733,9 @@ class ResyncMixin:
                 for obj in objects:
                     if obj["object_type"] != "dek" or obj.get("is_deleted"):
                         continue
-                    if (obj.get("owner_id") or self._user_id) != self._user_id:
+                    # Whose DEK it is: the signer verified above, not the
+                    # unsigned owner_id (INV-3).
+                    if self._signer_id(obj) != self._user_id:
                         continue
                     row = self._db.fetchone(
                         "SELECT encrypted_dek, version FROM deks WHERE id = ?", (obj["id"],)
