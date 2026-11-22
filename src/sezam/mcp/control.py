@@ -856,6 +856,9 @@ class BrakeResult:
     state: "ai_access.AIAccessState"
     stopped: int  # running brokers that persisted ai_off themselves
     unanswered: int  # brokers that did not; their watcher closes sessions
+    # Why the 'off' is not anchored on the sync server; None when it is, or
+    # when nothing needs it (no server, or a running broker anchors it).
+    unanchored: Optional[str] = None
 
 
 def pull_brake(vault, source: str) -> BrakeResult:
@@ -864,9 +867,11 @@ def pull_brake(vault, source: str) -> BrakeResult:
     Every running broker is told first (in-memory flag, close sessions,
     persist, audit). A reply is not trusted on its own: unless one broker
     persisted it and the vault now reads off, the switch is written here.
-    Never needs a password; ``vault`` may be locked.
+    Then, on an unlocked vault, the new 'off' is anchored on the sync server
+    (R14-M3). Never needs a password; ``vault`` may be locked.
     """
     from ..vault import ai_access
+    from .remote_policy import ServerAnchor
 
     replies = send_all("ai_off")
     stopped = sum(
@@ -875,7 +880,17 @@ def pull_brake(vault, source: str) -> BrakeResult:
     state = ai_access.read_state(vault)
     if not stopped or state.enabled:
         state = ai_access.disable(vault, source)
-    return BrakeResult(state, stopped, len(replies) - stopped)
+    unanchored = None
+    if ai_access.anchor_expected(vault):
+        if vault.is_unlocked:
+            try:
+                ServerAnchor(vault, {}).anchor_off(state.epoch)
+            except Exception as exc:
+                logger.warning("The AI 'off' was not anchored on the sync server", exc_info=True)
+                unanchored = str(exc) or type(exc).__name__
+        elif not stopped:  # a broker that saved it anchors it from its unlocked vault
+            unanchored = "the vault is locked"
+    return BrakeResult(state, stopped, len(replies) - stopped, unanchored)
 
 
 def broker_handlers(broker, lock: Callable[[], None]) -> Handlers:

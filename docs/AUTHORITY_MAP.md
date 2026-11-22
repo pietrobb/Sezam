@@ -79,7 +79,7 @@ Server: 57 routes, 36 of them change something.
 | `abandon-pending-change` | drops an unsent password or key change | whoever unlocked the vault (master password, or the broker's session key) | — | runs `SyncClient.abandon_pending_change` |
 | `abandon-rekey` | drops a pending re-key | whoever unlocked the vault (master password, or the broker's session key) | — | runs `rekey_abandon:abandon_pending_rekey`<br>`pending_states:set_revocation_queue` |
 | `ai log` | — | — | — | — |
-| `ai off` | turns AI access off | whoever unlocked the vault (master password, or the broker's session key) | — | runs `ai_access:disable` |
+| `ai off` | turns AI access off; on an unlocked vault also anchors the 'off' on the sync server | whoever unlocked the vault (master password, or the broker's session key) | — | runs `ai_access:disable` |
 | `ai on` | turns AI access on | whoever unlocked the vault (master password, or the broker's session key) | — | runs `ai_access:enable` |
 | `ai status` | — | — | — | runs `ai_access:read_state` |
 | `ai-host-setup` | the AI host's local configuration files | whoever unlocked the vault (master password, or the broker's session key) | `local` | — |
@@ -279,7 +279,7 @@ Keyed `module:function` under `sezam.vault`.
 |---|---|---|---|---|
 | `ai_access:anchor_expected` | — | — | — | run by `sezam.mcp.broker:MCPBroker._await_anchor` |
 | `ai_access:anchor_home` | seals the AI switch anchor's home (id, server, account) under the KEK | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review14_ai_anchor_fail_closed.py |
-| `ai_access:anchor_mac` | — | — | — | run by `sezam.mcp.remote_policy:ServerAnchor.sync` |
+| `ai_access:anchor_mac` | — | — | — | run by `sezam.mcp.remote_policy:ServerAnchor.sync`<br>`sezam.mcp.remote_policy:ServerAnchor.anchor_off` |
 | `ai_access:disable` | turns AI access off (signed local switch) | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review7_two_brokers_disable.py |
 | `ai_access:enable` | turns AI access on (signed local switch) | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review10_ai_enable_race.py |
 | `ai_access:legacy_anchor_id` | — | — | — | run by `sezam.mcp.remote_policy:ServerAnchor.sync` |
@@ -379,8 +379,8 @@ Keyed `module:function` under `sezam`; every such function must be here.
 | `gui.server_connect_dialog:ServerConnectWorker._handle_bootstrap` | the first admin of an empty server | whoever unlocked the vault, while the server has no admin | `POST /api/bootstrap` | run by `sezam.gui.server_connect_dialog:ServerConnectWorker._do_connect` |
 | `gui.server_connect_dialog:ServerConnectWorker._handle_existing_server` | registers with an invitation, or recovers the account's keys with its password | the invitation's holder; whoever knows the account password | `POST /api/users/register`<br>`POST /api/auth/recover` | run by `sezam.gui.server_connect_dialog:ServerConnectWorker._do_connect` |
 | `gui.server_connect_dialog:ServerConnectWorker._upload_keypair` | the new account's key material | the signed-in account, for itself | `PUT /api/me/keypair` | run by `sezam.gui.server_connect_dialog:ServerConnectWorker._handle_existing_server` |
-| `mcp.remote_policy:ServerAnchor._held` | — | — | — | run by `sezam.mcp.remote_policy:ServerAnchor.sync` |
-| `mcp.remote_policy:ServerAnchor.sync` | raises this vault's AI anchor on the server | the signed-in account, for itself | `PUT /api/ai-anchor` | test_review13_ai_switch_anchor.py |
+| `mcp.remote_policy:ServerAnchor._held` | — | — | — | run by `sezam.mcp.remote_policy:ServerAnchor.sync`<br>`sezam.mcp.remote_policy:ServerAnchor.anchor_off` |
+| `mcp.remote_policy:_put_anchor` | raises this vault's AI anchor on the server (signed with the account's key) | the signed-in account, for itself | `PUT /api/ai-anchor` | test_review14_ai_off_anchored.py |
 
 ## Without a test
 

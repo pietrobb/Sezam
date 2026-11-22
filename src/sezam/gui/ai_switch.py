@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -25,6 +26,7 @@ from .styles import COLORS
 logger = logging.getLogger(__name__)
 
 REFRESH_MS = 5000
+ANCHOR_RETRY_SECONDS = 30.0
 
 
 class AIAccessSwitch(QObject):
@@ -44,6 +46,10 @@ class AIAccessSwitch(QObject):
         self._parent = parent
         self.worker: Optional[threading.Thread] = None
         self.last_message = ""
+        # R14-M3: an 'off' pulled while the window was locked could not be
+        # anchored on the sync server; it is, once the window is unlocked.
+        self._unanchored_epoch: Optional[int] = None
+        self._anchor_retry_at = 0.0
 
         self.button = QPushButton()
         self.button.setFixedWidth(150)
@@ -89,6 +95,28 @@ class AIAccessSwitch(QObject):
         self.tray_action.setText(
             "Turn AI access OFF" if state.enabled else "Turn AI access on..."
         )
+        if (
+            self._unanchored_epoch is not None and not busy and not state.enabled
+            and time.monotonic() >= self._anchor_retry_at and self._current_kek() is not None
+        ):
+            self._anchor_again(self._unanchored_epoch)
+
+    def _anchor_again(self, epoch: int) -> None:
+        kek = bytearray(self._current_kek())
+
+        def job():
+            from ..mcp.remote_policy import ServerAnchor
+
+            vault = Vault(self._vault_path)
+            try:
+                vault.unlock_with_kek(kek)
+                ServerAnchor(vault, {}).anchor_off(epoch)
+                return epoch
+            finally:
+                vault.lock()
+                kek[:] = b"\x00" * len(kek)
+
+        self._start("anchor", job)
 
     def toggle(self) -> None:
         state = self.state()
@@ -160,6 +188,15 @@ class AIAccessSwitch(QObject):
 
     def _on_finished(self, kind: str, result, error) -> None:
         self.worker = None
+        if kind == "anchor":
+            if error is not None:
+                logger.warning("Anchoring the AI 'off' on the sync server failed", exc_info=error)
+                self._anchor_retry_at = time.monotonic() + ANCHOR_RETRY_SECONDS
+            elif self._unanchored_epoch == result:
+                self._unanchored_epoch = None
+                self._show(f"AI access 'off' (epoch {result}) is now anchored on the sync server.")
+            self.refresh()
+            return
         self.refresh()
         if error is not None:
             if kind == "on" and isinstance(error, ValueError):
@@ -177,8 +214,20 @@ class AIAccessSwitch(QObject):
                 self.last_message += (
                     f" {result.unanswered} did not answer; they close their sessions within seconds."
                 )
+            if result.unanchored:
+                self._unanchored_epoch = result.state.epoch
+                self._anchor_retry_at = 0.0
+                self.last_message += (
+                    f" Not anchored on the sync server yet ({result.unanchored}); "
+                    "it is once the vault is unlocked here."
+                )
         else:
+            self._unanchored_epoch = None
             self.last_message = f"AI access is ON (epoch {result.epoch})."
+        self._show(self.last_message)
+
+    def _show(self, message: str) -> None:
+        self.last_message = message
         status_bar = getattr(self._parent, "statusBar", None)
         if status_bar is not None:
-            status_bar().showMessage(self.last_message, 10_000)
+            status_bar().showMessage(message, 10_000)

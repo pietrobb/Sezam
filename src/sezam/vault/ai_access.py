@@ -233,11 +233,12 @@ def _home_mac(kek: bytes, db: VaultDB) -> str:
 
 
 def anchor_expected(vault: "Vault") -> bool:
-    """Whether AI access waits for a check of the server-held anchor."""
-    db = vault.db
-    return bool(
-        db.get_meta(ANCHOR_HOME_KEY) or db.get_meta(ANCHOR_HOME_MAC_KEY) or db.get_meta("server_url")
-    )
+    """Whether AI access waits for a check of the server-held anchor (also
+    readable on a locked vault, for the brake)."""
+    with _meta_db(vault) as db:
+        return bool(
+            db.get_meta(ANCHOR_HOME_KEY) or db.get_meta(ANCHOR_HOME_MAC_KEY) or db.get_meta("server_url")
+        )
 
 
 def _seal_home(db: VaultDB, kek: bytes, home: AnchorHome) -> None:

@@ -4074,6 +4074,14 @@ def ai_off(terminate_remote: bool):
             "sessions within seconds.",
             err=True,
         )
+    if result.unanchored:
+        click.echo(
+            f"The 'off' is not anchored on the sync server ({result.unanchored}). Until it is, "
+            "a program running as your OS user could write back an earlier 'on'. With a CLI "
+            "session open (sezam unlock) or a running 'sezam mcp-serve' it is anchored; "
+            "run 'sezam ai off' again then.",
+            err=True,
+        )
     if remote is None:
         click.echo(
             "SSH logins the AI made through 'sezam ssh-agent' are not ended by this; "

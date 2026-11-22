@@ -226,7 +226,8 @@ FUNCTIONS: dict[str, Op] = {
     "ai_access:anchor_home": local("seals the AI switch anchor's home (id, server, account) under the KEK",
                                    "tests/test_review14_ai_anchor_fail_closed.py"),
     "ai_access:legacy_anchor_id": read(part_of=("sezam.mcp.remote_policy:ServerAnchor.sync",)),
-    "ai_access:anchor_mac": read(part_of=("sezam.mcp.remote_policy:ServerAnchor.sync",)),
+    "ai_access:anchor_mac": read(part_of=("sezam.mcp.remote_policy:ServerAnchor.sync",
+                                          "sezam.mcp.remote_policy:ServerAnchor.anchor_off")),
     "ai_access:disable": local("turns AI access off (signed local switch)", "tests/test_review7_two_brokers_disable.py"),
     "ai_access:enable": local("turns AI access on (signed local switch)", "tests/test_review10_ai_enable_race.py"),
     "ai_access:raise_floor": local("raises the AI switch's epoch floor", part_of=("sezam.mcp.broker:MCPBroker.raise_floor",)),
@@ -396,7 +397,8 @@ CLI: dict[str, Op] = {
     "ssh-agent": cli("", NOBODY, "Vault.unlock_with_kek", note="serves keys of entries the policy allows"),
     "ai-host-setup": cli("the AI host's local configuration files", OWNER, decided_by=(LOCAL,)),
     "broker install-service": cli("installs the broker service", "the operating system user", decided_by=(LOCAL,)),
-    "ai off": cli("turns AI access off", OWNER, "ai_access:disable"),
+    "ai off": cli("turns AI access off; on an unlocked vault also anchors the 'off' on the sync server",
+                  OWNER, "ai_access:disable"),
     "ai on": cli("turns AI access on", OWNER, "ai_access:enable"),
     "ai status": cli("", NOBODY, "ai_access:read_state"),
     "ai log": cli("", NOBODY),
@@ -445,10 +447,12 @@ DIRECT: dict[str, Op] = {
     "cli:share_revoke": Op("deletes a share link", "its creator, or " + SERVER_ADMIN, ("DELETE /api/share/{share_id}",),
                            ("/api/share/",)),
     "mcp.remote_policy:ServerAnchor._held": read(calls=("/api/ai-anchor/",),
-                                                 part_of=("sezam.mcp.remote_policy:ServerAnchor.sync",)),
-    "mcp.remote_policy:ServerAnchor.sync": Op(
-        "raises this vault's AI anchor on the server", ACCOUNT, ("PUT /api/ai-anchor",), ("/api/ai-anchor",),
-        tests=("tests/test_review13_ai_switch_anchor.py",)),
+                                                 part_of=("sezam.mcp.remote_policy:ServerAnchor.sync",
+                                                          "sezam.mcp.remote_policy:ServerAnchor.anchor_off")),
+    "mcp.remote_policy:_put_anchor": Op(
+        "raises this vault's AI anchor on the server (signed with the account's key)", ACCOUNT,
+        ("PUT /api/ai-anchor",), ("/api/ai-anchor",),
+        tests=("tests/test_review14_ai_off_anchored.py",)),
 }
 
 # Operations that change something and have no test yet. The map test fails

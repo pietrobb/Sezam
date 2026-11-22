@@ -167,6 +167,30 @@ def _authed(client, method: str, path: str, body: Optional[dict] = None):
         return client._request(method, path, body, auth=True)
 
 
+def _anchor_client(vault: "Vault", home: "ai_access.AnchorHome", token_box: dict):
+    """A client for the sealed home's server and account, not for what
+    vault_meta says now (R14-M3)."""
+    from ..vault.sync_client import SyncClient
+
+    client = SyncClient(vault.db, home.server_url, vault.keypair, home.user_id)
+    client.token = token_box.get("token") if token_box.get("url") == client._server_url else None
+    return client
+
+
+def _put_anchor(vault: "Vault", client, home: "ai_access.AnchorHome", epoch: int) -> None:
+    """Raise the server-held anchor to ``epoch``: MAC under the KEK, signed
+    with the account's key (the server refuses a lower epoch with 409)."""
+    mac = ai_access.anchor_mac(vault, home.anchor, epoch)
+    if mac is None:
+        raise ai_access.AnchorUnverifiable("the vault is locked")
+    signature = vault.keypair.to_nacl_signing_key().sign(
+        anchor_message(home.user_id, home.anchor, epoch, mac)
+    ).signature.hex()
+    _authed(client, "PUT", "/api/ai-anchor", {
+        "anchor": home.anchor, "epoch": epoch, "mac": mac, "signature": signature,
+    })
+
+
 class ServerAnchor:
     """Review c78fd19 R13-11: the highest 'off' epoch this vault's broker
     saw, kept on the sync server where an agent under the owner's OS user
@@ -192,10 +216,37 @@ class ServerAnchor:
             return 0
         return epoch
 
+    def anchor_off(self, epoch: int) -> bool:
+        """Review 8bc70f7 R14-M3: 'sezam ai off' and the GUI switch anchored
+        nothing; only a running broker did. With no broker, an agent under
+        the owner's OS user wrote a saved 'on' back after the brake and the
+        next broker took it. The brake now anchors its own 'off' epoch.
+
+        False for a vault on no server (nothing to anchor). Raises
+        AnchorUnverifiable on a locked vault and RuntimeError when the
+        server does not confirm an anchor at ``epoch`` or higher."""
+        from ..vault.sync_common import server_error
+
+        vault = self._vault
+        home = ai_access.anchor_home(vault)
+        if home is None:
+            return False
+        client = _anchor_client(vault, home, self._token)
+        try:
+            _put_anchor(vault, client, home, epoch)
+        except RuntimeError as exc:
+            if not server_error(exc, 409):
+                raise
+            # Stale: something already anchored higher; it has to verify.
+            if self._held(client, home.anchor) < epoch:
+                raise
+        finally:
+            self._token["token"], self._token["url"] = client.token, client._server_url
+        return True
+
     def sync(self, broker: "MCPBroker") -> None:
         """Raise the broker's floor to the anchor, then the anchor to the floor.
         Returns only once the anchor is checked; raises otherwise (R14-M3)."""
-        from ..vault.sync_client import SyncClient
         from ..vault.sync_common import server_error
 
         vault = self._vault
@@ -203,9 +254,7 @@ class ServerAnchor:
         if home is None:
             return
         anchor = home.anchor
-        # The sealed home's server and account, not what vault_meta says now.
-        client = SyncClient(vault.db, home.server_url, vault.keypair, home.user_id)
-        client.token = self._token.get("token") if self._token.get("url") == client._server_url else None
+        client = _anchor_client(vault, home, self._token)
         try:
             held = self._held(client, anchor)
             legacy = ai_access.legacy_anchor_id(vault)
@@ -215,15 +264,8 @@ class ServerAnchor:
             floor = broker.off_floor()
             if floor <= held:
                 return
-            mac = ai_access.anchor_mac(vault, anchor, floor)
-            if mac is None:
-                raise ai_access.AnchorUnverifiable("the vault is locked")
-            body = {"anchor": anchor, "epoch": floor, "mac": mac, "signature": (
-                vault.keypair.to_nacl_signing_key()
-                .sign(anchor_message(home.user_id, anchor, floor, mac)).signature.hex()
-            )}
             try:
-                _authed(client, "PUT", "/api/ai-anchor", body)
+                _put_anchor(vault, client, home, floor)
             except RuntimeError as exc:
                 if not server_error(exc, 409):
                     raise
