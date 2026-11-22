@@ -28,19 +28,25 @@ SOURCES = {
 }
 UNTRACED_FILE = ROOT / "tests" / "unsigned_fields_untraced.txt"
 
-# Open INV-3 findings in the web and mobile clients (goal #439).
+# Open INV-3 findings in the web and mobile clients: is_admin and the web's
+# owner_id are goal #439, access_level is the vault without a log (S6).
 KNOWN_CLIENT_DECIDES = {
     ("web", "VerifyResponse.is_admin"),
     ("mobile", "VerifyResponse.is_admin"),
+    ("web", "PullObject.owner_id"),
+    ("web", "PullObject.access_level"),
+    ("mobile", "PullObject.access_level"),
 }
 
 # Open INV-3 findings: a client decision rests on these unsigned fields.
 # Remove a field here only when its entry stops being DECIDES.
 # Both left are one finding, goal #443: a device pulling from below a
-# retirement takes whatever a leaked retired key signs.
+# retirement takes whatever a leaked retired key signs. access_level is the
+# vault without a log (ROOT_CAUSE_PLAN S6, phase 3).
 KNOWN_DECIDES = {
     "GET /api/users/{user_id}/keys .archived_keys",
     "PullObject.commit_seq",
+    "PullObject.access_level",
 }
 
 

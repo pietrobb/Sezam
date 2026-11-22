@@ -50,6 +50,8 @@ _LOG = ("teamlog:_verify", "teamlog:apply_record")
 _TOKEN = "a bearer token for the server itself; a lie only fails the next request"
 _ID = "the server's own row id; the client acts on it only towards the server"
 _SHOWN = "shown to the user only"
+_NO_LOG_GRANT = ("with a team log the level is checked against it; a vault without one (several users "
+                 "before the log) takes an envelope's 'write' as a write grant: ROOT_CAUSE_PLAN S6, phase 3")
 _USER_LIST_FP = ("the desktop user table and the web user list show the pinned key's fingerprint, not the "
                  "server's (tests/test_inv3_team_table_fingerprint.py, tests/test_inv3_web_user_list_fingerprint.py)")
 
@@ -187,7 +189,7 @@ FIELDS: dict[str, Field] = {
         _OBJECT_SIG),
     "PullObject.write_policy": Field(UNREAD, "not read by the desktop"),
     "PullObject.access_level": Field(
-        HINT, "an envelope's write access comes from the team log", (), ("server_lies:access_up",)),
+        DECIDES, _NO_LOG_GRANT + " (SyncClient write_grant in sync_writers.py)", (), ("server_lies:access_up",)),
     "PullObject.scope": Field(
         HINT, "a DEK's role is derived by the device; the label only names a key it did not hold",
         (), ("server_lies:scope", "server_lies:dek_order")),
@@ -301,6 +303,8 @@ FIELDS: dict[str, Field] = {
     "GET /health .version": Field(UNREAD, _SHOWN),
 }
 
+_NO_JSON_STATUS = ("the web reads no status in a reply body: Error.status is the HTTP code, user.status "
+                   "is UserInfo's")
 _LOG_NOT_ASKED = ("taken as the account's admin flag although the team log names the admin; "
                   "goal #439 (web and mobile)")
 
@@ -315,6 +319,48 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             "which opens under the password alone"),
         "MetaResponse.argon2_web_params": Field(
             HINT, "clamped to the hard floor and refused above the account maximum", ("normalizeKdfParams",)),
+        "PullObject.access_level": Field(
+            DECIDES, _NO_LOG_GRANT + " (unauthorizedWrites); with a log keyEnvelopesForUser checks it "
+            "(envelopeValid), a re-key carries 'write' only from an envelope this browser made",
+            ("unauthorizedWrites", "keyEnvelopesForUser")),
+        "PullObject.owner_id": Field(
+            DECIDES, "kept raw beside the verified signer: resolveInheritedPersonalDekId walks past an "
+            "unreadable folder named another's instead of failing closed, migrateLegacyPersonalDescendants "
+            "repairs only what names this account; the signer of a personal object is its only possible "
+            "author (TL7), so both should ask the signer; goal #439. As the signer fallback it is checked "
+            "like signature_user_id",
+            ("resolveInheritedPersonalDekId", "migrateLegacyPersonalDescendants")),
+        "PullObject.scope": Field(
+            HINT, "a label: it picks which items below this account's personal root move to its personal "
+            "key (migrateLegacyPersonalDescendants), the root key among the ones this KEK opened, and an "
+            "order; every choice is a key this account holds",
+            ("migrateLegacyPersonalDescendants",)),
+        "PullResponse.gc_floor_seq": Field(
+            HINT, "into the shared core as on the desktop (against_held, next_cursor); a lower floor sends "
+            "this browser's own signed copies again, a higher one does not (withholding)",
+            ("webPulledIsStale", "syncPositionAfter", "requeueWritesTheServerLost")),
+        "PullResponse.head_commit_seq": Field(
+            HINT, "into the shared core as on the desktop (gate, next_cursor): a lower head asks for a full "
+            "resync, a higher one hides a rollback (withholding)", ("syncPositionAfter",)),
+        "PullResponse.key_epoch": Field(
+            HINT, "a lower one is refused; a higher one (or another key_material_hash) ends the session, and "
+            "the next login's key material opens only under the password; a journal from before epochs "
+            "takes it +1, which the server refuses if wrong", ("applyKekRotationJournal",)),
+        "PushResponse.commit_token": Field(UNREAD, "the name is the browser's own checkpoint field; the "
+                                           "token comes from the pull's max_token"),
+        "RecoverResponse.key_epoch": Field(UNREAD, "the recover reply gives only encrypted_keypair and user_id"),
+        "UserInfo.status": Field(
+            HINT, "the admin list's buttons; a revocation re-key stops while another holder is not active, "
+            "and otherwise drops only the revoked member, as with the status unread (withholding)",
+            ("buildWebRekeyBatch",)),
+        **{key: Field(UNREAD, _NO_JSON_STATUS) for key in (
+            "DELETE /api/share/{share_id} .status", "DELETE /api/users/{user_id} .status", "GET /health .status",
+            "PATCH /api/share/{share_id} .status", "PATCH /api/users/{user_id}/approve .status",
+            "PATCH /api/users/{user_id}/reactivate .status", "POST /api/auth/logout .status",
+            "POST /api/me/key-material-archive/purge .status", "POST /api/org-recovery/store .status",
+            "POST /api/share .status", "POST /api/users/{user_id}/allow-key-reset .status",
+            "POST /api/users/{user_id}/unlock-recovery .status", "PUT /api/me/kdf-params .status",
+            "PUT /api/me/keypair .status")},
     },
     "mobile": {
         "VerifyResponse.is_admin": Field(
@@ -322,5 +368,24 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             "VaultEntry.canEdit for every local edit"),
         "MetaResponse.argon2_web_params": Field(
             HINT, "refused outside the server policy's bounds, never guessed", ("accountKdfParams",)),
+        "PullObject.access_level": Field(
+            DECIDES, _NO_LOG_GRANT + " (unauthorizedWrites); with a log TeamLog.envelopeValid checks it, "
+            "VaultEntry.canEdit only gates the edit UI", ("unauthorizedWrites", "envelopeValid")),
+        "PullObject.owner_id": Field(
+            HINT, "a DEK's owner is the verified signer (verifiedOwnerId), the signer fallback is checked "
+            "like signature_user_id; otherwise VaultEntry.canEdit's edit UI, and every receiver checks the "
+            "write against the team log", ("verifiedOwnerId",)),
+        "PullResponse.gc_floor_seq": Field(
+            HINT, "into the shared core as on the desktop (next_cursor); a lower floor sends this phone's own "
+            "signed rows again, a higher one does not (withholding)", ("rowsTheServerLost",)),
+        "PullResponse.head_commit_seq": Field(
+            HINT, "into the shared core as on the desktop (gate, next_cursor): a lower head asks for a full "
+            "resync, a higher one hides a rollback (withholding)"),
+        "PullResponse.key_epoch": Field(
+            HINT, "a lower one is taken only while this phone holds exactly the server's key material "
+            "(as the desktop, SM12); a higher one asks for the password", ("_holdsServerKeyMaterial",)),
+        "PushResponse.commit_token": Field(UNREAD, "the name is the phone's own checkpoint field; the token "
+                                           "comes from the pull's max_token"),
+        "RecoverResponse.key_epoch": Field(UNREAD, "the recover reply's epoch is not read; the pull's is"),
     },
 }

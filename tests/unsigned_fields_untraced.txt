@@ -57,14 +57,12 @@ mobile	ProvisionResponse.encrypted_keypair
 mobile	ProvisionResponse.user_id
 mobile	ProvisioningTokenResponse.token
 mobile	ProvisioningTokenResponse.username
-mobile	PullObject.access_level
 mobile	PullObject.client_signature
 mobile	PullObject.commit_seq
 mobile	PullObject.id
 mobile	PullObject.is_deleted
 mobile	PullObject.modified_at
 mobile	PullObject.object_type
-mobile	PullObject.owner_id
 mobile	PullObject.parent_ref
 mobile	PullObject.payload
 mobile	PullObject.payload_hash
@@ -73,10 +71,7 @@ mobile	PullObject.target_user_id
 mobile	PullObject.version
 mobile	PullObject.write_policy
 mobile	PullResponse.check_token
-mobile	PullResponse.gc_floor_seq
 mobile	PullResponse.has_more
-mobile	PullResponse.head_commit_seq
-mobile	PullResponse.key_epoch
 mobile	PullResponse.key_material_hash
 mobile	PullResponse.max_commit_seq
 mobile	PullResponse.max_token
@@ -90,13 +85,11 @@ mobile	PushObjectResult.id
 mobile	PushObjectResult.server_payload_hash
 mobile	PushObjectResult.server_version
 mobile	PushResponse.accepted
-mobile	PushResponse.commit_token
 mobile	PushResponse.conflicts
 mobile	PushResponse.token
 mobile	RecoverResponse.argon2_params
 mobile	RecoverResponse.argon2_salt
 mobile	RecoverResponse.encrypted_keypair
-mobile	RecoverResponse.key_epoch
 mobile	RecoverResponse.user_id
 mobile	RegisterResponse.token
 mobile	RegisterResponse.user_id
@@ -140,12 +133,9 @@ web	BootstrapStatusResponse.needs_setup
 web	BootstrapStatusResponse.unfinished_setup
 web	ChallengeResponse.challenge
 web	ChallengeResponse.timestamp
-web	DELETE /api/share/{share_id} .status
-web	DELETE /api/users/{user_id} .status
 web	GET /api/users/{user_id}/keys .archived_keys
 web	GET /api/users/{user_id}/keys .encryption_pk
 web	GET /api/users/{user_id}/keys .signing_pk
-web	GET /health .status
 web	GET /health .version
 web	HeldObject.id
 web	HeldObject.is_deleted
@@ -169,24 +159,13 @@ web	OrgRecoveryStatusResponse.recovery_signing_pk
 web	OrgRecoveryStatusResponse.stale
 web	OrgRecoveryStatusResponse.threshold
 web	OrgRecoveryStatusResponse.total_shares
-web	PATCH /api/share/{share_id} .status
-web	PATCH /api/users/{user_id}/approve .status
-web	PATCH /api/users/{user_id}/reactivate .status
 web	POST /api/audit/log .ok
-web	POST /api/auth/logout .status
 web	POST /api/auth/refresh .token
 web	POST /api/auth/registration-resume .key_material_hash
 web	POST /api/auth/registration-resume .token
 web	POST /api/auth/registration-resume .user_id
-web	POST /api/me/key-material-archive/purge .status
-web	POST /api/org-recovery/store .status
 web	POST /api/share .id
-web	POST /api/share .status
-web	POST /api/users/{user_id}/allow-key-reset .status
-web	POST /api/users/{user_id}/unlock-recovery .status
 web	PUT /api/me/kdf-params .argon2_params
-web	PUT /api/me/kdf-params .status
-web	PUT /api/me/keypair .status
 web	PUT /api/me/keypair .token
 web	ProvisionResponse.argon2_params
 web	ProvisionResponse.argon2_salt
@@ -194,27 +173,21 @@ web	ProvisionResponse.encrypted_keypair
 web	ProvisionResponse.user_id
 web	ProvisioningTokenResponse.token
 web	ProvisioningTokenResponse.username
-web	PullObject.access_level
 web	PullObject.client_signature
 web	PullObject.commit_seq
 web	PullObject.id
 web	PullObject.is_deleted
 web	PullObject.modified_at
 web	PullObject.object_type
-web	PullObject.owner_id
 web	PullObject.parent_ref
 web	PullObject.payload
 web	PullObject.payload_hash
-web	PullObject.scope
 web	PullObject.signature_user_id
 web	PullObject.target_user_id
 web	PullObject.version
 web	PullObject.write_policy
 web	PullResponse.check_token
-web	PullResponse.gc_floor_seq
 web	PullResponse.has_more
-web	PullResponse.head_commit_seq
-web	PullResponse.key_epoch
 web	PullResponse.key_material_hash
 web	PullResponse.max_commit_seq
 web	PullResponse.max_token
@@ -228,13 +201,11 @@ web	PushObjectResult.id
 web	PushObjectResult.server_payload_hash
 web	PushObjectResult.server_version
 web	PushResponse.accepted
-web	PushResponse.commit_token
 web	PushResponse.conflicts
 web	PushResponse.token
 web	RecoverResponse.argon2_params
 web	RecoverResponse.argon2_salt
 web	RecoverResponse.encrypted_keypair
-web	RecoverResponse.key_epoch
 web	RecoverResponse.user_id
 web	RegisterResponse.token
 web	RegisterResponse.user_id
@@ -254,7 +225,6 @@ web	UserInfo.id
 web	UserInfo.is_admin
 web	UserInfo.key_fingerprint
 web	UserInfo.signing_pk
-web	UserInfo.status
 web	UserInfo.username
 web	VerifyResponse.token
 web	VerifyResponse.user_id
