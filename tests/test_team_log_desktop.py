@@ -196,6 +196,12 @@ def test_expected_but_not_downloaded_log_cannot_authorize_writes(team, operation
     before = admin.db.fetchall("SELECT id FROM nodes")
     # 662ebe2 pulls a pinned log before the write: the server serving no log
     # under the pin is then refused as a genesis mismatch (still fail-closed).
+    if operation == "push":
+        # R15-P4 (bc7302a): the push holds the team back and reports why; the
+        # personal tree still goes out.
+        assert "independently confirmed genesis" in client.push()["team_log_refused"]
+        assert admin.db.fetchall("SELECT id FROM nodes") == before
+        return
     with pytest.raises(RuntimeError, match="not confirmed|not downloaded|independently confirmed genesis"):
         if operation == "invite":
             client.create_invitation()
