@@ -176,17 +176,20 @@ class MCPBroker:
         # does not count. A round ends at each lock.
         self._anchor_round = 0
         self._anchor_checked_round = -1
+        self._anchor_verified = False
         self._anchor_event = threading.Event()
 
     def anchor_round(self) -> int:
         with self._brake_lock:
             return self._anchor_round
 
-    def anchor_checked(self, round_: int) -> None:
-        """The poller checked the server's anchor (or could not reach it)."""
+    def anchor_checked(self, round_: int, verified: bool = True) -> None:
+        """The poller checked the server's anchor, or (``verified`` False)
+        could not; a call then waits for the next check (R14-M3)."""
         with self._brake_lock:
             if round_ == self._anchor_round:
                 self._anchor_checked_round = round_
+                self._anchor_verified = verified
                 self._anchor_event.set()
 
     def _new_anchor_round(self) -> None:
@@ -212,20 +215,36 @@ class MCPBroker:
             return self._off_floor
 
     def _await_anchor(self) -> bool:
-        """First call after an unlock of a synced vault: wait for one check
-        of the server's anchor (a server that does not answer in time is
-        not waited for again). True if it waited."""
-        poller = self.remote_policy
-        if poller is None or not self._vault.db.get_meta("server_url"):
+        """First call after an unlock of a vault that expects its anchor: wait
+        for one check of it. True if it waited.
+
+        Review 8bc70f7 R14-M3: a check that failed or did not come in time
+        counted as done, and a vault with no server_url was not checked at
+        all, so an agent that blocked the server or dropped the row got a
+        written-back 'on' through. Now the call is refused (AI stays off)
+        until a check succeeds; a vault that names no server and has no
+        sealed anchor home expects none."""
+        if not ai_access.anchor_expected(self._vault):
             return False
         with self._brake_lock:
-            if self._anchor_checked_round == self._anchor_round:
+            if self._anchor_checked_round == self._anchor_round and self._anchor_verified:
                 return False
             round_ = self._anchor_round
-        poller.wake()
-        self._anchor_event.wait(ANCHOR_WAIT_SECONDS)
-        self.anchor_checked(round_)
-        return True
+            self._anchor_event.clear()
+        poller = self.remote_policy
+        if poller is not None:
+            poller.wake()
+            self._anchor_event.wait(ANCHOR_WAIT_SECONDS)
+        with self._brake_lock:
+            if self._anchor_checked_round == round_ and self._anchor_verified:
+                return True
+        self._close_connections()
+        raise MCPError(
+            "ai_anchor_unverified",
+            "AI access stays off: the sync server could not confirm the AI switch "
+            "(it is unreachable, or the vault's anchor record does not verify). "
+            "It turns on by itself once the server answers.",
+        )
 
     def disable_ai(
         self, source: str, extra: dict | None = None

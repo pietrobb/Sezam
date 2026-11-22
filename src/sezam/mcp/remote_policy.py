@@ -125,7 +125,8 @@ def _client(vault: "Vault", token_box: dict):
     if not server_url or not user_id:
         return None
     client = SyncClient(vault.db, server_url, vault.keypair, user_id)
-    client.token = token_box.get("token")
+    # One token per server: the anchor's sealed home may be another (R14-M3).
+    client.token = token_box.get("token") if token_box.get("url") == client._server_url else None
     return client
 
 
@@ -137,7 +138,7 @@ def fetch_policy(vault: "Vault", token_box: dict) -> Optional[dict]:
     try:
         return client.get_ai_policy()
     finally:
-        token_box["token"] = client.token
+        token_box["token"], token_box["url"] = client.token, client._server_url
 
 
 def _authed(client, method: str, path: str, body: Optional[dict] = None):
@@ -180,16 +181,24 @@ class ServerAnchor:
         return epoch
 
     def sync(self, broker: "MCPBroker") -> None:
-        """Raise the broker's floor to the anchor, then the anchor to the floor."""
+        """Raise the broker's floor to the anchor, then the anchor to the floor.
+        Returns only once the anchor is checked; raises otherwise (R14-M3)."""
+        from ..vault.sync_client import SyncClient
         from ..vault.sync_common import server_error
 
         vault = self._vault
-        anchor = ai_access.anchor_id(vault)
-        client = _client(vault, self._token) if anchor is not None else None
-        if client is None:
+        home = ai_access.anchor_home(vault)  # AnchorUnverifiable: not checked
+        if home is None:
             return
+        anchor = home.anchor
+        # The sealed home's server and account, not what vault_meta says now.
+        client = SyncClient(vault.db, home.server_url, vault.keypair, home.user_id)
+        client.token = self._token.get("token") if self._token.get("url") == client._server_url else None
         try:
             held = self._held(client, anchor)
+            legacy = ai_access.legacy_anchor_id(vault)
+            if legacy is not None:
+                held = max(held, self._held(client, legacy))
             broker.raise_floor(held)
             floor = broker.off_floor()
             if floor <= held:
@@ -203,7 +212,7 @@ class ServerAnchor:
                     raise
                 broker.raise_floor(self._held(client, anchor))  # another broker went higher
         finally:
-            self._token["token"] = client.token
+            self._token["token"], self._token["url"] = client.token, client._server_url
 
 
 class RemotePolicyPoller:
@@ -245,15 +254,17 @@ class RemotePolicyPoller:
         if not self._vault.is_unlocked:
             return
         round_ = self._broker.anchor_round()
+        verified = False
         try:
             if self._anchor is not None:
                 self._anchor.sync(self._broker)
+            verified = True
         except Exception:
             logger.warning("AI anchor check on the sync server failed", exc_info=True)
         finally:
-            # Unreachable counts as checked: the broker does not wait on a
-            # server that is down, it keeps the floor it has.
-            self._broker.anchor_checked(round_)
+            # Review 8bc70f7 R14-M3: unreachable no longer counts as checked;
+            # the broker keeps AI access off until a check succeeds.
+            self._broker.anchor_checked(round_, verified)
 
     def _poll(self) -> str:
         vault = self._vault

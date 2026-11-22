@@ -120,6 +120,8 @@ def rewrap_macs(db: VaultDB, old_kek: bytes | bytearray, new_kek: bytes | bytear
         db.set_meta(STATE_MAC_KEY, _state_mac(new, db))
     if _verified(db, REMOTE_APPLIED_MAC_KEY, _remote_mac(old, db)):
         db.set_meta(REMOTE_APPLIED_MAC_KEY, _remote_mac(new, db))
+    if _verified(db, ANCHOR_HOME_MAC_KEY, _home_mac(old, db)):
+        db.set_meta(ANCHOR_HOME_MAC_KEY, _home_mac(new, db))
 
 
 def read_state(vault: "Vault") -> AIAccessState:
@@ -195,14 +197,103 @@ def record_remote_applied(vault: "Vault", epoch: int) -> None:
 FLOOR_KEY = "ai_access_floor"
 
 
-def anchor_id(vault: "Vault") -> str | None:
-    """This vault file on this machine, keyed by the KEK so the server
-    learns neither the host nor the path (vault unlocked, else None)."""
+def legacy_anchor_id(vault: "Vault") -> str | None:
+    """The anchor id before R14-M3 (hostname + path, keyed by the KEK); only
+    read once, to carry its epoch over to the sealed anchor home."""
     kek = _vault_kek(vault)
     if kek is None:
         return None
     where = f"{socket.gethostname()}\0{os.path.realpath(vault.db.path)}"
     return _mac(kek, "ai_anchor_id", where)
+
+
+# Review 8bc70f7 R14-M3: the anchor was looked up on whatever server
+# vault_meta named (an agent could drop or redirect server_url, and the
+# broker then checked nothing or an empty server) under an id made of the
+# hostname and path. The anchor's home is now sealed under the KEK: a random
+# id, the server and the account. A vault that has one, or names a server,
+# expects its anchor; one that cannot be checked keeps AI access off.
+ANCHOR_HOME_KEY = "ai_anchor_home"
+ANCHOR_HOME_MAC_KEY = "ai_anchor_home_mac"
+
+
+@dataclass(frozen=True)
+class AnchorHome:
+    anchor: str
+    server_url: str
+    user_id: str
+
+
+class AnchorUnverifiable(RuntimeError):
+    """The vault expects an anchor this process cannot check."""
+
+
+def _home_mac(kek: bytes, db: VaultDB) -> str:
+    return _mac(kek, ANCHOR_HOME_MAC_KEY, db.get_meta(ANCHOR_HOME_KEY))
+
+
+def anchor_expected(vault: "Vault") -> bool:
+    """Whether AI access waits for a check of the server-held anchor."""
+    db = vault.db
+    return bool(
+        db.get_meta(ANCHOR_HOME_KEY) or db.get_meta(ANCHOR_HOME_MAC_KEY) or db.get_meta("server_url")
+    )
+
+
+def _seal_home(db: VaultDB, kek: bytes, home: AnchorHome) -> None:
+    db.set_meta_json(ANCHOR_HOME_KEY, {
+        "anchor": home.anchor, "server_url": home.server_url, "user_id": home.user_id,
+    })
+    db.set_meta(ANCHOR_HOME_MAC_KEY, _home_mac(kek, db))
+
+
+def anchor_home(vault: "Vault") -> AnchorHome | None:
+    """The sealed anchor home; a new one for a vault on a server that has
+    none yet. None for a vault on no server. Raises AnchorUnverifiable for a
+    locked vault, or a home whose seal does not verify."""
+    kek = _vault_kek(vault)
+    if kek is None:
+        raise AnchorUnverifiable("the vault is locked")
+    db = vault.db
+    with oplock.exclusive(db.path), db.transaction(immediate=True):
+        if db.get_meta(ANCHOR_HOME_KEY) is not None or db.get_meta(ANCHOR_HOME_MAC_KEY) is not None:
+            if not _verified(db, ANCHOR_HOME_MAC_KEY, _home_mac(kek, db)):
+                raise AnchorUnverifiable("the sealed AI anchor home does not verify")
+            raw = db.get_meta_json(ANCHOR_HOME_KEY)
+            return AnchorHome(str(raw["anchor"]), str(raw["server_url"]), str(raw["user_id"]))
+        server_url, user_id = db.get_meta("server_url"), db.get_meta("user_id")
+        if not server_url or not user_id:
+            return None
+        home = AnchorHome(os.urandom(32).hex(), server_url, user_id)
+        _seal_home(db, kek, home)
+        return home
+
+
+def rehome_anchor(vault: "Vault") -> None:
+    """'sezam ai on' (fresh password): the anchor moves to the server the
+    vault now syncs with, keeping its id (a server move, not an agent)."""
+    kek = _vault_kek(vault)
+    db = vault.db
+    server_url, user_id = db.get_meta("server_url"), db.get_meta("user_id")
+    if kek is None or not server_url or not user_id:
+        return
+    try:
+        home = anchor_home(vault)
+    except AnchorUnverifiable:
+        home = None
+    with oplock.exclusive(db.path), db.transaction(immediate=True):
+        _seal_home(db, kek, AnchorHome(
+            home.anchor if home else os.urandom(32).hex(), server_url, user_id,
+        ))
+
+
+def anchor_id(vault: "Vault") -> str | None:
+    """The sealed anchor home's id (vault unlocked and on a server, else None)."""
+    try:
+        home = anchor_home(vault)
+    except AnchorUnverifiable:
+        return None
+    return home.anchor if home else None
 
 
 def anchor_mac(vault: "Vault", anchor: str, epoch: int) -> str | None:
@@ -339,6 +430,7 @@ def enable(vault: "Vault", source: str) -> AIAccessState:
         db.set_meta(ENABLED_KEY, "1")
         db.set_meta(EPOCH_KEY, str(state.epoch))
         db.set_meta(STATE_MAC_KEY, _state_mac(kek, db))
+    rehome_anchor(vault)
     return state
 
 
