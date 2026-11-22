@@ -9,7 +9,7 @@ from . import oplock, outbox, pending_states, sync_core
 from .crud import RekeyBlockedByConflicts
 from .sync_client import CONFIRMED_MEMBER_KEYS_META
 from .sync_limits import SyncUnitTooLarge
-from .sync_common import queued_for_removal
+from .sync_common import ServerError, queued_for_removal, server_error
 from .team_log_local import local_team_state, projected_team_state, unlogged_folder_keys
 
 logger = logging.getLogger(__name__)
@@ -232,19 +232,25 @@ def queue_revoked_holders(vault: Vault, client: SyncClient) -> None:
     }
     if not holders and not lost:
         return
-    if vault.key_change_unpushed():
-        # Review e443cbc R15 (goal #442): the re-keys wait for the key change
-        # (finish_queued_revocations), and a rotation the server lost gives
-        # a session that may only send it again, not list the users. The
-        # push after it queues them.
-        return
     # The member list is the admin's: first the server's team log, which says
     # who that is (INV-1). One that is not this device's raises its mismatch
     # (INV-7: the way out) instead of the "Admin required" its admin gets.
     team_logged = local_team_state(vault.db) is not None
     if team_logged:
         client._refresh_team_log()
-    revoked = {u.get("id") for u in client.list_users() if u.get("status") == "revoked"}
+    try:
+        users = client.list_users()
+    except ServerError as exc:
+        if not (vault.key_change_unpushed() and server_error(exc, 403)):
+            raise
+        # Review e443cbc R15 (goal #442): a rotation the server lost gives a
+        # session that may only send it again, not list the users; the push
+        # after it queues them. Only then: a rotation that merely failed to
+        # go out still has a session that lists them, and a member another
+        # admin revoked meanwhile must be withheld from a full resync's
+        # re-seal (test_a_full_resync_does_not_reseal_a_member_queued_for_removal).
+        return
+    revoked = {u.get("id") for u in users if u.get("status") == "revoked"}
     # Review 7c10379 R7-G (state machine: a revoked member keeps a live
     # envelope): one this account withdrew and a restored server holds live
     # again goes back in for the re-key, which withdraws it once more. Only
