@@ -52,6 +52,8 @@ _ID = "the server's own row id; the client acts on it only towards the server"
 _SHOWN = "shown to the user only"
 _NO_LOG_GRANT = ("with a team log the level is checked against it; a vault without one (several users "
                  "before the log) takes an envelope's 'write' as a write grant: ROOT_CAUSE_PLAN S6, phase 3")
+_FORGET_FROM_HEAD = ("one of the causes that offer to forget the pin (MISMATCH_CAUSES; the offer carries RISK: "
+                     "and needs the pinned genesis typed), chosen from this unsigned head: goal #440")
 _USER_LIST_FP = ("the desktop user table and the web user list show the pinned key's fingerprint, not the "
                  "server's (tests/test_inv3_team_table_fingerprint.py, tests/test_inv3_web_user_list_fingerprint.py)")
 
@@ -170,7 +172,8 @@ FIELDS: dict[str, Field] = {
         (), ("server_lies_into_full_resync:check_token",)),
     "PullResponse.max_token": Field(HINT, "rollback anchor: a made-up one only makes a later pull see a rollback and ask for a full resync", (), ("server_lies_into_full_resync:check_token",)),
     "PullResponse.team_log_head": Field(
-        HINT, "the log is fetched and checked record by record; an older head is refused",
+        DECIDES, "the log is fetched and checked record by record and an older head is refused, but no "
+        "head at all is the cause log_gone: " + _FORGET_FROM_HEAD,
         _LOG, ("server_lies_about_the_log:old head",)),
     "PullObject.id": _signed(*_OBJECT_SIG),
     "PullObject.object_type": _signed(*_OBJECT_SIG),
@@ -211,13 +214,16 @@ FIELDS: dict[str, Field] = {
         _LOG, ("server_lies_about_the_log:truncate", "server_lies_about_the_log:drop a record",
                "server_lies_about_the_log:reorder")),
     "TeamLogResponse.head": Field(
-        HINT, "compared with the head of the records it names", _LOG, ("server_lies_about_the_log:old head",)),
+        DECIDES, "compared with the head of the records it names, but none is log_gone where the forget "
+        "is checked again (TeamLogMixin team_log_refusal): " + _FORGET_FROM_HEAD,
+        _LOG, ("server_lies_about_the_log:old head",)),
     "TeamLogRecord.body": _signed(*_LOG, lies=("server_lies_about_the_log:forged record",)),
     "TeamLogRecord.sig": _signed(*_LOG, lies=("server_lies_about_the_log:forged record",)),
     "TeamLogHead.seq": Field(HINT, "compared with the verified records", _LOG, ("server_lies_about_the_log:old head",)),
     "TeamLogHead.hash": Field(HINT, "compared with the verified records", _LOG, ("server_lies_about_the_log:old head",)),
     "TeamLogHead.genesis_hash": Field(
-        HINT, "compared with the pinned genesis", _LOG, ("server_lies_about_the_log:other genesis",)),
+        DECIDES, "compared with the pinned genesis; another one is other_genesis or confirmed_genesis: "
+        + _FORGET_FROM_HEAD, _LOG, ("server_lies_about_the_log:other genesis",)),
     # ── Shares ──────────────────────────────────────────────────────────────
     "ShareResponse.encrypted_blob": Field(UNREAD, "not read by the desktop"),
     "ShareResponse.view_count": Field(UNREAD, _SHOWN),
@@ -333,8 +339,28 @@ def _pull_fields(sig_checks: tuple[str, ...], pull: str, log: str) -> dict[str, 
         "PullResponse.check_token": Field(HINT, _FULL_RESYNC, (pull,)),
         "PullResponse.key_material_hash": Field(HINT, _KEY_HASH, (pull,)),
         "PullResponse.team_log_head": Field(
-            HINT, "the log is fetched and checked record by record against this device's pins; an older "
-            "head is refused", (log,)),
+            DECIDES, "the log is fetched and checked record by record against this device's pins and an "
+            "older head is refused, but no head at all is log_gone: " + _FORGET_FROM_HEAD, (log,)),
+    }
+
+
+def _log_fields(sync: str, refusal: str, replay: str) -> dict[str, Field]:
+    return {
+        "TeamLogResponse.records": Field(
+            HINT, "every record is replayed and verified onto this device's head; a short or reordered page "
+            "is refused (short_of_head, does_not_replay)", (sync, replay)),
+        "TeamLogResponse.head": Field(
+            DECIDES, "compared with the replayed records, but none is log_gone where the forget is checked "
+            "again: " + _FORGET_FROM_HEAD, (refusal,)),
+        "TeamLogRecord.body": _signed(replay),
+        "TeamLogRecord.sig": _signed(replay),
+        "TeamLogHead.seq": Field(
+            HINT, "compared with the replayed records and the pin: a lie is went_back, differs or "
+            "short_of_head, none of which offers forget", (sync,)),
+        "TeamLogHead.hash": Field(HINT, "as .seq: differs or short_of_head, never forget", (sync,)),
+        "TeamLogHead.genesis_hash": Field(
+            DECIDES, "compared with the pin; another one is other_genesis or confirmed_genesis: "
+            + _FORGET_FROM_HEAD, (sync,)),
     }
 
 
@@ -342,6 +368,11 @@ _NO_JSON_STATUS = ("the web reads no status in a reply body: Error.status is the
                    "is UserInfo's")
 _LOG_NOT_ASKED = ("taken as the account's admin flag although the team log names the admin; "
                   "goal #439 (web and mobile)")
+
+_HELD_NOT_ASKED = {key: Field(UNREAD, "this client never calls /api/objects/held (only the desktop's re-key "
+                                       "does); the names are its own objects'") for key in (
+    "HeldResponse.objects", "HeldObject.id", "HeldObject.object_type", "HeldObject.version",
+    "HeldObject.is_deleted")}
 
 CLIENT_FIELDS: dict[str, dict[str, Field]] = {
     "web": {
@@ -399,6 +430,36 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         **_pull_fields(("verifyObjectSignature", "pullAndBuildTreeLocked"), "pullAndBuildTreeLocked",
                        "syncWebTeamLog"),
         "PullObject.modified_at": Field(UNREAD, "the name is a field of a decrypted entry, not the server's"),
+        **_log_fields("syncWebTeamLog", "webTeamLogRefusal", "replay"),
+        **_HELD_NOT_ASKED,
+        "PushResponse.accepted": Field(
+            HINT, "marks a sent write, a re-key or a member's envelopes landed: the queued copy leaves and "
+            "its own version is the next base; a lie keeps it from the server, which could drop it anyway "
+            "(withholding), and the next pull brings the server's copy checked",
+            ("pushEncryptedVaultObjectLocked", "pushWebRekeyBatch", "sealToRotatedMembers")),
+        "PushResponse.conflicts": Field(
+            HINT, "a refused write stays queued and is shown; a re-key or envelope batch with one is "
+            "refused and tried again", ("pushEncryptedVaultObjectLocked", "pushWebRekeyBatch")),
+        "PushResponse.token": Field(HINT, _TOKEN, ("applyKekRotationJournal",)),
+        "PushObjectResult.id": Field(HINT, "names the sent write a result is about; see .accepted, .conflicts"),
+        "PushObjectResult.server_version": Field(
+            HINT, "shown in the conflict; none lets the next accepted copy settle the refusal, which only "
+            "clears a conflict whose write has landed", ("pushEncryptedVaultObjectLocked",)),
+        "PushObjectResult.server_payload_hash": Field(
+            HINT, "equal to the sent hash counts a password change's DEK as landed by an earlier attempt; a "
+            "lie leaves a wrap the server did not keep, as dropping it would (withholding), and the old "
+            "wrap opens only under the old password", ("applyKekRotationJournal",)),
+        **{key: Field(UNREAD, "the browser reads no seq, error or code of a push result: its "
+                              "commit_seq is the pulled object's") for key in (
+            "PushObjectResult.commit_seq", "PushObjectResult.error", "PushObjectResult.code")},
+        "MetaResponse.argon2_params": Field(
+            HINT, "clamped to the hard floor and refused above the account maximum; org recovery records "
+            "the raw params in a pre-anchor only beside the keypair's own salt, and an entry below the "
+            "floor is refused (passwordReopensPreAnchor)", ("accountKdfParams", "passwordReopensPreAnchor")),
+        "MetaResponse.argon2_salt": Field(
+            HINT, "the salt the keypair wrap opens under (AEAD); none is no such user, another one than a "
+            "password-change journal's stops its resume", ("deriveLoginKey",)),
+        "MetaResponse.version": Field(UNREAD, "the name is an object's version; the server's is not read"),
     },
     "mobile": {
         "VerifyResponse.is_admin": Field(
@@ -428,5 +489,36 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         **_pull_fields(("buildSyncSignatureData", "keyMayVouch"), "_pull", "syncTeamLog"),
         "PullObject.modified_at": Field(
             HINT, "kept as the row's time; the queue orders only this phone's own edits, stamped here"),
+        **_log_fields("syncTeamLog", "_teamLogRefusal", "replay"),
+        **_HELD_NOT_ASKED,
+        "PushResponse.accepted": Field(
+            HINT, "marks the sent version clean (markClean); a lie keeps it from the server, which could drop "
+            "it anyway (withholding), and the next pull brings the server's copy checked",
+            ("_push", "markClean", "advanceKeyEpoch")),
+        "PushResponse.conflicts": Field(
+            HINT, "counted and shown; the write stays queued, a key-epoch advance with one is refused",
+            ("_push", "advanceKeyEpoch")),
+        "PushResponse.token": Field(HINT, _TOKEN, ("advanceKeyEpoch",)),
+        "PushObjectResult.id": Field(HINT, "names the sent write a result is about; see .accepted, .conflicts"),
+        "PushObjectResult.commit_seq": Field(
+            HINT, "the accepted copy's seq (markClean): it drops held-aside copies below it, which the server "
+            "could have withheld; one at or below the GC floor lets a full resync drop this phone's copy the "
+            "server then lacks instead of sending it again (rowsTheServerLost): that guards against a server "
+            "restored from a backup (review d615826 H6), not one that drops writes, which it may (withholding)",
+            ("markClean", "rowsTheServerLost")),
+        "PushObjectResult.server_payload_hash": Field(
+            HINT, "equal to the sent hash counts a key-epoch advance's DEK as landed by an earlier attempt; a "
+            "lie leaves a wrap the server did not keep, as dropping it would (withholding)",
+            ("advanceKeyEpoch",)),
+        "PushObjectResult.server_version": Field(
+            UNREAD, "the name is the phone's own sync_conflicts column, filled from the pulled copy"),
+        "PushObjectResult.error": Field(UNREAD, _SHOWN),
+        "PushObjectResult.code": Field(UNREAD, "the code read is an HTTP error body's (_errorCode)"),
+        "MetaResponse.argon2_params": Field(
+            HINT, "refused outside the server policy's bounds, never guessed", ("accountKdfParams",)),
+        "MetaResponse.argon2_salt": Field(
+            HINT, "the salt the keypair wrap opens under (AEAD); this phone's own params while it is the "
+            "local salt", ("_accountKdfFor",)),
+        "MetaResponse.version": Field(UNREAD, "the name is an object's version; the server's is not read"),
     },
 }

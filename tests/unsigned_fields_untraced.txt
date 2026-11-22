@@ -23,14 +23,6 @@ mobile	GET /api/users/{user_id}/keys .archived_keys
 mobile	GET /api/users/{user_id}/keys .encryption_pk
 mobile	GET /api/users/{user_id}/keys .signing_pk
 mobile	GET /health .version
-mobile	HeldObject.id
-mobile	HeldObject.is_deleted
-mobile	HeldObject.object_type
-mobile	HeldObject.version
-mobile	HeldResponse.objects
-mobile	MetaResponse.argon2_params
-mobile	MetaResponse.argon2_salt
-mobile	MetaResponse.version
 mobile	OrgRecoveryBlobResponse.stale
 mobile	OrgRecoveryBlobResponse.wrapped_kek
 mobile	OrgRecoveryKeypairResponse.argon2_salt
@@ -57,15 +49,6 @@ mobile	ProvisionResponse.encrypted_keypair
 mobile	ProvisionResponse.user_id
 mobile	ProvisioningTokenResponse.token
 mobile	ProvisioningTokenResponse.username
-mobile	PushObjectResult.code
-mobile	PushObjectResult.commit_seq
-mobile	PushObjectResult.error
-mobile	PushObjectResult.id
-mobile	PushObjectResult.server_payload_hash
-mobile	PushObjectResult.server_version
-mobile	PushResponse.accepted
-mobile	PushResponse.conflicts
-mobile	PushResponse.token
 mobile	RecoverResponse.argon2_params
 mobile	RecoverResponse.argon2_salt
 mobile	RecoverResponse.encrypted_keypair
@@ -76,13 +59,6 @@ mobile	ShareInfo.created_by
 mobile	ShareInfo.id
 mobile	ShareNotification.id
 mobile	ShareResponse.encrypted_blob
-mobile	TeamLogHead.genesis_hash
-mobile	TeamLogHead.hash
-mobile	TeamLogHead.seq
-mobile	TeamLogRecord.body
-mobile	TeamLogRecord.sig
-mobile	TeamLogResponse.head
-mobile	TeamLogResponse.records
 mobile	UserInfo.encryption_pk
 mobile	UserInfo.id
 mobile	UserInfo.is_admin
@@ -116,15 +92,7 @@ web	GET /api/users/{user_id}/keys .archived_keys
 web	GET /api/users/{user_id}/keys .encryption_pk
 web	GET /api/users/{user_id}/keys .signing_pk
 web	GET /health .version
-web	HeldObject.id
-web	HeldObject.is_deleted
-web	HeldObject.object_type
-web	HeldObject.version
-web	HeldResponse.objects
 web	InviteResponse.invitation_token
-web	MetaResponse.argon2_params
-web	MetaResponse.argon2_salt
-web	MetaResponse.version
 web	OrgRecoveryBlobResponse.stale
 web	OrgRecoveryBlobResponse.wrapped_kek
 web	OrgRecoveryKeypairResponse.argon2_salt
@@ -152,15 +120,6 @@ web	ProvisionResponse.encrypted_keypair
 web	ProvisionResponse.user_id
 web	ProvisioningTokenResponse.token
 web	ProvisioningTokenResponse.username
-web	PushObjectResult.code
-web	PushObjectResult.commit_seq
-web	PushObjectResult.error
-web	PushObjectResult.id
-web	PushObjectResult.server_payload_hash
-web	PushObjectResult.server_version
-web	PushResponse.accepted
-web	PushResponse.conflicts
-web	PushResponse.token
 web	RecoverResponse.argon2_params
 web	RecoverResponse.argon2_salt
 web	RecoverResponse.encrypted_keypair
@@ -171,13 +130,6 @@ web	ShareInfo.created_by
 web	ShareInfo.id
 web	ShareNotification.id
 web	ShareResponse.encrypted_blob
-web	TeamLogHead.genesis_hash
-web	TeamLogHead.hash
-web	TeamLogHead.seq
-web	TeamLogRecord.body
-web	TeamLogRecord.sig
-web	TeamLogResponse.head
-web	TeamLogResponse.records
 web	UserInfo.encryption_pk
 web	UserInfo.id
 web	UserInfo.is_admin
