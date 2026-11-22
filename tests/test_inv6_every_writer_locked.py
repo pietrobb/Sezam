@@ -152,6 +152,87 @@ def test_the_ai_brake_never_waits_for_a_sync(vault, monkeypatch):
         proc.wait(10)
 
 
+def test_an_ai_off_queued_during_the_unlock_flush_is_kept(vault, tmp_path, monkeypatch):
+    """Capability review run 470: the brake appends to the audit queue
+    without the vault lock, and the unlock flush read the queue, wrote the
+    records and deleted the key in separate steps. A 'sezam ai off' from
+    another process in between was deleted unwritten."""
+    other = Vault(tmp_path)  # another process, vault locked
+    ai_access.enable(vault, "test")
+    ai_access.disable(other, "first")
+    assert [r["detail"]["source"] for r in vault.db.get_meta_json(ai_access.PENDING_AUDIT_KEY)] == ["first"]
+    original = ai_access._write_audit
+    calls = []
+
+    def write_audit(v, action, detail):
+        if v is other:  # the second process's own attempt (its vault is locked)
+            return original(v, action, detail)
+        if not calls:
+            calls.append(detail["source"])
+            ai_access.disable(other, "probe")
+        else:
+            calls.append(detail["source"])
+        return original(v, action, detail)
+
+    monkeypatch.setattr(ai_access, "_write_audit", write_audit)
+    ai_access.flush_pending_audit(vault)
+    monkeypatch.setattr(ai_access, "_write_audit", original)
+    assert calls == ["first"]
+    # kept for the next flush, not deleted unwritten
+    assert [r["detail"]["source"] for r in ai_access._pending(vault.db)] == ["probe"]
+    ai_access.flush_pending_audit(vault)
+    assert ai_access._pending(vault.db) == []
+    assert vault.db.fetchone("SELECT COUNT(*) FROM audit_log WHERE action = 'ai_off'")[0] == 2
+
+
+BRAKE_KEY_NAMES = {"ENABLED_KEY", "EPOCH_KEY", "STATE_MAC_KEY", "PENDING_AUDIT_KEY"}
+BRAKE_READS = {"get_meta", "get_meta_json", "_pending", "_verified", "_state_mac", "_parse"}
+BRAKE_WRITES = {"set_meta", "set_meta_json", "execute"}
+# Functions that read and rewrite a brake key outside their own immediate
+# transaction, with why no brake can land in between.
+BRAKE_REWRITES_ELSEWHERE = {
+    "seal_new_vault": "a vault being created or imported; nothing else has it open",
+    "rewrap_macs": "inside the KEK change's transaction, which already holds the write lock "
+                   "(rewrap_all_deks writes the DEKs first)",
+}
+
+
+def _immediate_transaction(item: ast.withitem) -> bool:
+    call = item.context_expr
+    return isinstance(call, ast.Call) and _dotted(call.func).endswith(".transaction") and any(
+        k.arg == "immediate" and isinstance(k.value, ast.Constant) and k.value.value is True
+        for k in call.keywords
+    )
+
+
+def test_a_brake_key_is_read_and_rewritten_in_one_immediate_transaction():
+    """Capability review run 470: the brake writes these keys without the
+    vault lock, so the lock does not order a read-then-rewrite of them; only
+    SQLite's write lock does, which the brake's own transaction also takes."""
+    tree = ast.parse((SRC / "vault" / "ai_access.py").read_text(encoding="utf-8"))
+    loose = {}
+    for func in (n for n in tree.body if isinstance(n, ast.FunctionDef)):
+        def walk(node, guarded, out):
+            if isinstance(node, ast.With) and any(_immediate_transaction(i) for i in node.items):
+                guarded = True
+            if isinstance(node, ast.Call):
+                name = _dotted(node.func).rsplit(".", 1)[-1]
+                keyed = any(isinstance(a, ast.Name) and a.id in BRAKE_KEY_NAMES
+                            for arg in node.args for a in ast.walk(arg))
+                if name in BRAKE_READS:
+                    out["read"] = True
+                if name in BRAKE_WRITES and keyed and not guarded:
+                    out["loose"].append(node.lineno)
+            for child in ast.iter_child_nodes(node):
+                walk(child, guarded, out)
+
+        out = {"read": False, "loose": []}
+        walk(func, False, out)
+        if out["read"] and out["loose"]:
+            loose[func.name] = out["loose"]
+    assert set(loose) == set(BRAKE_REWRITES_ELSEWHERE), loose
+
+
 def test_flushing_and_appending_team_changes_hold_the_lock(vault, monkeypatch):
     """Red on e443cbc: both read the team change queue, sent it and rewrote
     it without the lock."""

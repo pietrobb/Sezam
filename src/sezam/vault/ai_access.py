@@ -369,12 +369,21 @@ def flush_pending_audit(vault: "Vault") -> None:
     pending = _pending(db)
     if not pending:
         return
-    remaining = []
+    written = []
     for record in pending:
         detail = dict(record.get("detail") or {}, recorded_at_unlock=True)
-        if not _write_audit(vault, str(record.get("action")), detail):
-            remaining.append(record)
-    if remaining:
-        db.set_meta_json(PENDING_AUDIT_KEY, remaining)
-    else:
-        db.execute("DELETE FROM vault_meta WHERE key = ?", (PENDING_AUDIT_KEY,))
+        if _write_audit(vault, str(record.get("action")), detail):
+            written.append(record)
+    # Capability review run 470: the brake appends to this queue without the
+    # vault lock (db.brake), so an 'ai off' from another process may have
+    # landed since the read above. Remove only what was written, under the
+    # write lock the brake's append also takes.
+    with db.transaction(immediate=True):
+        remaining = _pending(db)
+        for record in written:
+            if record in remaining:
+                remaining.remove(record)
+        if remaining:
+            db.set_meta_json(PENDING_AUDIT_KEY, remaining)
+        else:
+            db.execute("DELETE FROM vault_meta WHERE key = ?", (PENDING_AUDIT_KEY,))
