@@ -144,6 +144,30 @@ class PushMixin:
             self.drop_team_grant(envelope_id)
         return refused
 
+    def send_handover(self, envelope_ids: list[str], changes: list) -> None:
+        """An admin handover: the new admin's envelopes and the member.role
+        records in one atomic request, or nothing (review 8bc70f7 M1; the
+        server judges the envelopes on the log after the records). Not queued:
+        a request that fails leaves no record to go out later on its own."""
+        if not envelope_ids:
+            self._send_team_records(
+                lambda records: self._request("POST", "/api/team-log", {"records": records}, auth=True),
+                changes,
+            )
+            return
+        rows = [
+            self._db.fetchone(
+                "SELECT id, dek_id, user_id, access_level, encrypted_dek FROM access_envelopes WHERE id = ?",
+                (envelope_id,),
+            )
+            for envelope_id in envelope_ids
+        ]
+        key_epoch = int(self._db.get_meta("key_epoch") or "0")
+        self._send_push(
+            [self._envelope_object(row) for row in rows], True, key_epoch, {}, False, set(envelope_ids),
+            team_changes=changes,
+        )
+
     def _envelope_object(self, row) -> dict:
         obj = self._push_cache.get(row["id"])
         if obj is None:

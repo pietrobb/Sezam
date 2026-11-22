@@ -2988,6 +2988,61 @@ class Vault:
         """Drop a local envelope the server refused (it was never shared)."""
         self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (envelope_id,))
 
+    def seal_handover_envelopes(
+        self, user_id: str, recipient_encryption_pk: bytes, dek_ids: list[str],
+    ) -> list[str]:
+        """Envelopes of ``dek_ids`` for the new admin of a handover (review 8bc70f7 M1).
+
+        No grant: the log gives the admin the keys by the role, so there is
+        no access.set, folder write or audit record; they go only in the
+        request of the member.role records (SyncClient.send_handover). A key
+        this vault cannot open, or one the member already has an envelope
+        of, is left out. Returns the envelope ids.
+        """
+        from nacl.exceptions import CryptoError
+
+        from ..crypto.envelope_crypto import create_envelope
+
+        self._require_unlocked()
+        assert self._keypair is not None
+        self.dek_mgr.require_current_kek()
+        self._require_current_identity()
+        if len(recipient_encryption_pk) != 32:
+            raise ValueError("The member's encryption key must be 32 bytes")
+        sealed = []
+        for dek_id in dek_ids:
+            if self._db.fetchone(
+                "SELECT 1 FROM access_envelopes WHERE dek_id = ? AND user_id = ?", (dek_id, user_id)
+            ):
+                continue
+            try:
+                dek = self.dek_mgr.unlock_dek(dek_id)
+            except (KeyError, CryptoError, ValueError):
+                continue
+            sealed.append((new_ulid(), dek_id, create_envelope(
+                dek, self._keypair.to_nacl_private_key().encode(), bytes(recipient_encryption_pk),
+            )))
+        with self._db.transaction(immediate=True):
+            self.dek_mgr.require_current_kek()
+            self._require_current_identity()
+            for envelope_id, dek_id, encrypted_dek in sealed:
+                self._db.execute(
+                    "INSERT INTO access_envelopes "
+                    "(id, dek_id, user_id, created_by, access_level, encrypted_dek) "
+                    "VALUES (?, ?, ?, ?, 'write', ?)",
+                    (envelope_id, dek_id, user_id, self._user_id, encrypted_dek),
+                )
+        return [envelope_id for envelope_id, _, _ in sealed]
+
+    def settle_handover_envelopes(self, envelope_ids: list[str], landed: bool) -> None:
+        """After a handover request failed: its envelopes are the server's if
+        the unit landed (a lost reply), else they never existed."""
+        with self._db.transaction():
+            for envelope_id in envelope_ids:
+                if not landed:
+                    self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (envelope_id,))
+                outbox.sent(self._db, outbox.ENVELOPE, envelope_id)
+
     # ── Re-key after user revocation (spec 9.3) ──
 
     def _refuse_rekey_over_conflicts(self, dek_ids: list[str]) -> None:

@@ -619,7 +619,10 @@ def may_hold_key(state: TeamState, user_id: str, dek_id: str) -> bool:
     gens = state.folders[folder]
     if gen != len(gens) - 1:
         return False
-    return user_id in state.access.get(folder, {}) or gens[-1][1] == user_id
+    # Review 8bc70f7 M1: the admin holds every current key by the role, not
+    # by an access.set a handover granted (it outlived the role: in A -> B ->
+    # C, B kept write access to folders nobody had shared with B).
+    return user_id in state.access.get(folder, {}) or gens[-1][1] == user_id or member.role == "admin"
 
 
 def item_refusal(
@@ -727,4 +730,5 @@ def envelope_valid(
         return False
     if state.members[target_id].encryption_pk != target_encryption_pk:
         return False
-    return state.access.get(folder, {}).get(target_id) == level
+    by_role = "write" if is_admin(state, target_id) else None
+    return state.access.get(folder, {}).get(target_id, by_role) == level

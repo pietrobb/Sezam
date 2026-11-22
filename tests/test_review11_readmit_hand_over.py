@@ -116,12 +116,11 @@ def test_no_hand_over_to_an_account_waiting_for_a_readmit(team, server, tmp_path
     assert state.head_seq == head
     assert state.members[admin_id].role == "admin" and state.members[bob_id].role == "member"
     assert admin_client.pending_team_changes() == []
-    # Both halves wait together: the admin's own demotion never goes alone.
-    aside = [item["change"][1]["user_id"] for item in admin_client.set_aside_team_changes()]
-    assert sorted(aside) == sorted([bob_id, admin_id])
-    admin_client.retry_set_aside_team_changes()  # 'sezam team-log retry': refused together again
-    admin_client.flush_team_log()
-    assert len(admin_client.set_aside_team_changes()) == 2
+    # Review 8bc70f7 M1: the role records and their envelopes go in one
+    # request; refused, nothing of the handover stays (not even set aside,
+    # where a retry would send the role change without its envelopes).
+    assert admin_client.set_aside_team_changes() == []
+    assert admin.db.fetchall("SELECT 1 FROM outbox WHERE state = 'queued'") == []
     assert admin_client.team_state().members[admin_id].role == "admin"
 
 

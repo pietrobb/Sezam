@@ -406,6 +406,31 @@ def build_vectors() -> dict:
         _q("envelope_valid", B.uid, C.uid, K[2], "read", C.epk, answer=True),
         _q("may_hold_key", A.uid, K[2], answer=False),
     ]))
+    # Review 8bc70f7 M1: the admin holds every current key by the role. A
+    # member the folder is not shared with takes the key from the former
+    # admin's envelope at write, no access.set; handing the role on ends it
+    # (A -> D -> C: D keeps no key and no write of a folder nobody shared).
+    to_d = basic().member(D).add("member.role", A, {"user_id": D.uid, "role": "admin"})
+    to_d.add("member.role", A, {"user_id": A.uid, "role": "member"})
+    s.append(_good("handover_gives_the_keys_by_the_role", copy.deepcopy(to_d), [
+        _q("may_hold_key", D.uid, K[1], answer=True),
+        _q("may_write", F1, D.uid, answer=True),
+        _q("envelope_valid", A.uid, D.uid, K[1], "write", D.epk, answer=True),
+        _q("envelope_valid", A.uid, D.uid, K[1], "read", D.epk, answer=False),
+        _q("envelope_valid", A.uid, D.uid, K[1], None, D.epk, answer=False),
+        _q("envelope_valid", C.uid, D.uid, K[1], "write", D.epk, answer=False),
+        _q("key_recipients", F1, answer=[[B.uid, B.epk, "write"], [C.uid, C.epk, "read"]]),
+    ]))
+    to_d.add("member.role", D, {"user_id": C.uid, "role": "admin"}, signer=D)
+    to_d.add("member.role", D, {"user_id": D.uid, "role": "member"}, signer=D)
+    s.append(_good("handover_on_ends_the_role_keys", to_d, [
+        _q("may_hold_key", D.uid, K[1], answer=False),
+        _q("may_write", F1, D.uid, answer=False),
+        _q("may_hold_key", C.uid, K[1], answer=True),
+        _q("envelope_valid", D.uid, C.uid, K[1], "read", C.epk, answer=True),
+        _q("envelope_valid", D.uid, C.uid, K[1], "write", C.epk, answer=False),
+        _q("item_refusal", D.uid, ITEM, F1, K[1], False, True, answer=NO_WRITE),
+    ]))
     s.append(_good("handover_then_remove_ends_the_former_admins_envelopes",
                    copy.deepcopy(handed).remove(A, by=B), [
         _q("envelope_valid", A.uid, C.uid, K[1], "read", C.epk, answer=False),

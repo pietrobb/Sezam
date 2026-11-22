@@ -461,7 +461,8 @@ const SezamTeamLog = (() => {
     const [folder, gen] = state.dekIndex[dekId];
     const gens = state.folders[folder];
     if (gen !== gens.length - 1) return false;
-    return accessOf(state, folder, userId) !== null || gens[gens.length - 1][1] === userId;
+    // Review 8bc70f7 M1: the admin holds every current key by the role.
+    return accessOf(state, folder, userId) !== null || gens[gens.length - 1][1] === userId || m.role === 'admin';
   }
 
   function envelopeValid(state, signerId, targetId, dekId, level, targetEncryptionPk) {
@@ -473,7 +474,8 @@ const SezamTeamLog = (() => {
     const handedOver = signer !== null && signer.active && own(former, folder) && own(former[folder], signerId);
     if (!isAdmin(state, signerId) && !handedOver) return false;
     if (state.members[targetId].encryptionPk !== targetEncryptionPk) return false;
-    return accessOf(state, folder, targetId) === level;
+    const granted = accessOf(state, folder, targetId);
+    return (granted !== null ? granted : isAdmin(state, targetId) ? 'write' : null) === level;
   }
 
   // Why a live folder/item by userId sealed with dekId is not valid, or null

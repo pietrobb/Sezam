@@ -4,8 +4,8 @@ no folder key and no write exception.
 After ``member.role`` admin -> member the former admin still held the current
 key of every team folder (as the key's author) and the log took their pulled
 copies under it (``former_admins``) until some later re-key, which nothing made.
-Now the handover gives the new admin every folder key it lacked (an
-``access.set`` write with the envelope), and the new admin's next push re-keys
+Now the handover gives the new admin every folder key it lacked (an envelope
+the admin role lets it hold; review 8bc70f7 M1), and the new admin's next push re-keys
 each folder the former admin held only as admin: the new keys go to the
 members the log names, not to the former admin, and ``former_admins`` ends.
 """
@@ -45,8 +45,10 @@ def test_the_new_admin_rekeys_what_the_former_admin_held(team, server, tmp_path,
     hand_over_admin(admin, admin_client, bob_id, lambda fingerprint: True)
     state = admin_client.team_state()
     assert teamlog.is_admin(state, bob_id) and not teamlog.is_admin(state, admin_id)
-    # Bob had no key of Side: the handover gave it to him, Ops stays read.
-    assert state.access[side][bob_id] == "write" and state.access[ops][bob_id] == "read"
+    # Bob had no key of Side: the handover gave it to him by the role
+    # (review 8bc70f7 M1: no access.set), Ops stays read.
+    assert bob_id not in state.access[side] and state.access[ops][bob_id] == "read"
+    assert teamlog.may_hold_key(state, bob_id, old_keys[side])
     assert all(admin_id in state.former_admins.get(f, ()) for f in (ops, side))
 
     _confirm_founder(admin, bob)

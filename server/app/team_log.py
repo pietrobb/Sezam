@@ -838,7 +838,11 @@ def envelope_refusal(
             return "team log: another account gets a key only with an access.set"
         return None
     key_folder, _ = found
-    if not core.is_admin(state, user_id):
+    # Review 8bc70f7 M1: a handover sends the former admin's envelopes for the
+    # new admin in the request of its member.role records, so the log already
+    # names the sender a former admin of that key (core.envelope_valid).
+    handed_over = user_id in state.former_admins.get(key_folder, ()) and core.is_admin(state, target_id)
+    if not core.is_admin(state, user_id) and not handed_over:
         return "team log: only an admin seals a team key"
     if not core.may_seal(state, key_folder):
         return "folder waits for a re-key"

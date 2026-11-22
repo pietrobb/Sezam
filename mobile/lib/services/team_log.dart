@@ -659,8 +659,10 @@ class TeamLog {
     final folder = found[0] as String;
     final gens = s.folders[folder]!;
     if (found[1] != gens.length - 1) return false;
+    // Review 8bc70f7 M1: the admin holds every current key by the role.
     return (s.access[folder]?.containsKey(userId) ?? false) ||
-        gens.last[1] == userId;
+        gens.last[1] == userId ||
+        m.role == 'admin';
   }
 
   static bool envelopeValid(TeamState s, String signerId, String targetId,
@@ -674,7 +676,8 @@ class TeamLog {
         (s.formerAdmins[folder]?.contains(signerId) ?? false);
     if (!isAdmin(s, signerId) && !handedOver) return false;
     if (s.members[targetId]!.encryptionPk != targetEncryptionPk) return false;
-    return s.access[folder]?[targetId] == level;
+    final byRole = isAdmin(s, targetId) ? 'write' : null;
+    return (s.access[folder]?[targetId] ?? byRole) == level;
   }
 
   /// Why a live folder/item by [userId] sealed with [dekId] is not valid, or

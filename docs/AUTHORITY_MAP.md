@@ -197,7 +197,9 @@ Local changes; the push sends them and the server decides there.
 | `rekey_after_revocation` | new keys for every folder a removed member held | the team admin in the local team log; the server takes only records the log allows | `POST /api/sync` | test_rekey_rebase_review8.py |
 | `rename_node` | a folder's name | a team member; each object by the signer's write access, team folders by the log | `POST /api/sync` | test_sync_s3_outbox.py |
 | `resolve_path` | — | — | — | test_e2e_scenarios.py |
+| `seal_handover_envelopes` | seals the keys the next admin lacks (sent with the role change) | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `sezam.vault.team_migration:hand_over_admin` |
 | `search` | — | — | — | test_spec_compliance.py |
+| `settle_handover_envelopes` | drops or marks sent the envelopes of a handover that failed or landed | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `sezam.vault.team_migration:hand_over_admin` |
 | `setup_org_recovery` | the recovery shares and a recovery wrap of the KEK (sent by setup_and_register) | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_org_recovery_resetup_review_n4.py |
 | `unlock` | opens the vault with the master password | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_e2e_scenarios.py |
 | `unlock_with_kek` | opens the vault with a KEK (broker session) | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_ai_s1b_control.py |
@@ -258,6 +260,7 @@ The client side of every route; the team log's records are checked against the l
 | `retry_set_aside_team_changes` | queues set-aside team changes again | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review10_team_queue.py |
 | `revoke_share` | deletes a share link | its creator, or an admin on the server (users.is_admin) | `DELETE /api/share/{share_id}` | test_crypto.py |
 | `revoke_user` | revokes an account on the server | an admin on the server (users.is_admin) | `DELETE /api/users/{user_id}` | test_revoke_second_member_8b.py |
+| `send_handover` | the member.role records and the next admin's envelopes, one atomic request | the team admin in the local team log; the server takes only records the log allows | `POST /api/team-log` | run by `sezam.vault.team_migration:hand_over_admin` |
 | `server_org_recovery_stale` | — | — | — | run by `sezam.cli:change_password` |
 | `set_aside_refused_team_changes` | sets aside a queued change the log no longer takes | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `SyncClient.queue_team_grant` |
 | `set_aside_team_changes` | sets queued team changes aside | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review10_team_queue.py |

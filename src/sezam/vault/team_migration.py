@@ -20,11 +20,13 @@ a founded one is founded too, with nobody's access (review e443cbc R15).
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, Optional
 
 from .. import teamlog
 from ..models import new_ulid
+from . import oplock
 from .sync_common import CONFIRMED_MEMBER_KEYS_META, vouched_access_level
 from .team_log_local import unlogged_folder_keys
 
@@ -219,25 +221,9 @@ def add_member(
     })])
 
 
-def hand_over_admin(
-    vault: Vault,
-    client: SyncClient,
-    user_id: str,
-    confirm_fingerprint: Optional[Callable[[str], bool]] = None,
-) -> None:
-    """Admin: make member ``user_id`` the organisation's admin, this account a member.
-
-    Review 8595ec1 #3: one admin per organisation (TL7), and nothing let the
-    role move, so losing that admin froze the team. Both member.role records
-    go in one append: the head never has two admins. Only to a member whose
-    key in the log has its fingerprint confirmed here (asked once). Folders
-    whose key the member lacks are shared with them (write) before.
-    """
-    from ..crypto.keys import compute_fingerprint
-
-    if not client._token:
-        client.authenticate()
-    client.pull()
+def _admin_member(vault: Vault, client: SyncClient, user_id: str):
+    """The log's state and ``user_id``'s member there, refused unless this
+    account is the trusted log's admin and ``user_id`` another active member."""
     state = client.team_state()
     me = vault.db.get_meta("user_id")
     if state is None:
@@ -249,6 +235,57 @@ def hand_over_admin(
     member = state.members.get(user_id)
     if user_id == me or member is None or not member.active:
         raise ValueError(f"{user_id} is not another active member of the team log")
+    return state, member
+
+
+def unsent_work(db) -> list[str]:
+    """What of this vault the server does not hold yet: queued outbox rows by
+    kind, open sync conflicts and set-aside team changes."""
+    from .team_log_state import set_aside_changes
+
+    waiting = [
+        f"{row['n']} {row['kind']}" for row in db.fetchall(
+            "SELECT kind, COUNT(*) AS n FROM outbox WHERE state = 'queued' GROUP BY kind ORDER BY kind"
+        )
+    ]
+    conflicts = db.fetchone("SELECT COUNT(*) AS n FROM sync_conflicts")["n"]
+    if conflicts:
+        waiting.append(f"{conflicts} open sync conflict(s)")
+    if set_aside_changes(db):
+        waiting.append("set-aside team changes ('sezam team-log discard')")
+    return waiting
+
+
+@oplock.held  # INV-6: the push before and the handover unit write the outbox
+def hand_over_admin(
+    vault: Vault,
+    client: SyncClient,
+    user_id: str,
+    confirm_fingerprint: Optional[Callable[[str], bool]] = None,
+) -> None:
+    """Admin: make member ``user_id`` the organisation's admin, this account a member.
+
+    Review 8595ec1 #3: one admin per organisation (TL7), and nothing let the
+    role move, so losing that admin froze the team. Both member.role records
+    go in one append: the head never has two admins. Only to a member whose
+    key in the log has its fingerprint confirmed here (asked once).
+
+    Review 8bc70f7 M1: the new admin holds every folder key by the role
+    (``teamlog.may_hold_key``), not by an ``access.set``: the write access a
+    handover granted outlived the role (A -> B -> C: B kept the folders nobody
+    shared with B) and stayed when the role change then failed. The envelopes
+    of the keys the new admin lacks go in the one request of the member.role
+    records, all or nothing. What this account has not sent goes out first;
+    after the role change the server takes none of it where it wrote only as
+    admin, so with anything still unsent nothing is handed over.
+    """
+    from ..crypto.keys import compute_fingerprint
+    from .revocation import push_with_queued_revocations
+
+    if not client._token:
+        client.authenticate()
+    client.pull()
+    _state, member = _admin_member(vault, client, user_id)
     fingerprint = compute_fingerprint(bytes.fromhex(member.signing_pk), bytes.fromhex(member.encryption_pk))
     confirmed = dict(vault.db.get_meta_json(CONFIRMED_MEMBER_KEYS_META) or {})
     if confirmed.get(user_id) != fingerprint:
@@ -256,20 +293,44 @@ def hand_over_admin(
             raise ValueError(f"The key fingerprint of {user_id} was not confirmed: {fingerprint}")
         confirmed[user_id] = fingerprint
         vault.db.set_meta_json(CONFIRMED_MEMBER_KEYS_META, confirmed)
+
+    push_with_queued_revocations(vault, client)
+    waiting = unsent_work(vault.db)
+    if waiting:
+        raise RuntimeError(
+            "This account has changes the server does not hold yet (" + ", ".join(waiting)
+            + "); after the handover it could not send them. Sync first ('sezam push'); "
+            "nothing was handed over."
+        )
+    state, member = _admin_member(vault, client, user_id)
+    waits = sorted(folder for folder in state.folders if not teamlog.may_seal(state, folder))
+    if waits:
+        raise RuntimeError(
+            f"{len(waits)} team folder(s) wait for a re-key ('sezam push'); nothing was handed over."
+        )
     # Review c78fd19 (R13-8): the new admin re-keys every folder this account
     # held only as admin (revocation.finish_handover_rekeys), so it needs each
-    # current key first: write access with the envelope, where it had none.
-    from .revocation import grant_member
-
-    for folder in sorted(state.folders):
-        if teamlog.may_hold_key(state, user_id, teamlog.current_key(state, folder)):
-            continue
-        if vault.db.fetchone("SELECT 1 FROM nodes WHERE id = ? AND is_deleted = 0", (folder,)):
-            grant_member(vault, client, user_id, folder, "write")
-    client.append_team_log([
+    # current key first.
+    lacking = [
+        key for folder in sorted(state.folders)
+        if not teamlog.may_hold_key(state, user_id, key := teamlog.current_key(state, folder))
+    ]
+    envelope_ids = vault.seal_handover_envelopes(user_id, bytes.fromhex(member.encryption_pk), lacking)
+    changes = [
         ("member.role", {"user_id": user_id, "role": "admin"}),
-        ("member.role", {"user_id": me, "role": "member"}),
-    ])
+        ("member.role", {"user_id": vault.db.get_meta("user_id"), "role": "member"}),
+    ]
+    try:
+        client.send_handover(envelope_ids, changes)
+    except Exception:
+        landed = False
+        with contextlib.suppress(Exception):  # the send's own failure is what is raised
+            client._refresh_team_log()
+            landed = teamlog.is_admin(client.team_state(), user_id)
+        vault.settle_handover_envelopes(envelope_ids, landed)
+        if landed:
+            return  # the reply was lost, the unit landed
+        raise
 
 
 READMIT_META = "team_log_readmit"
