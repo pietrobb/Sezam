@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:sezam_mobile/services/auth_service.dart';
 import 'package:sezam_mobile/services/database_service.dart';
+import 'package:sezam_mobile/services/sync_service.dart';
 import 'package:sezam_mobile/services/vault_service.dart';
 
 import 'support/real_server_phone.dart';
@@ -43,6 +44,21 @@ void main() {
           expect(c.outcome, isNot(ConnectOutcome.error), reason: c.message);
           for (final id in (cfg['vouched'] as List).cast<String>()) {
             expect(ids, contains(id));
+          }
+          if (cfg['post_after'] is String) {
+            // Capability review run 482: the rotation's lists are gone (a
+            // client from before #443); this phone's next pull vouches for
+            // what it holds.
+            await handshake(dir!, cfg['post_after'] as String);
+            final sync = SyncService();
+            try {
+              await sync.pull();
+            } on TofuKeyChangeException catch (change) {
+              // The app asks the user to confirm the admin's new key
+              // (vault_screen.dart), then syncs again.
+              await sync.acceptTofuKeyChange(change, change.newFingerprint);
+              await sync.pull();
+            }
           }
         } else {
           expect(c.outcome, ConnectOutcome.error, reason: c.message);

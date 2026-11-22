@@ -703,8 +703,10 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         "GET /api/users/{user_id}/key-vouchers .signing_pk": Field(
             UNREAD, "the lists are checked against the signer's pinned current key, not this one"),
         "GET /api/users/{user_id}/key-vouchers .lists": _signed("vouchedEntries", "_fetchKeyVoucherLists"),
-        **_not_called("/api/users/me/key-vouchers and signed-objects (only the desktop rotates identities)",
-                      *_VOUCHER_FIELDS[2:]),
+        # Capability review run 482: the phone posts what it holds, as the desktop.
+        "POST /api/users/me/key-vouchers .status": Field(UNREAD),
+        **_not_called("/api/users/me/signed-objects (only the desktop rotates identities)",
+                      *_VOUCHER_FIELDS[3:]),
         # ── Shares, audit, AI ──
         "ShareResponse.encrypted_blob": _signed("consumeShareLink"),
         "POST /api/share .id": Field(

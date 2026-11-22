@@ -89,10 +89,13 @@ nálezu sa začína otázkou, ktorý invariant porušuje. Ak taký nie je, dopln
   z overeného tímového denníka, alebo ktoré zariadenie samo drží (desktop, mobil;
   plný resync tak nestratí overené kópie). `retired_seq` ani `commit_seq` sa nečítajú.
   Rotácia nesie zoznamy novým kľúčom. Pre rotácie spred #443 a neaktívne účty
-  (capability review run 480) každý desktop pošle zoznam verzií, ktoré drží, pri
-  prvom sync s #443 a po každej rotácii, ktorú uvidí. Zvyšok: člen, ktorý takú
+  (capability review run 480) každý desktop aj mobil (run 482) pošle zoznam verzií,
+  ktoré drží, pri prvom sync s #443 a po každej rotácii, ktorú uvidí. Web medzi
+  reláciami nič overené nedrží, preto nič neposiela. Zvyšok: člen, ktorý takú
   verziu nikdy nedržal a ktorého účet ani žiadny admin ju nedrží, ju nedostane, kým
-  sa nesynchronizuje podpisovateľ, admin alebo iné zariadenie jeho účtu. Pull to
+  sa nesynchronizuje podpisovateľ, admin alebo desktop či mobil jeho účtu, ktorý ju
+  drží. Otvorené pre operátora: člen len s webom, ktorého podpisovateľ je jediný
+  admin a už sa nesynchronizuje, takú verziu nedostane vôbec. Pull to
   vtedy povie menom podpisovateľa a dá sa zopakovať. Server spred #443 (bez
   zoznamov) prijme od vyradeného kľúča len to, čo zariadenie drží.
 

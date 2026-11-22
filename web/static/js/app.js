@@ -3081,7 +3081,8 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
             // Goal #443: a retired key vouches only for what a voucher list
             // names, not for whatever the server dates before its rotation
             // (retired_seq, commit_seq): a list of the signer's current key,
-            // of this account's key (its desktop or phone holds the versions)
+            // of this account's key (its desktop or phone posts the versions it holds;
+            // the web holds none and posts none)
             // or of a current admin of the verified log, so that an account
             // that rotated before #443 and never syncs again is still read
             // (capability review run 480).

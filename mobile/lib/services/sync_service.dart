@@ -704,6 +704,90 @@ class SyncService {
     return (jsonDecode(response.body) as Map<String, dynamic>)['lists'];
   }
 
+  /// The keys of this account and its team the phone last posted its list
+  /// under, and every retired key it has seen (as the desktop's
+  /// LEGACY_CHECKED_META / RETIRED_SEEN_META).
+  static const keyVouchersCheckedSetting = 'key_vouchers_checked';
+  static const keyVouchersRetiredSeenSetting = 'key_vouchers_retired_seen';
+  static const _vouchersPerList = 20000;
+
+  /// Capability review run 482 (the desktop's _post_legacy_vouchers): a
+  /// rotation from before #443 has no list and its account may never sync
+  /// again. So the phone posts a list of the versions it holds (it verified
+  /// them) that its account's lists do not name yet, signed by its key, on
+  /// its first pull with #443 and after it sees an identity rotation in the
+  /// team: a member with only a phone vouches for its new phones and web
+  /// sessions, an admin for every member.
+  Future<void> _postHeldVouchers(
+    String userId,
+    Uint8List signingPk,
+    TeamState? team,
+    Map<String, List<Uint8List>> authorKeys,
+  ) async {
+    final secret = _vault.signingSecretKey;
+    if (secret == null) return;
+    final stored = await _db.getSetting(keyVouchersRetiredSeenSetting);
+    final seen = <String>{
+      if (stored != null) ...(jsonDecode(stored) as List).cast<String>(),
+      for (final keys in authorKeys.values)
+        for (final key in keys.skip(1)) bytesToHex(key),
+    }.toList()..sort();
+    await _db.setSetting(keyVouchersRetiredSeenSetting, jsonEncode(seen));
+    final members = [
+      for (final MapEntry(key: id, value: member)
+          in team?.members.entries ?? <MapEntry<String, TeamMember>>[])
+        '$id:${member.signingPk}',
+    ]..sort();
+    final fingerprint = _crypto.sha256Hex(
+      utf8.encode([bytesToHex(signingPk), ...members, ...seen].join('\n')),
+    );
+    if (await _db.getSetting(keyVouchersCheckedSetting) == fingerprint) return;
+    final held = heldVoucherKeys(await _db.getAllObjects());
+    if (held.isEmpty) return; // what it would vouch for, it has not seen yet
+    final own = vouchedEntries(
+      userId,
+      signingPk,
+      await _fetchKeyVoucherLists(userId),
+    );
+    final entries = <List<Object>>[];
+    for (final key in held.difference(own)) {
+      final [id, version, payloadHash] = key.split(':');
+      final entry = <Object>[id, int.parse(version), payloadHash];
+      try {
+        canonicalKeyVoucherEntries([entry]);
+      } on FormatException {
+        continue; // a row of this phone only (no server id)
+      }
+      entries.add(entry);
+    }
+    final items = canonicalKeyVoucherEntries(entries);
+    for (var start = 0; start < items.length; start += _vouchersPerList) {
+      final end = start + _vouchersPerList < items.length
+          ? start + _vouchersPerList
+          : items.length;
+      final chunk = [
+        for (final (id, version, payloadHash) in items.sublist(start, end))
+          [id, version, payloadHash],
+      ];
+      final signature = _crypto.signChallenge(
+        keyVoucherMessage(userId, signingPk, chunk),
+        secret,
+      );
+      final response = await _http.post(
+        Uri.parse('$_serverUrl/api/users/me/key-vouchers'),
+        headers: _authHeaders(),
+        body: jsonEncode({
+          'signing_pk': bytesToHex(signingPk),
+          'entries': chunk,
+          'signature': bytesToHex(signature),
+        }),
+      );
+      if (response.statusCode == 404) return; // a server from before #443
+      _checkResponse(response, 'postKeyVouchers');
+    }
+    await _db.setSetting(keyVouchersCheckedSetting, fingerprint);
+  }
+
   Future<Map<String, dynamic>> _fetchPublicKeys(String userId) async {
     final response = await _http.get(
       Uri.parse('$_serverUrl/api/users/${Uri.encodeComponent(userId)}/keys'),
@@ -2428,6 +2512,17 @@ class SyncService {
       } catch (_) {
         // The item stays queued; the push reports it.
       }
+    }
+    try {
+      await _postHeldVouchers(
+        currentUserId,
+        signingPk,
+        teamLog?.team,
+        authorKeys,
+      );
+    } on Exception {
+      // The pull is committed; the next pull posts again (the fingerprint
+      // is kept only once every list went).
     }
 
     return PullResult(

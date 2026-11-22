@@ -15,13 +15,14 @@ the old key signed (and of those the old key's lists named); the server
 refuses a rotation that leaves one out.
 
 A rotation from before #443 has no list, and its account may never sync again
-(an inactive member, web only, not updated). So every device posts a list of
-the versions it holds (it verified them) on its first sync with #443 and after
-each identity rotation in the team, signed by its account's key: the
+(an inactive member, web only, not updated). So every desktop and phone posts a
+list of the versions it holds (it verified them) on its first sync with #443
+and after each identity rotation in the team, signed by its account's key: the
 account's other and new devices take them over a full resync, and an admin's
-list vouches for every member (capability review run 480). A member who never
-held such an object gets it once the signer, an admin or another device of
-their own account has synced; until then the pull says so.
+list vouches for every member (capability review runs 480, 482). The web
+holds nothing between sessions and posts nothing. A member who never held
+such an object gets it once the signer, an admin or a desktop or phone of
+their own account that holds it has synced; until then the pull says so.
 """
 
 from __future__ import annotations
