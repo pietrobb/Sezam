@@ -19,7 +19,13 @@ from typing import Optional
 from .. import teamlog
 from . import oplock, outbox
 from ..models import new_ulid
-from .sync_common import TEAM_LOG_HEAD_MOVED, TEAM_LOG_REFUSED, server_error
+from .sync_common import (
+    ATOMIC_BATCH_CONFLICT,
+    TEAM_LOG_HEAD_MOVED,
+    TEAM_LOG_REFUSED,
+    _RevokedEnvelopesRefused,
+    server_error,
+)
 from .team_log_state import (  # noqa: F401 - re-exported: callers import these from here
     GENESIS_META,
     CONFIRMED_GENESIS_META,
@@ -928,6 +934,83 @@ class TeamLogMixin:
 
     def drop_team_grant(self, envelope_id: str) -> None:
         outbox.sent(self._db, outbox.TEAM_GRANT, envelope_id)
+
+    def _push_team_grants(self) -> list[dict]:
+        """Send each queued grant: its envelope and its log records, all or nothing.
+
+        A refused grant is withdrawn here (it never was shared); one that could
+        not be sent stays queued. After a lost reply the resend finds its
+        records in the log and sends the envelope alone.
+        """
+        from .. import teamlog
+
+        grants = self.pending_team_grants()
+        if not grants:
+            return []
+        if self.has_pending_key_change():
+            return []  # it goes after the key change landed
+        refused = []
+        key_epoch = int(self._db.get_meta("key_epoch") or "0")
+        for envelope_id, changes in sorted(grants.items()):
+            row = self._db.fetchone(
+                "SELECT ae.id, ae.dek_id, ae.user_id, ae.access_level, ae.encrypted_dek, "
+                f"{outbox.pending(outbox.ENVELOPE, 'ae.id')} AS unsent "
+                "FROM access_envelopes ae WHERE ae.id = ?",
+                (envelope_id,),
+            )
+            if row is None:
+                self.drop_team_grant(envelope_id)
+                continue
+            try:
+                if not row["unsent"] and not self.team_log_records(changes):
+                    self.drop_team_grant(envelope_id)
+                    continue
+                self._send_push(
+                    [self._envelope_object(row)], True, key_epoch, {}, False, {envelope_id},
+                    team_changes=changes,
+                )
+            except (RuntimeError, _RevokedEnvelopesRefused, teamlog.TeamLogError) as exc:
+                if not (
+                    isinstance(exc, (_RevokedEnvelopesRefused, teamlog.TeamLogError))
+                    or isinstance(exc.__cause__, teamlog.TeamLogError)
+                    or server_error(exc, 409, ATOMIC_BATCH_CONFLICT)
+                    or server_error(exc, 400)
+                    or str(exc) == "Atomic re-key batch was not fully accepted"
+                ):
+                    raise  # not sent: it stays queued for the next push
+                logger.error("The server refused the grant %s: %s", envelope_id, exc)
+                with self._db.transaction():
+                    self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (envelope_id,))
+                    self.drop_team_grant(envelope_id)
+                self._push_cache.pop(envelope_id, None)
+                refused.append({"id": envelope_id, "error": str(exc)})
+                continue
+            self.drop_team_grant(envelope_id)
+        return refused
+
+    def send_handover(self, envelope_ids: list[str], changes: list) -> None:
+        """An admin handover: the new admin's envelopes and the member.role
+        records in one atomic request, or nothing (review 8bc70f7 M1; the
+        server judges the envelopes on the log after the records). Not queued:
+        a request that fails leaves no record to go out later on its own."""
+        if not envelope_ids:
+            self._send_team_records(
+                lambda records: self._request("POST", "/api/team-log", {"records": records}, auth=True),
+                changes,
+            )
+            return
+        rows = [
+            self._db.fetchone(
+                "SELECT id, dek_id, user_id, access_level, encrypted_dek FROM access_envelopes WHERE id = ?",
+                (envelope_id,),
+            )
+            for envelope_id in envelope_ids
+        ]
+        key_epoch = int(self._db.get_meta("key_epoch") or "0")
+        self._send_push(
+            [self._envelope_object(row) for row in rows], True, key_epoch, {}, False, set(envelope_ids),
+            team_changes=changes,
+        )
 
     def _refresh_team_log(self) -> None:
         if not self._token:
