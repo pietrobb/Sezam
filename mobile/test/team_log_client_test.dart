@@ -295,6 +295,7 @@ void main() {
     String? confirmedGenesis,
     List<int>? asked,
     Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)? restore,
+    String? ownUserId,
   }) async {
     try {
       return (await syncTeamLog(
@@ -303,6 +304,7 @@ void main() {
             local: local,
             pin: pin,
             confirmedGenesis: confirmedGenesis,
+            ownUserId: ownUserId,
             fetchPage: (since) async {
               asked?.add(since);
               return served.skip(since + 1).take(2).toList();
@@ -380,6 +382,26 @@ void main() {
       );
       expect(message, startsWith('TEAM LOG MISMATCH'));
       expect(message, contains('differs at record 6'));
+    });
+
+    test('a fork of this account\'s own records is followed once nothing is lost', () async {
+      // Goal #442: another device of this account put back a shorter copy,
+      // then made the lost changes again.
+      final held = records('own_fork_local');
+      final local = LocalTeamLog(held, log.replay(held));
+      Future<Object> from(String name) {
+        final served = records(name);
+        return sync(served, head: headOf(served), local: local, pin: headOf(held), ownUserId: a);
+      }
+
+      expect(await from('own_fork_shorter'), contains('went back (head 2 < 4)'));
+      final followed = await from('own_fork_again') as LocalTeamLog;
+      expect(followed.team.headSeq, 5);
+      expect(followed.records, records('own_fork_again'));
+      expect(await from('own_fork_other_author'), contains('does not replay'));
+      // Another account's copy: not its own records, never followed.
+      final served = records('own_fork_again');
+      expect(await sync(served, head: headOf(served), local: local, ownUserId: b), contains('does not replay'));
     });
 
     test('a head with two admins is refused, a handover is followed', () async {

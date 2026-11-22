@@ -68,6 +68,21 @@ def test_a_forked_or_other_genesis_server_log_is_never_built_on():
     assert "another genesis" in result["error"] and result["posted"] == []
 
 
+def test_a_fork_of_this_accounts_own_records_is_followed_once_nothing_is_lost():
+    """Goal #442: another device of this account put back a shorter copy and
+    then made the lost changes again. Before they are back the fork stays
+    'went back'; once each is on the server's side it is followed; a fork
+    with a record of another account never is."""
+    own = "state.userId = ids.A; const got = await attempt(); return { ...got, posted };"
+    shorter = Log().genesis().member(B).member(D)
+    assert "went back (head 2 < 4)" in _restore(own, shorter)["error"]
+    again = Log().genesis().member(B).member(D).member(C).key(F1, 0, K[1], None).access(F1, B, "write")
+    result = _restore(own, again)
+    assert result == {"seq": 5, "posted": []}, result
+    other = Log().genesis().member(B).rotate(B, D).member(C).key(F1, 0, K[1], None).access(F1, B, "write")
+    assert "does not replay" in _restore(own, other)["error"]
+
+
 def test_a_refused_upload_stays_a_mismatch():
     result = _restore("refuse = true; const got = await attempt(); return { ...got, posted };", _prefix(2))
     assert result["error"].startswith("TEAM LOG MISMATCH") and "went back" in result["error"]

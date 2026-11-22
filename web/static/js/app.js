@@ -8210,6 +8210,68 @@ async function syncWebTeamLog(head, local, pin, _sodium) {
     if (pinned && head.genesis_hash !== pinned) {
         await failAsServed(head, pinned, 'starts with another genesis than this browser saw', 'other_genesis');
     }
+    try {
+        return await catchUpWebTeamLog(head, local, pin, _sodium, fail);
+    } catch (err) {
+        if (!local || !['went_back', 'differs', 'does_not_replay'].includes(err.teamLogCause)) throw err;
+        const followed = await followOwnAccountFork(head, local, pin, _sodium);
+        if (!followed) throw err;
+        return followed;
+    }
+}
+
+/** The change a record made, as another device of this account makes it again
+ * on another head: a folder.key's generation and a member.keys' proof are
+ * bound to that head. */
+function ownTeamChange(body) {
+    const { gen: _gen, new_key_sig: _sig, ...data } = body.data || {};
+    return JSON.stringify([body.type, Object.keys(data).sort().map(k => [k, data[k]])]);
+}
+
+/**
+ * Goal #442 (bg344 random run of TeamLogMachine): the server lost its log and
+ * one device of this account put back a shorter copy, so it forks from what
+ * this browser holds. Both sides are this account's records, which the
+ * server cannot sign: the browser follows the server's side, but only once
+ * every change of its own lost records is on it (the desktop that made them
+ * queues them again; nothing this browser saw is forgotten). Returns
+ * {records, team}, or null: the mismatch stands.
+ */
+async function followOwnAccountFork(head, local, pin, _sodium) {
+    const TL = globalThis.SezamTeamLog;
+    if (!Number.isSafeInteger(head.seq) || head.seq < 0) return null;
+    if (pin && (!Number.isSafeInteger(pin.seq) || pin.seq > local.team.headSeq ||
+            TL.recordHash(local.records[pin.seq], _sodium) !== pin.hash)) return null;
+    const served = [];
+    for (let page = 0; page < TEAM_LOG_PAGES && served.length <= head.seq; page++) {
+        const resp = await apiFetch(`/api/team-log?since=${served.length - 1}`);
+        const got = (Array.isArray(resp?.records) ? resp.records : []).slice(0, head.seq + 1 - served.length);
+        if (!got.length) break;
+        served.push(...got);
+    }
+    let fork = 0;
+    while (fork < served.length && fork < local.records.length &&
+           TL.recordHash(served[fork], _sodium) === TL.recordHash(local.records[fork], _sodium)) fork++;
+    if (fork === 0 || fork === served.length || fork === local.records.length) return null;
+    const lost = local.records.slice(fork).map(r => TL.parseBody(r.body));
+    const theirs = served.slice(fork).map(r => TL.parseBody(r.body));
+    if ([...lost, ...theirs].some(body => body.author !== state.userId)) return null;
+    const made = new Set(theirs.map(ownTeamChange));
+    if (!lost.every(body => made.has(ownTeamChange(body)))) return null;
+    let team;
+    try {
+        team = TL.replay(served, _sodium);
+    } catch {
+        return null;
+    }
+    if (team.headSeq !== head.seq || team.headHash !== head.hash || TL.adminPolicyRefusal(team)) return null;
+    console.warn(`Followed the server's team log from record ${fork}, written by another device of this account`);
+    return { records: served, team };
+}
+
+async function catchUpWebTeamLog(head, local, pin, _sodium, fail) {
+    const TL = globalThis.SezamTeamLog;
+    const localSeq = local ? local.team.headSeq : -1;
     const seen = Math.max(localSeq, Number.isSafeInteger(pin?.seq) ? pin.seq : -1);
     if (!Number.isSafeInteger(head.seq) || head.seq < seen) fail(`went back (head ${head.seq} < ${seen})`, 'went_back');
     if (local && head.seq === localSeq) {

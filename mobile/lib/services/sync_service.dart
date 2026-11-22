@@ -2389,6 +2389,7 @@ class SyncService {
         pin: checkpoint?['team_log'] as Map<String, dynamic>?,
         confirmedGenesis: await readConfirmedTeamGenesis(_vault.userId!),
         leftEarlierLog: (await readForgottenTeamGenesis(_vault.userId!)).isNotEmpty,
+        ownUserId: _vault.userId,
         fetchPage: (since) async {
           final response = await _http.get(
             Uri.parse('$_serverUrl/api/team-log?since=$since'),

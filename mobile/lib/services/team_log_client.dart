@@ -411,6 +411,7 @@ Future<LocalTeamLog?> syncTeamLog({
   required Map<String, dynamic>? pin,
   String? confirmedGenesis,
   bool leftEarlierLog = false,
+  String? ownUserId,
   required Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
   Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)? restore,
 }) async {
@@ -441,7 +442,6 @@ Future<LocalTeamLog?> syncTeamLog({
     fail(detail, cause);
   }
 
-  final localSeq = local?.team.headSeq ?? -1;
   if (restore != null && local != null) {
     // R9-E: a server restored from a backup lost records this phone
     // accepted. It puts them back onto a prefix of its copy; any other
@@ -469,14 +469,111 @@ Future<LocalTeamLog?> syncTeamLog({
   if (pinned != null && head['genesis_hash'] != pinned) {
     await failAsServed(head, pinned, 'starts with another genesis than this device saw', 'other_genesis');
   }
+  try {
+    return await _catchUpTeamLog(log, head, local, pin, fetchPage);
+  } on TeamLogMismatch catch (e) {
+    if (local == null ||
+        ownUserId == null ||
+        !const ['went_back', 'differs', 'does_not_replay'].contains(e.cause)) {
+      rethrow;
+    }
+    final followed = await _followOwnAccountFork(log, head, local, pin, ownUserId, fetchPage);
+    if (followed == null) rethrow;
+    return followed;
+  }
+}
+
+/// The change a record made, as another device of this account makes it
+/// again on another head: a folder.key's generation and a member.keys'
+/// proof are bound to that head.
+String _ownTeamChange(Map<String, dynamic> body) {
+  final data = Map<String, dynamic>.from(body['data'] as Map)
+    ..remove('gen')
+    ..remove('new_key_sig');
+  final keys = data.keys.toList()..sort();
+  return jsonEncode([
+    body['type'],
+    [for (final k in keys) [k, data[k]]],
+  ]);
+}
+
+/// Goal #442 (bg344 random run of TeamLogMachine): the server lost its log
+/// and one device of this account put back a shorter copy, so it forks from
+/// what this phone holds. Both sides are this account's records, which the
+/// server cannot sign: the phone follows the server's side, but only once
+/// every change of its own lost records is on it (the desktop that made
+/// them queues them again; nothing this phone saw is forgotten). Null: the
+/// mismatch stands.
+Future<LocalTeamLog?> _followOwnAccountFork(
+  TeamLog log,
+  Map<String, dynamic> head,
+  LocalTeamLog local,
+  Map<String, dynamic>? pin,
+  String ownUserId,
+  Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
+) async {
+  final headSeq = head['seq'];
+  if (headSeq is! int || headSeq < 0) return null;
+  if (pin != null) {
+    final pinSeq = pin['seq'];
+    if (pinSeq is! int ||
+        pinSeq < 0 ||
+        pinSeq > local.team.headSeq ||
+        TeamLog.recordHash(local.records[pinSeq]) != pin['hash']) {
+      return null;
+    }
+  }
+  final served = <Map<String, dynamic>>[];
+  for (var page = 0; page < teamLogPages && served.length <= headSeq; page++) {
+    final got = (await fetchPage(served.length - 1)).take(headSeq + 1 - served.length).toList();
+    if (got.isEmpty) break;
+    served.addAll(got);
+  }
+  var fork = 0;
+  while (fork < served.length &&
+      fork < local.records.length &&
+      TeamLog.recordHash(served[fork]) == TeamLog.recordHash(local.records[fork])) {
+    fork++;
+  }
+  if (fork == 0 || fork == served.length || fork == local.records.length) return null;
+  final TeamState team;
+  try {
+    final lost = [
+      for (var i = fork; i < local.records.length; i++) TeamLog.parseBody(local.records[i]['body'], i),
+    ];
+    final theirs = [for (var i = fork; i < served.length; i++) TeamLog.parseBody(served[i]['body'], i)];
+    if ([...lost, ...theirs].any((body) => body['author'] != ownUserId)) return null;
+    final made = {for (final body in theirs) _ownTeamChange(body)};
+    if (!lost.every((body) => made.contains(_ownTeamChange(body)))) return null;
+    team = log.replay(served);
+  } catch (_) {
+    return null;
+  }
+  if (team.headSeq != headSeq || team.headHash != head['hash'] || TeamLog.adminPolicyRefusal(team) != null) {
+    return null;
+  }
+  return LocalTeamLog(served, team);
+}
+
+Future<LocalTeamLog> _catchUpTeamLog(
+  TeamLog log,
+  Map<String, dynamic> head,
+  LocalTeamLog? local,
+  Map<String, dynamic>? pin,
+  Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
+) async {
+  Never fail(String detail, String cause) => throw TeamLogMismatch(detail, cause);
+  final localSeq = local?.team.headSeq ?? -1;
   final pinSeq = pin?['seq'] as int? ?? -1;
   final seen = localSeq > pinSeq ? localSeq : pinSeq;
   final headSeq = head['seq'];
-  if (headSeq is! int || headSeq < seen)
+  if (headSeq is! int || headSeq < seen) {
     fail('went back (head $headSeq < $seen)', 'went_back');
+  }
   if (local != null && headSeq == localSeq) {
-    if (head['hash'] != local.team.headHash)
+    if (head['hash'] != local.team.headHash) {
       fail('differs at record $localSeq', 'differs');
+    }
     return local;
   }
   var team = local?.team ?? TeamState();

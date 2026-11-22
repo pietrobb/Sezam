@@ -542,6 +542,16 @@ def build_vectors() -> dict:
     s.append(_bad("old_key_after_rotation", basic().rotate(B, B2).add("member.keys", B, {
         "user_id": B.uid, "signing_pk": E.spk, "encryption_pk": E.epk, "new_key_sig": "00" * 64}),
         "bad_signature"))
+    # Goal #442: a server log forked from this account's own copy (another
+    # device of the admin put back a shorter one), before and after that
+    # device made the lost changes again, and a fork with another author.
+    def own(log: Log) -> Log:
+        return log.member(C).key(F1, 0, K[1], None).access(F1, B, "write")
+
+    s.append(_good("own_fork_local", own(Log().genesis().member(B)), []))
+    s.append(_good("own_fork_shorter", Log().genesis().member(B).member(D), []))
+    s.append(_good("own_fork_again", own(Log().genesis().member(B).member(D)), []))
+    s.append(_good("own_fork_other_author", own(Log().genesis().member(B).rotate(B, D)), []))
     s.extend(_encoding_cases())
 
     return {
