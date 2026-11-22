@@ -22,10 +22,8 @@ that make the server lie in the field, as ``rule`` or ``rule:label``.
 machine drives, makes of each field. ``CLIENT_FIELDS`` does the same for the
 web and the mobile client, whose ``checks`` name a function in their own
 sources (``web/static/js``, ``mobile/lib``). The test asks for an entry per
-client wherever that client's sources read the field's name; the pairs not
-traced yet are listed in ``tests/unsigned_fields_untraced.txt``, which may
-only shrink (capability run 458). Until it is empty the register is complete
-for the desktop only.
+client wherever that client's sources read the field's name (capability run
+458), so a new read of a server field needs its classification first.
 """
 
 from __future__ import annotations
@@ -488,9 +486,10 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
                               "commit_seq is the pulled object's") for key in (
             "PushObjectResult.commit_seq", "PushObjectResult.error", "PushObjectResult.code")},
         "MetaResponse.argon2_params": Field(
-            HINT, "clamped to the hard floor and refused above the account maximum; org recovery records "
-            "the raw params in a pre-anchor only beside the keypair's own salt, and an entry below the "
-            "floor is refused (passwordReopensPreAnchor)", ("accountKdfParams", "passwordReopensPreAnchor")),
+            DECIDES, "for the KDF clamped to the hard floor and refused above the account maximum; but org "
+            "recovery records the raw params in the pre-anchor beside the unsigned "
+            "OrgRecoveryKeypairResponse.argon2_salt (only below the floor is refused): the same finding, "
+            "goal #439", ("accountKdfParams", "passwordReopensPreAnchor")),
         "MetaResponse.argon2_salt": Field(
             HINT, "the salt the keypair wrap opens under (AEAD); none is no such user, another one than a "
             "password-change journal's stops its resume", ("deriveLoginKey",)),
@@ -510,6 +509,77 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
                       "POST /api/auth/registration-resume .token", "POST /api/auth/registration-resume .user_id"),
         **_not_called("/api/auth/provision", "ProvisionResponse.argon2_params", "ProvisionResponse.argon2_salt",
                       "ProvisionResponse.encrypted_keypair", "ProvisionResponse.user_id"),
+        # ── Users and member keys ──
+        "UserInfo.id": Field(
+            HINT, "picks whose keys the admin list pins on first use (performTOFUChecks); a member's keys are "
+            "sealed to only from /keys, checked against the same pin", ("performTOFUChecks", "checkKnownKey")),
+        "UserInfo.username": Field(UNREAD, _SHOWN),
+        "UserInfo.is_admin": Field(
+            HINT, "the list's badge, and which row offers the revoke button; the revocation is checked by the "
+            "server and the team log, not by this flag"),
+        "UserInfo.signing_pk": Field(
+            HINT, "pinned on first use (checkKnownKey); a changed one shows the key-change warning, and sealing "
+            "takes the keys from /keys against that pin", ("performTOFUChecks", "checkKnownKey")),
+        "UserInfo.encryption_pk": Field(
+            HINT, "pinned with the signing key (checkKnownKey)", ("performTOFUChecks", "checkKnownKey")),
+        "UserInfo.key_fingerprint": Field(
+            UNREAD, "the fingerprint read is an archived key's, compared with its own keys; " + _USER_LIST_FP),
+        "GET /api/users/{user_id}/keys .signing_pk": Field(
+            HINT, "pinned on first use; a changed key is a key-change error (TofuKeyChangeError), and this "
+            "account's own must be the keys its password opened",
+            ("getUserSigningPks", "getVerifiedEncryptionPkForRekey", "checkKnownKey")),
+        "GET /api/users/{user_id}/keys .encryption_pk": Field(
+            HINT, "pinned with the signing key", ("getUserSigningPks", "getVerifiedEncryptionPkForRekey")),
+        "GET /api/users/{user_id}/keys .archived_keys": Field(
+            DECIDES, "certified by their successor as on the desktop, but retired_seq is unsigned and kept only "
+            "for the session (state.archivedKeyBounds, cleared at sign-out): each new session takes the "
+            "server's bound for a leaked retired key; goal #443", ("getUserSigningPks",)),
+        # ── Shares, audit, AI ──
+        "ShareResponse.encrypted_blob": _signed("decryptShareBlob"),
+        **_not_called("/api/shares or POST /api/share (the browser only opens a share link)",
+                      "ShareInfo.id", "ShareInfo.created_by", "ShareNotification.id", "POST /api/share .id"),
+        "AuditResponse.entries": Field(HINT, "the rows shown; a server can leave rows out (withholding)"),
+        "AuditResponse.total": Field(UNREAD, _SHOWN),
+        **{key: Field(
+            HINT, "shown with a badge: client_signature over id, user_id, action, timestamp and request_hash is "
+            "checked against the author's trusted keys; without one the row shows as unverified",
+            ("loadAuditEntries", "buildServerAuditCanonical")) for key in (
+            "AuditEntry.id", "AuditEntry.user_id", "AuditEntry.action", "AuditEntry.timestamp",
+            "AuditEntry.request_hash", "AuditEntry.client_signature")},
+        **{key: Field(UNREAD, _SHOWN + ", outside the signature") for key in (
+            "AuditEntry.username", "AuditEntry.client_ip", "AuditEntry.commit_seq_range")},
+        "POST /api/audit/log .ok": Field(UNREAD, "the ok read is the fetch Response's"),
+        **_not_called("/api/ai-policy", "AIPolicy.signature", "AIPolicy.user_id"),
+        # ── Org recovery ──
+        **{key: Field(
+            HINT, "only refuses a password change of the account that set org recovery up "
+            "(publishWebTeamAnchorLocked), picks the setup's warning text (handleShamirGenerate), or ends a "
+            "recovery early (openOrgRecoveryModal); a lie the other way leaves the recovery wrapping the old "
+            "KEK, which the server could make useless by dropping its blob anyway (withholding)",
+            ("publishWebTeamAnchorLocked", "handleShamirGenerate", "openOrgRecoveryModal")) for key in (
+            "OrgRecoveryStatusResponse.configured", "OrgRecoveryStatusResponse.created_by",
+            "OrgRecoveryStatusResponse.stale")},
+        **{key: Field(
+            HINT, "how many share fields the recovery shows, re-stored as a label with the re-wrapped blob; "
+            "the shares' threshold was fixed when they were split, too few do not open the blob (AEAD)",
+            ("openOrgRecoveryModal", "handleOrgRecovery")) for key in (
+            "OrgRecoveryStatusResponse.threshold", "OrgRecoveryStatusResponse.total_shares")},
+        "OrgRecoveryStatusResponse.recovery_signing_pk": Field(
+            UNREAD, "the one read is this browser's own journal's (resumed.recovery_signing_pk)"),
+        "OrgRecoveryBlobResponse.wrapped_kek": _signed("handleOrgRecovery"),
+        "OrgRecoveryBlobResponse.stale": Field(HINT, "only ends the recovery (withholding)", ("handleOrgRecovery",)),
+        "OrgRecoveryKeypairResponse.encrypted_keypair": _signed("decryptLoginKeypair"),
+        "OrgRecoveryKeypairResponse.user_id": _signed("decryptLoginKeypair"),
+        "OrgRecoveryKeypairResponse.username": Field(
+            HINT, "the recovered keys sign in under it, and only they answer, for the account signedInUserId "
+            "checks", ("signedInUserId",)),
+        "OrgRecoveryKeypairResponse.argon2_salt": Field(
+            DECIDES, "a recovered bundle without the anchor is recorded in the pre-anchor under this salt and "
+            "the meta's params, both unsigned (equal to each other is no check): a wrong one keeps "
+            "passwordReopensPreAnchor from seeing the old password chosen again, so a server keeping the old "
+            "bundle without the anchor can serve it to a new device; goal #439",
+            ("handleOrgRecovery", "passwordReopensPreAnchor")),
+        "OrgRecoveryKeypairResponse.signing_pk": Field(UNREAD, "the signing key read is the recovered keys' own"),
     },
     "mobile": {
         "VerifyResponse.is_admin": Field(
@@ -590,5 +660,48 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         "ProvisionResponse.argon2_params": Field(
             HINT, "refused outside the server policy's bounds, never guessed", ("accountKdfParams",)),
         "ProvisionResponse.argon2_salt": Field(HINT, "the salt the keypair wrap opens under (AEAD)", ("_opensKeypair",)),
+        # ── Users and member keys ──
+        **_not_called("/api/users (the admin user list)", "UserInfo.id", "UserInfo.username", "UserInfo.is_admin",
+                      "UserInfo.signing_pk", "UserInfo.encryption_pk", "UserInfo.key_fingerprint"),
+        "GET /api/users/{user_id}/keys .signing_pk": Field(
+            HINT, "pinned on first use; a changed key is a key-change error (TofuKeyChangeException), and this "
+            "account's own must be this phone's", ("resolveAuthorSigningKeys",)),
+        "GET /api/users/{user_id}/keys .encryption_pk": Field(
+            HINT, "pinned with the signing key", ("resolveAuthorSigningKeys",)),
+        "GET /api/users/{user_id}/keys .archived_keys": Field(
+            DECIDES, "certified by their successor as on the desktop, but retired_seq is unsigned and pinned "
+            "on first sight only (archived_key_bound:*): goal #443", ("resolveAuthorSigningKeys",)),
+        # ── Shares, audit, AI ──
+        "ShareResponse.encrypted_blob": _signed("consumeShareLink"),
+        "POST /api/share .id": Field(
+            HINT, "must be the id this phone chose; another refuses the share", ("createShareLink",)),
+        "ShareInfo.id": Field(UNREAD, "listShares, the only call of /api/shares, has no caller"),
+        "ShareInfo.created_by": Field(UNREAD, "listShares, the only call of /api/shares, has no caller"),
+        **_not_called("for share notifications", "ShareNotification.id"),
+        **_not_called("/api/audit", "AuditResponse.entries", "AuditEntry.id", "AuditEntry.user_id",
+                      "AuditEntry.username", "AuditEntry.action", "AuditEntry.timestamp",
+                      "AuditEntry.client_signature", "POST /api/audit/log .ok"),
+        "AIPolicyResponse.policy": Field(
+            HINT, "none is epoch 0; the brake is published above the stored epoch", ("pullBrake",)),
+        "AIPolicy.epoch": Field(
+            HINT, "the brake takes an epoch above it and at least the current time; a lower one can only get "
+            "the brake refused or ignored, as dropping it would (withholding)", ("pullBrake",)),
+        **{key: Field(UNREAD, "the brake reads only the stored policy's epoch") for key in (
+            "AIPolicy.signature", "AIPolicy.user_id")},
+        **_not_called("/api/ai-anchor", "AIAnchor.epoch"),
+        # ── Org recovery ──
+        **{key: Field(
+            HINT, "only refuses a password change of the account that set org recovery up (publishTeamAnchor); "
+            "a lie the other way leaves the recovery wrapping the old KEK, which the server could make useless "
+            "by dropping its blob anyway (withholding)", ("publishTeamAnchor",)) for key in (
+            "OrgRecoveryStatusResponse.configured", "OrgRecoveryStatusResponse.created_by",
+            "OrgRecoveryStatusResponse.stale")},
+        **{key: Field(UNREAD, "the names read are a signed team log record's") for key in (
+            "OrgRecoveryStatusResponse.threshold", "OrgRecoveryStatusResponse.total_shares")},
+        **_not_called("/api/org-recovery/blob or /keypair (recovery is the desktop's and the web's)",
+                      "OrgRecoveryBlobResponse.stale", "OrgRecoveryBlobResponse.wrapped_kek",
+                      "OrgRecoveryKeypairResponse.argon2_salt", "OrgRecoveryKeypairResponse.encrypted_keypair",
+                      "OrgRecoveryKeypairResponse.signing_pk", "OrgRecoveryKeypairResponse.user_id",
+                      "OrgRecoveryKeypairResponse.username"),
     },
 }

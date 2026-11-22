@@ -26,7 +26,6 @@ SOURCES = {
     "web": "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / "web/static/js").glob("*.js"))),
     "mobile": "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / "mobile/lib").rglob("*.dart"))),
 }
-UNTRACED_FILE = ROOT / "tests" / "unsigned_fields_untraced.txt"
 
 # Open INV-3 findings in the web and mobile clients: is_admin and the web's
 # owner_id are goal #439, access_level is the vault without a log (S6),
@@ -41,6 +40,12 @@ KNOWN_CLIENT_DECIDES = {
     ("mobile", "PullObject.access_level"),
     *((client, key) for client in ("web", "mobile") for key in (
         "PullResponse.team_log_head", "TeamLogResponse.head", "TeamLogHead.genesis_hash")),
+    # #443: the retired key's bound, as on the desktop (the web keeps it per session).
+    ("web", "GET /api/users/{user_id}/keys .archived_keys"),
+    ("mobile", "GET /api/users/{user_id}/keys .archived_keys"),
+    # #439: org recovery records the pre-anchor under the server's salt and params.
+    ("web", "OrgRecoveryKeypairResponse.argon2_salt"),
+    ("web", "MetaResponse.argon2_params"),
 }
 
 # Open INV-3 findings: a client decision rests on these unsigned fields.
@@ -143,15 +148,6 @@ def _reads(client: str, key: str) -> bool:
     return re.search(r"(?:\.|\[['\"])%s\b" % re.escape(name), SOURCES[client]) is not None
 
 
-def _untraced() -> set[tuple[str, str]]:
-    pairs = set()
-    for line in UNTRACED_FILE.read_text(encoding="utf-8").splitlines():
-        if line.strip() and not line.startswith("#"):
-            client, _, key = line.partition("\t")
-            pairs.add((client, key))
-    return pairs
-
-
 def _defined(client: str, name: str) -> bool:
     if client == "web":
         pattern = r"\bfunction\s+%s\s*\(|\b%s\s*=\s*(?:async\s*)?(?:function\b|\()" % (name, name)
@@ -163,13 +159,10 @@ def _defined(client: str, name: str) -> bool:
 def test_every_field_a_client_reads_is_classified_for_that_client():
     """Capability run 458: the desktop's classification says nothing about
     what web or mobile make of a field."""
-    untraced = _untraced()
     read = {(c, k) for c in SOURCES for k in FIELDS if _reads(c, k)}
     classified = {(c, k) for c, entries in CLIENT_FIELDS.items() for k in entries}
-    missing = read - classified - untraced
+    missing = read - classified
     assert not missing, f"read by a client, not classified for it: {sorted(missing)}"
-    assert not untraced & classified, f"classified, still listed as untraced: {sorted(untraced & classified)}"
-    assert untraced <= read, f"listed as untraced, not read: {sorted(untraced - read)}"
 
 
 @pytest.mark.parametrize("client", sorted(CLIENT_FIELDS))
