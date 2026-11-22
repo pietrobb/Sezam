@@ -80,6 +80,7 @@ from sezam.vault.sync_common import STALE_OWN_WRAPS_META, ServerError
 from tests.test_integration_client_server import PARAMS, PASSWORD
 from tests.test_server_spec import MockDatabase
 from tests import property_seeds
+from tests.server_admin_lie import users_row_deciding
 from tests.node_support import fetchable_socket, node_problem
 from tests.web_tab import WebTab
 
@@ -1668,10 +1669,11 @@ class SyncMachine(RuleBasedStateMachine):
         for name in rules:
             setattr(server_team_log, name, lambda *_a, **_k: None)
         try:
-            reply = client._request("POST", "/api/sync", {
-                "objects": objects, "atomic_batch": False,
-                "key_epoch": int(vault.db.get_meta("key_epoch") or 0),
-            }, auth=True)
+            with users_row_deciding():  # and takes the users row, not the log, as the admin (INV-1)
+                reply = client._request("POST", "/api/sync", {
+                    "objects": objects, "atomic_batch": False,
+                    "key_epoch": int(vault.db.get_meta("key_epoch") or 0),
+                }, auth=True)
         finally:
             for name, rule_fn in rules.items():
                 setattr(server_team_log, name, rule_fn)

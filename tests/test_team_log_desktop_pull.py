@@ -21,6 +21,7 @@ from tests.test_integration_client_server import PASSWORD, _client, _vault
 from tests.test_integration_client_server import server  # noqa: F401  (fixture)
 from tests.test_review6_web_member_personal_folder import sealed
 from tests.test_review7_forged_root_folder_desktop_h4 import _always, _login, _push
+from tests.server_admin_lie import users_row_decides
 from tests.test_team_log_desktop import _found_with_bob, team  # noqa: F401  (fixture)
 from tests.test_team_log_desktop_changes import _ops
 
@@ -388,6 +389,7 @@ def test_moving_an_item_out_of_a_team_folder_needs_write_access_there(shared, te
     assert admin_client.push()["conflicts"] == []
     revocation.grant_member(admin, admin_client, bob_id, ops, "read")
     next(u for u in team[0]._storage["users"] if u["id"] == bob_id)["is_admin"] = 1
+    users_row_decides(monkeypatch)
     token = _login(url, sk, "bob")
     _lying_server(monkeypatch)
     personal_dek = new_ulid()

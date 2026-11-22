@@ -232,6 +232,12 @@ def queue_revoked_holders(vault: Vault, client: SyncClient) -> None:
     }
     if not holders and not lost:
         return
+    # The member list is the admin's: first the server's team log, which says
+    # who that is (INV-1). One that is not this device's raises its mismatch
+    # (INV-7: the way out) instead of the "Admin required" its admin gets.
+    team_logged = local_team_state(vault.db) is not None
+    if team_logged:
+        client._refresh_team_log()
     revoked = {u.get("id") for u in client.list_users() if u.get("status") == "revoked"}
     # Review 7c10379 R7-G (state machine: a revoked member keeps a live
     # envelope): one this account withdrew and a restored server holds live
@@ -259,8 +265,7 @@ def queue_revoked_holders(vault: Vault, client: SyncClient) -> None:
     pending = (pending_states.rekey_batch(vault.db)).get("revoked_user_id")
     new = sorted((holders & revoked) - set(queue) - {pending})
     revived = {row["user_id"] for row in revive.values()}
-    if [u for u in new if u not in revived] and local_team_state(vault.db) is not None:
-        client._refresh_team_log()
+    if [u for u in new if u not in revived] and team_logged:
         team = local_team_state(vault.db)
         new = [u for u in new if u in revived or _rekey_due(vault, team, me, u)]
     if new:

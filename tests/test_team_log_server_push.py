@@ -160,8 +160,10 @@ async def test_an_admin_the_log_does_not_name_has_no_team_rights(app_client, moc
         "team log gives no write access here"]
     envelope = _obj(sk, "01JV0000000000000000000002", "envelope", b"e" * 80, parent=K1, target=CAROL,
                     level="read")
+    # R15-F1-S2: the log names another admin, so this request has none at all
+    # (authority.team_admin): the first admin-only check refuses the envelope.
     assert _errors(await _push(app_client, team, DAN, [envelope])) == [
-        "team log: only an admin seals a team key"]
+        "target_user_id is admin only"]
 
 
 @pytest.mark.asyncio

@@ -122,6 +122,20 @@ MUTANTS = (
         "215a6ce: an org.recovery naming another key than the admin's stored blob is refused",
     ),
     Mutant(
+        "R11", "revert", "server/app/dependencies.py",
+        '    payload["is_admin"] = admin\n',
+        '    payload["is_admin"] = bool(current_user[1])\n',
+        ("tests/test_inv1_admin_from_log.py",),
+        "R15-F1-S2: a request's admin is the team log's, not the users row's",
+    ),
+    Mutant(
+        "B5", "branch", "server/app/authority.py",
+        "    if state is not None and state.members:\n        from .team_log import core\n",
+        "    if cached:\n        return True\n    if state is not None and state.members:\n        from .team_log import core\n",
+        ("tests/test_inv1_admin_from_log.py",) + SERVER_TL,
+        "the cache as a second source of admin next to the log",
+    ),
+    Mutant(
         "R10", "revert", "src/sezam/vault/oplock.py",
         "    if path is not None and not held_here(path):\n",
         "    if False:\n",
@@ -151,8 +165,9 @@ MUTANTS = (
     ),
     Mutant(
         "O4", "open", SERVER,
-        "    return active and (bool(uploader[1]) or core.is_admin(current, user_id))\n",
-        "    return uploader is None or active and (bool(uploader[1]) or core.is_admin(current, user_id))\n",
+        "    return active and (authority.admin_by(before, user_id, bool(uploader[1])) or core.is_admin(current, user_id))\n",
+        "    return uploader is None or active and (\n"
+        "        authority.admin_by(before, user_id, bool(uploader[1])) or core.is_admin(current, user_id))\n",
         INV2 + SERVER_TL, "an uploader without a users row counts as the team admin",
     ),
     Mutant(
@@ -247,6 +262,8 @@ def main(argv=None) -> int:
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--here", action="store_true", help="mutate this checkout (CI), not a scratch worktree")
     args = parser.parse_args(argv)
+    names = [m.name for m in MUTANTS]
+    assert len(names) == len(set(names)), f"two mutants share a name: {names}"
     chosen = [m for m in MUTANTS if args.only is None or m.name in args.only]
     if args.list:
         for m in chosen:

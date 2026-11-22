@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 from typing import Optional
 
+from . import authority
+
 _MAX_DEPTH = 64
 
 
@@ -47,7 +49,8 @@ async def ever_admin(cur, user_id: str, cache: dict) -> bool:
         await cur.execute("SELECT is_admin FROM users WHERE id = %s", (user_id,))
         row = await cur.fetchone()
         # No such account (the foreign key forbids it): no member's root either.
-        admin = row is None or bool(row[0])
+        # INV-1: the admin now is the log's; the users row only without a log.
+        admin = row is None or await authority.team_admin(cur, user_id, cached=bool(row[0]))
         if not admin:
             # A member signs only their own member.keys; every other record
             # is an admin's.

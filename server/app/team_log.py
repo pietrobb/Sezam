@@ -20,6 +20,7 @@ import weakref
 from dataclasses import dataclass
 from typing import Optional
 
+from . import authority
 from .errors import TEAM_LOG_HEAD_MOVED, TEAM_LOG_REFUSED, TEAM_LOG_UNREADABLE, ApiError
 
 try:
@@ -219,11 +220,7 @@ class Prepared:
 
 
 async def _is_admin_here(cur, state: TeamState, user_id: str) -> bool:
-    if state.members:
-        return core.is_admin(state, user_id)
-    await cur.execute("SELECT status, is_admin FROM users WHERE id = %s", (user_id,))
-    row = await cur.fetchone()
-    return row is not None and row[0] == "active" and bool(row[1])
+    return await authority.team_admin(cur, user_id, state=state)
 
 
 async def _prepare(cur, records: list, user_id: str, *, restore: bool) -> Prepared:
@@ -341,10 +338,11 @@ async def prepare_restore(cur, records: list, user_id: str) -> Prepared:
     refused restore never holds the lock."""
     prepared = await _prepare(cur, records, user_id, restore=True)
     uploader = await _user_row(cur, user_id, lock=False)
-    await _refuse_restored_founder(cur, prepared.bodies, prepared.current, uploader, user_id, lock=False)
+    await _refuse_restored_founder(cur, prepared.bodies, prepared.before, prepared.current, uploader, user_id,
+                                   lock=False)
     await _refuse_restored_keys(
         cur, prepared.before, prepared.bodies, prepared.steps, prepared.current,
-        _uploader_team_admin(uploader, prepared.current, user_id), lock=False,
+        _uploader_team_admin(uploader, prepared.before, prepared.current, user_id), lock=False,
     )
     return prepared
 
@@ -667,15 +665,17 @@ def _named_members(bodies: list[dict]) -> list[str]:
     })
 
 
-def _uploader_team_admin(uploader, current: TeamState, user_id: str) -> bool:
+def _uploader_team_admin(uploader, before: TeamState, current: TeamState, user_id: str) -> bool:
     # Review c78fd19 #2: any account put back a member.keys of any member to
     # keys the account does not sign in with (the run 277 exception), so a
     # thief of a member's identity key (no password) signed one to keys of its
     # own and took the member's place in the team. Such a rotation comes back
     # only from the admin; a member's device still puts back the rest (a lone
     # admin's org.recovery, review 8595ec1 #4).
+    # INV-1: the log this server holds says who the admin is here; the users
+    # row only once the server lost all of it (authority.admin_by).
     active = uploader is not None and uploader[0] == "active"
-    return active and (bool(uploader[1]) or core.is_admin(current, user_id))
+    return active and (authority.admin_by(before, user_id, bool(uploader[1])) or core.is_admin(current, user_id))
 
 
 async def _refuse_restored_keys(
@@ -723,7 +723,7 @@ async def _refuse_restored_keys(
 
 
 async def _refuse_restored_founder(
-    cur, bodies: list[dict], current: TeamState, uploader, user_id: str, *, lock: bool,
+    cur, bodies: list[dict], before: TeamState, current: TeamState, uploader, user_id: str, *, lock: bool,
 ) -> None:
     """A restored genesis needs its founder to be an admin here, else the
     uploader must be an admin here and the restored log's last admin (the
@@ -732,10 +732,12 @@ async def _refuse_restored_founder(
     genesis = next((b for b in bodies if b["type"] == "genesis"), None)
     if genesis is None:
         return
-    row = await _user_row(cur, genesis["data"]["user_id"], lock=lock)
-    if row is not None and row[0] == "active" and bool(row[1]):
+    founder = genesis["data"]["user_id"]
+    row = await _user_row(cur, founder, lock=lock)
+    if row is not None and row[0] == "active" and authority.admin_by(before, founder, bool(row[1])):
         return
-    uploader_admin = uploader is not None and uploader[0] == "active" and bool(uploader[1])
+    uploader_admin = (uploader is not None and uploader[0] == "active"
+                      and authority.admin_by(before, user_id, bool(uploader[1])))
     if uploader_admin and core.is_admin(current, user_id):
         return
     raise ApiError(400, TEAM_LOG_REFUSED, {
@@ -761,8 +763,8 @@ async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepar
     prepared = await _under_lock(cur, records, user_id, prepared, restore=True)
     bodies, current, steps = prepared.bodies, prepared.current, prepared.steps
     uploader = await _user_row(cur, user_id)
-    uploader_team_admin = _uploader_team_admin(uploader, current, user_id)
-    await _refuse_restored_founder(cur, bodies, current, uploader, user_id, lock=True)
+    uploader_team_admin = _uploader_team_admin(uploader, prepared.before, current, user_id)
+    await _refuse_restored_founder(cur, bodies, prepared.before, current, uploader, user_id, lock=True)
     await _refuse_superseded_recovery(cur, bodies, restored=current, uploader=user_id)
     now_ms = int(time.time() * 1000)
     for record, body, step in zip(records, bodies, steps):

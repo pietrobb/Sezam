@@ -10,7 +10,7 @@ from fastapi import Depends, Header, HTTPException
 from .auth import token_revocation_key, verify_jwt
 from .config import JWTKeyManager, ServerConfig
 from .database import Database
-from . import team_log
+from . import authority, team_log
 from .errors import IDENTITY_KEY_RETIRED, TOKEN_INVALID, TOKEN_REVOKED, ApiError
 
 # The session of an account whose key the team log retired (capability run 294).
@@ -100,6 +100,11 @@ async def _authenticate_user(
                     # account rotate to fresh keys (readmitted by the admin).
                     granted = current_user[5] is not None and int(current_user[5]) > int(time.time() * 1000)
                     retired = KEY_ROTATION_SCOPE if proved or granted else KEY_RETIRED_SCOPE
+            # INV-1 (R15-F1-S2): the team log says who the admin is; the
+            # users row is its cache, the answer only without a log.
+            admin = current_user is not None and await authority.team_admin(
+                cur, payload.get("sub"), cached=bool(current_user[1]),
+            )
     if retired:
         payload["scope"] = retired
 
@@ -112,7 +117,7 @@ async def _authenticate_user(
 
     # Security-sensitive claims always come from current DB state.
     payload["username"] = current_user[0]
-    payload["is_admin"] = bool(current_user[1])
+    payload["is_admin"] = admin
 
     return payload
 

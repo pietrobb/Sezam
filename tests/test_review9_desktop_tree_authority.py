@@ -25,6 +25,7 @@ from sezam.vault.team_log_local import TeamLogMismatch
 from tests.test_integration_client_server import server  # noqa: F401  (fixture)
 from tests.test_review6_web_member_personal_folder import sealed
 from tests.test_review7_forged_root_folder_desktop_h4 import _login, _post, _server_base
+from tests.server_admin_lie import users_row_decides
 from tests.test_server_spec import _sign_sync_object
 from tests.test_team_log_desktop import (
     _confirm_founder,
@@ -165,6 +166,7 @@ def test_a_member_cannot_delete_from_the_admins_unshared_folder(shared, team, mo
     secret, item, _root_dek = _unshared_folder(admin, admin_client)
     # The server calls Bob an admin; the log does not.
     next(u for u in team[0]._storage["users"] if u["id"] == bob_id)["is_admin"] = 1
+    users_row_decides(monkeypatch)
     token = _login(url, sk, "bob")
     _lying_server(monkeypatch)
     version = admin.db.fetchone("SELECT version FROM entries WHERE id = ?", (item,))["version"]

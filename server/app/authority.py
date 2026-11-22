@@ -15,6 +15,7 @@ every auth dependency the route uses must be listed.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 # Who may: the account kinds the entries name.
 PUBLIC = "anyone"
@@ -23,7 +24,7 @@ SESSION = "a signed-in account (full session)"
 ONBOARDING = "a signed-in account, or the onboarding session of a new one"
 ROTATION = "a signed-in account, or a retired key's session that proved the log's current key"
 READER = "a signed-in account, or any retired key's session"
-ADMIN = "the admin: users.is_admin, which the team log sets once it has a genesis"
+ADMIN = "the team admin (authority:team_admin: the team log; users.is_admin only without a log)"
 LOG = "decided record by record by the signed team log (signer's role in the log)"
 
 
@@ -260,4 +261,51 @@ ROUTES: dict[str, Route] = {
     "GET /health": Route("", PUBLIC, (), ("tests/test_server_spec.py",)),
     "GET /": Route("", PUBLIC, (), ("tests/test_server_spec.py",)),
     "GET /s/{share_id}": Route("", PUBLIC, (), ("tests/test_review2_server_medium.py",)),
+}
+
+
+# ── Who is the team admin (INV-1) ───────────────────────────────────────────
+
+def admin_by(state, user_id: str, cached: bool) -> bool:
+    """INV-1: the team log decides who the admin is. ``users.is_admin`` is the
+    log's cache; ``cached`` (that column, read by the caller) decides only in
+    an organisation without a log (NO_LOG: before a genesis; S6 removes it)."""
+    if state is not None and state.members:
+        from .team_log import core
+        return core.is_admin(state, user_id)
+    return cached
+
+
+async def team_admin(cur, user_id: str, *, state=None, cached: Optional[bool] = None) -> bool:
+    """The one answer the server gives to "is ``user_id`` the team admin?".
+
+    ``state``: the log the caller already replayed (else the stored one);
+    ``cached``: the caller's read of the cache, else an active account's."""
+    if state is None:
+        from . import team_log
+        state = await team_log.load_state(cur)
+    if cached is None and not (state is not None and state.members):
+        await cur.execute("SELECT status, is_admin FROM users WHERE id = %s", (user_id,))
+        row = await cur.fetchone()
+        cached = row is not None and row[0] == "active" and bool(row[1])
+    return admin_by(state, user_id, bool(cached))
+
+
+# Every function under server.app whose SQL reads the cache column
+# ``users.is_admin``, and why that read decides nothing the log decides
+# (tests/test_authority_map.py fails on a read not listed here).
+CACHE_READS: dict[str, str] = {
+    "authority:team_admin": "NO_LOG: the cache is the only answer before a genesis",
+    "dependencies:_authenticate_user": "passed to team_admin as the NO_LOG answer; the request's is_admin is team_admin's",
+    "personal_tree:ever_admin": "passed to team_admin as the NO_LOG answer; with a log, team_admin and the log's authors decide",
+    "team_log:_user_row": "restore: passed to admin_by as the NO_LOG answer (the server lost its log)",
+    "routers.auth:_abandoned_bootstrap_id": "NO_LOG by construction: one account without keys has signed no genesis",
+    "routers.auth:registration_resume": "put in the onboarding session; every request replaces it (dependencies)",
+    "routers.auth:auth_verify": "put in the session and the login reply; every request replaces it (dependencies)",
+    "routers.auth:_login_renamed_account": "put in the session and the login reply; every request replaces it",
+    "routers.auth:auth_refresh": "put in the new session; every request replaces it (dependencies)",
+    "routers.auth:upload_keypair": "put in the new session; every request replaces it (dependencies)",
+    "routers.users:list_users": "shown in the admin's member list; decides nothing",
+    "routers.users:revoke_user": "locks the admin rows (two revokes in turn); team_admin decides",
+    "team_log:_apply_to_users": "keeps the cache: the log's role changes written to users",
 }

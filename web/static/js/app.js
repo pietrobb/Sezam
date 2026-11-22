@@ -3629,7 +3629,17 @@ async function performTOFUChecks() {
 
     // Admin key-list failures must not silently skip peer pin verification.
     if (state.isAdmin && state.token) {
-        const users = await apiFetch('/api/users');
+        let users;
+        try {
+            users = await apiFetch('/api/users');
+        } catch (err) {
+            // INV-1: the server's team log says who the admin is. One this
+            // browser refused can name another, and the refusal is the way
+            // out to show (INV-7), not its "Admin required". Nothing is sealed
+            // to a member under a refused log, so no peer pin is needed now.
+            if (err.status === 403 && state.teamLogRefusal) return;
+            throw err;
+        }
         for (const user of users) {
             if (!user.signing_pk || !user.encryption_pk) continue;
             const result = await checkKnownKey(user.id, user.signing_pk, user.encryption_pk);

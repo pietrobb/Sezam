@@ -17,6 +17,7 @@ import pytest
 
 from sezam.vault.key_rotation import org_recovery_server_wrap, org_recovery_signing_key
 from sezam.vault.sync_common import server_error
+from tests.server_admin_lie import users_row_deciding
 from tests.test_integration_client_server import PASSWORD, _client
 from tests.test_integration_client_server import server  # noqa: F401  (fixture)
 from tests.test_review2_server_mariadb import mariadb  # noqa: F401  (fixture)
@@ -95,8 +96,14 @@ def test_another_admins_setup_voids_the_replaced_admins_shares(team, server):  #
 
     bob_id = bob.db.get_meta("user_id")
     next(u for u in db._storage["users"] if u["id"] == bob_id)["is_admin"] = 1
-    bob_client = _client(bob, url)  # a server admin outside the log
-    second = _store(bob, bob_client, anchor=False, replace=True)
+    bob_client = _client(bob, url)  # an admin by the users row only, not by the log
+    with pytest.raises(RuntimeError) as refused:  # INV-1 (R15-F1-S2): the log says who the admin is
+        _store(bob, bob_client, anchor=False, replace=True)
+    assert server_error(refused.value, 403), refused.value
+    assert _recovers(bob_client, first) == admin.db.get_meta("user_id")
+    # A server that still takes the users row let him replace it: the newest counts.
+    with users_row_deciding():
+        second = _store(bob, bob_client, anchor=False, replace=True)
     assert _recovers(bob_client, first) is None
     assert not _blob_for(bob_client, first)
     assert _recovers(bob_client, second) == bob_id

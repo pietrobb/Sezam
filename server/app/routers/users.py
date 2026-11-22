@@ -20,7 +20,7 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from .. import team_log
+from .. import authority, team_log
 from ..auth import create_jwt, unlock_code_hash
 from ..config import JWTKeyManager, ServerConfig
 from ..errors import TEAM_LOG_REQUIRED, ApiError
@@ -409,8 +409,8 @@ async def revoke_user(
                 "SELECT id FROM users WHERE is_admin = %s AND status = %s FOR UPDATE",
                 (1, "active"),
             )
-            active_admins = {row[0] for row in await cur.fetchall()}
-            if admin["sub"] not in active_admins:
+            await cur.fetchall()  # the lock: two revokes of each other run in turn
+            if not await authority.team_admin(cur, admin["sub"]):  # re-read under the lock
                 raise HTTPException(status_code=403, detail="Admin required")
             await cur.execute(
                 "SELECT status FROM users WHERE id = %s FOR UPDATE", (user_id,)
