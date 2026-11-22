@@ -29,11 +29,14 @@ SOURCES = {
 UNTRACED_FILE = ROOT / "tests" / "unsigned_fields_untraced.txt"
 
 # Open INV-3 findings in the web and mobile clients: is_admin and the web's
-# owner_id are goal #439, access_level is the vault without a log (S6).
+# owner_id are goal #439, access_level is the vault without a log (S6),
+# commit_seq is #443 as on the desktop.
 KNOWN_CLIENT_DECIDES = {
     ("web", "VerifyResponse.is_admin"),
     ("mobile", "VerifyResponse.is_admin"),
     ("web", "PullObject.owner_id"),
+    ("web", "PullObject.commit_seq"),
+    ("mobile", "PullObject.commit_seq"),
     ("web", "PullObject.access_level"),
     ("mobile", "PullObject.access_level"),
 }

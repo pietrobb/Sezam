@@ -303,6 +303,41 @@ FIELDS: dict[str, Field] = {
     "GET /health .version": Field(UNREAD, _SHOWN),
 }
 
+_SIGNED_FIELDS = ("id", "object_type", "payload", "payload_hash", "parent_ref", "target_user_id", "version",
+                  "is_deleted", "client_signature")
+_RETIRED_BOUND = ("a retired key's signature counts only for commit_seq at or below its bound, and the server "
+                  "sets both (see .archived_keys): goal #443, as on the desktop")
+_SIGNER = "only picks whose pinned keys verify the signature; a wrong one fails the check"
+_PAGING = "paging: a lie ends or repeats the pull, which withholding may do anyway"
+_CURSOR = ("the cursor: a lower one repeats, a higher one skips commits (withholding), as on the desktop "
+           "through the shared core")
+_ANCHOR = "rollback anchor: a made-up one only makes a later pull see a rollback and ask for a full resync"
+_FULL_RESYNC = "into the shared core's gate: a made-up one forces a full resync, as on the desktop"
+_EACH_CHECKED = "each object is checked on its own; which ones come and in what order is the server's"
+_KEY_HASH = ("another hash ends the session or asks for the password, and the key material fetched then "
+             "opens only under it (AEAD)")
+
+
+def _pull_fields(sig_checks: tuple[str, ...], pull: str, log: str) -> dict[str, Field]:
+    return {
+        **{f"PullObject.{name}": _signed(*sig_checks) for name in _SIGNED_FIELDS},
+        "PullObject.signature_user_id": Field(HINT, _SIGNER, sig_checks),
+        "PullObject.commit_seq": Field(DECIDES, _RETIRED_BOUND, sig_checks),
+        "PullObject.write_policy": Field(HINT, "only the edit UI ('shared' with a write envelope); every "
+                                               "receiver checks the write against the team log"),
+        "PullResponse.objects": Field(HINT, _EACH_CHECKED, (pull,)),
+        "PullResponse.has_more": Field(HINT, _PAGING, (pull,)),
+        "PullResponse.next_cursor": Field(HINT, _PAGING, (pull,)),
+        "PullResponse.max_commit_seq": Field(HINT, _CURSOR, (pull,)),
+        "PullResponse.max_token": Field(HINT, _ANCHOR, (pull,)),
+        "PullResponse.check_token": Field(HINT, _FULL_RESYNC, (pull,)),
+        "PullResponse.key_material_hash": Field(HINT, _KEY_HASH, (pull,)),
+        "PullResponse.team_log_head": Field(
+            HINT, "the log is fetched and checked record by record against this device's pins; an older "
+            "head is refused", (log,)),
+    }
+
+
 _NO_JSON_STATUS = ("the web reads no status in a reply body: Error.status is the HTTP code, user.status "
                    "is UserInfo's")
 _LOG_NOT_ASKED = ("taken as the account's admin flag although the team log names the admin; "
@@ -361,6 +396,9 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             "POST /api/share .status", "POST /api/users/{user_id}/allow-key-reset .status",
             "POST /api/users/{user_id}/unlock-recovery .status", "PUT /api/me/kdf-params .status",
             "PUT /api/me/keypair .status")},
+        **_pull_fields(("verifyObjectSignature", "pullAndBuildTreeLocked"), "pullAndBuildTreeLocked",
+                       "syncWebTeamLog"),
+        "PullObject.modified_at": Field(UNREAD, "the name is a field of a decrypted entry, not the server's"),
     },
     "mobile": {
         "VerifyResponse.is_admin": Field(
@@ -387,5 +425,8 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         "PushResponse.commit_token": Field(UNREAD, "the name is the phone's own checkpoint field; the token "
                                            "comes from the pull's max_token"),
         "RecoverResponse.key_epoch": Field(UNREAD, "the recover reply's epoch is not read; the pull's is"),
+        **_pull_fields(("buildSyncSignatureData", "keyMayVouch"), "_pull", "syncTeamLog"),
+        "PullObject.modified_at": Field(
+            HINT, "kept as the row's time; the queue orders only this phone's own edits, stamped here"),
     },
 }
