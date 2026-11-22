@@ -17,7 +17,7 @@ import pytest
 from fastapi.routing import APIRoute
 
 from server.app.main import app
-from server.app.unsigned_fields import DECIDES, FIELDS, HINT, OPEN, SIGNED, UNREAD
+from server.app.unsigned_fields import DECIDES, FIELDS, HINT, SIGNED, UNREAD
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 MACHINE = (ROOT / "tests" / "test_sync_state_machine.py").read_text(encoding="utf-8")
@@ -26,6 +26,9 @@ MACHINE = (ROOT / "tests" / "test_sync_state_machine.py").read_text(encoding="ut
 # Remove a field here only when its entry stops being DECIDES.
 KNOWN_DECIDES = {
     "GET /api/users/{user_id}/keys .archived_keys",
+    "OrgRecoveryStatusResponse.configured",
+    "OrgRecoveryStatusResponse.created_by",
+    "OrgRecoveryStatusResponse.recovery_signing_pk",
     "PullObject.commit_seq",
 }
 
@@ -89,7 +92,7 @@ def test_every_answered_field_has_an_entry_and_every_entry_a_field():
 @pytest.mark.parametrize("key", sorted(FIELDS))
 def test_entry_is_complete(key):
     entry = FIELDS[key]
-    assert entry.trust in (SIGNED, HINT, UNREAD, DECIDES, OPEN), key
+    assert entry.trust in (SIGNED, HINT, UNREAD, DECIDES), key
     if entry.trust == SIGNED:
         assert entry.checks, f"{key}: signed, but no check named"
     if entry.trust in (HINT, DECIDES):

@@ -14,7 +14,6 @@ without an entry and on an entry whose field is gone.
   UNREAD   no client decision reads it (shown, or used by the server only).
   DECIDES  unsigned, and a client decision rests on it: an open INV-3
            finding, to be signed or made a hint.
-  OPEN     not traced through the clients yet.
 
 ``lies`` names the state-machine rules (tests/test_sync_state_machine.py)
 that make the server lie in the field, as ``rule`` or ``rule:label``.
@@ -27,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-SIGNED, HINT, UNREAD, DECIDES, OPEN = "signed", "hint", "unread", "decides", "open"
+SIGNED, HINT, UNREAD, DECIDES = "signed", "hint", "unread", "decides"
 
 
 @dataclass(frozen=True)
@@ -212,7 +211,7 @@ FIELDS: dict[str, Field] = {
     "TeamLogHead.genesis_hash": Field(
         HINT, "compared with the pinned genesis", _LOG, ("server_lies_about_the_log:other genesis",)),
     # ── Shares ──────────────────────────────────────────────────────────────
-    "ShareResponse.encrypted_blob": Field(OPEN),
+    "ShareResponse.encrypted_blob": Field(UNREAD, "not read by the desktop"),
     "ShareResponse.view_count": Field(UNREAD, _SHOWN),
     "ShareResponse.max_views": Field(UNREAD, _SHOWN),
     "ShareNotification.id": Field(UNREAD, _ID),
@@ -226,52 +225,68 @@ FIELDS: dict[str, Field] = {
     "ShareInfo.view_count": Field(UNREAD, _SHOWN),
     "ShareInfo.is_locked": Field(UNREAD, _SHOWN),
     "ShareInfo.notify_on_view": Field(UNREAD, _SHOWN),
-    "POST /api/share .id": Field(OPEN),
+    "POST /api/share .id": Field(HINT, "names the share in the link handed out; a wrong id only gives the recipient nothing, the key in the link opens no other blob (AEAD)"),
     "POST /api/share .status": Field(UNREAD),
     "PATCH /api/share/{share_id} .status": Field(UNREAD),
     "DELETE /api/share/{share_id} .status": Field(UNREAD),
     # ── Audit ───────────────────────────────────────────────────────────────
-    "AuditResponse.entries": Field(OPEN),
+    "AuditResponse.entries": Field(UNREAD, "not read by the desktop; see AuditEntry"),
     "AuditResponse.total": Field(UNREAD, _SHOWN),
     "AuditResponse.limit": Field(UNREAD, _SHOWN),
     "AuditResponse.offset": Field(UNREAD, _SHOWN),
-    "AuditEntry.id": Field(OPEN),
-    "AuditEntry.user_id": Field(OPEN),
-    "AuditEntry.username": Field(OPEN),
-    "AuditEntry.action": Field(OPEN),
-    "AuditEntry.timestamp": Field(OPEN),
-    "AuditEntry.request_hash": Field(OPEN),
-    "AuditEntry.commit_seq_range": Field(OPEN),
-    "AuditEntry.client_signature": Field(OPEN),
+    "AuditEntry.id": Field(UNREAD, "not read by the desktop; the web shows it with a badge from client_signature, checked against the pinned key (buildServerAuditCanonical)"),
+    "AuditEntry.user_id": Field(UNREAD, "not read by the desktop; the web shows it with a badge from client_signature, checked against the pinned key (buildServerAuditCanonical)"),
+    "AuditEntry.username": Field(UNREAD, "not read by the desktop; the web shows it, outside the signature"),
+    "AuditEntry.action": Field(UNREAD, "not read by the desktop; the web shows it with a badge from client_signature, checked against the pinned key (buildServerAuditCanonical)"),
+    "AuditEntry.timestamp": Field(UNREAD, "not read by the desktop; the web shows it with a badge from client_signature, checked against the pinned key (buildServerAuditCanonical)"),
+    "AuditEntry.request_hash": Field(UNREAD, "not read by the desktop; the web shows it with a badge from client_signature, checked against the pinned key (buildServerAuditCanonical)"),
+    "AuditEntry.commit_seq_range": Field(UNREAD, "not read by the desktop; the web shows it, outside the signature"),
+    "AuditEntry.client_signature": Field(UNREAD, "not read by the desktop; the web shows it with a badge from client_signature, checked against the pinned key (buildServerAuditCanonical)"),
     "AuditEntry.client_ip": Field(UNREAD, _SHOWN),
     "POST /api/audit/log .ok": Field(UNREAD),
     # ── Org recovery ────────────────────────────────────────────────────────
-    "OrgRecoveryStatusResponse.configured": Field(OPEN),
-    "OrgRecoveryStatusResponse.threshold": Field(OPEN),
-    "OrgRecoveryStatusResponse.total_shares": Field(OPEN),
+    "OrgRecoveryStatusResponse.configured": Field(
+        DECIDES,
+        "superseded_by (and drop_superseded_org_recovery) forgets this device's waiting org recovery "
+        "setup, its local recovery key and its queued org.recovery record when the status names another "
+        "recovery key of this account: a server lying in it destroys a setup it could only withhold",
+        ("vault.org_recovery_server:superseded_by",)),
+    "OrgRecoveryStatusResponse.threshold": Field(HINT, "a label kept with an adopted recovery; the shares' threshold was fixed when they were split"),
+    "OrgRecoveryStatusResponse.total_shares": Field(HINT, "a label kept with an adopted recovery; the shares' threshold was fixed when they were split"),
     "OrgRecoveryStatusResponse.created_at": Field(UNREAD, _SHOWN),
-    "OrgRecoveryStatusResponse.created_by": Field(OPEN),
-    "OrgRecoveryStatusResponse.stale": Field(OPEN),
-    "OrgRecoveryStatusResponse.recovery_signing_pk": Field(OPEN),
-    "OrgRecoveryBlobResponse.wrapped_kek": Field(OPEN),
-    "OrgRecoveryBlobResponse.stale": Field(OPEN),
-    "OrgRecoveryKeypairResponse.encrypted_keypair": Field(OPEN),
-    "OrgRecoveryKeypairResponse.argon2_salt": Field(OPEN),
-    "OrgRecoveryKeypairResponse.user_id": Field(OPEN),
-    "OrgRecoveryKeypairResponse.username": Field(OPEN),
-    "OrgRecoveryKeypairResponse.signing_pk": Field(OPEN),
+    "OrgRecoveryStatusResponse.created_by": Field(
+        DECIDES,
+        "superseded_by (and drop_superseded_org_recovery) forgets this device's waiting org recovery "
+        "setup, its local recovery key and its queued org.recovery record when the status names another "
+        "recovery key of this account: a server lying in it destroys a setup it could only withhold",
+        ("vault.org_recovery_server:superseded_by",)),
+    "OrgRecoveryStatusResponse.stale": Field(HINT, "only tells the user to set up again, or skips adopting the key the log names (withholding)"),
+    "OrgRecoveryStatusResponse.recovery_signing_pk": Field(
+        DECIDES,
+        "superseded_by (and drop_superseded_org_recovery) forgets this device's waiting org recovery "
+        "setup, its local recovery key and its queued org.recovery record when the status names another "
+        "recovery key of this account: a server lying in it destroys a setup it could only withhold",
+        ("vault.org_recovery_server:superseded_by",)),
+    "OrgRecoveryBlobResponse.wrapped_kek": Field(HINT, "only whether a registration whose answer was lost landed: a lie registers again or "
+        "stops resending it, which the server could do anyway"),
+    "OrgRecoveryBlobResponse.stale": Field(UNREAD, "not read by the desktop"),
+    "OrgRecoveryKeypairResponse.encrypted_keypair": Field(UNREAD, "not read by the desktop"),
+    "OrgRecoveryKeypairResponse.argon2_salt": Field(UNREAD, "not read by the desktop"),
+    "OrgRecoveryKeypairResponse.user_id": Field(UNREAD, "not read by the desktop"),
+    "OrgRecoveryKeypairResponse.username": Field(UNREAD, "not read by the desktop"),
+    "OrgRecoveryKeypairResponse.signing_pk": Field(UNREAD, "not read by the desktop"),
     "POST /api/org-recovery/store .status": Field(UNREAD),
     # ── AI policy and anchor ────────────────────────────────────────────────
-    "AIPolicyResponse.policy": Field(OPEN),
-    "AIPolicy.user_id": Field(OPEN),
+    "AIPolicyResponse.policy": Field(HINT, "none is withholding; one present is checked (AIPolicy)"),
+    "AIPolicy.user_id": _signed("mcp.remote_policy:verify_policy"),
     "AIPolicy.enabled": _signed("mcp.remote_policy:verify_policy"),
     "AIPolicy.epoch": _signed("mcp.remote_policy:verify_policy"),
     "AIPolicy.signature": _signed("mcp.remote_policy:verify_policy"),
     "AIPolicy.updated_at": Field(UNREAD, _SHOWN),
-    "AIAnchorResponse.anchor": Field(OPEN),
-    "AIAnchor.anchor": Field(OPEN),
-    "AIAnchor.epoch": Field(OPEN),
-    "AIAnchor.mac": Field(OPEN),
+    "AIAnchorResponse.anchor": Field(HINT, "missing or malformed counts as no anchor, which the server may lose anyway"),
+    "AIAnchor.anchor": Field(UNREAD, "the id this vault asked for; only epoch and mac are read"),
+    "AIAnchor.epoch": _signed("mcp.remote_policy:ServerAnchor._held"),
+    "AIAnchor.mac": _signed("mcp.remote_policy:ServerAnchor._held"),
     # ── Other ───────────────────────────────────────────────────────────────
     "GET /health .status": Field(UNREAD),
     "GET /health .version": Field(UNREAD, _SHOWN),
