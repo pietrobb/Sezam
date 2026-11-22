@@ -1,0 +1,261 @@
+# Fields a web or mobile source reads by name (tests/test_unsigned_fields.py
+# _reads) that CLIENT_FIELDS does not classify for that client yet.
+# Capability run 458, goal #428: this list may only shrink; #428 closes
+# when it is empty. One line per pair: <client><TAB><field key>.
+mobile	AIAnchor.epoch
+mobile	AIPolicy.epoch
+mobile	AIPolicy.signature
+mobile	AIPolicy.user_id
+mobile	AIPolicyResponse.policy
+mobile	AuditEntry.action
+mobile	AuditEntry.client_signature
+mobile	AuditEntry.id
+mobile	AuditEntry.timestamp
+mobile	AuditEntry.user_id
+mobile	AuditEntry.username
+mobile	AuditResponse.entries
+mobile	BootstrapResponse.token
+mobile	BootstrapResponse.user_id
+mobile	BootstrapStatusResponse.needs_setup
+mobile	ChallengeResponse.challenge
+mobile	ChallengeResponse.timestamp
+mobile	GET /api/users/{user_id}/keys .archived_keys
+mobile	GET /api/users/{user_id}/keys .encryption_pk
+mobile	GET /api/users/{user_id}/keys .signing_pk
+mobile	GET /health .version
+mobile	HeldObject.id
+mobile	HeldObject.is_deleted
+mobile	HeldObject.object_type
+mobile	HeldObject.version
+mobile	HeldResponse.objects
+mobile	MetaResponse.argon2_params
+mobile	MetaResponse.argon2_salt
+mobile	MetaResponse.version
+mobile	OrgRecoveryBlobResponse.stale
+mobile	OrgRecoveryBlobResponse.wrapped_kek
+mobile	OrgRecoveryKeypairResponse.argon2_salt
+mobile	OrgRecoveryKeypairResponse.encrypted_keypair
+mobile	OrgRecoveryKeypairResponse.signing_pk
+mobile	OrgRecoveryKeypairResponse.user_id
+mobile	OrgRecoveryKeypairResponse.username
+mobile	OrgRecoveryStatusResponse.configured
+mobile	OrgRecoveryStatusResponse.created_by
+mobile	OrgRecoveryStatusResponse.stale
+mobile	OrgRecoveryStatusResponse.threshold
+mobile	OrgRecoveryStatusResponse.total_shares
+mobile	POST /api/audit/log .ok
+mobile	POST /api/auth/refresh .token
+mobile	POST /api/auth/registration-resume .key_material_hash
+mobile	POST /api/auth/registration-resume .token
+mobile	POST /api/auth/registration-resume .user_id
+mobile	POST /api/share .id
+mobile	PUT /api/me/kdf-params .argon2_params
+mobile	PUT /api/me/keypair .token
+mobile	ProvisionResponse.argon2_params
+mobile	ProvisionResponse.argon2_salt
+mobile	ProvisionResponse.encrypted_keypair
+mobile	ProvisionResponse.user_id
+mobile	ProvisioningTokenResponse.token
+mobile	ProvisioningTokenResponse.username
+mobile	PullObject.access_level
+mobile	PullObject.client_signature
+mobile	PullObject.commit_seq
+mobile	PullObject.id
+mobile	PullObject.is_deleted
+mobile	PullObject.modified_at
+mobile	PullObject.object_type
+mobile	PullObject.owner_id
+mobile	PullObject.parent_ref
+mobile	PullObject.payload
+mobile	PullObject.payload_hash
+mobile	PullObject.signature_user_id
+mobile	PullObject.target_user_id
+mobile	PullObject.version
+mobile	PullObject.write_policy
+mobile	PullResponse.check_token
+mobile	PullResponse.gc_floor_seq
+mobile	PullResponse.has_more
+mobile	PullResponse.head_commit_seq
+mobile	PullResponse.key_epoch
+mobile	PullResponse.key_material_hash
+mobile	PullResponse.max_commit_seq
+mobile	PullResponse.max_token
+mobile	PullResponse.next_cursor
+mobile	PullResponse.objects
+mobile	PullResponse.team_log_head
+mobile	PushObjectResult.code
+mobile	PushObjectResult.commit_seq
+mobile	PushObjectResult.error
+mobile	PushObjectResult.id
+mobile	PushObjectResult.server_payload_hash
+mobile	PushObjectResult.server_version
+mobile	PushResponse.accepted
+mobile	PushResponse.commit_token
+mobile	PushResponse.conflicts
+mobile	PushResponse.token
+mobile	RecoverResponse.argon2_params
+mobile	RecoverResponse.argon2_salt
+mobile	RecoverResponse.encrypted_keypair
+mobile	RecoverResponse.key_epoch
+mobile	RecoverResponse.user_id
+mobile	RegisterResponse.token
+mobile	RegisterResponse.user_id
+mobile	ShareInfo.created_by
+mobile	ShareInfo.id
+mobile	ShareNotification.id
+mobile	ShareResponse.encrypted_blob
+mobile	TeamLogHead.genesis_hash
+mobile	TeamLogHead.hash
+mobile	TeamLogHead.seq
+mobile	TeamLogRecord.body
+mobile	TeamLogRecord.sig
+mobile	TeamLogResponse.head
+mobile	TeamLogResponse.records
+mobile	UserInfo.encryption_pk
+mobile	UserInfo.id
+mobile	UserInfo.is_admin
+mobile	UserInfo.key_fingerprint
+mobile	UserInfo.signing_pk
+mobile	UserInfo.username
+mobile	VerifyResponse.key_material_hash
+mobile	VerifyResponse.token
+mobile	VerifyResponse.user_id
+mobile	VerifyResponse.username
+web	AIPolicy.signature
+web	AIPolicy.user_id
+web	AuditEntry.action
+web	AuditEntry.client_ip
+web	AuditEntry.client_signature
+web	AuditEntry.commit_seq_range
+web	AuditEntry.id
+web	AuditEntry.request_hash
+web	AuditEntry.timestamp
+web	AuditEntry.user_id
+web	AuditEntry.username
+web	AuditResponse.entries
+web	AuditResponse.total
+web	BootstrapResponse.token
+web	BootstrapResponse.user_id
+web	BootstrapStatusResponse.needs_setup
+web	BootstrapStatusResponse.unfinished_setup
+web	ChallengeResponse.challenge
+web	ChallengeResponse.timestamp
+web	DELETE /api/share/{share_id} .status
+web	DELETE /api/users/{user_id} .status
+web	GET /api/users/{user_id}/keys .archived_keys
+web	GET /api/users/{user_id}/keys .encryption_pk
+web	GET /api/users/{user_id}/keys .signing_pk
+web	GET /health .status
+web	GET /health .version
+web	HeldObject.id
+web	HeldObject.is_deleted
+web	HeldObject.object_type
+web	HeldObject.version
+web	HeldResponse.objects
+web	InviteResponse.invitation_token
+web	MetaResponse.argon2_params
+web	MetaResponse.argon2_salt
+web	MetaResponse.version
+web	OrgRecoveryBlobResponse.stale
+web	OrgRecoveryBlobResponse.wrapped_kek
+web	OrgRecoveryKeypairResponse.argon2_salt
+web	OrgRecoveryKeypairResponse.encrypted_keypair
+web	OrgRecoveryKeypairResponse.signing_pk
+web	OrgRecoveryKeypairResponse.user_id
+web	OrgRecoveryKeypairResponse.username
+web	OrgRecoveryStatusResponse.configured
+web	OrgRecoveryStatusResponse.created_by
+web	OrgRecoveryStatusResponse.recovery_signing_pk
+web	OrgRecoveryStatusResponse.stale
+web	OrgRecoveryStatusResponse.threshold
+web	OrgRecoveryStatusResponse.total_shares
+web	PATCH /api/share/{share_id} .status
+web	PATCH /api/users/{user_id}/approve .status
+web	PATCH /api/users/{user_id}/reactivate .status
+web	POST /api/audit/log .ok
+web	POST /api/auth/logout .status
+web	POST /api/auth/refresh .token
+web	POST /api/auth/registration-resume .key_material_hash
+web	POST /api/auth/registration-resume .token
+web	POST /api/auth/registration-resume .user_id
+web	POST /api/me/key-material-archive/purge .status
+web	POST /api/org-recovery/store .status
+web	POST /api/share .id
+web	POST /api/share .status
+web	POST /api/users/{user_id}/allow-key-reset .status
+web	POST /api/users/{user_id}/unlock-recovery .status
+web	PUT /api/me/kdf-params .argon2_params
+web	PUT /api/me/kdf-params .status
+web	PUT /api/me/keypair .status
+web	PUT /api/me/keypair .token
+web	ProvisionResponse.argon2_params
+web	ProvisionResponse.argon2_salt
+web	ProvisionResponse.encrypted_keypair
+web	ProvisionResponse.user_id
+web	ProvisioningTokenResponse.token
+web	ProvisioningTokenResponse.username
+web	PullObject.access_level
+web	PullObject.client_signature
+web	PullObject.commit_seq
+web	PullObject.id
+web	PullObject.is_deleted
+web	PullObject.modified_at
+web	PullObject.object_type
+web	PullObject.owner_id
+web	PullObject.parent_ref
+web	PullObject.payload
+web	PullObject.payload_hash
+web	PullObject.scope
+web	PullObject.signature_user_id
+web	PullObject.target_user_id
+web	PullObject.version
+web	PullObject.write_policy
+web	PullResponse.check_token
+web	PullResponse.gc_floor_seq
+web	PullResponse.has_more
+web	PullResponse.head_commit_seq
+web	PullResponse.key_epoch
+web	PullResponse.key_material_hash
+web	PullResponse.max_commit_seq
+web	PullResponse.max_token
+web	PullResponse.next_cursor
+web	PullResponse.objects
+web	PullResponse.team_log_head
+web	PushObjectResult.code
+web	PushObjectResult.commit_seq
+web	PushObjectResult.error
+web	PushObjectResult.id
+web	PushObjectResult.server_payload_hash
+web	PushObjectResult.server_version
+web	PushResponse.accepted
+web	PushResponse.commit_token
+web	PushResponse.conflicts
+web	PushResponse.token
+web	RecoverResponse.argon2_params
+web	RecoverResponse.argon2_salt
+web	RecoverResponse.encrypted_keypair
+web	RecoverResponse.key_epoch
+web	RecoverResponse.user_id
+web	RegisterResponse.token
+web	RegisterResponse.user_id
+web	ShareInfo.created_by
+web	ShareInfo.id
+web	ShareNotification.id
+web	ShareResponse.encrypted_blob
+web	TeamLogHead.genesis_hash
+web	TeamLogHead.hash
+web	TeamLogHead.seq
+web	TeamLogRecord.body
+web	TeamLogRecord.sig
+web	TeamLogResponse.head
+web	TeamLogResponse.records
+web	UserInfo.encryption_pk
+web	UserInfo.id
+web	UserInfo.is_admin
+web	UserInfo.key_fingerprint
+web	UserInfo.signing_pk
+web	UserInfo.status
+web	UserInfo.username
+web	VerifyResponse.token
+web	VerifyResponse.user_id
+web	VerifyResponse.username

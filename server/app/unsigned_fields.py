@@ -18,8 +18,14 @@ without an entry and on an entry whose field is gone.
 ``lies`` names the state-machine rules (tests/test_sync_state_machine.py)
 that make the server lie in the field, as ``rule`` or ``rule:label``.
 
-The classification so far follows the desktop client (sezam), the one the
-state machine drives; web and mobile reads of each field are not traced yet.
+``FIELDS`` classifies what the desktop client (sezam), the one the state
+machine drives, makes of each field. ``CLIENT_FIELDS`` does the same for the
+web and the mobile client, whose ``checks`` name a function in their own
+sources (``web/static/js``, ``mobile/lib``). The test asks for an entry per
+client wherever that client's sources read the field's name; the pairs not
+traced yet are listed in ``tests/unsigned_fields_untraced.txt``, which may
+only shrink (capability run 458). Until it is empty the register is complete
+for the desktop only.
 """
 
 from __future__ import annotations
@@ -293,4 +299,28 @@ FIELDS: dict[str, Field] = {
     # ── Other ───────────────────────────────────────────────────────────────
     "GET /health .status": Field(UNREAD),
     "GET /health .version": Field(UNREAD, _SHOWN),
+}
+
+_LOG_NOT_ASKED = ("taken as the account's admin flag although the team log names the admin; "
+                  "goal #439 (web and mobile)")
+
+CLIENT_FIELDS: dict[str, dict[str, Field]] = {
+    "web": {
+        "VerifyResponse.is_admin": Field(
+            DECIDES, _LOG_NOT_ASKED + ": state.isAdmin gates the admin peer-pin check (performTOFUChecks), "
+            "the revocation re-key (buildWebRekeyBatch), Shamir setup and canEditObject"),
+        "VerifyResponse.key_material_hash": Field(
+            HINT, "equal to the hash of the cached wrap keeps the keypair this browser opened under its "
+            "password (what withholding a rotation does anyway); any other value only fetches the server's, "
+            "which opens under the password alone"),
+        "MetaResponse.argon2_web_params": Field(
+            HINT, "clamped to the hard floor and refused above the account maximum", ("normalizeKdfParams",)),
+    },
+    "mobile": {
+        "VerifyResponse.is_admin": Field(
+            DECIDES, _LOG_NOT_ASKED + ": stored as sezam_is_admin (also for offline unlock) and gates "
+            "VaultEntry.canEdit for every local edit"),
+        "MetaResponse.argon2_web_params": Field(
+            HINT, "refused outside the server policy's bounds, never guessed", ("accountKdfParams",)),
+    },
 }

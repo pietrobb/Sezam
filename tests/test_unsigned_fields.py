@@ -9,6 +9,7 @@ import ast
 import importlib
 import inspect
 import pathlib
+import re
 import textwrap
 import typing
 
@@ -17,10 +18,21 @@ import pytest
 from fastapi.routing import APIRoute
 
 from server.app.main import app
-from server.app.unsigned_fields import DECIDES, FIELDS, HINT, SIGNED, UNREAD
+from server.app.unsigned_fields import CLIENT_FIELDS, DECIDES, FIELDS, HINT, SIGNED, UNREAD
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 MACHINE = (ROOT / "tests" / "test_sync_state_machine.py").read_text(encoding="utf-8")
+SOURCES = {
+    "web": "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / "web/static/js").glob("*.js"))),
+    "mobile": "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / "mobile/lib").rglob("*.dart"))),
+}
+UNTRACED_FILE = ROOT / "tests" / "unsigned_fields_untraced.txt"
+
+# Open INV-3 findings in the web and mobile clients (goal #439).
+KNOWN_CLIENT_DECIDES = {
+    ("web", "VerifyResponse.is_admin"),
+    ("mobile", "VerifyResponse.is_admin"),
+}
 
 # Open INV-3 findings: a client decision rests on these unsigned fields.
 # Remove a field here only when its entry stops being DECIDES.
@@ -108,3 +120,59 @@ def test_the_open_findings_are_the_known_ones():
     decides = {key for key, entry in FIELDS.items() if entry.trust == DECIDES}
     assert decides == KNOWN_DECIDES, (
         f"new: {sorted(decides - KNOWN_DECIDES)}; no longer deciding: {sorted(KNOWN_DECIDES - decides)}")
+
+
+def _reads(client: str, key: str) -> bool:
+    """The client's sources read a key of this name (``.name`` or ``['name']``)."""
+    name = key.rsplit(".", 1)[-1].strip()
+    return re.search(r"(?:\.|\[['\"])%s\b" % re.escape(name), SOURCES[client]) is not None
+
+
+def _untraced() -> set[tuple[str, str]]:
+    pairs = set()
+    for line in UNTRACED_FILE.read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line.startswith("#"):
+            client, _, key = line.partition("\t")
+            pairs.add((client, key))
+    return pairs
+
+
+def _defined(client: str, name: str) -> bool:
+    if client == "web":
+        pattern = r"\bfunction\s+%s\s*\(|\b%s\s*=\s*(?:async\s*)?(?:function\b|\()" % (name, name)
+    else:
+        pattern = r"^\s*(?:static\s+)?[\w<>?,\[\] ]+\s+%s\s*\(" % name
+    return re.search(pattern, SOURCES[client], re.M) is not None
+
+
+def test_every_field_a_client_reads_is_classified_for_that_client():
+    """Capability run 458: the desktop's classification says nothing about
+    what web or mobile make of a field."""
+    untraced = _untraced()
+    read = {(c, k) for c in SOURCES for k in FIELDS if _reads(c, k)}
+    classified = {(c, k) for c, entries in CLIENT_FIELDS.items() for k in entries}
+    missing = read - classified - untraced
+    assert not missing, f"read by a client, not classified for it: {sorted(missing)}"
+    assert not untraced & classified, f"classified, still listed as untraced: {sorted(untraced & classified)}"
+    assert untraced <= read, f"listed as untraced, not read: {sorted(untraced - read)}"
+
+
+@pytest.mark.parametrize("client", sorted(CLIENT_FIELDS))
+def test_client_entries_are_complete(client):
+    for key, entry in CLIENT_FIELDS[client].items():
+        assert key in FIELDS, f"{client}: {key} is no answered field"
+        assert entry.trust in (SIGNED, HINT, UNREAD, DECIDES), key
+        assert not entry.lies, f"{client}: {key}: the state machine drives the desktop only"
+        if entry.trust == SIGNED:
+            assert entry.checks, f"{client}: {key}: signed, but no check named"
+        if entry.trust in (HINT, DECIDES):
+            assert entry.why, f"{client}: {key}: {entry.trust} needs the reason"
+        for check in entry.checks:
+            assert _defined(client, check), f"{client}: {key}: no function {check}"
+
+
+def test_the_open_client_findings_are_the_known_ones():
+    decides = {(c, k) for c, entries in CLIENT_FIELDS.items() for k, e in entries.items() if e.trust == DECIDES}
+    assert decides == KNOWN_CLIENT_DECIDES, (
+        f"new: {sorted(decides - KNOWN_CLIENT_DECIDES)}; "
+        f"no longer deciding: {sorted(KNOWN_CLIENT_DECIDES - decides)}")
