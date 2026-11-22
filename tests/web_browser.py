@@ -106,8 +106,8 @@ const document = {
 const alerts = [];
 const calls = [];
 let dropKeyRotation = false;
-// The next request matching {method, path} fails: 'before' it is sent, or
-// 'after' the server processed it (the reply is lost).
+// The next request matching {method, path} fails: 'before' it is sent,
+// 'after' the server processed it (the reply is lost), or with 'status'.
 let failNext = null;
 // What the user answers to window.confirm.
 let confirmAnswer = false;
@@ -150,6 +150,11 @@ const context = {
       call.status = `injected ${failure.mode}`;
       calls.push(call);
       if (failure.mode === 'before') throw new Error('network down (injected)');
+      // 'status': the server answers failure.status without handling it.
+      if (failure.mode === 'status') {
+        return new Response(JSON.stringify({ detail: 'injected' }),
+          { status: failure.status, headers: { 'Content-Type': 'application/json' } });
+      }
       failure.reply = await (await fetch(url, options)).json().catch(() => null);
       throw new Error('reply lost (injected)');
     }
