@@ -285,3 +285,55 @@ async def test_a_key_outside_the_log_goes_to_another_account_only_as_a_reseal(ap
                  level=other)
     assert _errors(await _push(app_client, team, ADMIN, [wider])) == [
         "team log: another account gets a key only with an access.set"]
+
+
+async def _outside_key(app_client, team, mock_db, old_deleted: int):
+    """A folder outside the log with a pre-log grant to Bob (live or withdrawn)."""
+    await _team_folder(app_client, team)
+    sk = team.sk[ADMIN]
+    folder, key = "01JN000000000000000000000E", "01JD000000000000000000000E"
+    resp = await _push(app_client, team, ADMIN, [
+        _obj(sk, folder, "node", _sealed(key)),
+        _obj(sk, key, "dek", b"wrapped own" * 8, parent=folder),
+    ])
+    assert resp.status_code == 200, resp.text
+    old = "01JV000000000000000000000F"
+    mock_db._storage["vault_objects"].append({
+        "id": old, "object_type": "envelope", "parent_ref": key,
+        "target_user_id": BOB, "access_level": "write", "owner_id": ADMIN,
+        "version": 1 + old_deleted, "is_deleted": old_deleted,
+        "payload_hash": hashlib.sha256(b"e" * 80).hexdigest(),
+    })
+    grant = _obj(sk, "01JV000000000000000000000E", "envelope", b"e" * 80, parent=key, target=BOB,
+                 level="write")
+    tombstone = _obj(sk, old, "envelope", b"", parent=key, target=BOB, level="write", version=3,
+                     deleted=1)
+    return folder, grant, tombstone
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_grant_outside_the_log_is_not_given_again(app_client, mock_db):
+    """Review e443cbc R15 (goal #438 item 5): the re-seal exception took any
+    earlier envelope of the sender, a withdrawn one too. Bob's access, taken
+    away before, came back with write_acl and no access.set."""
+    team = Team(mock_db)
+    folder, grant, _tombstone = await _outside_key(app_client, team, mock_db, old_deleted=1)
+    assert _errors(await _push(app_client, team, ADMIN, [grant])) == [
+        "team log: another account gets a key only with an access.set"]
+    assert (BOB, folder) not in _acl(mock_db)
+
+
+@pytest.mark.asyncio
+async def test_a_resent_tombstone_does_not_vouch_for_a_new_grant(app_client, mock_db):
+    team = Team(mock_db)
+    folder, grant, tombstone = await _outside_key(app_client, team, mock_db, old_deleted=1)
+    assert _errors(await _push(app_client, team, ADMIN, [tombstone, grant])) == [
+        "team log: another account gets a key only with an access.set"]
+    assert (BOB, folder) not in _acl(mock_db)
+
+
+@pytest.mark.asyncio
+async def test_a_reseal_withdrawing_the_live_grant_in_the_same_batch_lands(app_client, mock_db):
+    team = Team(mock_db)
+    _folder, grant, tombstone = await _outside_key(app_client, team, mock_db, old_deleted=0)
+    assert (await _push(app_client, team, ADMIN, [tombstone, grant])).status_code == 200

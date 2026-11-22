@@ -718,6 +718,7 @@ async def _sync_push(
             authority_cache: dict = {}
             written_node = None
             removed_here = {obj.id for obj in objects if obj.is_deleted}
+            live_before = await _live_envelopes(cur, objects) if team_state is not None else frozenset()
             cleared_folders: set[str] = set()
             cleared_moves: set[str] = set()
             for obj in objects:
@@ -873,14 +874,23 @@ async def _sync_push(
                                 # this sender's own earlier grant (identity
                                 # rotation sends it with a new id, the old
                                 # one's tombstone in the same batch).
+                                # Review e443cbc R15 (goal #438 item 5): the
+                                # earlier grant must still stand when the batch
+                                # comes; a grant withdrawn before (its member's
+                                # access taken away) let the sender give the key
+                                # again without an access.set.
                                 await cur.execute(
-                                    "SELECT 1 FROM vault_objects WHERE object_type = 'envelope' "
+                                    "SELECT id, is_deleted FROM vault_objects "
+                                    "WHERE object_type = 'envelope' "
                                     "AND parent_ref = %s AND target_user_id = %s "
-                                    "AND access_level = %s AND owner_id = %s LIMIT 1",
+                                    "AND access_level = %s AND owner_id = %s",
                                     (obj.parent_ref, obj.target_user_id, obj.access_level,
                                      user_id),
                                 )
-                                regrant = await cur.fetchone() is not None
+                                regrant = any(
+                                    not row[1] or row[0] in live_before
+                                    for row in await cur.fetchall()
+                                )
                             refusal = team_log.envelope_refusal(
                                 team_state, user_id, obj.target_user_id, obj.parent_ref,
                                 envelope_acl_node, obj.access_level, regrant=regrant,
@@ -1847,6 +1857,26 @@ async def _own_personal_key(cur, state, user_id: str, dek_id: Optional[str]) -> 
     )
     row = await cur.fetchone()
     return row is not None and row[0] == user_id and row[1] is None
+
+
+async def _live_envelopes(cur, objects) -> frozenset[str]:
+    """The envelopes this push withdraws that were live before it.
+
+    A re-seal (identity rotation) withdraws the old envelope in the same
+    batch; the loop may have applied that tombstone before it reaches the new
+    one. Only an envelope live when the batch came vouches for it.
+    """
+    if not any(o.object_type == "envelope" and not o.is_deleted for o in objects):
+        return frozenset()
+    live = set()
+    for obj in objects:
+        if obj.object_type != "envelope" or not obj.is_deleted:
+            continue
+        await cur.execute("SELECT is_deleted FROM vault_objects WHERE id = %s", (obj.id,))
+        row = await cur.fetchone()
+        if row is not None and not row[0]:
+            live.add(obj.id)
+    return frozenset(live)
 
 
 async def _own_batch_dek_ids(cur, user_id: str, objects, prechecked) -> frozenset[str]:
