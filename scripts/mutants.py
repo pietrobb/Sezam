@@ -129,6 +129,13 @@ MUTANTS = (
         "R15-F1-S2: a request's admin is the team log's, not the users row's",
     ),
     Mutant(
+        "R12", "revert", SERVER,
+        "    held = before if before is not None and before.members else current\n",
+        "    held = before\n",
+        ("tests/test_inv1_restore_admin_from_log.py",),
+        "capability run 453: after a lost log, the restored log's admin, not the users row's",
+    ),
+    Mutant(
         "B5", "branch", "server/app/authority.py",
         "    if state is not None and state.members:\n        from .team_log import core\n",
         "    if cached:\n        return True\n    if state is not None and state.members:\n        from .team_log import core\n",
@@ -165,9 +172,9 @@ MUTANTS = (
     ),
     Mutant(
         "O4", "open", SERVER,
-        "    return active and (authority.admin_by(before, user_id, bool(uploader[1])) or core.is_admin(current, user_id))\n",
+        "    return active and (authority.admin_by(held, user_id, bool(uploader[1])) or core.is_admin(current, user_id))\n",
         "    return uploader is None or active and (\n"
-        "        authority.admin_by(before, user_id, bool(uploader[1])) or core.is_admin(current, user_id))\n",
+        "        authority.admin_by(held, user_id, bool(uploader[1])) or core.is_admin(current, user_id))\n",
         INV2 + SERVER_TL, "an uploader without a users row counts as the team admin",
     ),
     Mutant(
