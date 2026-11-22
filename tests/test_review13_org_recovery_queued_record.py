@@ -5,7 +5,7 @@ in the team log; the next push sends it. When the admin set up org recovery
 again on the web before that push, the record reached the log after the web's
 blob and the server ranked the desktop's older key as the current one: the
 web's shares stopped working. The setup now keeps the key it replaced until
-the log names its own, and the push forgets it when the server holds a newer one.
+the log names its own, and the push stops sending it when the server holds a newer one.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def test_a_queued_desktop_record_does_not_replace_the_newer_web_setup(team, serv
     else:
         assert _logged(admin_client, desktop_pk) == []
         assert result.get("org_recovery_superseded") is True
-        assert not admin.org_recovery_configured()
+        assert admin.db.get_meta(org_recovery_server.WITHHELD_META) == desktop_pk  # kept, not sent (#428)
         assert not admin_client.push().get("org_recovery_superseded")  # said once
 
 
@@ -84,7 +84,7 @@ def test_the_desktop_setup_still_reaches_the_log(team, server):  # noqa: F811
 def test_the_server_refuses_the_record_the_desktop_check_missed(team, server, monkeypatch):  # noqa: F811
     """Operator 2026-11-20: the window between the push's check and its send.
     The server refuses an org.recovery record naming another key than the
-    admin's stored blob; the desktop forgets its setup as if it had looked."""
+    admin's stored blob; the desktop stops sending its setup as if it had looked."""
     _, admin, admin_client, bob, _ = team
     _found_with_bob(admin_client, bob)
     admin_client.pull()
@@ -102,4 +102,4 @@ def test_the_server_refuses_the_record_the_desktop_check_missed(team, server, mo
     assert _recovers(admin_client, web) == admin_id
     assert result.get("org_recovery_superseded") is True
     assert _queued_keys(admin) == [] and not admin_client.set_aside_team_changes()
-    assert not admin.org_recovery_configured()
+    assert admin.db.get_meta(org_recovery_server.WITHHELD_META) == desktop_pk  # kept, not sent (#428)

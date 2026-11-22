@@ -26,9 +26,6 @@ MACHINE = (ROOT / "tests" / "test_sync_state_machine.py").read_text(encoding="ut
 # Remove a field here only when its entry stops being DECIDES.
 KNOWN_DECIDES = {
     "GET /api/users/{user_id}/keys .archived_keys",
-    "OrgRecoveryStatusResponse.configured",
-    "OrgRecoveryStatusResponse.created_by",
-    "OrgRecoveryStatusResponse.recovery_signing_pk",
     "PullObject.commit_seq",
 }
 

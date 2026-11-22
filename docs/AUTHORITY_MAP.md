@@ -225,7 +225,7 @@ The client side of every route; the team log's records are checked against the l
 | `create_provisioning_token` | a one-time device token for this account | the signed-in account, for itself | `POST /api/auth/provisioning-token` | test_team_log_desktop.py |
 | `dirty_object_count` | — | — | — | test_sync_state_machine.py |
 | `discard_set_aside_team_changes` | drops team changes set aside (refused by the log) | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review10_team_queue.py |
-| `drop_superseded_org_recovery` | drops a local recovery setup a newer one replaced | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review13_org_recovery_queued_record.py |
+| `drop_superseded_org_recovery` | withholds a local recovery setup the server reports replaced | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review13_org_recovery_queued_record.py |
 | `drop_team_grant` | drops a queued grant the log refuses | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `SyncClient.push` |
 | `finish_pending_change` | adds the server password's proof to an older queued change | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review11_pre_proof_change.py |
 | `flush_team_log` | sends queued team records | the team admin in the local team log; the server takes only records the log allows | `POST /api/team-log`<br>`POST /api/team-log/restore` | test_review13_team_queue_race.py |

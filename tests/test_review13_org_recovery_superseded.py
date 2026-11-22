@@ -6,7 +6,7 @@ is registered at the next unlock or push. When the admin set up org recovery
 again on the web meanwhile, that registration replaced the web's newer key on
 the server and voided the shares handed out for it. The registration now
 names the key it replaces; the server stores it only while that key is still
-the current one, and the desktop forgets its outdated setup instead.
+the current one, and the desktop stops sending its outdated setup instead.
 """
 
 from __future__ import annotations
@@ -62,7 +62,8 @@ def _web_setup(laptop) -> str:
 
 def _forgotten(laptop, desktop_pk) -> None:
     assert pending_states.org_recovery_registration(laptop.db) is None
-    assert not laptop.org_recovery_configured()
+    # Kept here, never sent again (INV-3: the status is unsigned, review e443cbc #428).
+    assert laptop.db.get_meta(org_recovery_server.WITHHELD_META) == desktop_pk
     assert not any(
         kind == "org.recovery" and data.get("recovery_pk") == desktop_pk
         for kind, data in queued_changes(laptop.db)

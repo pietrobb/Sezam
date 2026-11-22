@@ -1527,6 +1527,37 @@ class SyncMachine(RuleBasedStateMachine):
         """The same while a member re-key waits on that device (review 526419e V4)."""
         self._org_recovery(failure)
 
+    @precondition(lambda self: self.org is not None and self.org[0] in self.devices)
+    @rule()
+    def server_lies_about_org_recovery(self):
+        """Review e443cbc #428 (INV-3): /api/org-recovery/status is unsigned.
+        Through one push and unlock of the device that set org recovery up it
+        names another recovery key of this admin. That may keep the device's
+        setup from the server (withholding), never take its recovery key: the
+        shares handed out still open the vault on it."""
+        device = self.org[0]
+        dev = self._command(device)
+        user_id = dev.vault.db.get_meta("user_id")
+        made_up = os.urandom(32).hex()
+        real = SyncClient._request
+
+        def lying(client, method, path, *args, **kwargs):
+            resp = real(client, method, path, *args, **kwargs)
+            if method == "GET" and path == "/api/org-recovery/status":
+                coverage_event("server names another org recovery key of the admin")
+                return {**(resp or {}), "configured": True, "created_by": user_id,
+                        "recovery_signing_pk": made_up, "stale": False}
+            return resp
+        SyncClient._request = lying
+        try:
+            self.log.append(f"server: names another org recovery key to {device}")
+            self._push(device)
+            org_recovery_server.register_while_password_known(dev.vault, dev.password)
+        finally:
+            SyncClient._request = real
+        assert dev.vault.db.get_meta("org_recovery_signing_pk") == self.org[2].hex(), (
+            f"{device} dropped its org recovery key on the server's unsigned word\n" + self._trace())
+
     @rule(data=st.data(), kind=st.sampled_from(["dek", "envelope", "dek_archive", "node", "entry", "parent"]))
     def server_withholds(self, data, kind):
         """Review 7c10379: the server leaves every object of one kind out of a
@@ -3604,6 +3635,28 @@ def test_sync_state_machine_lying_full_resync_under_a_pending_key_change(loopbac
         unreadable = {obj: state for obj, state in snapshot(machine.devices["A"].vault).items()
                       if state[1].startswith("<unreadable")}
         assert not unreadable, f"A: {unreadable} stay unreadable after the settle\n" + machine._trace()
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_server_lies_about_org_recovery(loopback_server, monkeypatch):
+    """Review e443cbc #428 (INV-3): the status names another recovery key of
+    the admin while A's setup still waits for the log. A stopped sending it and
+    deleted its recovery key; the shares handed out opened nothing. A keeps the
+    key now (the rule checks), and after the settle tells the admin the server
+    lacks it."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        with monkeypatch.context() as lost:  # the registration's answer is lost: it waits
+            lost.setattr(SyncClient, "store_org_recovery", lambda *_a: (_ for _ in ()).throw(
+                ConnectionResetError("connection reset by peer")))
+            machine.setup_org_recovery(_Scripted(device="A"))
+        machine.server_lies_about_org_recovery()
+        machine._settle(lambda _obj: "server")
+        # Withheld: the server never took it, and A says so.
+        assert org_recovery_server.registration_issue(machine.devices["A"].vault) == "withheld", machine._trace()
     finally:
         machine.teardown()
 

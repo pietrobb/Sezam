@@ -67,10 +67,15 @@ _SETUP_META = (
 
 
 SUPERSEDED_NOTE = (
-    "A newer org recovery of this account was set up on the web or another device "
-    "after the one saved on this device, which the server had not taken yet. The "
-    "newer one is kept; the shares of this device's setup open nothing, destroy them."
+    "The server reports a newer org recovery of this account, set up on the web or "
+    "another device after the one saved here, which the server had not taken yet. "
+    "This device no longer sends its own, so the server's reset takes only the newer "
+    "one's shares. The shares of this device's setup still open this vault here until "
+    "the team log names the newer key; destroy them then."
 )
+# INV-3 (review e443cbc #428): the key of a setup the unsigned status called
+# replaced. It stays for local recovery, but is never named or registered again.
+WITHHELD_META = "org_recovery_withheld"
 
 
 STALE_NOTE = (
@@ -116,11 +121,13 @@ def waiting_setup(db) -> Optional[dict]:
     return replaces if queued else None
 
 
-def drop_superseded_setup(db) -> None:
-    """Forget this device's org recovery setup that a newer one replaced: its
-    registration, its queued team-log records and its local key, so neither
-    the next push nor an unlock names it again. A key the log names for the
-    newer setup is then adopted (adopt_logged_org_recovery)."""
+def withhold_superseded_setup(db) -> None:
+    """Stop sending this device's org recovery setup that the server reports
+    replaced: its registration and its queued team-log records go, so neither
+    the next push nor an unlock names it again. Its local key stays (INV-3:
+    the report is unsigned, and a lie may only withhold): this device's shares
+    still open the vault here, until the team log names a newer key, which is
+    then adopted in its place (adopt_logged_org_recovery)."""
     from .team_log_local import _set_queued_changes, queued_changes
 
     pk = db.get_meta("org_recovery_signing_pk")
@@ -133,8 +140,10 @@ def drop_superseded_setup(db) -> None:
                      and change[1].get("wrapped_kek") == wrap.get("wrapped_kek"))
         ]
         _set_queued_changes(db, rest)
-        for key in _SETUP_META:
+        for key in ("org_recovery_server_wrap", "org_recovery_replaces"):
             db.execute("DELETE FROM vault_meta WHERE key = ?", (key,))
+        if pk:
+            db.set_meta(WITHHELD_META, pk)
         pending_states.clear_org_recovery_registration(db)
         pending_states.clear_org_recovery_rewrap(db)
 
@@ -147,7 +156,7 @@ def superseded_note(db, status: Optional[dict] = None, exc: Optional[BaseExcepti
     if (status is not None and superseded_by(db, status)) or (
         exc is not None and server_error(exc, 409, ORG_RECOVERY_SUPERSEDED)
     ):
-        drop_superseded_setup(db)
+        withhold_superseded_setup(db)
         return SUPERSEDED_NOTE
     return None
 
@@ -214,8 +223,9 @@ def registration_issue(vault: "Vault") -> Optional[str]:
     """``'pending'`` (a saved registration waits for the password),
     ``'unregistered'`` (the server holds no recovery key of this account),
     ``'other_admin'`` (the server holds another admin's recovery),
-    ``'superseded'`` (a newer setup replaced the one waiting here, which is
-    then forgotten: SUPERSEDED_NOTE), ``'stale'`` (the server's recovery of
+    ``'superseded'`` (the server reports a newer setup than the one waiting
+    here, which is then withheld: SUPERSEDED_NOTE), ``'withheld'`` (that
+    setup, told before, still differs from the server's), ``'stale'`` (the server's recovery of
     this account wraps a KEK from before a later password change, made here
     or taken over from another device: its shares open nothing, STALE_NOTE)
     or None.
@@ -229,8 +239,14 @@ def registration_issue(vault: "Vault") -> Optional[str]:
     if owner and owner != vault.db.get_meta("user_id"):
         return "other_admin"  # a saved registration would only get a 409
     if superseded_by(vault.db, status):
-        drop_superseded_setup(vault.db)
+        withhold_superseded_setup(vault.db)
         return "superseded"
+    local = vault.db.get_meta("org_recovery_signing_pk")
+    if vault.db.get_meta(WITHHELD_META) == local:
+        if status.get("recovery_signing_pk") != local:
+            return "withheld"  # told once, as 'superseded'; kept for this device only
+        # The server holds it after all: the log may name it again (anchor_org_recovery).
+        vault.db.execute("DELETE FROM vault_meta WHERE key = ?", (WITHHELD_META,))
     if pending_states.org_recovery_registration(vault.db) is not None:
         return "pending"
     if owner and status.get("stale"):
@@ -254,7 +270,7 @@ def register_while_password_known(vault: "Vault", password: str) -> Optional[str
             SyncClient.register_org_recovery(vault, password)
         except (RuntimeError, ValueError) as exc:
             if server_error(exc, 409, ORG_RECOVERY_SUPERSEDED):
-                drop_superseded_setup(vault.db)  # set up on the web just now
+                withhold_superseded_setup(vault.db)  # set up on the web just now
                 return SUPERSEDED_NOTE
             return f"Warning: the server did not take this vault's org recovery ({exc})."
         return REGISTERED_NOTICE

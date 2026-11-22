@@ -246,27 +246,30 @@ FIELDS: dict[str, Field] = {
     "POST /api/audit/log .ok": Field(UNREAD),
     # ── Org recovery ────────────────────────────────────────────────────────
     "OrgRecoveryStatusResponse.configured": Field(
-        DECIDES,
-        "superseded_by (and drop_superseded_org_recovery) forgets this device's waiting org recovery "
-        "setup, its local recovery key and its queued org.recovery record when the status names another "
-        "recovery key of this account: a server lying in it destroys a setup it could only withhold",
-        ("vault.org_recovery_server:superseded_by",)),
+        HINT,
+        "superseded_by only withholds this device's waiting org recovery setup (its registration and "
+        "queued org.recovery record); its local recovery key stays until the team log names a newer one "
+        "(tests/test_inv3_org_recovery_status_withholds.py)",
+        ("vault.org_recovery_server:superseded_by", "vault.org_recovery_server:withhold_superseded_setup"),
+        ("server_lies_about_org_recovery",)),
     "OrgRecoveryStatusResponse.threshold": Field(HINT, "a label kept with an adopted recovery; the shares' threshold was fixed when they were split"),
     "OrgRecoveryStatusResponse.total_shares": Field(HINT, "a label kept with an adopted recovery; the shares' threshold was fixed when they were split"),
     "OrgRecoveryStatusResponse.created_at": Field(UNREAD, _SHOWN),
     "OrgRecoveryStatusResponse.created_by": Field(
-        DECIDES,
-        "superseded_by (and drop_superseded_org_recovery) forgets this device's waiting org recovery "
-        "setup, its local recovery key and its queued org.recovery record when the status names another "
-        "recovery key of this account: a server lying in it destroys a setup it could only withhold",
-        ("vault.org_recovery_server:superseded_by",)),
+        HINT,
+        "superseded_by only withholds this device's waiting org recovery setup (its registration and "
+        "queued org.recovery record); its local recovery key stays until the team log names a newer one "
+        "(tests/test_inv3_org_recovery_status_withholds.py)",
+        ("vault.org_recovery_server:superseded_by", "vault.org_recovery_server:withhold_superseded_setup"),
+        ("server_lies_about_org_recovery",)),
     "OrgRecoveryStatusResponse.stale": Field(HINT, "only tells the user to set up again, or skips adopting the key the log names (withholding)"),
     "OrgRecoveryStatusResponse.recovery_signing_pk": Field(
-        DECIDES,
-        "superseded_by (and drop_superseded_org_recovery) forgets this device's waiting org recovery "
-        "setup, its local recovery key and its queued org.recovery record when the status names another "
-        "recovery key of this account: a server lying in it destroys a setup it could only withhold",
-        ("vault.org_recovery_server:superseded_by",)),
+        HINT,
+        "superseded_by only withholds this device's waiting org recovery setup (its registration and "
+        "queued org.recovery record); its local recovery key stays until the team log names a newer one "
+        "(tests/test_inv3_org_recovery_status_withholds.py)",
+        ("vault.org_recovery_server:superseded_by", "vault.org_recovery_server:withhold_superseded_setup"),
+        ("server_lies_about_org_recovery",)),
     "OrgRecoveryBlobResponse.wrapped_kek": Field(HINT, "only whether a registration whose answer was lost landed: a lie registers again or "
         "stops resending it, which the server could do anyway"),
     "OrgRecoveryBlobResponse.stale": Field(UNREAD, "not read by the desktop"),

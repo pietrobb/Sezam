@@ -151,7 +151,7 @@ SYNC: dict[str, Op] = {
     "dirty_object_count": read("tests/test_sync_state_machine.py"),
     "discard_set_aside_team_changes": local("drops team changes set aside (refused by the log)",
                                             "tests/test_review10_team_queue.py"),
-    "drop_superseded_org_recovery": local("drops a local recovery setup a newer one replaced",
+    "drop_superseded_org_recovery": local("withholds a local recovery setup the server reports replaced",
                                           "tests/test_review13_org_recovery_queued_record.py"),
     "drop_team_grant": local("drops a queued grant the log refuses", part_of=("SyncClient.push",)),
     "finish_pending_change": local("adds the server password's proof to an older queued change",

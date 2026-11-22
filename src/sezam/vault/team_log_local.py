@@ -666,7 +666,7 @@ class TeamLogMixin:
         unlock registered it) and replaced by a newer one on the web is
         forgotten before the push names its key in the log again. True when
         it was (org_recovery_server.SUPERSEDED_NOTE)."""
-        from .org_recovery_server import drop_superseded_setup, superseded_by, waiting_setup
+        from .org_recovery_server import withhold_superseded_setup, superseded_by, waiting_setup
 
         if waiting_setup(self._db) is None:  # registration or log record (capability run 378)
             return False
@@ -677,20 +677,20 @@ class TeamLogMixin:
             return False
         if not superseded_by(self._db, status):
             return False
-        drop_superseded_setup(self._db)
+        withhold_superseded_setup(self._db)
         return True
 
     def _drop_refused_org_recovery(self, exc: BaseException) -> bool:
         """The server refused this device's org.recovery record: a newer setup
         (web) replaced it after drop_superseded_org_recovery looked. The setup
         is forgotten the same way; True when its records left the queue."""
-        from .org_recovery_server import drop_superseded_setup
+        from .org_recovery_server import withhold_superseded_setup
 
         detail = _refusal_from_server(exc)
         if detail is None or detail.get("team_log_code") != "org_recovery_superseded":
             return False
         before = len(self.pending_team_changes())
-        drop_superseded_setup(self._db)
+        withhold_superseded_setup(self._db)
         self._org_recovery_superseded = True
         return len(self.pending_team_changes()) < before
 
@@ -770,6 +770,10 @@ class TeamLogMixin:
 
         if pending_states.org_recovery_registration(self._db) is not None:
             return  # the server refuses a key its blob does not hold yet (R13-10)
+        from .org_recovery_server import WITHHELD_META
+
+        if self._db.get_meta(WITHHELD_META) == pk:
+            return  # reported replaced: kept here, never named again (INV-3)
         logged = teamlog.recovery_key(state, self._user_id)
         replaces = self._db.get_meta_json("org_recovery_replaces") or {}
         # Registered later (offline setup): it still replaces the key it was set up over.
