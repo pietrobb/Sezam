@@ -213,7 +213,7 @@ def _login_source() -> str:
         _class("TofuKeyChangeError"),
         _function("handleLogin"), _function("openLoginKeypair"), _function("recoverError"),
         _function("deriveLoginKey"), _function("openLoginKeypairAnyForm"),
-        _function("signInWithKeypair"), _function("signInWithLoginKeypair"),
+        _function("signInWithKeypair"), _function("signInWithLoginKeypair"), _function("signedInUserId"),
         _function("signAuthChallenge"), _function("normalizeUsername"),
         _function("canonicalPassword"), _function("passwordForms"),
         _function("settleUnfinishedKekRotation"), _function("journalRecoveryStore"),

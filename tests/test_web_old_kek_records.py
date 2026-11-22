@@ -118,5 +118,5 @@ def test_login_sets_old_records_aside_only_after_the_server_keypair_replaced_the
     # server's keypair replaces the cache only after that, on a key change.
     set_aside = login.index("const unsentSetAside = await setAsideRecordsOfOldKek(_sodium, keyChanged);")
     assert login.index("const keyChanged = Boolean(kekChangedElsewhere || importedBackup);") < set_aside
-    assert login.index("state.userId = authResp.user_id;") < set_aside
+    assert login.index("state.userId = signedInUserId(authResp, signedIn.userId);") < set_aside
     assert set_aside < login.index("if (keyChanged) {") < login.index("await pullAndBuildTree();")

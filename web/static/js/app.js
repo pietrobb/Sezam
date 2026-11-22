@@ -1489,6 +1489,17 @@ function signAuthChallenge(challengeHex, signingSk, _sodium) {
 }
 
 // Login steps 5-7: challenge, sign it with the keypair, verify → JWT.
+// INV-3 (server/app/unsigned_fields.py VerifyResponse.user_id): the account a
+// verify reply names is this browser's identity only when its keys were
+// wrapped for it (the KEYPAIR_WRAP AAD); another one refuses the sign-in, as
+// on the phone (review 8595ec1 R10-F).
+function signedInUserId(authResp, keypairUserId) {
+    if (!authResp || !keypairUserId || authResp.user_id !== keypairUserId) {
+        throw new Error(t('error.identity_mismatch'));
+    }
+    return keypairUserId;
+}
+
 async function signInWithKeypair(username, keypairBytes, _sodium) {
     // Get the challenge right before signing, so it doesn't expire.
     const challengeResp = await apiFetch('/api/auth/challenge', {
@@ -1526,10 +1537,10 @@ async function signInWithLoginKeypair(username, opened, meta, _sodium) {
     } catch (authErr) {
         if (!opened.cachedKeypair || !authErr || authErr.status !== 401) throw authErr;
     }
-    if (!opened.cachedKeypair) return { authResp, keypairBytes: null };
+    if (!opened.cachedKeypair) return { authResp, keypairBytes: null, userId: opened.keypairUserId };
     if (authResp) {
         const cachedHash = bytesToHex(_sodium.crypto_hash_sha256(hexToBytes(opened.encryptedKeypairHex)));
-        if (authResp.key_material_hash === cachedHash) return { authResp, keypairBytes: null };
+        if (authResp.key_material_hash === cachedHash) return { authResp, keypairBytes: null, userId: opened.keypairUserId };
         // Issued to a stale cache only: never used, revoked right away.
         try {
             await apiFetch('/api/auth/logout', {
@@ -1578,7 +1589,7 @@ async function signInWithLoginKeypair(username, opened, meta, _sodium) {
             user_id: recoverResp.user_id,
         });
         // A server copy never makes this browser forget a recorded pre-anchor state.
-        return { authResp, keypairBytes, confirmedGenesis, cachedGenesis,
+        return { authResp, keypairBytes, confirmedGenesis, cachedGenesis, userId: recoverResp.user_id,
             preAnchor: mergePreAnchor(preAnchor, opened.preAnchor) };
     } catch (err) {
         _sodium.memzero(keypairBytes);
@@ -1689,7 +1700,7 @@ async function handleLogin(e) {
         _sodium.memzero(authProof);
 
         state.token = authResp.token;
-        state.userId = authResp.user_id;
+        state.userId = signedInUserId(authResp, signedIn.userId);
         state.isAdmin = authResp.is_admin;
         // Start periodic JWT refresh
         startJwtRefreshTimer();
@@ -2131,7 +2142,7 @@ async function handleBootstrap(e) {
         });
 
         state.token = authResp.token;
-        state.userId = authResp.user_id;
+        state.userId = signedInUserId(authResp, state.userId);
         state.isAdmin = authResp.is_admin;
 
         // Start periodic JWT refresh
@@ -2249,7 +2260,7 @@ async function pollForApproval(username, keys, statusEl, errorEl) {
             state.kdf = keys.kdf;
             state.username = username;
             state.token = authResp.token;
-            state.userId = authResp.user_id;
+            state.userId = signedInUserId(authResp, keys.userId);
             state.isAdmin = authResp.is_admin;
             handedOver = true;
             errorEl.classList.add('hidden');
@@ -10479,7 +10490,7 @@ async function handleOrgRecovery(threshold, totalShares) {
         });
 
         state.token = authResp.token;
-        state.userId = authResp.user_id;
+        state.userId = signedInUserId(authResp, keypairResp.user_id);
         state.username = keypairResp.username;
         state.isAdmin = authResp.is_admin;
         state.keypair = { signingSk, signingPk, encryptionSk, confirmedGenesis, preAnchor };

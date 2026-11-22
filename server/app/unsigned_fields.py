@@ -369,6 +369,41 @@ _NO_JSON_STATUS = ("the web reads no status in a reply body: Error.status is the
 _LOG_NOT_ASKED = ("taken as the account's admin flag although the team log names the admin; "
                   "goal #439 (web and mobile)")
 
+_CHALLENGE = ("signed behind a context prefix and at a fixed length, so it is never another signed message; "
+              "a lie fails the login")
+_SETUP = {
+    "BootstrapStatusResponse.needs_setup": Field(HINT, "only offers the setup form; the server decides setup"),
+    "BootstrapStatusResponse.unfinished_setup": Field(HINT, "only explains why the setup form is offered"),
+}
+_RECOVER_REST = {key: Field(UNREAD, "only encrypted_keypair and user_id of the recover reply are read") for key in (
+    "RecoverResponse.argon2_params", "RecoverResponse.argon2_salt")}
+
+
+def _not_called(path: str, *keys: str) -> dict[str, Field]:
+    return {key: Field(UNREAD, f"this client never calls {path}") for key in keys}
+
+
+def _auth_fields(signin: str, challenge: str, recover: str) -> dict[str, Field]:
+    return {
+        **{key: Field(HINT, _TOKEN) for key in (
+            "VerifyResponse.token", "BootstrapResponse.token", "RegisterResponse.token")},
+        **{key: Field(
+            HINT, "the id the server gives the new account: the keys are wrapped for it (KEYPAIR_WRAP AAD) "
+            "and every later sign-in must name it; objects signed under it verify only against the keys the "
+            "log and pins hold for it", (signin,)) for key in ("BootstrapResponse.user_id", "RegisterResponse.user_id")},
+        "ChallengeResponse.challenge": Field(HINT, _CHALLENGE, (challenge,)),
+        "ChallengeResponse.timestamp": Field(HINT, "signed back with the challenge; a lie fails the login"),
+        "RecoverResponse.encrypted_keypair": _signed(recover),
+        "RecoverResponse.user_id": _signed(recover),
+        **_RECOVER_REST,
+        **_SETUP,
+        **_not_called("GET /health", "GET /health .version"),
+        **_not_called("PUT /api/me/kdf-params", "PUT /api/me/kdf-params .argon2_params"),
+        **_not_called("/api/auth/provisioning-token (the desktop makes the QR)",
+                      "ProvisioningTokenResponse.token", "ProvisioningTokenResponse.username"),
+    }
+
+
 _HELD_NOT_ASKED = {key: Field(UNREAD, "this client never calls /api/objects/held (only the desktop's re-key "
                                        "does); the names are its own objects'") for key in (
     "HeldResponse.objects", "HeldObject.id", "HeldObject.object_type", "HeldObject.version",
@@ -460,6 +495,21 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             HINT, "the salt the keypair wrap opens under (AEAD); none is no such user, another one than a "
             "password-change journal's stops its resume", ("deriveLoginKey",)),
         "MetaResponse.version": Field(UNREAD, "the name is an object's version; the server's is not read"),
+        **_auth_fields("signedInUserId", "signAuthChallenge", "decryptLoginKeypair"),
+        "VerifyResponse.user_id": Field(
+            HINT, "this browser's identity only when it is the account its keys were wrapped for (KEYPAIR_WRAP "
+            "AAD); another refuses the sign-in, as on the phone (tests/test_inv3_web_verify_user_id.py)",
+            ("signedInUserId",)),
+        "VerifyResponse.username": Field(
+            HINT, "kept for this session only; the next sign-in asks under it and only this browser's keys "
+            "answer, for the account signedInUserId checks", ("signedInUserId",)),
+        "POST /api/auth/refresh .token": Field(HINT, _TOKEN),
+        "PUT /api/me/keypair .token": Field(UNREAD, "the upload's reply is not read"),
+        "InviteResponse.invitation_token": Field(UNREAD, "handed to the invitee out of band"),
+        **_not_called("/api/auth/registration-resume", "POST /api/auth/registration-resume .key_material_hash",
+                      "POST /api/auth/registration-resume .token", "POST /api/auth/registration-resume .user_id"),
+        **_not_called("/api/auth/provision", "ProvisionResponse.argon2_params", "ProvisionResponse.argon2_salt",
+                      "ProvisionResponse.encrypted_keypair", "ProvisionResponse.user_id"),
     },
     "mobile": {
         "VerifyResponse.is_admin": Field(
@@ -520,5 +570,25 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             HINT, "the salt the keypair wrap opens under (AEAD); this phone's own params while it is the "
             "local salt", ("_accountKdfFor",)),
         "MetaResponse.version": Field(UNREAD, "the name is an object's version; the server's is not read"),
+        **_auth_fields("requireCanonicalUserObjectId", "signAuthChallenge", "_openAnchoredAccountKeypair"),
+        "VerifyResponse.user_id": Field(
+            HINT, "compared with the id the keypair is wrapped for (review 8595ec1 R10-F): another fails the "
+            "sign-in; the other sign-ins take the id from the keys and read only is_admin"),
+        "VerifyResponse.username": Field(
+            HINT, "a new name is stored only after this phone's key logs in under it", ("_logsInAs",)),
+        "VerifyResponse.key_material_hash": Field(UNREAD, "the name is the pull's and the registration resume's"),
+        "POST /api/auth/registration-resume .token": Field(HINT, _TOKEN),
+        "POST /api/auth/registration-resume .user_id": Field(
+            HINT, "must equal the first registration reply's; the id the keys are wrapped for"),
+        "POST /api/auth/registration-resume .key_material_hash": Field(
+            HINT, "equal to the hash of this phone's wrap skips the upload, which the server could drop anyway "
+            "(withholding); another one refuses the registration"),
+        "PUT /api/me/keypair .token": Field(HINT, _TOKEN, ("uploadKeypair",)),
+        **_not_called("/api/auth/refresh", "POST /api/auth/refresh .token"),
+        "ProvisionResponse.encrypted_keypair": _signed("_opensKeypair"),
+        "ProvisionResponse.user_id": _signed("_opensKeypair"),
+        "ProvisionResponse.argon2_params": Field(
+            HINT, "refused outside the server policy's bounds, never guessed", ("accountKdfParams",)),
+        "ProvisionResponse.argon2_salt": Field(HINT, "the salt the keypair wrap opens under (AEAD)", ("_opensKeypair",)),
     },
 }

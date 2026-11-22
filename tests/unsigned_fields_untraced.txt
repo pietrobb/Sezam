@@ -14,15 +14,9 @@ mobile	AuditEntry.timestamp
 mobile	AuditEntry.user_id
 mobile	AuditEntry.username
 mobile	AuditResponse.entries
-mobile	BootstrapResponse.token
-mobile	BootstrapResponse.user_id
-mobile	BootstrapStatusResponse.needs_setup
-mobile	ChallengeResponse.challenge
-mobile	ChallengeResponse.timestamp
 mobile	GET /api/users/{user_id}/keys .archived_keys
 mobile	GET /api/users/{user_id}/keys .encryption_pk
 mobile	GET /api/users/{user_id}/keys .signing_pk
-mobile	GET /health .version
 mobile	OrgRecoveryBlobResponse.stale
 mobile	OrgRecoveryBlobResponse.wrapped_kek
 mobile	OrgRecoveryKeypairResponse.argon2_salt
@@ -36,25 +30,7 @@ mobile	OrgRecoveryStatusResponse.stale
 mobile	OrgRecoveryStatusResponse.threshold
 mobile	OrgRecoveryStatusResponse.total_shares
 mobile	POST /api/audit/log .ok
-mobile	POST /api/auth/refresh .token
-mobile	POST /api/auth/registration-resume .key_material_hash
-mobile	POST /api/auth/registration-resume .token
-mobile	POST /api/auth/registration-resume .user_id
 mobile	POST /api/share .id
-mobile	PUT /api/me/kdf-params .argon2_params
-mobile	PUT /api/me/keypair .token
-mobile	ProvisionResponse.argon2_params
-mobile	ProvisionResponse.argon2_salt
-mobile	ProvisionResponse.encrypted_keypair
-mobile	ProvisionResponse.user_id
-mobile	ProvisioningTokenResponse.token
-mobile	ProvisioningTokenResponse.username
-mobile	RecoverResponse.argon2_params
-mobile	RecoverResponse.argon2_salt
-mobile	RecoverResponse.encrypted_keypair
-mobile	RecoverResponse.user_id
-mobile	RegisterResponse.token
-mobile	RegisterResponse.user_id
 mobile	ShareInfo.created_by
 mobile	ShareInfo.id
 mobile	ShareNotification.id
@@ -65,10 +41,6 @@ mobile	UserInfo.is_admin
 mobile	UserInfo.key_fingerprint
 mobile	UserInfo.signing_pk
 mobile	UserInfo.username
-mobile	VerifyResponse.key_material_hash
-mobile	VerifyResponse.token
-mobile	VerifyResponse.user_id
-mobile	VerifyResponse.username
 web	AIPolicy.signature
 web	AIPolicy.user_id
 web	AuditEntry.action
@@ -82,17 +54,9 @@ web	AuditEntry.user_id
 web	AuditEntry.username
 web	AuditResponse.entries
 web	AuditResponse.total
-web	BootstrapResponse.token
-web	BootstrapResponse.user_id
-web	BootstrapStatusResponse.needs_setup
-web	BootstrapStatusResponse.unfinished_setup
-web	ChallengeResponse.challenge
-web	ChallengeResponse.timestamp
 web	GET /api/users/{user_id}/keys .archived_keys
 web	GET /api/users/{user_id}/keys .encryption_pk
 web	GET /api/users/{user_id}/keys .signing_pk
-web	GET /health .version
-web	InviteResponse.invitation_token
 web	OrgRecoveryBlobResponse.stale
 web	OrgRecoveryBlobResponse.wrapped_kek
 web	OrgRecoveryKeypairResponse.argon2_salt
@@ -107,25 +71,7 @@ web	OrgRecoveryStatusResponse.stale
 web	OrgRecoveryStatusResponse.threshold
 web	OrgRecoveryStatusResponse.total_shares
 web	POST /api/audit/log .ok
-web	POST /api/auth/refresh .token
-web	POST /api/auth/registration-resume .key_material_hash
-web	POST /api/auth/registration-resume .token
-web	POST /api/auth/registration-resume .user_id
 web	POST /api/share .id
-web	PUT /api/me/kdf-params .argon2_params
-web	PUT /api/me/keypair .token
-web	ProvisionResponse.argon2_params
-web	ProvisionResponse.argon2_salt
-web	ProvisionResponse.encrypted_keypair
-web	ProvisionResponse.user_id
-web	ProvisioningTokenResponse.token
-web	ProvisioningTokenResponse.username
-web	RecoverResponse.argon2_params
-web	RecoverResponse.argon2_salt
-web	RecoverResponse.encrypted_keypair
-web	RecoverResponse.user_id
-web	RegisterResponse.token
-web	RegisterResponse.user_id
 web	ShareInfo.created_by
 web	ShareInfo.id
 web	ShareNotification.id
@@ -136,6 +82,3 @@ web	UserInfo.is_admin
 web	UserInfo.key_fingerprint
 web	UserInfo.signing_pk
 web	UserInfo.username
-web	VerifyResponse.token
-web	VerifyResponse.user_id
-web	VerifyResponse.username

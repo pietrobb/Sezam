@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from tests.test_review_web import _run, pytestmark  # noqa: F401
 
-FUNCTIONS = ["pollForApproval", "recoverFailureMessage", "signAuthChallenge"]
+FUNCTIONS = ["pollForApproval", "recoverFailureMessage", "signAuthChallenge", "signedInUserId"]
 
 SETUP = """
   // Fast-forward past the 10 min timeout after 20 rounds so a poll that
