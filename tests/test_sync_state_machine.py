@@ -80,6 +80,7 @@ from sezam.vault.sync_common import STALE_OWN_WRAPS_META, ServerError
 from tests.test_integration_client_server import PARAMS, PASSWORD
 from tests.test_server_spec import MockDatabase
 from tests import property_seeds
+from tests import server_field_lies as field_lies
 from tests.server_admin_lie import users_row_deciding
 from tests.node_support import fetchable_socket, node_problem
 from tests.web_tab import WebTab
@@ -1816,6 +1817,56 @@ class SyncMachine(RuleBasedStateMachine):
             self._pull(device)
         finally:
             SyncClient.list_users = real
+
+    @rule(data=st.data(), key=st.sampled_from(field_lies.GENERIC), how=st.integers(0, 2))
+    def server_lies_in_a_field(self, data, key, how):
+        """Review e443cbc #428 (INV-3): the server lies in one field the
+        register (server/app/unsigned_fields.py) calls a hint, through a login,
+        a push and a pull of one device. The device may refuse (withholding);
+        it must not crash, and the invariants and the settle find nothing
+        forged or lost."""
+        device = self._device(data)
+        dev = self._command(device)
+        db = dev.vault.db
+        lied: list[str] = []
+        real = SyncClient._request
+
+        def lie(method, path, reply):
+            if reply is not None:
+                reply = copy.deepcopy(reply)
+                if field_lies.tamper(key, method, path, reply, how):
+                    lied.append(f"{method} {path.split('?')[0]}")
+            return reply
+
+        def lying(client, method, path, *args, **kwargs):
+            reply = real(client, method, path, *args, **kwargs)
+            return lie(method, path, reply) if client._db is db else reply
+        # The device's client recorded its own request at creation (_new_client).
+        first = dev.client
+        own = first._request
+        first._request = lambda method, path, *a, **kw: lie(method, path, own(method, path, *a, **kw))
+        before = _dirty_ids(dev.vault)
+        dev.client.token = None  # a login too
+        outcomes = []
+        SyncClient._request = lying
+        try:
+            for step in ("push", "pull"):
+                try:
+                    self._call(device, step)
+                    outcomes.append(f"{step} ok")
+                except REFUSALS as exc:
+                    outcomes.append(f"{step} refused: {exc}")
+                except Exception as exc:
+                    self.log.append(f"server: lies in {key} to {device}: {step} crashed: {exc!r}")
+                    raise AssertionError(f"{device}: a lie in {key} crashed its {step}: {exc!r}\n"
+                                         + self._trace()) from exc
+        finally:
+            SyncClient._request = real
+            first._request = own
+        coverage_event(f"server lies in {key}" if lied else "server lies in a field it did not send")
+        self.log.append(f"server: lies in {key} ({how}) to {device} at {sorted(set(lied)) or 'nothing'}"
+                        f" -> {'; '.join(outcomes)}")
+        self._note_pushed(device, before)
 
     @invariant()
     def no_key_for_made_up_accounts(self):
@@ -3657,6 +3708,29 @@ def test_sync_state_machine_server_lies_about_org_recovery(loopback_server, monk
         machine._settle(lambda _obj: "server")
         # Withheld: the server never took it, and A says so.
         assert org_recovery_server.registration_issue(machine.devices["A"].vault) == "withheld", machine._trace()
+    finally:
+        machine.teardown()
+
+
+@pytest.mark.parametrize("key", field_lies.GENERIC)
+def test_sync_state_machine_server_lies_in_a_field(loopback_server, monkeypatch, key):
+    """Review e443cbc #428 (INV-3): each hint of the register without a rule
+    of its own, lied about once in every way while A logs in, pushes an edit
+    and pulls; the honest settle after converges."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        before = set(machine._folders("A"))
+        machine.create_folder(_Scripted(device="A", parent="ROOT"))
+        (folder,) = set(machine._folders("A")) - before
+        machine.create_entry(_Scripted(device="A", folder=folder))
+        machine.push(_Scripted(device="A"), None)
+        machine.pull(_Scripted(device="B"), None)
+        for how in range(3):
+            machine.create_entry(_Scripted(device="A", folder=folder))
+            machine.server_lies_in_a_field(_Scripted(device="A"), key, how)
+        machine._settle(lambda _obj: "server")
     finally:
         machine.teardown()
 

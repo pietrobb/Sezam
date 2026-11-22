@@ -62,7 +62,7 @@ FIELDS: dict[str, Field] = {
     "ChallengeResponse.timestamp": Field(HINT, "signed back with the challenge; a lie fails the login"),
     "VerifyResponse.token": Field(HINT, _TOKEN),
     "VerifyResponse.user_id": Field(UNREAD, "not read by the desktop"),
-    "VerifyResponse.username": Field(HINT, "only names the account the next login and recover ask about; the challenge is answered by this device's keys and the keypair opens only under its password"),
+    "VerifyResponse.username": Field(HINT, "only names the account the next login and recover ask about; the challenge is answered by this device's keys and the keypair opens only under its password; the desktop stores a new name only after its key logs in under it (sync_client._logs_in_as)"),
     "VerifyResponse.is_admin": Field(UNREAD, "not read by the desktop"),
     "VerifyResponse.key_material_hash": Field(UNREAD, "not read by the desktop"),
     "ProvisioningTokenResponse.token": Field(UNREAD, "handed to the new device out of band"),

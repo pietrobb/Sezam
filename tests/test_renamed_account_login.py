@@ -81,7 +81,9 @@ async def test_old_name_still_opens_the_other_account_and_nothing_else(app_clien
     assert (await _login(app_client, "carol", stranger_sk)).status_code == 401
 
 
-def test_desktop_stores_the_current_name():
+def _desktop(confirm):
+    """A desktop client logging in as carol; the server answers 'carol-2',
+    ``confirm`` is its answer to the login under that name."""
     from server.app.auth import generate_challenge
     from sezam.crypto.keys import generate_keypair
     from sezam.vault.sync_client import SyncClient
@@ -96,12 +98,36 @@ def test_desktop_stores_the_current_name():
     client._token = None
     client._report_legacy_kdf_params = lambda: None
     client._pending_old_keypair = lambda: None
-    challenge, _ = generate_challenge()
-    replies = [{"challenge": challenge.hex()}, {"token": "jwt", "username": "carol-2"}]
-    client._request = lambda method, path, body=None, auth=False: replies.pop(0)
+    sent = []
+    replies = [{"challenge": generate_challenge()[0].hex()}, {"token": "jwt", "username": "carol-2"},
+               {"challenge": generate_challenge()[0].hex()}, confirm]
 
-    assert client.authenticate() == "jwt"
+    def request(method, path, body=None, auth=False):
+        sent.append(body)
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    client._request = request
+    return client, meta, sent
+
+
+def test_desktop_stores_the_current_name():
+    client, meta, sent = _desktop({"token": "jwt-2", "username": "carol-2"})
+    client.authenticate()
     assert meta["username"] == "carol-2"
+    assert sent[2]["username"] == sent[3]["username"] == "carol-2"
+
+
+def test_desktop_keeps_its_name_when_the_server_lies_about_it():
+    """Review e443cbc #428 (INV-3): the name in the verify reply is unsigned;
+    one the device's key does not log in under is not stored, so the next
+    login still works."""
+    from sezam.vault.sync_common import ServerError
+
+    client, meta, _sent = _desktop(ServerError(401, '{"detail":"Authentication failed"}'))
+    assert client.authenticate() == "jwt"
+    assert meta["username"] == "carol"
 
 
 def test_web_and_mobile_keep_the_current_name():

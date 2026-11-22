@@ -212,11 +212,27 @@ class SyncClient(
         self._token = resp["token"]
         # Review e4cd15a (low): the server's name migration may have moved
         # this account off the stored name; the answer carries the current one.
+        # The name is unsigned (INV-3, review e443cbc #428): it is kept only
+        # once our own key logs in under it, so a lie cannot lock us out.
         current_name = resp.get("username")
-        if current_name and current_name != self._get_username():
-            self._db.set_meta("username", current_name)
+        if isinstance(current_name, str) and current_name and current_name != self._get_username():
+            if self._logs_in_as(current_name):
+                self._db.set_meta("username", current_name)
         self._report_legacy_kdf_params()
         return self._token
+
+    def _logs_in_as(self, name: str) -> bool:
+        """Whether the server lets this device's key log in under ``name``."""
+        try:
+            challenge = self._request("POST", "/api/auth/challenge", {"username": name})["challenge"]
+            resp = self._request("POST", "/api/auth/verify", auth_verify_body(
+                name, challenge, self._keypair.to_nacl_signing_key(), None))
+        except (RuntimeError, KeyError, TypeError):
+            return False
+        if not isinstance(resp, dict) or not resp.get("token"):
+            return False
+        self._token = resp["token"]
+        return True
 
     def _pending_identity(self) -> Optional[dict]:
         """Journal of this device's identity rotation the server has not taken."""
