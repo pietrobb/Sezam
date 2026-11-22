@@ -125,6 +125,17 @@ nálezu sa začína otázkou, ktorý invariant porušuje. Ak taký nie je, dopln
     medziprocesovým zámkom (oplock), a to v každom procese vrátane GUI, `mcp-serve`
     a ssh-agenta.
   - Žiadne čítanie a prepis `vault_meta` mimo transakcie.
+  - Štrukturálne (R15-P5): `VaultDB` berie oplock pred svojím zámkom príkazov
+    pre každý zapisujúci príkaz a na celú transakciu. TEMP triggery na
+    `outbox` a `vault_meta` odmietnu zápis z vlákna, ktoré oplock nedrží
+    (aj cez surové spojenie). Operácie s účtom (`outbox.LOCKED`, pending
+    stavy) navyše vyžadujú, aby oplock držal volajúci počas celej operácie
+    (`oplock.require` nepočíta zámok, ktorý si `VaultDB` vzal sám).
+  - Jediná výnimka: AI kill switch (`VaultDB.brake`, kľúče `BRAKE_KEYS`) sa
+    zapíše bez čakania na sync; jeho audit záznam na zámok čaká.
+  - `tests/test_inv6_every_writer_locked.py` drží súpis všetkých miest so
+    zámkom a všetkých spojení mimo `VaultDB`; nové spojenie alebo presunutý
+    či odstránený zámok test zastaví.
 - **Test:** state machine s druhým procesom, ktorý robí ľubovoľné operácie súbežne,
   a s pádom medzi akýmikoľvek dvoma lokálnymi krokmi.
 - **Pozor na regresie:** presun alebo odstránenie `@oplock.held`, transakcie alebo

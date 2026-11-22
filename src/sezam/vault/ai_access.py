@@ -21,6 +21,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterator
 
+from . import oplock
 from .db import VaultDB
 
 if TYPE_CHECKING:
@@ -220,7 +221,8 @@ def _floor(db: VaultDB) -> int:
 def raise_floor(vault: "Vault", epoch: int) -> None:
     """Keep the anchored floor in the vault, so 'sezam ai on' turns access on
     at an epoch the broker takes. Deleting it only keeps 'on' too low (off)."""
-    with _meta_db(vault) as db:
+    # INV-6: the vault lock before _meta_db's statement guard.
+    with oplock.exclusive(vault.db.path), _meta_db(vault) as db:
         with db.transaction(immediate=True):
             if epoch > _floor(db):
                 db.set_meta(FLOOR_KEY, str(epoch))
@@ -252,7 +254,9 @@ def disable(vault: "Vault", source: str, extra: dict | None = None) -> AIAccessS
     ('1', old epoch) turned AI on at the next unlock. It is deleted with the
     switch; only 'sezam ai on' seals a new one.
     """
-    with _meta_db(vault) as db:
+    # INV-6: the switch does not wait for a sync holding the vault lock
+    # (db.brake); its audit record does, outside _meta_db's statement guard.
+    with _meta_db(vault) as db, db.brake():
         # Write lock before the read: another broker's 'off' committed in
         # between failed this one with 'database is locked' (review 7c10379).
         with db.transaction(immediate=True):
@@ -261,8 +265,9 @@ def disable(vault: "Vault", source: str, extra: dict | None = None) -> AIAccessS
             db.set_meta(ENABLED_KEY, "0")
             db.set_meta(EPOCH_KEY, str(state.epoch))
             db.execute("DELETE FROM vault_meta WHERE key = ?", (STATE_MAC_KEY,))
-        detail = {**(extra or {}), "epoch": state.epoch, **_origin(source)}
-        if not _write_audit(vault, "ai_off", detail):
+    detail = {**(extra or {}), "epoch": state.epoch, **_origin(source)}
+    if not _write_audit(vault, "ai_off", detail):
+        with _meta_db(vault) as db, db.brake():
             with db.transaction(immediate=True):  # another broker may queue one too
                 pending = _pending(db)
                 pending.append({"action": "ai_off", "detail": detail})

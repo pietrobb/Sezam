@@ -29,7 +29,7 @@ class VaultBusy(RuntimeError):
 
 _BUSY = "Another Sezam program is syncing or changing the vault keys; try again shortly."
 _guard = threading.Lock()
-_slots: dict[str, list] = {}  # lock path → [RLock, depth, fd, owner thread]
+_slots: dict[str, list] = {}  # lock path → [RLock, depth, fd, owner thread, explicit depth]
 
 
 def lock_path(db_path: str | Path) -> Path:
@@ -38,6 +38,13 @@ def lock_path(db_path: str | Path) -> Path:
 
 
 def _key(db_path: str | Path) -> str:
+    path = str(db_path)
+    return _resolved_key(path) if os.path.isabs(path) else _resolved_key.__wrapped__(path)
+
+
+@functools.lru_cache(maxsize=256)
+def _resolved_key(db_path: str) -> str:
+    # Asked for on every write (INV-6, R15-P5); resolving the path each time cost more than the lock.
     return os.path.normcase(str(lock_path(db_path).resolve()))
 
 
@@ -51,6 +58,13 @@ def held_here(db_path: str | Path) -> bool:
     return slot is not None and slot[1] > 0 and slot[3] == threading.get_ident()
 
 
+def _held_by_caller(db_path: str | Path) -> bool:
+    """Held here by a caller, not only by VaultDB for one statement or
+    transaction (``implicit``)."""
+    slot = _slots.get(_key(db_path))
+    return slot is not None and slot[4] > 0 and slot[3] == threading.get_ident()
+
+
 def require(db) -> None:
     """INV-6 (docs/ROOT_CAUSE_PLAN.md, review 8bc70f7 H3): the account-level
     state another process reads and rewrites (a re-key batch, a key change
@@ -58,9 +72,12 @@ def require(db) -> None:
     the server took) is written only under the vault lock. Checked where it
     is written, so a caller that forgets the lock fails on its first write
     instead of a hand-kept list of callers missing it. A database without a
-    file (a test double), like ``held``, has no other process to order."""
+    file (a test double), like ``held``, has no other process to order.
+
+    R15-P5: the hold VaultDB takes for every write itself does not count;
+    the operation reading and rewriting this state holds it end to end."""
     path = getattr(db, "path", None)
-    if path is not None and not held_here(path):
+    if path is not None and not _held_by_caller(path):
         raise Unlocked(
             "Internal error: the vault's pending sync state was about to be changed "
             "without the vault lock; nothing was changed."
@@ -68,12 +85,15 @@ def require(db) -> None:
 
 
 @contextmanager
-def exclusive(db_path: str | Path, *, timeout: Optional[float] = None) -> Iterator[None]:
+def exclusive(
+    db_path: str | Path, *, timeout: Optional[float] = None, implicit: bool = False
+) -> Iterator[None]:
+    """``implicit``: VaultDB's own hold for one write (INV-6, R15-P5)."""
     timeout = DEFAULT_TIMEOUT if timeout is None else timeout
     path = lock_path(db_path)
     key = _key(db_path)
     with _guard:
-        slot = _slots.setdefault(key, [threading.RLock(), 0, None, None])
+        slot = _slots.setdefault(key, [threading.RLock(), 0, None, None, 0])
     if not slot[0].acquire(timeout=timeout):
         raise VaultBusy(_BUSY)
     try:
@@ -81,9 +101,11 @@ def exclusive(db_path: str | Path, *, timeout: Optional[float] = None) -> Iterat
             slot[2] = _take(path, timeout)
             slot[3] = threading.get_ident()
         slot[1] += 1
+        slot[4] += 0 if implicit else 1
         try:
             yield
         finally:
+            slot[4] -= 0 if implicit else 1
             slot[1] -= 1
             if slot[1] == 0:
                 fd, slot[2], slot[3] = slot[2], None, None

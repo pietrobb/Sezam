@@ -47,7 +47,10 @@ REFUSED = "refused"
 HELD = "held"
 ONE = ""  # object_id of an operation this vault has at most one of
 REVIVED_BODY = '{"revived":true}'  # body of a write that brings a folder back
-# Account-level state written only under the vault lock (oplock.require, INV-6).
+# INV-6: every row of every kind is written under the vault lock (VaultDB
+# takes it per statement and transaction; the outbox refuses a write without
+# it, R15-P5). These account-level ones are read, sent and rewritten across
+# several transactions: their caller holds the lock for all of it.
 LOCKED = frozenset({KEY_CHANGE, REKEY, REVOKE, ORG_RECOVERY})
 
 

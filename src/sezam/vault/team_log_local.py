@@ -884,6 +884,7 @@ class TeamLogMixin:
                 if now[:len(pending)] == pending:  # what another process queued meanwhile stays
                     _set_queued_changes(self._db, now[part[-1][0] + 1:])
 
+    @oplock.held  # INV-6 (R15-P5): reads, sends and rewrites the queue
     def flush_team_log(self) -> None:
         """Send queued team changes on their own (before a push)."""
         if not self.pending_team_changes():
@@ -930,6 +931,7 @@ class TeamLogMixin:
             self._store_team_log(records, state)
         return state
 
+    @oplock.held  # INV-6 (R15-P5): what is set aside is read before and after the send
     def append_team_log(self, changes) -> teamlog.TeamState:
         """Queue ``changes`` and send them now; kept for the next push if that fails.
 

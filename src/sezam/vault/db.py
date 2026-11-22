@@ -10,10 +10,11 @@ import json
 import os
 import sqlite3
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
+from . import oplock
 from .inuse import InUseLock
 from .schema import (
     BASE_VERSION_TRIGGERS_SQL,
@@ -40,6 +41,35 @@ GENERATION_KEYS = frozenset({
     "kek_dek_id", "argon2_salt", "argon2_params", "encrypted_keypair",
     "signing_pk", "encryption_pk", "user_id", "key_epoch", "server_url",
 })
+
+# INV-6 (docs/ROOT_CAUSE_PLAN.md, R15-P5): a push in one process read the
+# outbox, sent it and cleared what it sent while another process queued rows
+# and rewrote vault_meta keys (only four outbox kinds checked the lock). Every
+# write to these tables is now made by a thread holding the vault lock:
+# VaultDB takes it for each write statement and transaction, and TEMP
+# triggers refuse one made around VaultDB (its raw connection).
+_ORDERED_TABLES = ("outbox", "vault_meta")
+# The AI kill switch (ai_access.disable) writes these without waiting for a
+# sync: stopping an agent must not wait for the network (VaultDB.brake).
+BRAKE_KEYS = frozenset({
+    "ai_access_enabled", "ai_access_epoch", "ai_access_mac", "ai_access_audit_pending",
+})
+
+
+def _order_triggers_sql() -> str:
+    triggers = []
+    for table in _ORDERED_TABLES:
+        for op, keys in (("INSERT", ("NEW",)), ("UPDATE", ("OLD", "NEW")), ("DELETE", ("OLD",))):
+            allowed = " AND ".join(
+                f"sezam_write_ordered({row + '.key' if table == 'vault_meta' else 'NULL'})"
+                for row in keys
+            )
+            triggers.append(
+                f"CREATE TEMP TRIGGER IF NOT EXISTS inv6_{table}_{op.lower()} "
+                f"BEFORE {op} ON main.{table} WHEN NOT ({allowed}) BEGIN "
+                f"SELECT RAISE(ABORT, 'INV-6: {table} written without the vault lock'); END;"
+            )
+    return "\n".join(triggers)
 
 
 def check_vault_schema(value: Optional[str]) -> None:
@@ -143,6 +173,8 @@ class VaultDB:
         # Generations this connection may see: the one it pinned and the ones
         # it wrote itself (a rolled-back write leaves the pinned one stored).
         self._generations: set[Optional[str]] = set()
+        self._txn_lock = None  # the vault lock held for the open transaction
+        self._local = threading.local()  # .brake: depth of brake() in this thread
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -167,6 +199,7 @@ class VaultDB:
             self._conn.create_function(
                 "sezam_payload_hash", 2, row_payload_hash, deterministic=True
             )
+            self._conn.create_function("sezam_write_ordered", 1, self._write_ordered)
             self._check_schema()
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._restrict_permissions()
@@ -178,12 +211,13 @@ class VaultDB:
             ).fetchone():
                 self._upgrade_sync_columns()
                 self._conn.executescript(BASE_VERSION_TRIGGERS_SQL)
+            self._guard_writes()
             self.pin_generation()
         except BaseException:
             self.close()
             raise
 
-    def _upgrade_sync_columns(self) -> None:
+    def _upgrade_sync_columns(self, locked: bool = False) -> None:
         """A vault from before docs/SYNC_SINGLE_SOURCE.md points 1 and 3.
 
         Its rows lack the base pair and mark unsent changes with ``is_dirty``;
@@ -220,6 +254,9 @@ class VaultDB:
             and not _has_pending_meta(conn)
         ):
             return
+        if not locked:  # INV-6: it rewrites the outbox and vault_meta; looked at again once held
+            with oplock.exclusive(self.path):
+                return self._upgrade_sync_columns(locked=True)
         conn.execute("BEGIN IMMEDIATE")
         try:
             # Every trigger an older version made on these rows (d14d368, the
@@ -346,7 +383,39 @@ class VaultDB:
     def create_schema(self) -> None:
         """Create all tables and indexes."""
         self.conn.executescript(SCHEMA_SQL)
+        self._guard_writes()
         self.set_meta("schema_version", str(SCHEMA_VERSION))
+
+    def _guard_writes(self) -> None:
+        """INV-6: the outbox and vault_meta refuse a write without the vault
+        lock (this connection only; TEMP)."""
+        tables = {r[0] for r in self._conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if set(_ORDERED_TABLES) <= tables:
+            self._conn.executescript(_order_triggers_sql())
+
+    def _write_ordered(self, key: Optional[str]) -> bool:
+        return oplock.held_here(self.path) or (key in BRAKE_KEYS and self._braking())
+
+    def _braking(self) -> bool:
+        return getattr(self._local, "brake", 0) > 0
+
+    @contextmanager
+    def brake(self) -> Iterator[None]:
+        """The AI kill switch writes BRAKE_KEYS in this thread without the
+        vault lock, so 'sezam ai off' never waits for a sync; nothing else."""
+        depth = getattr(self._local, "brake", 0)
+        self._local.brake = depth + 1
+        try:
+            yield
+        finally:
+            self._local.brake = depth
+
+    def _ordered(self, sql: str):
+        """INV-6: the vault lock for a statement that writes, taken before
+        the statement guard (the order every holder takes them in)."""
+        if self._braking() or sql.lstrip()[:6].upper() in ("SELECT", "PRAGMA"):
+            return nullcontext()
+        return oplock.exclusive(self.path, implicit=True)
 
     def exists(self) -> bool:
         """Check if database file exists."""
@@ -362,7 +431,7 @@ class VaultDB:
         if key not in GENERATION_KEYS:
             self._write_meta(key, value)
             return
-        with self._guard, self.transaction():
+        with self.transaction():
             if self.get_meta(key) == value:
                 return
             self.require_generation()
@@ -417,7 +486,7 @@ class VaultDB:
             self._in_use.ensure_held()
 
     def execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
-        with self._guard:
+        with self._ordered(sql), self._guard:
             self._check_held()
             try:
                 return self.conn.execute(sql, params)
@@ -425,7 +494,7 @@ class VaultDB:
                 self._settle_transaction()
 
     def executemany(self, sql: str, params_list: list[tuple]) -> sqlite3.Cursor:
-        with self._guard:
+        with self._ordered(sql), self._guard:
             self._check_held()
             try:
                 return self.conn.executemany(sql, params_list)
@@ -436,14 +505,26 @@ class VaultDB:
         """Review 1141a20 M-AI3: an open transaction (BEGIN, begin(), a
         savepoint) belongs to the thread that opened it. It keeps the guard
         until COMMIT/ROLLBACK, so no other thread's statement runs inside it
-        and is committed or undone with it. Called with the guard held."""
+        and is committed or undone with it. Called with the guard held.
+
+        INV-6: it keeps the vault lock too (the statement that opened it
+        holds it already, unless it is the kill switch's)."""
         open_now = self._conn is not None and self._conn.in_transaction
         if open_now and not self._txn_held:
             self._guard.acquire()
             self._txn_held = True
+            if not self._braking():
+                lock = oplock.exclusive(self.path, implicit=True)
+                lock.__enter__()
+                self._txn_lock = lock
         elif not open_now and self._txn_held:
             self._txn_held = False
-            self._guard.release()
+            lock, self._txn_lock = self._txn_lock, None
+            try:
+                if lock is not None:
+                    lock.__exit__(None, None, None)
+            finally:
+                self._guard.release()
 
     def fetchone(self, sql: str, params: tuple = ()) -> Optional[sqlite3.Row]:
         with self._guard:
@@ -475,7 +556,7 @@ class VaultDB:
         The connection is shared, so another thread's statements ran inside
         this transaction (or nested a savepoint into it) and were undone with
         it."""
-        with self._guard:
+        with self._ordered("SAVEPOINT"), self._guard:
             with self._transaction(immediate):
                 yield
 
