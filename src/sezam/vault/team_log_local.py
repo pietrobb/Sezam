@@ -78,7 +78,6 @@ logger = logging.getLogger(__name__)
 class TeamLogMixin:
     """Mixed into SyncClient (``_db``, ``_request``, ``_user_id``, ``_keypair``)."""
 
-    _team_state_cache: Optional[teamlog.TeamState] = None
     # Set by team_migration.found_team_log around its pull: the user founding
     # the team's new log is the one who left the old one.
     _founding_team_log = False
@@ -87,15 +86,9 @@ class TeamLogMixin:
 
     def team_state(self) -> Optional[teamlog.TeamState]:
         """The replayed local log, or None while this device holds none."""
-        head = self._db.fetchone("SELECT seq, hash FROM team_log ORDER BY seq DESC LIMIT 1")
-        if head is None:
+        if self._db.fetchone("SELECT 1 FROM team_log LIMIT 1") is None:
             return None
-        cached = self._team_state_cache
-        if cached is not None and cached.head_seq == head["seq"] and cached.head_hash == head["hash"]:
-            return cached
-        state = local_team_state(self._db)
-        self._team_state_cache = state
-        return state
+        return local_team_state(self._db)
 
     def _named_by_team_log(self, keypair) -> bool:
         """The local team log names this account as a current member with ``keypair``."""
@@ -237,7 +230,6 @@ class TeamLogMixin:
             )
         if self._db.get_meta(GENESIS_META) is None:
             self._db.set_meta(GENESIS_META, state.genesis_hash)
-        self._team_state_cache = state
 
     # ── Following the server ────────────────────────────────────────
 
@@ -334,7 +326,6 @@ class TeamLogMixin:
                     self._db.execute("DELETE FROM team_log")  # the damaged copy, fetched again above
                 self._store_team_log(fetched, state)
         if raced:
-            self._team_state_cache = None
             return self._sync_team_log(server_head)
         return state
 

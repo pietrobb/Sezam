@@ -58,7 +58,6 @@ class _Server(TeamLogMixin):
     def __init__(self, vault, served: str):
         self._db = vault.db
         self._served, self._head = SERVERS[served]
-        self._team_state_cache = None
         self._token = "session"
 
     def _request(self, method, path, body=None, auth=False):

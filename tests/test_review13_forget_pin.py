@@ -27,7 +27,6 @@ def _reseed_server(db, client) -> str:
     _forget_server_cache()
     client._db.execute("DELETE FROM team_log")
     client._db.execute("DELETE FROM vault_meta WHERE key IN (?, ?)", (GENESIS_META, CONFIRMED_GENESIS_META))
-    client._team_state_cache = None
     client.found_team_log(new_ulid())
     return client.team_state().genesis_hash
 

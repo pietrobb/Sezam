@@ -292,7 +292,6 @@ def test_a_forked_log_is_refused(team):
     # The server swaps record 1 for another valid one the admin signed
     # (say, for a device that never sent it) and adds one more on top.
     admin.db.execute("DELETE FROM team_log WHERE seq = 1")
-    admin_client._team_state_cache = None
     db._storage["team_log"] = [r for r in db._storage["team_log"] if r["seq"] == 0]
     _forget_server_cache()
     admin_client.append_team_log([("folder.key", {"folder": new_ulid(), "dek_id": new_ulid(), "prev_dek_id": None})])

@@ -61,7 +61,6 @@ class _Device(TeamLogMixin):
     def __init__(self, db: VaultDB, served: list[dict]):
         self._db = db
         self._served = served
-        self._team_state_cache = None
 
     def _request(self, method, path, body=None, auth=False):
         assert method == "GET" and path.startswith("/api/team-log?since="), path

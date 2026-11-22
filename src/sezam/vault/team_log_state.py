@@ -6,6 +6,8 @@ without a change of behaviour; team_log_local re-exports every name.
 """
 
 from __future__ import annotations
+import copy
+import hashlib
 import logging
 import re
 from typing import Optional
@@ -201,6 +203,10 @@ def readable_forgotten_genesis(db) -> Optional[list[str]]:
         return None
 
 
+_REPLAYED: dict[bytes, teamlog.TeamState] = {}
+_REPLAYED_MAX = 16
+
+
 def local_team_state(db) -> Optional[teamlog.TeamState]:
     """The replayed local log of ``db``, or None while it holds none.
 
@@ -216,6 +222,12 @@ def local_team_state(db) -> Optional[teamlog.TeamState]:
     rows = db.fetchall("SELECT seq, body, sig, hash FROM team_log ORDER BY seq")
     if not rows:
         return None
+    # Review e443cbc (goal #438): only the replay is kept, under every byte
+    # of the rows; the checks above run on each call. A cache under the head
+    # row alone outlived damage below it and every refusal by the pins.
+    key = hashlib.sha256(repr([tuple(r) for r in rows]).encode()).digest()
+    if (state := _REPLAYED.get(key)) is not None:
+        return copy.deepcopy(state)
     # A local copy that does not replay was accepted by no version of this
     # code: refuse rather than decide from part of it.
     try:
@@ -227,6 +239,9 @@ def local_team_state(db) -> Optional[teamlog.TeamState]:
             teamlog.record_hash({"body": r["body"], "sig": r["sig"]}) != r["hash"] for r in rows):
         raise TeamLogMismatch("This device's copy of the team log does not match its stored hashes."
                               + LOCAL_DAMAGED_HINT, "local_damaged")
+    if len(_REPLAYED) >= _REPLAYED_MAX:
+        _REPLAYED.clear()
+    _REPLAYED[key] = copy.deepcopy(state)
     return state
 
 

@@ -87,7 +87,6 @@ def test_a_server_log_with_another_genesis_is_still_refused(team):  # noqa: F811
     _forget_server_cache()
     client._db.execute("DELETE FROM team_log")
     client._db.execute("DELETE FROM vault_meta WHERE key = ?", (GENESIS_META,))
-    client._team_state_cache = None
     client.found_team_log(new_ulid())  # another genesis, server head 0
 
     with pytest.raises(TeamLogMismatch, match="another genesis"):
