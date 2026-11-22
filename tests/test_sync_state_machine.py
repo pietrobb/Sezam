@@ -2900,11 +2900,16 @@ class SyncMachine(RuleBasedStateMachine):
             if (
                 event.kind == "auto"
                 and event.state[2] == "ROOT"
-                and final[:2] == event.state[:2]
                 and final[2] in reference
+                and (final[:2] == event.state[:2] or any(
+                    self.events[e].kind == "write" and self.events[e].obj == event.obj
+                    and self.events[e].state[:2] == event.state[:2] for e in closure
+                ))
             ):
                 # The sync hung an orphan below the root while its folder was
                 # gone; the folder came back and holds it again, same content.
+                # Seed 858585 on 4b961eb: or content another device edited
+                # later, on top of the write the orphan showed (never sent).
                 continue
             if not event.state[0] and final[0]:
                 # A delete undone (e.g. a folder another device saved work in
