@@ -232,6 +232,12 @@ def queue_revoked_holders(vault: Vault, client: SyncClient) -> None:
     }
     if not holders and not lost:
         return
+    if vault.key_change_unpushed():
+        # Review e443cbc R15 (goal #442): the re-keys wait for the key change
+        # (finish_queued_revocations), and a rotation the server lost gives
+        # a session that may only send it again, not list the users. The
+        # push after it queues them.
+        return
     # The member list is the admin's: first the server's team log, which says
     # who that is (INV-1). One that is not this device's raises its mismatch
     # (INV-7: the way out) instead of the "Admin required" its admin gets.

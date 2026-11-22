@@ -4574,6 +4574,35 @@ def test_sync_state_machine_team_rekey_superseded_by_another_device(loopback_ser
         machine.teardown()
 
 
+def test_sync_state_machine_team_admin_resends_a_rotation_the_server_lost(loopback_server, monkeypatch):
+    """Review e443cbc R15, goal #442 (derandomized TeamLogMachine run): the
+    admin's desktop A, which sealed a member's envelope, rotated the identity;
+    the server went back to a backup from before it and got the log's
+    member.keys back. Until A sends the rotation again its session may only
+    pull and push that rotation, but 'sezam push' first listed the users for
+    the revocation queue: 403 'Scoped JWT (key_rotation)' on every push, so
+    the rotation never went out again. The queue waits for the key change."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        machine._settle(lambda _obj: "server")
+        machine.track_member_keys()
+        member = machine._active_members()[0]
+        machine._grant("A", member, machine._folders("A")[0], "read")
+        machine._settle(lambda _obj: "server")
+        machine.server_backup()
+        machine.rotate_identity(_Scripted(device="A"), None)
+        machine._push("A")
+        machine.track_member_keys()
+        machine.server_restore()
+        machine._push("A")
+        machine.track_member_keys()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_team_restore_from_before_two_rotations(loopback_server, monkeypatch):
     """Review e443cbc R15, goal #429 (TeamLogMachine, randomized run): the
     admin's desktop B rotated the account's identity, A took the keys over and

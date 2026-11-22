@@ -338,6 +338,12 @@ class PushMixin:
             self._org_recovery_superseded = True
         self.adopt_logged_org_recovery()
         self.anchor_org_recovery()
+        if pending_states.key_change_journal(self._db).get("identity") and self.team_state() is not None:
+            # Review e443cbc R15 (goal #442): a server restored from before
+            # this rotation's member.keys lacks it; this copy holds it, so the
+            # push sent the rotation alone and was refused for good ('requires
+            # matching member.keys'). The log is put back first.
+            self._refresh_team_log()
         self.continue_identity_in_log()
         self.fold_unlogged_folder_keys()
         self.flush_team_log()
