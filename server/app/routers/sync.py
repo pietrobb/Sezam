@@ -94,6 +94,27 @@ def _builds_on(obj: SyncObject, stored_type: str, version: int, payload_hash: st
     )
 
 
+OUTDATED_CLIENT_BASE = (
+    "This app version sends changes in a form the server no longer accepts. "
+    "Update the Sezam app."
+)
+
+
+def _refuse_base_by_version_only(objects) -> None:
+    """Review 18c300f R16-M2: a folder or entry change naming its base by
+    version only comes from an app before the base hash (d14d368, after
+    "keep mine"). _builds_on refuses it, so the old app got 'conflict' on
+    every push and showed nothing: 426, update the app. Current clients send
+    both or none (a new object)."""
+    for obj in objects:
+        if (
+            obj.object_type in ("node", "entry")
+            and obj.base_version is not None
+            and not obj.base_payload_hash
+        ):
+            raise HTTPException(status_code=426, detail=OUTDATED_CLIENT_BASE)
+
+
 def _verify_sync_signature(
     obj: SyncObject, signature_bytes: bytes, signing_pk: bytes
 ) -> bool:
@@ -537,6 +558,7 @@ async def _sync_push(
     if not name_row:
         raise HTTPException(status_code=401, detail="User not found")
     username = name_row[0]
+    _refuse_base_by_version_only(staged + list(req.objects))
 
     # Everything CPU-bound is checked before the global lock, off the event
     # loop, against the keys the locked pass will most likely use.
