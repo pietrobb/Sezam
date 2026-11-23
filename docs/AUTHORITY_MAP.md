@@ -287,6 +287,7 @@ Keyed `module:function` under `sezam.vault`.
 | `ai_access:disable` | turns AI access off (signed local switch) | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review7_two_brokers_disable.py |
 | `ai_access:enable` | turns AI access on (signed local switch) | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review10_ai_enable_race.py |
 | `ai_access:legacy_anchor_id` | — | — | — | run by `sezam.mcp.remote_policy:ServerAnchor.sync` |
+| `ai_access:name_server` | seals the AI anchor home with the server a vault connects to (R16-H3) | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_inv6_every_writer_locked.py |
 | `ai_access:raise_floor` | raises the AI switch's epoch floor | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `sezam.mcp.broker:MCPBroker.raise_floor` |
 | `ai_access:read_state` | — | — | — | test_review6_ai_switch_mac.py |
 | `ai_access:record_remote_applied` | notes the remote kill switch's epoch applied | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `sezam.mcp.remote_policy:apply_policy` |

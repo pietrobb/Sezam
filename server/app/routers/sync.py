@@ -12,6 +12,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import json
 import os
 import secrets
 import time
@@ -2119,6 +2120,32 @@ async def _top_folder_is_own(
     return cache[key]
 
 
+def unknown_name_kdf(name_mac: bytes, in_use: list[Optional[str]]) -> dict:
+    """KDF params to report for a name without an account (R16-L5).
+
+    Real accounts carry the params of the device that set the password, and
+    the desktop calibrates them (benchmark_argon2: time_cost 4, 5..., memory
+    128 or 64 MiB), so one of two client defaults marked nearly every desktop
+    account as real. An unknown name now gets params of the accounts on this
+    server, picked per name in proportion to how many use them, so a name's
+    params say no more than that some account uses them. A server with no
+    account answers with a client default, as before.
+    """
+    counts: dict[str, int] = {}
+    for stored in in_use:
+        key = json.dumps(account_kdf_params(stored), sort_keys=True)
+        counts[key] = counts.get(key, 0) + 1
+    pick = int.from_bytes(name_mac[:8], "big")
+    if not counts:
+        return dict(CLIENT_DEFAULT_ACCOUNT_KDFS[pick % len(CLIENT_DEFAULT_ACCOUNT_KDFS)])
+    pick %= sum(counts.values())
+    for key in sorted(counts):
+        if pick < counts[key]:
+            return json.loads(key)
+        pick -= counts[key]
+    raise AssertionError("unreachable")
+
+
 @router.get("/meta", response_model=MetaResponse)
 async def get_meta(
     username: Optional[str] = Query(None),
@@ -2148,28 +2175,30 @@ async def get_meta(
                     (username,),
                 )
                 row = await cur.fetchone()
+                # Review 18c300f R16-L5: run for every name, so the answer
+                # about an unknown one takes the same queries.
+                await cur.execute("SELECT argon2_params FROM users")
+                in_use = [stored for (stored,) in await cur.fetchall()]
         # The column collation is case/accent-insensitive: "ADMIN" would find
         # "admin" and return its real salts, while a nonexistent name gets
         # fake ones — an enumeration oracle. Only an exact match is real.
         if row and row[3] != username:
             row = None
 
+        fake_auth_salt = generate_fake_salt(config.hmac_server_secret, username, kind="auth").hex()
         if row and row[0]:
             resp.argon2_salt = row[0].hex()
-            resp.auth_salt = row[1].hex() if row[1] else None
+            # R16-L5: a legacy account without one answered None, which no
+            # unknown name does; no client reads it.
+            resp.auth_salt = row[1].hex() if row[1] else fake_auth_salt
             resp.argon2_params = account_kdf_params(row[2])
         else:
-            # Real accounts carry the params of the client that created them;
-            # a fixed default would mark every desktop account as real.
-            choice = unknown_name_mac(config.hmac_server_secret, username)[0]
-            resp.argon2_params = dict(
-                CLIENT_DEFAULT_ACCOUNT_KDFS[choice % len(CLIENT_DEFAULT_ACCOUNT_KDFS)]
+            resp.argon2_params = unknown_name_kdf(
+                unknown_name_mac(config.hmac_server_secret, username), in_use
             )
             # Fake salt — deterministic per username, same response time
             fake = generate_fake_salt(config.hmac_server_secret, username)
             resp.argon2_salt = fake.hex()
-            resp.auth_salt = generate_fake_salt(
-                config.hmac_server_secret, username, kind="auth"
-            ).hex()
+            resp.auth_salt = fake_auth_salt
 
     return resp

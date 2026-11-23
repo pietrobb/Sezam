@@ -234,6 +234,8 @@ FUNCTIONS: dict[str, Op] = {
     "ai_access:anchor_expected": read(part_of=("sezam.mcp.broker:MCPBroker._await_anchor",)),
     "ai_access:anchor_home": local("seals the AI switch anchor's home (id, server, account) under the KEK",
                                    "tests/test_review14_ai_anchor_fail_closed.py"),
+    "ai_access:name_server": local("seals the AI anchor home with the server a vault connects to (R16-H3)",
+                                   "tests/test_inv6_every_writer_locked.py"),
     "ai_access:legacy_anchor_id": read(part_of=("sezam.mcp.remote_policy:ServerAnchor.sync",)),
     "ai_access:anchor_mac": read(part_of=("sezam.mcp.remote_policy:ServerAnchor.sync",
                                           "sezam.mcp.remote_policy:ServerAnchor.anchor_off")),
