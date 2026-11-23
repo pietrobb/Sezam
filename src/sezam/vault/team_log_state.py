@@ -628,6 +628,8 @@ def resolve_change(state: teamlog.TeamState, kind: str, data: dict) -> Optional[
         return {**data, "gen": len(gens) if gens else 0}
     if kind == "org.recovery":  # only queued by this device's admin, for a new key
         return None if data["recovery_pk"] in state.org_recovery.values() else data
+    if kind == "org.recovery.wrap":  # R16-M5: made again after a fork lost it
+        return None if data in state.org_recovery_wrap.values() else data
     return data
 
 

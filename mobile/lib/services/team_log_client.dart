@@ -415,6 +415,8 @@ Future<LocalTeamLog?> syncTeamLog({
   List<String>? ownKeys,
   required Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
   Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)? restore,
+  TeamLogRemake? remake,
+  Set<String> withdrawn = const {},
 }) async {
   Never fail(String detail, String cause) => throw TeamLogMismatch(detail, cause);
   // Goal #440: a cause that offers to forget the pin only as far as the
@@ -471,7 +473,7 @@ Future<LocalTeamLog?> syncTeamLog({
     await failAsServed(head, pinned, 'starts with another genesis than this device saw', 'other_genesis');
   }
   try {
-    return await _catchUpTeamLog(log, head, local, pin, fetchPage);
+    return await _catchUpTeamLog(log, head, local, pin, fetchPage, withdrawn);
   } on TeamLogMismatch catch (e) {
     if (local == null ||
         ownUserId == null ||
@@ -480,7 +482,7 @@ Future<LocalTeamLog?> syncTeamLog({
     }
     final LocalTeamLog? followed;
     try {
-      followed = await _followFork(log, head, local, pin, ownUserId, ownKeys, fetchPage);
+      followed = await _followFork(log, head, local, pin, ownUserId, ownKeys, fetchPage, remake, withdrawn);
     } on _ForkRefused catch (refused) {
       throw TeamLogMismatch(
           "${e.detail}; it forks from this phone's copy and is not followed: ${refused.reason}", e.cause);
@@ -506,6 +508,8 @@ Future<LocalTeamLog?> _followFork(
   String? ownUserId,
   List<String>? ownKeys,
   Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
+  TeamLogRemake? remake,
+  Set<String> withdrawn,
 ) async {
   final headSeq = head['seq'];
   if (headSeq is! int || headSeq < 0) return null;
@@ -532,14 +536,14 @@ Future<LocalTeamLog?> _followFork(
   }
   if (fork == 0 || fork == served.length || fork == local.records.length) return null;
   final TeamState team;
+  final List<int> missing;
   try {
-    // This phone sends no records of its own, so it withdrew none.
-    final (refusal, missing) = TeamLog.forkRefusal(
-        local.records.sublist(fork), served.sublist(fork), ownUserId, ownKeys, const {});
+    // [withdrawn]: the lost changes this phone made again below and the
+    // server refused (they are set aside).
+    final (refusal, lostOwn) = TeamLog.forkRefusal(
+        local.records.sublist(fork), served.sublist(fork), ownUserId, ownKeys, withdrawn);
     if (refusal != null) throw _ForkRefused(refusal);
-    // Nor does it make its own lost changes again: the fork waits until
-    // they are on the server's side.
-    if (missing.isNotEmpty) return null;
+    missing = lostOwn;
     team = log.replay(served);
   } on _ForkRefused {
     rethrow;
@@ -549,7 +553,58 @@ Future<LocalTeamLog?> _followFork(
   if (team.headSeq != headSeq || team.headHash != head['hash'] || TeamLog.adminPolicyRefusal(team) != null) {
     return null;
   }
+  if (missing.isEmpty) return LocalTeamLog(served, team);
+  if (ownUserId == null || remake == null) return null;
+  final bodies = [
+    for (final r in local.records.sublist(fork))
+      if (missing.contains(TeamLog.parseBody(r['body'], -1)['seq'])) TeamLog.parseBody(r['body'], -1),
+  ];
+  // Review 18c300f R16-M5 (desktop: _follow_fork queues them again): this
+  // account's lost changes go out again on the server's head; the phone made
+  // them, or nobody else holds them, and on 18c300f it waited for good.
+  if (bodies.any((body) => !TeamLog.remadeKinds.contains(body['type']))) return null;
+  var after = team;
+  final records = <Map<String, dynamic>>[];
+  String? setAside;
+  try {
+    for (final body in bodies) {
+      final data =
+          TeamLog.resolveChange(after, body['type'] as String, Map<String, dynamic>.from(body['data'] as Map));
+      if (data == null) continue;
+      final record = remake.sign(TeamLog.nextBody(after, body['type'] as String, ownUserId, data));
+      after = log.replay([record], after);
+      records.add(record);
+    }
+  } on TeamLogError catch (e) {
+    // As the desktop's queue: made together, set aside together.
+    setAside = '$e';
+  }
+  if (setAside == null && records.isNotEmpty) {
+    switch (await remake.append(records)) {
+      case RemakeOutcome.taken:
+        return LocalTeamLog([...served, ...records], after);
+      case RemakeOutcome.moved:
+        return null; // another device appended meanwhile: the next pull compares again
+      case RemakeOutcome.refused:
+        setAside = 'the server refused them';
+    }
+  }
+  if (setAside != null) await remake.setAside(bodies, setAside);
   return LocalTeamLog(served, team);
+}
+
+/// What became of the records a phone made again (R16-M5).
+enum RemakeOutcome { taken, moved, refused }
+
+/// How a phone makes this account's lost team changes again (R16-M5):
+/// [sign] signs a body with the account's key, [append] posts the records
+/// onto the server's head, [setAside] reports the changes the log or the
+/// server no longer takes (the desktop's 'sezam team-log queue').
+class TeamLogRemake {
+  TeamLogRemake({required this.sign, required this.append, required this.setAside});
+  final Map<String, dynamic> Function(Map<String, Object?> body) sign;
+  final Future<RemakeOutcome> Function(List<Map<String, dynamic>> records) append;
+  final Future<void> Function(List<Map<String, dynamic>> changes, String reason) setAside;
 }
 
 class _ForkRefused implements Exception {
@@ -563,6 +618,7 @@ Future<LocalTeamLog> _catchUpTeamLog(
   LocalTeamLog? local,
   Map<String, dynamic>? pin,
   Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
+  Set<String> withdrawn,
 ) async {
   Never fail(String detail, String cause) => throw TeamLogMismatch(detail, cause);
   final localSeq = local?.team.headSeq ?? -1;
@@ -604,6 +660,12 @@ Future<LocalTeamLog> _catchUpTeamLog(
   }
   if (team.genesisHash != head['genesis_hash']) {
     fail('genesis differs from the head it announced', 'head_genesis');
+  }
+  for (var seq = localSeq + 1; withdrawn.isNotEmpty && seq < records.length; seq++) {
+    // R16-M5 (R16-H1 for what the phone now sends): the server kept a record it refused.
+    if (withdrawn.contains(TeamLog.recordHash(records[seq]))) {
+      fail('holds record $seq, which this phone withdrew (the server refused it)', 'differs');
+    }
   }
   // TL7: the server refuses such an append; a head with it is not followed.
   final refusal = TeamLog.adminPolicyRefusal(team);

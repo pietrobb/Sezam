@@ -32,7 +32,7 @@ import json
 from pathlib import Path
 
 from sezam import teamlog as tl
-from tests.team_log_vectors import A, B, B2, C, D, E, F1, F2, K, Log
+from tests.team_log_vectors import R1, W1, A, Actor, B, B2, C, D, E, F1, F2, K, Log
 
 VECTORS_PATH = Path(__file__).parent / "vectors" / "team_log_fork.json"
 
@@ -63,7 +63,12 @@ def _hash(record: dict) -> str:
 def build_cases() -> list[dict]:
     cases = []
 
-    def case(name, lost, theirs, *, user=A, held=A, withdrawn=(), refusal=None, missing=()):
+    def case(name, lost, theirs, *, user=A, held=A, withdrawn=(), refusal=None, missing=(), remade=()):
+        expect = {"refusal": refusal, "missing": list(missing)}
+        if refusal is None:
+            # R16-M5: each missing change as the device makes it again on the
+            # server's head ([kind, data]), or the code it is refused with.
+            expect["remade"] = remade if isinstance(remade, str) else [list(c) for c in remade]
         cases.append({
             "name": name,
             "user_id": None if user is None else user.uid,
@@ -71,8 +76,14 @@ def build_cases() -> list[dict]:
             "withdrawn": list(withdrawn),
             "lost": lost,
             "theirs": theirs,
-            "expect": {"refusal": refusal, "missing": list(missing)},
+            "expect": expect,
         })
+
+    def member_data(who: Actor) -> dict:
+        return {"user_id": who.uid, "signing_pk": who.spk, "encryption_pk": who.epk, "role": "member"}
+
+    key_f1 = ("folder.key", {"folder": F1, "gen": 0, "dek_id": K[1], "prev_dek_id": None})
+    access_b = ("access.set", {"folder": F1, "user_id": B.uid, "level": "write"})
 
     removal = _from(_base().remove(B))
     handed = _from(_handover(_base()))
@@ -88,7 +99,8 @@ def build_cases() -> list[dict]:
     rotated = _from(_base().rotate(A, E))
     case("rotation_to_keys_nobody_holds", removal, rotated,
          refusal="its record 3 names keys this device does not hold")
-    case("rotation_to_the_keys_held", removal, rotated, held=E, missing=[3])
+    case("rotation_to_the_keys_held", removal, rotated, held=E, missing=[3],
+         remade=[("member.remove", {"user_id": B.uid})])
     case("rotation_that_was_lost", rotated, _from(_other(_base()).rotate(A, E)), held=E)
     case("handover_that_was_lost", handed, _from(_handover(_other(_base()))))
     # A readmit (member.remove + member.add, one append) the server serves
@@ -96,13 +108,24 @@ def build_cases() -> list[dict]:
     readmit = _from(_base().remove(B).member(B2))
     case("readmit_split_removal_kept", readmit, _from(_other(_base()).remove(B)),
          refusal="it holds one half of the readmit at record 3")
-    case("readmit_neither_half", readmit, _from(_other(_base())), missing=[3, 4])
+    case("readmit_neither_half", readmit, _from(_other(_base())), missing=[3, 4],
+         remade=[("member.remove", {"user_id": B.uid}), ("member.add", member_data(B2))])
     case("readmit_whole", readmit, _from(_other(_base()).remove(B).member(B2)))
     # Goal #442: another device of this account put back a shorter copy.
     own = _from(_base().key(F1, 0, K[1], None).access(F1, B, "write"))
-    case("own_fork_shorter", own, _from(_other(_base())), missing=[3, 4])
+    case("own_fork_shorter", own, _from(_other(_base())), missing=[3, 4], remade=[key_f1, access_b])
     case("own_fork_again", own, _from(_other(_base()).key(F1, 0, K[1], None).access(F1, B, "write")))
-    case("own_fork_partly_again", own, _from(_other(_base()).key(F1, 0, K[1], None)), missing=[4])
+    case("own_fork_partly_again", own, _from(_other(_base()).key(F1, 0, K[1], None)), missing=[4],
+         remade=[access_b])
+    # R16-M5: what a browser made itself (an org recovery key and its KEK
+    # wrap) goes out again; a folder another device re-keyed meanwhile does not.
+    recovery = _from(_base().recovery(A, R1).wrap(A, W1))
+    case("own_fork_recovery_made_here", recovery, _from(_other(_base())), missing=[3, 4], remade=[
+        ("org.recovery", {"recovery_pk": R1}),
+        ("org.recovery.wrap", {"wrapped_kek": W1, "key_epoch": 0, "threshold": 2, "total_shares": 3}),
+    ])
+    case("own_fork_folder_keyed_elsewhere", _from(_base().key(F1, 0, K[1], None)),
+         _from(_base().key(F1, 0, K[3], None)), missing=[3], remade="folder_key_moved")
     # Review 18c300f capability finding 498: every lost change made again and
     # one more own record the server kept: a fork holds what was lost, not more.
     def again() -> Log:

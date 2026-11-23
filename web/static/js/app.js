@@ -8397,9 +8397,6 @@ async function followWebTeamLogFork(head, local, pin, _sodium) {
         return null;
     }
     if (verdict.refusal) return { refusal: verdict.refusal };
-    // This browser does not make its own lost changes again: the fork waits
-    // until they are on the server's side.
-    if (verdict.missing.length) return null;
     let team;
     try {
         team = TL.replay(served, _sodium);
@@ -8407,7 +8404,59 @@ async function followWebTeamLogFork(head, local, pin, _sodium) {
         return null;
     }
     if (team.headSeq !== head.seq || team.headHash !== head.hash || TL.adminPolicyRefusal(team)) return null;
-    console.warn(`Followed the server's team log from record ${fork}, which forks from this browser's copy`);
+    const followed = verdict.missing.length
+        ? await remakeWebLostTeamChanges(local.records.slice(fork), verdict.missing, served, team, _sodium)
+        : { records: served, team };
+    if (followed) console.warn(`Followed the server's team log from record ${fork}, which forks from this browser's copy`);
+    return followed;
+}
+
+/**
+ * Review 18c300f R16-M5 (desktop: _follow_fork queues them again): this
+ * account's lost team changes go out again on the server's head - this
+ * browser made them, or nobody else holds them; on 18c300f the fork waited
+ * for them for good. What the log or the server no longer takes is set aside
+ * in the ledger, with why (the desktop's 'sezam team-log queue'). Returns
+ * {records, team}, or null: the mismatch stands (another device appended
+ * meanwhile, or a change bound to the head it was signed on).
+ */
+async function remakeWebLostTeamChanges(lost, missing, served, team, _sodium) {
+    const TL = globalThis.SezamTeamLog;
+    if (!state.userId || !state.keypair?.signingSk) return null;
+    const bodies = lost.map(record => TL.parseBody(record.body, null)).filter(body => missing.includes(body.seq));
+    if (bodies.some(body => !TL.REMADE_KINDS.includes(body.type))) return null;
+    const records = [];
+    let after = team;
+    let reason = null;
+    try {
+        for (const body of bodies) {
+            const data = TL.resolveChange(after, body.type, body.data);
+            if (data === null) continue;
+            const record = TL.signRecord(TL.nextBody(after, body.type, state.userId, data), state.keypair.signingSk, _sodium);
+            after = TL.applyRecord(after, record, _sodium);
+            records.push(record);
+        }
+    } catch (err) {
+        if (!(err instanceof TL.TeamLogError)) throw err;
+        reason = err.message;  // as the desktop's queue: made together, set aside together
+    }
+    if (reason === null && records.length) {
+        try {
+            await sendWebTeamRecords(records, () => apiFetch('/api/team-log', { method: 'POST', body: { records } }),
+                                     _sodium);
+            return { records: [...served, ...records], team: after };
+        } catch (err) {
+            if (err.status === 409) return null;  // the head moved: the next pull compares again
+            if (!(Number.isInteger(err.status) && err.status >= 400 && err.status < 500)) throw err;
+            reason = 'the server refused them';
+        }
+    }
+    if (reason !== null) {
+        const ledger = await loadWebTeamLedger(_sodium);
+        ledger.setAside.push(...bodies.map(body => ({ type: body.type, data: body.data, reason })));
+        await saveWebTeamLedger(ledger, _sodium);
+        console.warn(`Set aside ${bodies.length} lost team change(s): ${reason}`);
+    }
     return { records: served, team };
 }
 
@@ -8423,7 +8472,7 @@ function webTeamLedgerAad() {
  * withdrawn record never puts it in this browser's log. Sealed under the KEK.
  */
 async function loadWebTeamLedger(_sodium) {
-    const empty = { sent: {}, withdrawn: new Set() };
+    const empty = { sent: {}, withdrawn: new Set(), setAside: [] };
     if (!state.kek || !state.userId) return empty;
     const stored = await idbKeysRequest('readonly', store => store.get(`team_ledger:${state.userId}`));
     if (!stored || !stored.encrypted_ledger) return empty;
@@ -8432,7 +8481,7 @@ async function loadWebTeamLedger(_sodium) {
         const nonceLen = _sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES;
         const parsed = JSON.parse(new TextDecoder().decode(_sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
             null, packed.slice(nonceLen), webTeamLedgerAad(), packed.slice(0, nonceLen), state.kek)));
-        return { sent: parsed.sent || {}, withdrawn: new Set(parsed.withdrawn || []) };
+        return { sent: parsed.sent || {}, withdrawn: new Set(parsed.withdrawn || []), setAside: parsed.set_aside || [] };
     } catch {
         return empty;
     }
@@ -8449,7 +8498,7 @@ async function saveWebTeamLedger(ledger, _sodium) {
     }
     const nonce = _sodium.randombytes_buf(_sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
     const ciphertext = _sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(new TextEncoder().encode(JSON.stringify({
-        sent: ledger.sent, withdrawn: [...ledger.withdrawn].sort(),
+        sent: ledger.sent, withdrawn: [...ledger.withdrawn].sort(), set_aside: ledger.setAside || [],
     })), webTeamLedgerAad(), null, nonce, state.kek);
     const packed = new Uint8Array(nonce.length + ciphertext.length);
     packed.set(nonce, 0);

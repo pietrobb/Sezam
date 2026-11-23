@@ -367,9 +367,12 @@ class TeamLogMixin:
         return state
 
     # A record of these kinds is queued again as the change it made; a
-    # genesis or member.keys is bound to the head it was signed on.
+    # genesis or member.keys is bound to the head it was signed on. R16-M5:
+    # the same kinds as the page and the phone (teamlog.js REMADE_KINDS,
+    # team_log.dart remadeKinds), org.recovery.wrap too.
     _REQUEUED_KINDS = frozenset({
         "member.add", "member.role", "member.remove", "access.set", "folder.key", "org.recovery",
+        "org.recovery.wrap",
     })
 
     def _follow_fork(self, local: teamlog.TeamState, server_head: dict):

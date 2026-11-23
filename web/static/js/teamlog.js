@@ -568,6 +568,48 @@ const SezamTeamLog = (() => {
     return { refusal: null, missing };
   }
 
+  // Review 18c300f R16-M5: the kinds of this account's lost changes a device
+  // makes again on the server's head (a genesis or member.keys is bound to the
+  // head it was signed on).
+  const REMADE_KINDS = ['member.add', 'member.role', 'member.remove', 'access.set', 'folder.key',
+                        'org.recovery', 'org.recovery.wrap'];
+
+  // The data a lost change is made again with on `state` (the desktop's
+  // resolve_change, src/sezam/vault/team_log_state.py), or null when the log
+  // has it already. A folder.key whose folder moved on to another key throws.
+  function resolveChange(state, kind, data) {
+    const member = own(state.members, data.user_id || '') ? state.members[data.user_id] : null;
+    const same = (a, b) => canonical(a) === canonical(b);
+    switch (kind) {
+      case 'member.add':
+        return member !== null && member.active && member.signingPk === data.signing_pk &&
+          member.encryptionPk === data.encryption_pk ? null : data;
+      case 'member.role':
+        return member !== null && member.role === data.role ? null : data;
+      case 'member.remove':
+        return member === null || !member.active ? null : data;
+      case 'access.set': {
+        const access = own(state.access, data.folder) ? state.access[data.folder] : {};
+        return (own(access, data.user_id) ? access[data.user_id] : null) === data.level ? null : data;
+      }
+      case 'folder.key': {
+        if (own(state.dekIndex, data.dek_id)) return null;
+        const current = currentKey(state, data.folder);
+        if (current !== data.prev_dek_id) {
+          throw new TeamLogError('folder_key_moved', state.headSeq + 1,
+            `folder ${data.folder} is at key ${current}, not ${data.prev_dek_id}`);
+        }
+        return { ...data, gen: own(state.folders, data.folder) ? state.folders[data.folder].length : 0 };
+      }
+      case 'org.recovery':
+        return Object.values(state.orgRecovery || {}).includes(data.recovery_pk) ? null : data;
+      case 'org.recovery.wrap':
+        return Object.values(state.orgRecoveryWrap || {}).some((wrap) => same(wrap, data)) ? null : data;
+      default:
+        throw new TeamLogError('not_remade', state.headSeq + 1, `a lost ${kind} is not made again`);
+    }
+  }
+
   function tombstoneRefusal(state, userId, storedDekId) {
     const found = storedDekId !== null && own(state.dekIndex, storedDekId) ? state.dekIndex[storedDekId] : null;
     if (found !== null && !mayWrite(state, found[0], userId)) return 'team log gives no write access here';
@@ -590,7 +632,7 @@ const SezamTeamLog = (() => {
     emptyState, stateToJson, applyRecord, replay, nextBody,
     isTeamFolder, currentKey, keyGeneration, isStale, maySeal, isAdmin, mayWrite, keyRecipients,
     mayHoldKey, envelopeValid, itemRefusal, tombstoneRefusal, moveRefusal, adminPolicyRefusal,
-    signingKeyRetired, changeKey, forkRefusal,
+    signingKeyRetired, changeKey, forkRefusal, REMADE_KINDS, resolveChange,
   };
 })();
 

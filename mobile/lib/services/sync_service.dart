@@ -2653,10 +2653,71 @@ class SyncService {
           return (jsonDecode(response.body) as Map<String, dynamic>)['head']
               as Map<String, dynamic>?;
         },
+        remake: _teamLogRemake(),
+        withdrawn: await _teamLogWithdrawn(),
       );
     } on TeamLogMismatch catch (e) {
       throw SyncIntegrityException('$e', teamLog: e);
     }
+  }
+
+  /// Review 18c300f R16-M5: this account's team changes a server restore
+  /// lost go out again, signed with the account's key, when the phone
+  /// follows the fork (on 18c300f it waited for them for good).
+  TeamLogRemake? _teamLogRemake() {
+    final secret = _vault.signingSecretKey;
+    if (secret == null) return null;
+    return TeamLogRemake(
+      sign: (body) =>
+          TeamLog.signRecord(body, (m) => _crypto.signChallenge(m, secret)),
+      append: (records) async {
+        final response = await _http.post(
+          Uri.parse('$_serverUrl/api/team-log'),
+          headers: _authHeaders(),
+          body: jsonEncode({'records': records}),
+        );
+        if (response.statusCode >= 400 && response.statusCode < 500) {
+          // Taken by none: a server that keeps them is not followed (R16-H1).
+          await _db.setSetting(
+            teamLogWithdrawnSetting,
+            jsonEncode([
+              ...await _teamLogWithdrawn(),
+              for (final r in records) TeamLog.recordHash(r),
+            ]),
+          );
+          return response.statusCode == 409
+              ? RemakeOutcome.moved
+              : RemakeOutcome.refused;
+        }
+        _checkResponse(response, 'team log');
+        return RemakeOutcome.taken;
+      },
+      // As the desktop's set-aside queue: kept, with why.
+      setAside: (changes, reason) async {
+        final stored = await _db.getSetting(teamLogSetAsideSetting);
+        await _db.setSetting(
+          teamLogSetAsideSetting,
+          jsonEncode([
+            if (stored != null) ...jsonDecode(stored) as List,
+            for (final change in changes)
+              {
+                'type': change['type'],
+                'data': change['data'],
+                'reason': reason,
+              },
+          ]),
+        );
+      },
+    );
+  }
+
+  static const teamLogSetAsideSetting = 'team_log_set_aside';
+  static const teamLogWithdrawnSetting = 'team_log_withdrawn';
+
+  /// Hashes of the records this phone sent and the server did not take.
+  Future<Set<String>> _teamLogWithdrawn() async {
+    final stored = await _db.getSetting(teamLogWithdrawnSetting);
+    return stored == null ? {} : {...(jsonDecode(stored) as List).cast<String>()};
   }
 
   /// Why this phone refuses the server's team log now (the pull's own
@@ -2740,6 +2801,7 @@ class SyncService {
       local: null,
       pin: pin,
       confirmedGenesis: genesis,
+      withdrawn: await _teamLogWithdrawn(),
       fetchPage: (since) async {
         final body = since == -1 ? first : await page(since);
         return [

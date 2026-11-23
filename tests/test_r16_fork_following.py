@@ -32,6 +32,7 @@ from sezam import teamlog as tl
 from sezam.vault.db import VaultDB
 from sezam.vault.sync_common import ServerError
 from sezam.vault.team_log_local import GENESIS_META, TeamLogMismatch, TeamLogMixin
+from sezam.vault.team_log_state import resolve_change
 from sezam.vault.team_migration import hand_over_admin
 from tests.team_log_fork_vectors import VECTORS_PATH, _base, build_vectors, dump
 from tests.team_log_vectors import A, B, D, F1, K
@@ -66,6 +67,42 @@ def test_the_python_core_gives_every_answer():
         got = tl.fork_refusal(case["lost"], case["theirs"], case["user_id"],
                               case["held_keys"], frozenset(case["withdrawn"]))
         assert list(got) == [case["expect"]["refusal"], case["expect"]["missing"]], case["name"]
+
+
+def _remade_cases() -> list[dict]:
+    return [c for c in VECTORS["cases"] if "remade" in c["expect"]]
+
+
+def test_the_python_core_makes_every_lost_change_again():
+    """R16-M5: each missing change as a device makes it again on the server's head."""
+    got = {}
+    for case in _remade_cases():
+        served = tl.replay(VECTORS["prefix"] + case["theirs"])
+        bodies = [tl.parse_body(r["body"]) for r in case["lost"]]
+        try:
+            got[case["name"]] = [[b["type"], d] for b in bodies if b["seq"] in case["expect"]["missing"]
+                                 for d in [resolve_change(served, b["type"], b["data"])] if d is not None]
+        except tl.TeamLogError as exc:
+            got[case["name"]] = exc.code
+    assert got == {c["name"]: c["expect"]["remade"] for c in _remade_cases()}
+
+
+@pytest.mark.skipif(node_problem() is not None, reason="node is needed for teamlog.js")
+def test_the_page_core_makes_every_lost_change_again():
+    got = _run_source(TEAMLOG_JS, """(async () => {
+        const TL = globalThis.SezamTeamLog;
+        const out = {};
+        for (const c of %s) {
+            const served = TL.replay(%s.concat(c.theirs), sodium);
+            const bodies = c.lost.map(r => TL.parseBody(r.body, null)).filter(b => c.expect.missing.includes(b.seq));
+            try {
+                out[c.name] = bodies.map(b => [b.type, TL.resolveChange(served, b.type, b.data)])
+                    .filter(([, d]) => d !== null);
+            } catch (err) { out[c.name] = err.code; }
+        }
+        return out;
+    })()""" % (json.dumps(_remade_cases()), json.dumps(VECTORS["prefix"])))
+    assert got == {c["name"]: c["expect"]["remade"] for c in _remade_cases()}
 
 
 @pytest.mark.skipif(node_problem() is not None, reason="node is needed for teamlog.js")
@@ -126,6 +163,71 @@ def test_the_page_never_takes_a_record_the_server_refused():
     script = WEB_LEDGER.replace("ME_SK", json.dumps((bytes(A.sk) + bytes(A.sk.verify_key)).hex()))
     result = _web_run(script, log)
     assert "which this browser withdrew" in result.get("error", ""), result
+
+
+# R16-M5: the browser makes this account's lost changes again on the server's
+# head (RECORDS is the prefix both sides hold).
+WEB_REMAKE = """
+    const store = new Map();
+    idbKeysRequest = async (mode, op) => op({
+        get: id => store.get(id), put: row => { store.set(row.id, row); },
+    });
+    state.kek = new Uint8Array(32).fill(7);
+    state.userId = ids.A;
+    state.keypair = { signingSk: hexToBytes(ME_SK) };
+    const c = CASE;
+    const held = RECORDS.concat(c.lost);
+    let serverRecords = RECORDS.concat(c.theirs);
+    const posted = [];
+    apiFetch = async (url, opts) => {
+        if (opts && opts.method === 'POST') {
+            if (REFUSE) { const err = new Error('400 refused'); err.status = 400; throw err; }
+            posted.push(...opts.body.records);
+            serverRecords = serverRecords.concat(opts.body.records);
+            return {};
+        }
+        const since = Number(/since=(-?\\d+)/.exec(url)[1]);
+        return { records: serverRecords.slice(since + 1, since + 3) };
+    };
+    try {
+        const served = serverRecords.length - 1;
+        const got = await syncWebTeamLog(head(serverRecords), { records: held, team: teamOf(held) }, null, sodium);
+        const ledger = await loadWebTeamLedger(sodium);
+        return {
+            followed: got.team.headSeq - served, server: serverRecords.length - 1 - served,
+            posted: posted.map(r => { const b = TL.parseBody(r.body, null); return [b.type, b.data, b.author]; }),
+            set_aside: ledger.setAside.map(x => [x.type, x.reason]),
+        };
+    } catch (err) { return { error: err.message }; }
+"""
+
+
+def _web_remake(name: str, refuse: bool = False) -> dict:
+    case = next(c for c in VECTORS["cases"] if c["name"] == name)
+    script = (WEB_REMAKE.replace("ME_SK", json.dumps((bytes(A.sk) + bytes(A.sk.verify_key)).hex()))
+              .replace("CASE", json.dumps(case)).replace("REFUSE", json.dumps(refuse)))
+    return _web_run(script, _base())
+
+
+@pytest.mark.skipif(node_problem() is not None, reason="node is needed for app.js")
+def test_the_page_makes_the_changes_it_lost_again():
+    """On 18c300f the page waited for them for good: 'differs' at every pull,
+    the team part of the vault refused while the personal tree went on."""
+    got = _web_remake("own_fork_recovery_made_here")
+    remade = VECTORS["cases"][[c["name"] for c in VECTORS["cases"]].index("own_fork_recovery_made_here")]
+    assert got == {"followed": 2, "server": 2, "set_aside": [],
+                   "posted": [[k, d, A.uid] for k, d in remade["expect"]["remade"]]}, got
+
+
+@pytest.mark.skipif(node_problem() is not None, reason="node is needed for app.js")
+def test_the_page_sets_aside_what_the_log_or_the_server_no_longer_takes():
+    moved = _web_remake("own_fork_folder_keyed_elsewhere")
+    assert moved["followed"] == 0 and moved["posted"] == [], moved
+    assert [k for k, _ in moved["set_aside"]] == ["folder.key"] and "folder_key_moved" in moved["set_aside"][0][1]
+    refused = _web_remake("own_fork_shorter", refuse=True)
+    assert refused == {"followed": 0, "server": 0, "posted": [],
+                       "set_aside": [["folder.key", "the server refused them"],
+                                     ["access.set", "the server refused them"]]}, refused
 
 
 # ── The desktop's follower over a vault database ──────────────────────

@@ -151,6 +151,14 @@
     "refusal": null,
     "missing": [
      3
+    ],
+    "remade": [
+     [
+      "member.remove",
+      {
+       "user_id": "01JM0000000000000000000002"
+      }
+     ]
     ]
    }
   },
@@ -180,7 +188,8 @@
    ],
    "expect": {
     "refusal": null,
-    "missing": []
+    "missing": [],
+    "remade": []
    }
   },
   {
@@ -217,7 +226,8 @@
    ],
    "expect": {
     "refusal": null,
-    "missing": []
+    "missing": [],
+    "remade": []
    }
   },
   {
@@ -282,6 +292,23 @@
     "missing": [
      3,
      4
+    ],
+    "remade": [
+     [
+      "member.remove",
+      {
+       "user_id": "01JM0000000000000000000002"
+      }
+     ],
+     [
+      "member.add",
+      {
+       "user_id": "01JM0000000000000000000002",
+       "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7",
+       "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+       "role": "member"
+      }
+     ]
     ]
    }
   },
@@ -319,7 +346,8 @@
    ],
    "expect": {
     "refusal": null,
-    "missing": []
+    "missing": [],
+    "remade": []
    }
   },
   {
@@ -351,6 +379,25 @@
     "missing": [
      3,
      4
+    ],
+    "remade": [
+     [
+      "folder.key",
+      {
+       "folder": "01JF0000000000000000000001",
+       "gen": 0,
+       "dek_id": "01JD0000000000000000000001",
+       "prev_dek_id": null
+      }
+     ],
+     [
+      "access.set",
+      {
+       "folder": "01JF0000000000000000000001",
+       "user_id": "01JM0000000000000000000002",
+       "level": "write"
+      }
+     ]
     ]
    }
   },
@@ -388,7 +435,8 @@
    ],
    "expect": {
     "refusal": null,
-    "missing": []
+    "missing": [],
+    "remade": []
    }
   },
   {
@@ -423,7 +471,94 @@
     "refusal": null,
     "missing": [
      4
+    ],
+    "remade": [
+     [
+      "access.set",
+      {
+       "folder": "01JF0000000000000000000001",
+       "user_id": "01JM0000000000000000000002",
+       "level": "write"
+      }
+     ]
     ]
+   }
+  },
+  {
+   "name": "own_fork_recovery_made_here",
+   "user_id": "01JM0000000000000000000001",
+   "held_keys": [
+    "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70",
+    "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934"
+   ],
+   "withdrawn": [],
+   "lost": [
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"recovery_pk\":\"89976880c9dd37d24a4ccddd8223afbd6c3d6f31db78ab38ec649ddfbb69b0f6\"},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"org.recovery\",\"v\":2}",
+     "sig": "3879261f01caad19203483add4bd4699d582f6df2535c518376103d1fac6203b56ec18339de49b5d57412ce637316edf679ec045c5e71ca4aebe55144214a302"
+    },
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"key_epoch\":0,\"threshold\":2,\"total_shares\":3,\"wrapped_kek\":\"adae7f3a56c92fa51bfd23ff9da0c82be8b6457f13406341d7f047b92b684b7eadae7f3a56c92fa51bfd23ff9da0c82be8b6457f13406341d7f047b92b684b7eadae7f3a56c92fa5\"},\"prev\":\"0c269bdf11e48872a526fdbbd8c845be5c223c75e21ccfef040663641fe3495f\",\"seq\":4,\"type\":\"org.recovery.wrap\",\"v\":2}",
+     "sig": "1bb50d24dcac2030ab60d92e39749db47290754ee0b79c6192b004e036d45d7641ead031f9db4db24755a39b830f4384b057384eff1ae86ecad93b9a70df6103"
+    }
+   ],
+   "theirs": [
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+     "sig": "6324b8b9e3a0b8b1777046b68d9bce8b177c9d0e28b3491fd5ae0f9ae1311cfc46abdc8b71a593c1b6f55e08c6d3e495fdb45bb3bbdca52954a27341468e5202"
+    }
+   ],
+   "expect": {
+    "refusal": null,
+    "missing": [
+     3,
+     4
+    ],
+    "remade": [
+     [
+      "org.recovery",
+      {
+       "recovery_pk": "89976880c9dd37d24a4ccddd8223afbd6c3d6f31db78ab38ec649ddfbb69b0f6"
+      }
+     ],
+     [
+      "org.recovery.wrap",
+      {
+       "wrapped_kek": "adae7f3a56c92fa51bfd23ff9da0c82be8b6457f13406341d7f047b92b684b7eadae7f3a56c92fa51bfd23ff9da0c82be8b6457f13406341d7f047b92b684b7eadae7f3a56c92fa5",
+       "key_epoch": 0,
+       "threshold": 2,
+       "total_shares": 3
+      }
+     ]
+    ]
+   }
+  },
+  {
+   "name": "own_fork_folder_keyed_elsewhere",
+   "user_id": "01JM0000000000000000000001",
+   "held_keys": [
+    "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70",
+    "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934"
+   ],
+   "withdrawn": [],
+   "lost": [
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+     "sig": "a58d248e932d82c59bf0db328c2f7a663a715d03c91f034bde3e25234ddab6d93c5ec9bc53f838044e408e4b918803aa46e0a9c2ac759e23a4d135922d9a7d03"
+    }
+   ],
+   "theirs": [
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000003\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+     "sig": "e0aacef4e2c3dfbb79bcb42bd94575fb3032bb960c87d238d476fa71b8b5a27872c9d970168ef9f1b5d5c6952b16946dca928c0a97bb06f643ca7c6fd594890b"
+    }
+   ],
+   "expect": {
+    "refusal": null,
+    "missing": [
+     3
+    ],
+    "remade": "folder_key_moved"
    }
   },
   {
@@ -616,7 +751,8 @@
    ],
    "expect": {
     "refusal": null,
-    "missing": []
+    "missing": [],
+    "remade": []
    }
   },
   {
@@ -657,7 +793,8 @@
    ],
    "expect": {
     "refusal": null,
-    "missing": []
+    "missing": [],
+    "remade": []
    }
   },
   {

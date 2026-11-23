@@ -793,6 +793,51 @@ class TeamLog {
     return (null, missing);
   }
 
+  /// Review 18c300f R16-M5: the kinds of this account's lost changes a
+  /// device makes again on the server's head (a genesis or member.keys is
+  /// bound to the head it was signed on).
+  static const remadeKinds = [
+    'member.add', 'member.role', 'member.remove', 'access.set', 'folder.key', 'org.recovery', 'org.recovery.wrap',
+  ];
+
+  /// The data a lost change is made again with on [s] (the desktop's
+  /// resolve_change, src/sezam/vault/team_log_state.py), or null when the
+  /// log has it already. A folder.key whose folder moved on to another key
+  /// throws.
+  static Map<String, dynamic>? resolveChange(TeamState s, String kind, Map<String, dynamic> data) {
+    final member = s.members[data['user_id'] ?? ''];
+    switch (kind) {
+      case 'member.add':
+        return member != null &&
+                member.active &&
+                member.signingPk == data['signing_pk'] &&
+                member.encryptionPk == data['encryption_pk']
+            ? null
+            : data;
+      case 'member.role':
+        return member != null && member.role == data['role'] ? null : data;
+      case 'member.remove':
+        return member == null || !member.active ? null : data;
+      case 'access.set':
+        return s.access[data['folder']]?[data['user_id']] == data['level'] ? null : data;
+      case 'folder.key':
+        if (s.dekIndex.containsKey(data['dek_id'])) return null;
+        final current = currentKey(s, data['folder'] as String);
+        if (current != data['prev_dek_id']) {
+          throw TeamLogError('folder_key_moved', s.headSeq + 1,
+              "folder ${data['folder']} is at key $current, not ${data['prev_dek_id']}");
+        }
+        return {...data, 'gen': s.folders[data['folder']]?.length ?? 0};
+      case 'org.recovery':
+        return s.orgRecovery.values.contains(data['recovery_pk']) ? null : data;
+      case 'org.recovery.wrap':
+        final wanted = canonical(data);
+        return s.orgRecoveryWrap.values.any((wrap) => canonical(wrap) == wanted) ? null : data;
+      default:
+        throw TeamLogError('not_remade', s.headSeq + 1, 'a lost $kind is not made again');
+    }
+  }
+
   /// A deletion of an object sealed with a team key needs write access there.
   static String? tombstoneRefusal(TeamState s, String userId, String? storedDekId) {
     final found = storedDekId == null ? null : s.dekIndex[storedDekId];
