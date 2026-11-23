@@ -22,6 +22,7 @@ from tests.test_integration_client_server import PASSWORD
 from tests.test_integration_client_server import server  # noqa: F401  (fixture)
 from tests.test_review7_ai_switch_replay_h6 import _copy_rows, _write_rows
 from tests.test_review13_ai_switch_anchor import (
+    _ai_off_elsewhere,
     _allowed,
     _broker,
     _stop,
@@ -51,6 +52,28 @@ def test_dropping_every_anchor_row_does_not_skip_the_check(laptop):  # noqa: F81
     assert not ai_access.read_state(laptop).enabled  # ... and the 'on' is off
     second = _broker(laptop)
     assert _refused(second) == "ai_disabled"
+    _stop(second)
+
+
+def test_an_on_copied_before_the_home_existed_does_not_come_back(laptop):  # noqa: F811
+    """Capability review 501: the first broker made the anchor home, so the
+    'on' rows of a vault already on a server named no home until then, and
+    a copy of them came back once the home rows were deleted. Connecting
+    seals the home now: the earliest copy on a server names it."""
+    assert laptop.db.get_meta(ai_access.ANCHOR_HOME_KEY) is not None
+    early = _copy_rows(laptop)
+    first = _broker(laptop)
+    assert _allowed(first)
+    _ai_off_elsewhere(laptop)
+    first.remote_policy.poll_once()
+    _stop(first)
+    _write_rows(laptop, early)
+    for key in DROPPED:
+        _delete_meta(laptop, key)
+    _reopen(laptop)
+    assert not ai_access.read_state(laptop).enabled
+    second = _broker(laptop)
+    assert _refused(second) in ("ai_disabled", "ai_anchor_unverified")
     _stop(second)
 
 

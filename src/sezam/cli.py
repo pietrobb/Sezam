@@ -25,6 +25,7 @@ from .crypto.kdf import benchmark_argon2
 from .password import estimate_strength, generate_passphrase, generate_password
 from .securefile import csv_escape, private_output
 from .usernames import normalize_username
+from .vault import ai_access
 from .vault.crud import Vault, require_usable_password
 
 logger = logging.getLogger(__name__)
@@ -434,7 +435,7 @@ def _server_register_and_upload(
     # encrypted_keypair is AAD-bound to user_id: re-wrap it for the server id
     # before uploading, so this and every other client can still open it.
     vault.rebind_server_identity(server_user_id)
-    vault.db.set_meta("server_url", server_url.rstrip("/"))
+    ai_access.name_server(vault, server_url.rstrip("/"))
     if is_bootstrap:
         # The admin account now exists without key material. If the upload
         # below fails, the next connect finishes it (_finish_bootstrap_upload).
@@ -621,7 +622,7 @@ def _server_connect_flow(
                         vault.rebind_server_identity(
                             recover_resp.get("user_id", ""), server_keypair
                         )
-                        vault.db.set_meta("server_url", server_url)
+                        ai_access.name_server(vault, server_url)
 
                         from .vault.sync_client import SyncClient
                         user_id = vault.db.get_meta("user_id")
@@ -670,7 +671,7 @@ def _server_connect_flow(
             # _server_register_and_upload handles polling for approval
 
     # Save server URL to vault_meta (may already be set by helper functions)
-    vault.db.set_meta("server_url", server_url)
+    ai_access.name_server(vault, server_url)
     _org_recovery_after_connect(vault, password)
 
 

@@ -295,6 +295,18 @@ def anchor_home(vault: "Vault") -> AnchorHome | None:
         return home
 
 
+def name_server(vault: "Vault", server_url: str) -> None:
+    """The vault now syncs with ``server_url``; its anchor home is sealed in
+    the same step. Capability review 501: made lazily by the first broker,
+    the home left the 'on' sealed without one valid until then, and a copy
+    of those rows taken meanwhile came back once the home rows were deleted."""
+    db = vault.db
+    with oplock.exclusive(db.path):
+        db.set_meta("server_url", server_url)
+        if _vault_kek(vault) is not None:
+            anchor_home(vault)
+
+
 def rehome_anchor(vault: "Vault") -> None:
     """'sezam ai on' (fresh password): the anchor moves to the server the
     vault now syncs with, keeping its id (a server move, not an agent). On a

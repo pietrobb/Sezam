@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from .background import track as track_worker
 from ..usernames import normalize_username
+from ..vault import ai_access
 from .styles import COLORS
 
 if TYPE_CHECKING:
@@ -178,7 +179,7 @@ class ServerConnectWorker(QThread):
         # fails, the next connect finishes it instead of getting stuck.
         from ..vault import pending_states
 
-        self._vault.db.set_meta("server_url", self._server_url)
+        ai_access.name_server(self._vault, self._server_url)
         pending_states.mark_bootstrap_upload_pending(self._vault.db, True)
 
         # Upload keypair
@@ -264,7 +265,7 @@ class ServerConnectWorker(QThread):
                         self._vault.rebind_server_identity(
                             recover_resp.get("user_id", ""), server_keypair
                         )
-                        self._vault.db.set_meta("server_url", self._server_url)
+                        ai_access.name_server(self._vault, self._server_url)
 
                         self.status_update.emit("Stiahnutie dat zo servera...")
                         from ..vault.sync_client import SyncClient
@@ -343,7 +344,7 @@ class ServerConnectWorker(QThread):
         # Upload keypair
         self.status_update.emit("Nahravanie klucov...")
         self._upload_keypair(onboarding_token)
-        self._vault.db.set_meta("server_url", self._server_url)
+        ai_access.name_server(self._vault, self._server_url)
 
         # Poll for admin approval
         self.status_update.emit("Cakam na schvalenie administratorom...")

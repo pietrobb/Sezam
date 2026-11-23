@@ -326,6 +326,7 @@ def _raw_connections(fn):
 LOCK_SITES = {
     ("sezam/cli.py", "abandon_rekey", "oplock.exclusive"),
     ("sezam/vault/ai_access.py", "anchor_home", "oplock.exclusive"),
+    ("sezam/vault/ai_access.py", "name_server", "oplock.exclusive"),
     ("sezam/vault/ai_access.py", "raise_floor", "oplock.exclusive"),
     ("sezam/vault/ai_access.py", "rehome_anchor", "oplock.exclusive"),
     ("sezam/vault/crud.py", "Vault.adopt_account_kek", "@oplock.held"),
