@@ -46,10 +46,21 @@ class SyncStateMixin:
 
     def _held_entries(self) -> set[tuple[str, int, str]]:
         """(id, version, payload_hash) of every server copy this device holds
-        (goal #443: what it may vouch for under the account's current key)."""
+        (goal #443: what it may vouch for under the account's current key).
+
+        A queued row is its server copy only when a conflict keeps one; a
+        version this device made and has not sent is none (R16-Z: a voucher of
+        an unsent tombstone let a retired key sign that version live)."""
+        unsent = {
+            row["object_id"] for row in self._db.fetchall(
+                "SELECT object_id FROM outbox WHERE kind = 'write' AND object_id NOT IN "
+                "(SELECT object_id FROM sync_conflicts)"
+            )
+        }
         return {
             (obj_id, version, hashlib.sha256(payload).hexdigest())
             for obj_id, version, payload in self._local_objects()
+            if obj_id not in unsent
         }
 
     def _local_objects(self) -> list[tuple[str, int, bytes]]:

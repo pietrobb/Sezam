@@ -672,10 +672,15 @@ class SyncService {
   }
 
   /// keyVoucherKey of every version this phone holds as the server copy (it
-  /// verified them): a queued row's base and the row itself.
+  /// verified them): a queued row's base, and the row itself only when
+  /// nothing is queued for it. A version this phone made and has not sent is
+  /// no server copy (R16-Z, desktop: _held_entries): a voucher of an unsent
+  /// tombstone let a retired key sign that version live.
   static Set<String> heldVoucherKeys(List<Map<String, dynamic>> rows) => {
     for (final row in rows) ...[
-      if (row['payload_hash'] is String && row['version'] is int)
+      if (row['queued'] != 1 &&
+          row['payload_hash'] is String &&
+          row['version'] is int)
         keyVoucherKey(
           row['id'] as String,
           row['version'] as int,
