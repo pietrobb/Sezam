@@ -3177,7 +3177,11 @@ class TeamLogMachine(SyncMachine):
                 self.log.append(f"{self.members[user_id].name}: waits for {sibling}'s identity rotation, {cause}")
                 self.waiting.add(user_id)
                 return
-            if not (isinstance(cause, TeamLogMismatch) and cause.cause == "went_back"):
+            # R16-H1: a fork that left out a change it saw is followed once the
+            # change's author makes it again (deep stateful run on c6d3dff):
+            # it waits as for lost records; teardown checks it ends.
+            author_remakes = "once its author makes that change again" in str(cause)
+            if not (isinstance(cause, TeamLogMismatch) and (cause.cause == "went_back" or author_remakes)):
                 raise
             coverage_event("member waits for the lost team log records")
             self.log.append(f"{self.members[user_id].name}: waits, {cause}")
@@ -3606,6 +3610,10 @@ class TeamLogMachine(SyncMachine):
         find the log still empty)."""
         if not self._server_log():
             return
+        # Taken from the server as by a restore: until it syncs, a device may
+        # hold its own account's fork of them (deep stateful run on c6d3dff).
+        self.lost_by_restore = getattr(self, "lost_by_restore", set()) | {
+            teamlog.record_hash({"body": r["body"], "sig": r["sig"]}) for r in self.db._storage["team_log"]}
         self.db._storage["team_log"] = []
         self.log.append("server: team log lost")
         if race is not None and self._member_desktops():
@@ -3780,6 +3788,12 @@ class TeamLogMachine(SyncMachine):
                             for r in list(rows[fork:]) + records[fork:])):
                 coverage_event("a device holds its own account's fork until it syncs")
                 continue
+            if not settled and fork and set(local[fork:]) <= getattr(self, "lost_by_restore", set()):
+                # Records of the true log the server lost, pulled before the
+                # loss: held until their author makes them again (R16-H1,
+                # deep stateful run on c6d3dff); settled, none.
+                coverage_event("a device holds records the server lost until their author remakes them")
+                continue
             assert local[:n] == server[:n], (
                 f"{name}'s team log forks from the server's at record "
                 f"{next(i for i in range(n) if local[i] != server[i])}\n" + self._trace())
@@ -3805,7 +3819,15 @@ class TeamLogMachine(SyncMachine):
         for _name, vault in self._log_vaults():
             rows = [{"body": r["body"], "sig": r["sig"]}
                     for r in vault.db.fetchall("SELECT body, sig FROM team_log ORDER BY seq")]
-            if len(rows) > len(records) and [teamlog.record_hash(r) for r in rows[:len(records)]] == server:
+            hashes = [teamlog.record_hash(r) for r in rows]
+            if len(rows) > len(records) and hashes[:len(records)] == server:
+                ahead.append(teamlog.replay(rows))
+                continue
+            # Or forks from it with records the server lost only (deep stateful
+            # run on c6d3dff: the log lost, another device of the account
+            # wrote on what it put back); that device makes them again.
+            fork = next((i for i in range(min(len(hashes), len(server))) if hashes[i] != server[i]), None)
+            if fork and set(hashes[fork:]) <= getattr(self, "lost_by_restore", set()):
                 ahead.append(teamlog.replay(rows))
         for obj in self.db._storage.get("vault_objects", []):
             target = obj.get("target_user_id")
