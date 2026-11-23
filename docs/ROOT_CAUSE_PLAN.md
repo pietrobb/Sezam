@@ -146,6 +146,14 @@ nálezu sa začína otázkou, ktorý invariant porušuje. Ak taký nie je, dopln
     (aj cez surové spojenie). Operácie s účtom (`outbox.LOCKED`, pending
     stavy) navyše vyžadujú, aby oplock držal volajúci počas celej operácie
     (`oplock.require` nepočíta zámok, ktorý si `VaultDB` vzal sám).
+  - Dva zámky (R16-M3): sync zámok (`sezam.db.sync`) drží volajúci operácie
+    s účtom (push, pull, zmena kľúčov, tímový denník) celú dobu; zápisový
+    zámok (`sezam.db.write`) berie `VaultDB` pre každý zápis a úprava
+    (`@oplock.writes`) na svoje čítanie a zápis. Držiteľ sync zámku pustí
+    zápisový zámok len počas sieťovej požiadavky mimo transakcie
+    (`oplock.network`), takže zápisy iných procesov nečakajú na sieť.
+    Poradie: sync pred zápisovým; vlákno so samotným zápisovým zámkom na
+    sync zámok nečaká (inak deadlock).
   - Jediná výnimka: AI kill switch (`VaultDB.brake`, kľúče `BRAKE_KEYS`) sa
     zapíše bez čakania na sync; jeho audit záznam na zámok čaká.
   - `tests/test_inv6_every_writer_locked.py` drží súpis všetkých miest so

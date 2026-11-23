@@ -1104,7 +1104,7 @@ class Vault:
 
         return sorted(results, key=lambda x: x["name"].lower())
 
-    @oplock.held  # R16-M1: the version read is the one replaced (a pull waits)
+    @oplock.writes  # R16-M1: the version read is the one replaced (a pull's apply waits)
     def rename_node(self, node_id: str, new_name: str) -> None:
         """Rename a folder node (re-encrypt meta with new name)."""
         self._require_unlocked()
@@ -1388,7 +1388,7 @@ class Vault:
             "remote_root": meta.remote_root,
         }
 
-    @oplock.held  # R16-M1: the version read is the one replaced (a pull waits)
+    @oplock.writes  # R16-M1: the version read is the one replaced (a pull's apply waits)
     def update_entry(
         self,
         entry_id: str,
@@ -1587,7 +1587,7 @@ class Vault:
             row = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (current,))
             current = row["parent_id"] if row else None
 
-    @oplock.held  # R16-M1: the version read is the one replaced (a pull waits)
+    @oplock.writes  # R16-M1: the version read is the one replaced (a pull's apply waits)
     def move_entry(self, entry_id: str, new_node_id: str) -> None:
         """Move an entry to a different folder with re-encryption.
 
@@ -1692,7 +1692,7 @@ class Vault:
             json.dumps({"target": entry_id, "from": old_node_id, "to": new_node_id}).encode(),
         )
 
-    @oplock.held  # R16-M1: the version read is the one replaced (a pull waits)
+    @oplock.writes  # R16-M1: the version read is the one replaced (a pull's apply waits)
     def move_node(self, node_id: str, new_parent_id: str) -> None:
         """Move a folder node to a new parent with re-encryption.
 

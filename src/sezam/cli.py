@@ -25,7 +25,7 @@ from .crypto.kdf import benchmark_argon2
 from .password import estimate_strength, generate_passphrase, generate_password
 from .securefile import csv_escape, private_output
 from .usernames import normalize_username
-from .vault import ai_access
+from .vault import ai_access, oplock
 from .vault.crud import Vault, require_usable_password
 
 logger = logging.getLogger(__name__)
@@ -340,7 +340,16 @@ def _unlock_vault_fresh(vault: Vault, prompt: str = "Master password (required f
     return password
 
 
-@click.group()
+class _SezamGroup(click.Group):
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except oplock.VaultBusy as exc:
+            # R16-M3: a message, not a traceback; nothing was written.
+            raise click.ClickException(str(exc)) from exc
+
+
+@click.group(cls=_SezamGroup)
 @click.version_option(version="0.1.0", prog_name="sezam")
 def main():
     """Sezam — Encrypted credential vault."""

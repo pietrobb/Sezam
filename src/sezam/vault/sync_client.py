@@ -1243,7 +1243,8 @@ class SyncClient(
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            # R16-M3: other processes' writes do not wait for this request.
+            with oplock.network(self._db), urllib.request.urlopen(req, timeout=30) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             error = ServerError(e.code, e.read().decode("utf-8", errors="replace"))

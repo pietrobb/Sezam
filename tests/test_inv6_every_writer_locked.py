@@ -301,10 +301,10 @@ def _own_calls(fn):
 
 
 def _lock_sites(fn):
-    sites = [f"@{_dotted(d)}" for d in fn.decorator_list if _dotted(d) == "oplock.held"]
+    sites = [f"@{_dotted(d)}" for d in fn.decorator_list if _dotted(d) in ("oplock.held", "oplock.writes")]
     sites += sorted({
         _dotted(call.func) for call in _own_calls(fn)
-        if _dotted(call.func) in {"oplock.exclusive", "oplock.require"}
+        if _dotted(call.func) in {"oplock.exclusive", "oplock.require", "oplock.network"}
     })
     return sites
 
@@ -332,14 +332,14 @@ LOCK_SITES = {
     ("sezam/vault/crud.py", "Vault.adopt_account_kek", "@oplock.held"),
     ("sezam/vault/crud.py", "Vault.change_password", "@oplock.held"),
     ("sezam/vault/crud.py", "Vault.grant_folder_access", "@oplock.held"),
-    ("sezam/vault/crud.py", "Vault.move_entry", "@oplock.held"),  # R16-M1
-    ("sezam/vault/crud.py", "Vault.move_node", "@oplock.held"),  # R16-M1
+    ("sezam/vault/crud.py", "Vault.move_entry", "@oplock.writes"),  # R16-M1
+    ("sezam/vault/crud.py", "Vault.move_node", "@oplock.writes"),  # R16-M1
     ("sezam/vault/crud.py", "Vault.org_recovery", "@oplock.held"),
-    ("sezam/vault/crud.py", "Vault.rename_node", "@oplock.held"),  # R16-M1
+    ("sezam/vault/crud.py", "Vault.rename_node", "@oplock.writes"),  # R16-M1
     ("sezam/vault/crud.py", "Vault.rekey_after_handover", "@oplock.held"),
     ("sezam/vault/crud.py", "Vault.rekey_after_revocation", "@oplock.held"),
     ("sezam/vault/crud.py", "Vault.setup_org_recovery", "@oplock.held"),
-    ("sezam/vault/crud.py", "Vault.update_entry", "@oplock.held"),  # R16-M1
+    ("sezam/vault/crud.py", "Vault.update_entry", "@oplock.writes"),  # R16-M1
     ("sezam/vault/db.py", "VaultDB._ordered", "oplock.exclusive"),
     ("sezam/vault/db.py", "VaultDB._settle_transaction", "oplock.exclusive"),
     ("sezam/vault/db.py", "VaultDB._upgrade_sync_columns", "oplock.exclusive"),
@@ -362,6 +362,8 @@ LOCK_SITES = {
     ("sezam/vault/sync_client.py", "SyncClient.adopt_rotated_key_material", "@oplock.held"),
     ("sezam/vault/sync_client.py", "SyncClient.finish_pending_change", "@oplock.held"),
     ("sezam/vault/sync_client.py", "SyncClient.register_org_recovery", "oplock.exclusive"),
+    # R16-M3: the one place a sync holder gives the write lock up (a request).
+    ("sezam/vault/sync_client.py", "SyncClient._request", "oplock.network"),
     ("sezam/vault/sync_pull.py", "PullMixin.pull", "@oplock.held"),
     ("sezam/vault/sync_push.py", "PushMixin.push", "@oplock.held"),
     ("sezam/vault/sync_rekey.py", "RekeyMixin.close_rekey_if_landed", "@oplock.held"),
@@ -372,8 +374,8 @@ LOCK_SITES = {
     ("sezam/vault/team_log_local.py", "TeamLogMixin.append_team_log", "@oplock.held"),
     ("sezam/vault/team_log_local.py", "TeamLogMixin.flush_team_log", "@oplock.held"),
     ("sezam/vault/team_log_local.py", "TeamLogMixin.queue_team_changes", "@oplock.held"),
-    ("sezam/vault/trash.py", "restore_entry", "@oplock.held"),  # R16-M1
-    ("sezam/vault/trash.py", "restore_node", "@oplock.held"),  # R16-M1
+    ("sezam/vault/trash.py", "restore_entry", "@oplock.writes"),  # R16-M1
+    ("sezam/vault/trash.py", "restore_node", "@oplock.writes"),  # R16-M1
 }
 
 # Every call on a connection that is not VaultDB.execute/executemany (which

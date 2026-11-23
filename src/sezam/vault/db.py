@@ -415,6 +415,10 @@ class VaultDB:
         finally:
             self._local.brake = depth
 
+    def in_own_transaction(self) -> bool:
+        """This thread has a transaction open (it keeps the write lock to its end)."""
+        return self._txn_owner == threading.get_ident()
+
     def _ordered(self, sql: str):
         """INV-6: the vault lock for a statement that writes, taken before
         the statement guard (the order every holder takes them in)."""
