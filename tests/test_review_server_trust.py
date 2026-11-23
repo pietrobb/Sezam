@@ -98,6 +98,8 @@ def test_web_verifies_the_same_certificate_chain():
         encoding="utf-8"
     )
     helpers = marker + src.split(marker, 1)[1].split("async function getUserSigningPks", 1)[0]
+    id_start = src.index("function idBytes26(")
+    helpers = src[id_start:src.index("\n}\n", id_start) + 3] + helpers
 
     oldest, middle, current, attacker = _key(), _key(), _key(), _key()
     candidates = [
