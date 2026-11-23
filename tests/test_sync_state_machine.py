@@ -1977,6 +1977,7 @@ class SyncMachine(RuleBasedStateMachine):
 
     def _web_do(self, action: str, label: str, **step) -> dict:
         step.setdefault("confirm", True)  # the user answers yes to the page's questions
+        refused_before = (self.web_view or {}).get("teamLogCause")
         result = self.web.do(action, **step)
         self.web_view = result["view"]
         self._web_accepted_restore(result)
@@ -1990,6 +1991,16 @@ class SyncMachine(RuleBasedStateMachine):
         if error and "retired by an identity rotation" in error and self._rotation_the_log_waits_for():
             coverage_event("the web page waits for a desktop's rotation the log names")
             self.log.append(f"W: waits for {self._rotation_the_log_waits_for()}'s identity rotation")
+        elif (error and error.startswith("TEAM LOG MISMATCH") and action in ("save_object", "delete_entry")
+              and refused_before and refused_before == self.web_view["teamLogCause"]):
+            # INV-7 (full run on b20ece6): the page refuses the team log (the
+            # server lost it and this browser holds no copy to put back), so a
+            # write outside the personal tree (the machine has none) names the
+            # refusal and its way out, and sends nothing; the settle proves the
+            # refusal ends once a device puts the log back.
+            coverage_event("the page refuses a team write while it refuses the team log")
+            assert not [i for call in result["calls"] for i in call.get("objects") or []], (
+                f"W: {label} sent objects while the page refuses the team log\n" + self._trace())
         elif error and not any(ok in error for ok in self.WEB_ERRORS):
             raise AssertionError(f"W: {label} failed: {error}\n" + self._trace())
         if not (self.web_view["token"] and self.web_view["unlocked"]):
