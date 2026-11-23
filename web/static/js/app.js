@@ -8407,7 +8407,18 @@ async function followWebTeamLogFork(head, local, pin, _sodium) {
     const followed = verdict.missing.length
         ? await remakeWebLostTeamChanges(local.records.slice(fork), verdict.missing, served, team, _sodium)
         : { records: served, team };
-    if (followed) console.warn(`Followed the server's team log from record ${fork}, which forks from this browser's copy`);
+    if (followed) {
+        // Capability finding 505 (desktop: _follow_fork): this account's
+        // records left behind are withdrawn - a server serving them again
+        // later is not followed (their changes went out again, or aside).
+        const abandoned = TL.forkAbandoned(local.records.slice(fork), state.userId || null, _sodium);
+        if (abandoned.length) {
+            const ledger = await loadWebTeamLedger(_sodium);
+            for (const hash of abandoned) { delete ledger.sent[hash]; ledger.withdrawn.add(hash); }
+            await saveWebTeamLedger(ledger, _sodium);
+        }
+        console.warn(`Followed the server's team log from record ${fork}, which forks from this browser's copy`);
+    }
     return followed;
 }
 
@@ -8468,7 +8479,8 @@ function webTeamLedgerAad() {
  * Review 18c300f R16-H1 (desktop: vault/team_log_withdrawn.py): the records
  * of this account this browser sent while the server has not taken them
  * (sent: hash -> [seq, prev]) and the ones it withdrew - the server answered
- * 4xx, or the log holds another record at that seq. A server that keeps a
+ * 4xx, the log holds another record at that seq, or it followed a fork
+ * without them (capability finding 505). A server that keeps a
  * withdrawn record never puts it in this browser's log. Sealed under the KEK.
  */
 async function loadWebTeamLedger(_sodium) {

@@ -417,6 +417,7 @@ Future<LocalTeamLog?> syncTeamLog({
   Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)? restore,
   TeamLogRemake? remake,
   Set<String> withdrawn = const {},
+  Future<void> Function(List<String> hashes)? withdraw,
 }) async {
   Never fail(String detail, String cause) => throw TeamLogMismatch(detail, cause);
   // Goal #440: a cause that offers to forget the pin only as far as the
@@ -482,7 +483,7 @@ Future<LocalTeamLog?> syncTeamLog({
     }
     final LocalTeamLog? followed;
     try {
-      followed = await _followFork(log, head, local, pin, ownUserId, ownKeys, fetchPage, remake, withdrawn);
+      followed = await _followFork(log, head, local, pin, ownUserId, ownKeys, fetchPage, remake, withdrawn, withdraw);
     } on _ForkRefused catch (refused) {
       throw TeamLogMismatch(
           "${e.detail}; it forks from this phone's copy and is not followed: ${refused.reason}", e.cause);
@@ -510,6 +511,7 @@ Future<LocalTeamLog?> _followFork(
   Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
   TeamLogRemake? remake,
   Set<String> withdrawn,
+  Future<void> Function(List<String> hashes)? withdraw,
 ) async {
   final headSeq = head['seq'];
   if (headSeq is! int || headSeq < 0) return null;
@@ -538,8 +540,8 @@ Future<LocalTeamLog?> _followFork(
   final TeamState team;
   final List<int> missing;
   try {
-    // [withdrawn]: the lost changes this phone made again below and the
-    // server refused (they are set aside).
+    // [withdrawn]: what this phone sent and the server refused, and this
+    // account's records a fork it followed went on without.
     final (refusal, lostOwn) = TeamLog.forkRefusal(
         local.records.sublist(fork), served.sublist(fork), ownUserId, ownKeys, withdrawn);
     if (refusal != null) throw _ForkRefused(refusal);
@@ -553,7 +555,19 @@ Future<LocalTeamLog?> _followFork(
   if (team.headSeq != headSeq || team.headHash != head['hash'] || TeamLog.adminPolicyRefusal(team) != null) {
     return null;
   }
-  if (missing.isEmpty) return LocalTeamLog(served, team);
+  // Capability finding 505 (desktop: _follow_fork): this account's records
+  // left behind are withdrawn - a server serving them again later is not
+  // followed (their changes went out again, or aside).
+  final abandoned = TeamLog.forkAbandoned(local.records.sublist(fork), ownUserId);
+  Future<LocalTeamLog> follow(LocalTeamLog followed) async {
+    if (abandoned.isNotEmpty) {
+      if (withdraw == null) throw StateError('a phone following a fork withdraws what it left behind');
+      await withdraw(abandoned);
+    }
+    return followed;
+  }
+
+  if (missing.isEmpty) return follow(LocalTeamLog(served, team));
   if (ownUserId == null || remake == null) return null;
   final bodies = [
     for (final r in local.records.sublist(fork))
@@ -582,7 +596,7 @@ Future<LocalTeamLog?> _followFork(
   if (setAside == null && records.isNotEmpty) {
     switch (await remake.append(records)) {
       case RemakeOutcome.taken:
-        return LocalTeamLog([...served, ...records], after);
+        return follow(LocalTeamLog([...served, ...records], after));
       case RemakeOutcome.moved:
         return null; // another device appended meanwhile: the next pull compares again
       case RemakeOutcome.refused:
@@ -590,7 +604,7 @@ Future<LocalTeamLog?> _followFork(
     }
   }
   if (setAside != null) await remake.setAside(bodies, setAside);
-  return LocalTeamLog(served, team);
+  return follow(LocalTeamLog(served, team));
 }
 
 /// What became of the records a phone made again (R16-M5).

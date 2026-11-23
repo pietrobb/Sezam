@@ -568,6 +568,15 @@ const SezamTeamLog = (() => {
     return { refusal: null, missing };
   }
 
+  // The hashes of this account's lost records a device goes on without when
+  // it follows a fork (src/sezam/teamlog.py fork_abandoned): withdrawn, so a
+  // server that serves them again later is refused (capability finding 505).
+  function forkAbandoned(lost, userId, sodium) {
+    if (userId === null) return [];
+    return lost.filter((record) => parseBody(record.body, null).author === userId)
+      .map((record) => recordHash(record, sodium));
+  }
+
   // Review 18c300f R16-M5: the kinds of this account's lost changes a device
   // makes again on the server's head (a genesis or member.keys is bound to the
   // head it was signed on).
@@ -632,7 +641,7 @@ const SezamTeamLog = (() => {
     emptyState, stateToJson, applyRecord, replay, nextBody,
     isTeamFolder, currentKey, keyGeneration, isStale, maySeal, isAdmin, mayWrite, keyRecipients,
     mayHoldKey, envelopeValid, itemRefusal, tombstoneRefusal, moveRefusal, adminPolicyRefusal,
-    signingKeyRetired, changeKey, forkRefusal, REMADE_KINDS, resolveChange,
+    signingKeyRetired, changeKey, forkRefusal, forkAbandoned, REMADE_KINDS, resolveChange,
   };
 })();
 

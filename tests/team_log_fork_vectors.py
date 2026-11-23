@@ -19,7 +19,9 @@ client: src/sezam/teamlog.py, web/static/js/teamlog.js, mobile team_log.dart):
   (its device makes it again there; until then nothing this device saw is
   dropped);
 * otherwise followed, with the seqs of this account's lost changes that are
-  not on the server's side, for the device to make again.
+  not on the server's side, for the device to make again, and the seqs of
+  this account's lost records it withdraws (fork_abandoned, capability
+  finding 505: a server that serves them again later is refused).
 
 Run ``python -m tests.team_log_fork_vectors`` to write the file;
 tests/test_r16_fork_following.py checks the builder still gives it byte for
@@ -63,12 +65,16 @@ def _hash(record: dict) -> str:
 def build_cases() -> list[dict]:
     cases = []
 
-    def case(name, lost, theirs, *, user=A, held=A, withdrawn=(), refusal=None, missing=(), remade=()):
+    def case(name, lost, theirs, *, user=A, held=A, withdrawn=(), refusal=None, missing=(), remade=(),
+             abandoned=()):
         expect = {"refusal": refusal, "missing": list(missing)}
         if refusal is None:
             # R16-M5: each missing change as the device makes it again on the
             # server's head ([kind, data]), or the code it is refused with.
             expect["remade"] = remade if isinstance(remade, str) else [list(c) for c in remade]
+            # Finding 505: the seqs of this account's lost records the device
+            # withdraws as it follows (fork_abandoned).
+            expect["abandoned"] = list(abandoned)
         cases.append({
             "name": name,
             "user_id": None if user is None else user.uid,
@@ -100,32 +106,39 @@ def build_cases() -> list[dict]:
     case("rotation_to_keys_nobody_holds", removal, rotated,
          refusal="its record 3 names keys this device does not hold")
     case("rotation_to_the_keys_held", removal, rotated, held=E, missing=[3],
-         remade=[("member.remove", {"user_id": B.uid})])
-    case("rotation_that_was_lost", rotated, _from(_other(_base()).rotate(A, E)), held=E)
-    case("handover_that_was_lost", handed, _from(_handover(_other(_base()))))
+         remade=[("member.remove", {"user_id": B.uid})], abandoned=[3])
+    case("rotation_that_was_lost", rotated, _from(_other(_base()).rotate(A, E)), held=E, abandoned=[3])
+    case("handover_that_was_lost", handed, _from(_handover(_other(_base()))), abandoned=[3, 4])
     # A readmit (member.remove + member.add, one append) the server serves
     # half of: Bob out for good. Neither half is made again whole.
     readmit = _from(_base().remove(B).member(B2))
     case("readmit_split_removal_kept", readmit, _from(_other(_base()).remove(B)),
          refusal="it holds one half of the readmit at record 3")
     case("readmit_neither_half", readmit, _from(_other(_base())), missing=[3, 4],
-         remade=[("member.remove", {"user_id": B.uid}), ("member.add", member_data(B2))])
-    case("readmit_whole", readmit, _from(_other(_base()).remove(B).member(B2)))
+         remade=[("member.remove", {"user_id": B.uid}), ("member.add", member_data(B2))], abandoned=[3, 4])
+    case("readmit_whole", readmit, _from(_other(_base()).remove(B).member(B2)), abandoned=[3, 4])
     # Goal #442: another device of this account put back a shorter copy.
     own = _from(_base().key(F1, 0, K[1], None).access(F1, B, "write"))
-    case("own_fork_shorter", own, _from(_other(_base())), missing=[3, 4], remade=[key_f1, access_b])
-    case("own_fork_again", own, _from(_other(_base()).key(F1, 0, K[1], None).access(F1, B, "write")))
+    shorter = _from(_other(_base()))
+    case("own_fork_shorter", own, shorter, missing=[3, 4], remade=[key_f1, access_b], abandoned=[3, 4])
+    case("own_fork_again", own, _from(_other(_base()).key(F1, 0, K[1], None).access(F1, B, "write")),
+         abandoned=[3, 4])
     case("own_fork_partly_again", own, _from(_other(_base()).key(F1, 0, K[1], None)), missing=[4],
-         remade=[access_b])
+         remade=[access_b], abandoned=[3, 4])
+    # Capability finding 505: the device followed the shorter copy, withdrew
+    # its records 3 and 4, and set their changes aside (the server refused
+    # them made again); a server that serves the originals again is refused.
+    case("own_fork_original_returns_after_set_aside", shorter, own, withdrawn=[_hash(r) for r in own],
+         refusal="its record 3 is one this device withdrew")
     # R16-M5: what a browser made itself (an org recovery key and its KEK
     # wrap) goes out again; a folder another device re-keyed meanwhile does not.
     recovery = _from(_base().recovery(A, R1).wrap(A, W1))
     case("own_fork_recovery_made_here", recovery, _from(_other(_base())), missing=[3, 4], remade=[
         ("org.recovery", {"recovery_pk": R1}),
         ("org.recovery.wrap", {"wrapped_kek": W1, "key_epoch": 0, "threshold": 2, "total_shares": 3}),
-    ])
+    ], abandoned=[3, 4])
     case("own_fork_folder_keyed_elsewhere", _from(_base().key(F1, 0, K[1], None)),
-         _from(_base().key(F1, 0, K[3], None)), missing=[3], remade="folder_key_moved")
+         _from(_base().key(F1, 0, K[3], None)), missing=[3], remade="folder_key_moved", abandoned=[3])
     # Review 18c300f capability finding 498: every lost change made again and
     # one more own record the server kept: a fork holds what was lost, not more.
     def again() -> Log:

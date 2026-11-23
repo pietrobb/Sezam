@@ -411,10 +411,10 @@ class TeamLogMixin:
             return None, None
         keypair = getattr(self, "_keypair", None)
         held = None if keypair is None else (keypair.signing_pk.hex(), keypair.encryption_pk.hex())
+        lost_records = [{"body": row["body"], "sig": row["sig"]} for row in rows[fork:]]
         try:
             reason, missing = teamlog.fork_refusal(
-                [{"body": row["body"], "sig": row["sig"]} for row in rows[fork:]], records[fork:],
-                self._user_id, held, team_log_withdrawn.withdrawn(self._db),
+                lost_records, records[fork:], self._user_id, held, team_log_withdrawn.withdrawn(self._db),
             )
         except teamlog.TeamLogError:
             return None, None
@@ -441,6 +441,10 @@ class TeamLogMixin:
             if self._local_head_seq() != local.head_seq:
                 return None, None  # another process moved the copy meanwhile: the next pull compares again
             self._db.execute("DELETE FROM team_log WHERE seq >= ?", (fork,))
+            # Capability finding 505: this account's records left behind are
+            # withdrawn - a server serving them again later is not followed
+            # (their changes go out again, or are set aside).
+            team_log_withdrawn.withdraw(self._db, teamlog.fork_abandoned(lost_records, self._user_id))
             self._store_team_log(records[fork:], state)
             if requeued:
                 _set_queued_changes(self._db, requeued + queued_changes(self._db))

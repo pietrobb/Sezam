@@ -793,6 +793,16 @@ class TeamLog {
     return (null, missing);
   }
 
+  /// The hashes of this account's lost records a device goes on without
+  /// when it follows a fork (src/sezam/teamlog.py fork_abandoned): withdrawn,
+  /// so a server that serves them again later is refused (capability
+  /// finding 505).
+  static List<String> forkAbandoned(List<Map<String, dynamic>> lost, String? userId) => [
+        if (userId != null)
+          for (final r in lost)
+            if (parseBody(r['body'], -1)['author'] == userId) recordHash(r),
+      ];
+
   /// Review 18c300f R16-M5: the kinds of this account's lost changes a
   /// device makes again on the server's head (a genesis or member.keys is
   /// bound to the head it was signed on).

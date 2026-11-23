@@ -31,11 +31,12 @@ import pytest
 from sezam import teamlog as tl
 from sezam.vault.db import VaultDB
 from sezam.vault.sync_common import ServerError
+from sezam.vault import team_log_withdrawn
 from sezam.vault.team_log_local import GENESIS_META, TeamLogMismatch, TeamLogMixin
 from sezam.vault.team_log_state import resolve_change
 from sezam.vault.team_migration import hand_over_admin
 from tests.team_log_fork_vectors import VECTORS_PATH, _base, build_vectors, dump
-from tests.team_log_vectors import A, B, D, F1, K
+from tests.team_log_vectors import A, B, D, F1, F2, K
 from tests.node_support import node_problem
 from tests.test_integration_client_server import server  # noqa: F401  (fixture)
 from tests.test_review_web import _run_source
@@ -67,6 +68,30 @@ def test_the_python_core_gives_every_answer():
         got = tl.fork_refusal(case["lost"], case["theirs"], case["user_id"],
                               case["held_keys"], frozenset(case["withdrawn"]))
         assert list(got) == [case["expect"]["refusal"], case["expect"]["missing"]], case["name"]
+
+
+def _abandoned_cases() -> dict[str, list[str]]:
+    """Finding 505: what each followed case withdraws, as record hashes."""
+    return {c["name"]: [tl.record_hash(r) for r in c["lost"] if tl.parse_body(r["body"])["seq"]
+                        in c["expect"]["abandoned"]]
+            for c in VECTORS["cases"] if "abandoned" in c["expect"]}
+
+
+def test_the_python_core_withdraws_what_a_followed_fork_left_behind():
+    got = {c["name"]: tl.fork_abandoned(c["lost"], c["user_id"])
+           for c in VECTORS["cases"] if "abandoned" in c["expect"]}
+    assert got == _abandoned_cases()
+
+
+@pytest.mark.skipif(node_problem() is not None, reason="node is needed for teamlog.js")
+def test_the_page_core_withdraws_what_a_followed_fork_left_behind():
+    cases = [c for c in VECTORS["cases"] if "abandoned" in c["expect"]]
+    got = _run_source(TEAMLOG_JS, """(async () => {
+        const out = {};
+        for (const c of %s) out[c.name] = globalThis.SezamTeamLog.forkAbandoned(c.lost, c.user_id, sodium);
+        return out;
+    })()""" % json.dumps(cases))
+    assert got == _abandoned_cases()
 
 
 def _remade_cases() -> list[dict]:
@@ -193,19 +218,29 @@ WEB_REMAKE = """
         const served = serverRecords.length - 1;
         const got = await syncWebTeamLog(head(serverRecords), { records: held, team: teamOf(held) }, null, sodium);
         const ledger = await loadWebTeamLedger(sodium);
-        return {
+        const out = {
             followed: got.team.headSeq - served, server: serverRecords.length - 1 - served,
             posted: posted.map(r => { const b = TL.parseBody(r.body, null); return [b.type, b.data, b.author]; }),
             set_aside: ledger.setAside.map(x => [x.type, x.reason]),
         };
+        if (BACK) {
+            // Finding 505: the server serves again what this browser left behind.
+            out.withdrawn = [...ledger.withdrawn].sort();
+            serverRecords = held;
+            try {
+                out.back = (await syncWebTeamLog(head(held), got, null, sodium)).team.headSeq;
+            } catch (err) { out.back = err.message; }
+        }
+        return out;
     } catch (err) { return { error: err.message }; }
 """
 
 
-def _web_remake(name: str, refuse: bool = False) -> dict:
+def _web_remake(name: str, refuse: bool = False, back: bool = False) -> dict:
     case = next(c for c in VECTORS["cases"] if c["name"] == name)
     script = (WEB_REMAKE.replace("ME_SK", json.dumps((bytes(A.sk) + bytes(A.sk.verify_key)).hex()))
-              .replace("CASE", json.dumps(case)).replace("REFUSE", json.dumps(refuse)))
+              .replace("CASE", json.dumps(case)).replace("REFUSE", json.dumps(refuse))
+              .replace("BACK", json.dumps(back)))
     return _web_run(script, _base())
 
 
@@ -228,6 +263,18 @@ def test_the_page_sets_aside_what_the_log_or_the_server_no_longer_takes():
     assert refused == {"followed": 0, "server": 0, "posted": [],
                        "set_aside": [["folder.key", "the server refused them"],
                                      ["access.set", "the server refused them"]]}, refused
+
+
+@pytest.mark.skipif(node_problem() is not None, reason="node is needed for app.js")
+def test_the_page_never_follows_back_to_records_it_left_behind():
+    """Capability finding 505: the page followed the shorter copy and set its
+    lost changes aside (the server refused them made again); on 92b8309 a
+    server serving the original records again was followed, and the changes
+    the user saw set aside took effect."""
+    got = _web_remake("own_fork_shorter", refuse=True, back=True)
+    lost = _abandoned_cases()["own_fork_shorter"]
+    assert set(lost) <= set(got["withdrawn"]), got
+    assert "its record 3 is one this device withdrew" in got["back"], got
 
 
 # ── The desktop's follower over a vault database ──────────────────────
@@ -295,6 +342,24 @@ def test_a_members_device_waits_while_a_change_it_saw_is_missing(tmp_path):
         with pytest.raises(TeamLogMismatch, match="record 3 this device saw is not on the server's side"):
             device._sync_team_log(_head(shorter))
         assert device.team_state().head_seq == 4
+    finally:
+        device._db.close()
+
+
+def test_the_desktop_never_follows_back_to_records_it_left_behind(tmp_path):
+    """Capability finding 505: the desktop followed a shorter copy another
+    device of the account put back and queued its lost changes again; a
+    server serving the original records again was followed on 92b8309."""
+    shorter = _base().key(F2, 0, K[2], None).records
+    device = _device(tmp_path, A, _own(), shorter)
+    try:
+        assert device._sync_team_log(_head(shorter)).head_seq == 3
+        assert {tl.record_hash(r) for r in _own()[3:]} <= team_log_withdrawn.withdrawn(device._db)
+        device._served = _own()
+        with pytest.raises(TeamLogMismatch, match="its record 3 is one this device withdrew"):
+            device._sync_team_log(_head(_own()))
+        assert [row["hash"] for row in device._db.fetchall("SELECT hash FROM team_log ORDER BY seq")] == [
+            tl.record_hash(r) for r in shorter]
     finally:
         device._db.close()
 

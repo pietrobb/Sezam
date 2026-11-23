@@ -159,6 +159,9 @@
        "user_id": "01JM0000000000000000000002"
       }
      ]
+    ],
+    "abandoned": [
+     3
     ]
    }
   },
@@ -189,7 +192,10 @@
    "expect": {
     "refusal": null,
     "missing": [],
-    "remade": []
+    "remade": [],
+    "abandoned": [
+     3
+    ]
    }
   },
   {
@@ -227,7 +233,11 @@
    "expect": {
     "refusal": null,
     "missing": [],
-    "remade": []
+    "remade": [],
+    "abandoned": [
+     3,
+     4
+    ]
    }
   },
   {
@@ -309,6 +319,10 @@
        "role": "member"
       }
      ]
+    ],
+    "abandoned": [
+     3,
+     4
     ]
    }
   },
@@ -347,7 +361,11 @@
    "expect": {
     "refusal": null,
     "missing": [],
-    "remade": []
+    "remade": [],
+    "abandoned": [
+     3,
+     4
+    ]
    }
   },
   {
@@ -398,6 +416,10 @@
        "level": "write"
       }
      ]
+    ],
+    "abandoned": [
+     3,
+     4
     ]
    }
   },
@@ -436,7 +458,11 @@
    "expect": {
     "refusal": null,
     "missing": [],
-    "remade": []
+    "remade": [],
+    "abandoned": [
+     3,
+     4
+    ]
    }
   },
   {
@@ -481,7 +507,43 @@
        "level": "write"
       }
      ]
+    ],
+    "abandoned": [
+     3,
+     4
     ]
+   }
+  },
+  {
+   "name": "own_fork_original_returns_after_set_aside",
+   "user_id": "01JM0000000000000000000001",
+   "held_keys": [
+    "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70",
+    "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934"
+   ],
+   "withdrawn": [
+    "eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8",
+    "16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59"
+   ],
+   "lost": [
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+     "sig": "6324b8b9e3a0b8b1777046b68d9bce8b177c9d0e28b3491fd5ae0f9ae1311cfc46abdc8b71a593c1b6f55e08c6d3e495fdb45bb3bbdca52954a27341468e5202"
+    }
+   ],
+   "theirs": [
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+     "sig": "a58d248e932d82c59bf0db328c2f7a663a715d03c91f034bde3e25234ddab6d93c5ec9bc53f838044e408e4b918803aa46e0a9c2ac759e23a4d135922d9a7d03"
+    },
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+     "sig": "35e626a9b69b7c5517ec2d6d4fcf02d8359f0f1b6c44dab9a01b7a445f4ed10ccfa0c1592f1527361714b41f99733d4fce310ad7441ddaff98520b04fddecb07"
+    }
+   ],
+   "expect": {
+    "refusal": "its record 3 is one this device withdrew",
+    "missing": []
    }
   },
   {
@@ -530,6 +592,10 @@
        "total_shares": 3
       }
      ]
+    ],
+    "abandoned": [
+     3,
+     4
     ]
    }
   },
@@ -558,7 +624,10 @@
     "missing": [
      3
     ],
-    "remade": "folder_key_moved"
+    "remade": "folder_key_moved",
+    "abandoned": [
+     3
+    ]
    }
   },
   {
@@ -752,7 +821,8 @@
    "expect": {
     "refusal": null,
     "missing": [],
-    "remade": []
+    "remade": [],
+    "abandoned": []
    }
   },
   {
@@ -794,7 +864,8 @@
    "expect": {
     "refusal": null,
     "missing": [],
-    "remade": []
+    "remade": [],
+    "abandoned": []
    }
   },
   {

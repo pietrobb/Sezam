@@ -10,7 +10,8 @@ device now remembers what it sent while the server has not taken it
 * the server refused the request (an answer 4xx: nothing of it was applied);
 * its log holds another record at that seq, or the record was signed on one
   it withdrew (it moved on without it);
-* the change it carried was dropped (an abandoned key change).
+* the change it carried was dropped (an abandoned key change);
+* it followed a fork without it (its change is made again or set aside).
 
 Such a record never enters its log (a pull, a fork it follows). A record
 signed and sent again is its will again.
@@ -79,6 +80,19 @@ def note_stored(db, stored: dict[int, str]) -> None:
             del sent[record_hash]
             if stored[seq] != record_hash:
                 gone.add(record_hash)
+    _follow_prev(sent, gone)
+    _save(db, sent, gone)
+
+
+def withdraw(db, hashes: list[str]) -> None:
+    """Withdraw ``hashes``: the records of this account a fork the device
+    followed went on without (capability finding 505)."""
+    if not hashes:
+        return
+    sent, gone = _load(db)
+    for record_hash in hashes:
+        sent.pop(record_hash, None)
+        gone.add(record_hash)
     _follow_prev(sent, gone)
     _save(db, sent, gone)
 

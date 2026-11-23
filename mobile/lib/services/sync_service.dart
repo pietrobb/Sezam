@@ -2655,6 +2655,8 @@ class SyncService {
         },
         remake: _teamLogRemake(),
         withdrawn: await _teamLogWithdrawn(),
+        // Capability finding 505: what a fork it follows left behind.
+        withdraw: _withdrawTeamRecords,
       );
     } on TeamLogMismatch catch (e) {
       throw SyncIntegrityException('$e', teamLog: e);
@@ -2678,13 +2680,9 @@ class SyncService {
         );
         if (response.statusCode >= 400 && response.statusCode < 500) {
           // Taken by none: a server that keeps them is not followed (R16-H1).
-          await _db.setSetting(
-            teamLogWithdrawnSetting,
-            jsonEncode([
-              ...await _teamLogWithdrawn(),
-              for (final r in records) TeamLog.recordHash(r),
-            ]),
-          );
+          await _withdrawTeamRecords([
+            for (final r in records) TeamLog.recordHash(r),
+          ]);
           return response.statusCode == 409
               ? RemakeOutcome.moved
               : RemakeOutcome.refused;
@@ -2714,10 +2712,20 @@ class SyncService {
   static const teamLogSetAsideSetting = 'team_log_set_aside';
   static const teamLogWithdrawnSetting = 'team_log_withdrawn';
 
-  /// Hashes of the records this phone sent and the server did not take.
+  /// Hashes of the records this phone sent and the server did not take, and
+  /// of this account's records a fork it followed went on without.
   Future<Set<String>> _teamLogWithdrawn() async {
     final stored = await _db.getSetting(teamLogWithdrawnSetting);
-    return stored == null ? {} : {...(jsonDecode(stored) as List).cast<String>()};
+    return stored == null
+        ? {}
+        : {...(jsonDecode(stored) as List).cast<String>()};
+  }
+
+  Future<void> _withdrawTeamRecords(List<String> hashes) async {
+    await _db.setSetting(
+      teamLogWithdrawnSetting,
+      jsonEncode(({...await _teamLogWithdrawn(), ...hashes}.toList()..sort())),
+    );
   }
 
   /// Why this phone refuses the server's team log now (the pull's own

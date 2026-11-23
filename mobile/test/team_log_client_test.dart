@@ -310,6 +310,7 @@ void main() {
               return served.skip(since + 1).take(2).toList();
             },
             restore: restore,
+            withdraw: (hashes) async {},
           )) ??
           'none';
     } on TeamLogMismatch catch (e) {

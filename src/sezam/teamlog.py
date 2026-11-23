@@ -744,6 +744,16 @@ def fork_refusal(
     return None, missing
 
 
+def fork_abandoned(lost: list[dict], user_id: Optional[str]) -> list[str]:
+    """The hashes of this account's records in ``lost`` a device goes on
+    without when it follows a fork: it withdraws them, so a server that later
+    serves them again (a change it set aside, one it made again) is refused
+    (review 18c300f capability finding 505)."""
+    if user_id is None:
+        return []
+    return [record_hash(record) for record in lost if parse_body(record["body"])["author"] == user_id]
+
+
 def tombstone_refusal(state: TeamState, user_id: str, stored_dek_id: Optional[str]) -> Optional[str]:
     """A deletion of an object sealed with a team key needs write access there."""
     found = state.dek_index.get(stored_dek_id) if stored_dek_id else None

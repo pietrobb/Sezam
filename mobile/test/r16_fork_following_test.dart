@@ -58,6 +58,23 @@ void main() {
     expect(got, want);
   });
 
+  // Capability finding 505: what a phone withdraws as it follows a fork.
+  test('the phone core withdraws what a followed fork left behind', () {
+    final got = <String, List<String>>{};
+    final want = <String, List<String>>{};
+    for (final c in cases.values) {
+      final expect_ = c['expect'] as Map;
+      if (!expect_.containsKey('abandoned')) continue;
+      final lost = recordsOf(c['lost']);
+      got[c['name'] as String] = TeamLog.forkAbandoned(lost, c['user_id'] as String?);
+      want[c['name'] as String] = [
+        for (final r in lost)
+          if ((expect_['abandoned'] as List).contains(TeamLog.parseBody(r['body'], -1)['seq'])) TeamLog.recordHash(r),
+      ];
+    }
+    expect(got, want);
+  });
+
   Future<Object> follow(String name) async {
     final c = cases[name]!;
     final held = [...prefix, ...recordsOf(c['lost'])];
@@ -72,6 +89,7 @@ void main() {
         ownUserId: c['user_id'] as String?,
         ownKeys: (c['held_keys'] as List?)?.cast<String>(),
         fetchPage: (since) async => served.skip(since + 1).take(2).toList(),
+        withdraw: (hashes) async {},
       ))!;
     } on TeamLogMismatch catch (e) {
       return '$e';
@@ -122,8 +140,10 @@ void main() {
     expect(jsonDecode(jsonEncode(got)), want);
   });
 
+  final withdrawnByRemake = <String>{};
   Future<(Object, List<Map<String, dynamic>>, List<List<Object?>>)> remake(String name,
       {bool refuse = false}) async {
+    withdrawnByRemake.clear();
     final c = cases[name]!;
     final sodium = await SodiumSumoInit.init2(() => DynamicLibrary.open(hostLibsodium()));
     final seed = crypto_pkg.sha256.convert(utf8.encode('sezam-team-log-vector:alice')).bytes;
@@ -156,6 +176,7 @@ void main() {
             }
           },
         ),
+        withdraw: (hashes) async => withdrawnByRemake.addAll(hashes),
       ))!;
     } on TeamLogMismatch catch (e) {
       return ('$e' as Object, posted, setAside);
@@ -206,6 +227,38 @@ void main() {
       fail('followed $served');
     } on TeamLogMismatch catch (e) {
       expect('$e', contains('which this phone withdrew'));
+    }
+  });
+
+  // Capability finding 505: on 787d083 a server serving again the records
+  // the phone left behind (their changes set aside) was followed.
+  test('the phone never follows back to records it left behind', () async {
+    final (refused, _, _) = await remake('own_fork_shorter', refuse: true);
+    final originals = recordsOf(cases['own_fork_shorter']!['lost']);
+    expect(withdrawnByRemake, containsAll([for (final r in originals) TeamLog.recordHash(r)]));
+    final back = [...prefix, ...originals];
+    final backState = log.replay(back);
+    try {
+      final followed = await syncTeamLog(
+        log: log,
+        head: {'genesis_hash': backState.genesisHash, 'seq': backState.headSeq, 'hash': backState.headHash},
+        local: refused as LocalTeamLog,
+        pin: null,
+        ownUserId: cases['own_fork_shorter']!['user_id'] as String,
+        ownKeys: (cases['own_fork_shorter']!['held_keys'] as List).cast<String>(),
+        fetchPage: (since) async => back.skip(since + 1).take(2).toList(),
+        withdrawn: {...withdrawnByRemake},
+        withdraw: (hashes) async {},
+        // On 787d083 the phone made its record 3 again on the originals.
+        remake: TeamLogRemake(
+          sign: (body) => TeamLog.signRecord(body, (m) => fail('signed $body')),
+          append: (records) async => RemakeOutcome.taken,
+          setAside: (changes, reason) async {},
+        ),
+      );
+      fail('followed ${followed?.team.headSeq}');
+    } on TeamLogMismatch catch (e) {
+      expect('$e', contains('its record 3 is one this device withdrew'));
     }
   });
 }
