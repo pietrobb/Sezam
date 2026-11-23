@@ -99,7 +99,8 @@ SCRIPT = f"""
     }} else {{
       const bytes = encryptEnvelope(obj.payloadData, BLOB_KIND.NODE_META, obj.dekId, obj.id,
                                     obj.version, state.deks[obj.dekId], sodium);
-      readBack[obj.id] = decryptEnvelope(bytes, obj.id, obj.version, state.deks, sodium);
+      readBack[obj.id] = decryptEnvelope(bytes, obj.id, obj.version, state.deks, sodium,
+                                         BLOB_KIND.NODE_META);
     }}
   }}
   return {{ migrated, pushed: pushed.map(o => ({{ id: o.id, dekId: o.dekId,

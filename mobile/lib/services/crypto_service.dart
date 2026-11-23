@@ -270,14 +270,17 @@ class CryptoService {
 
   /// Decrypt an envelope back to a JSON object.
   ///
-  /// [dekMap] maps dekId -> decrypted DEK bytes.
+  /// [dekMap] maps dekId -> decrypted DEK bytes. [expectedBlobKind] is the
+  /// kind the caller reads (review 18c300f R16-L2): an entry's meta and data
+  /// blobs share its id, version and key, so only it tells them apart.
   Map<String, dynamic> decryptEnvelope(
     Uint8List envelopeBytes,
     String objectId,
     int version,
-    Map<String, Uint8List> dekMap,
-  ) {
-    validateEnvelopeHeader(envelopeBytes);
+    Map<String, Uint8List> dekMap, {
+    required int expectedBlobKind,
+  }) {
+    validateEnvelopeHeader(envelopeBytes, expectedBlobKind: expectedBlobKind);
 
     final blobKind = envelopeBytes[2];
     final dekIdRaw = envelopeBytes.sublist(3, 29);
@@ -388,8 +391,20 @@ class CryptoService {
     final metaEnv = payload.sublist(4, 4 + metaLen);
     final dataEnv = payload.sublist(4 + metaLen);
     return (
-      decryptEnvelope(metaEnv, objectId, version, dekMap),
-      decryptEnvelope(dataEnv, objectId, version, dekMap),
+      decryptEnvelope(
+        metaEnv,
+        objectId,
+        version,
+        dekMap,
+        expectedBlobKind: BlobKind.entryMeta,
+      ),
+      decryptEnvelope(
+        dataEnv,
+        objectId,
+        version,
+        dekMap,
+        expectedBlobKind: BlobKind.entryData,
+      ),
     );
   }
 

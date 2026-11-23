@@ -399,7 +399,7 @@ globalThis.__runVectors = async (V) => {
   check(toHex(keyRotationMessage(r.user_id, hex(r.old_signing_pk_hex), hex(r.old_encryption_pk_hex),
     hex(r.new_signing_pk_hex), hex(r.new_encryption_pk_hex))) === r.message_hex, 'key rotation');
   const e = V.envelope;
-  const entry = decryptEnvelope(hex(e.envelope_hex), e.object_id, e.version, { [e.dek_id]: hex(e.dek_hex) }, s);
+  const entry = decryptEnvelope(hex(e.envelope_hex), e.object_id, e.version, { [e.dek_id]: hex(e.dek_hex) }, s, e.blob_kind);
   check(JSON.stringify(entry) === new TextDecoder().decode(hex(e.plaintext_hex)), 'entry envelope');
   const w = V.dek_wrap;
   check(toHex(unwrapDEK(hex(w.envelope_hex), hex(w.kek_hex), w.dek_id, w.version, s)) === w.dek_hex, 'dek wrap');

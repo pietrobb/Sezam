@@ -620,7 +620,13 @@ class VaultService {
           // Review 18c300f R16-H2: the personal mark is what the sealed meta
           // says; it counts on a folder this account signed (a teammate
           // holding a team key could seal one that says it), as the web's.
-          final json = _crypto.decryptEnvelope(payload, id, version, _deks);
+          final json = _crypto.decryptEnvelope(
+            payload,
+            id,
+            version,
+            _deks,
+            expectedBlobKind: BlobKind.nodeMeta,
+          );
           json['personal'] = json['personal'] == true && isOwnRow(row, _userId);
           _nodes[id] = VaultNode.fromJson(
             id,
@@ -691,7 +697,13 @@ class VaultService {
           );
         } else if (_crypto.isEncryptedEnvelope(payload)) {
           // Legacy single-envelope entry (pre-C6 mobile format)
-          final json = _crypto.decryptEnvelope(payload, id, version, _deks);
+          final json = _crypto.decryptEnvelope(
+            payload,
+            id,
+            version,
+            _deks,
+            expectedBlobKind: BlobKind.entryData,
+          );
           _entries[id] = VaultEntry.fromJson(
             id,
             json,
@@ -1637,6 +1649,7 @@ class VaultService {
               step.id,
               version,
               readDeks,
+              expectedBlobKind: BlobKind.nodeMeta,
             );
             final name = meta['name'] as String? ?? 'Recovered folder';
             final personal = meta['personal'] == true;
@@ -1672,7 +1685,13 @@ class VaultService {
                     version,
                     readDeks,
                   )
-                : _crypto.decryptEnvelope(payload, step.id, version, readDeks);
+                : _crypto.decryptEnvelope(
+                    payload,
+                    step.id,
+                    version,
+                    readDeks,
+                    expectedBlobKind: BlobKind.entryData,
+                  );
             final exported = VaultEntry.fromJson(step.id, json);
             final live = _entries[step.id];
             if (live != null && sameEntryContent(live, exported)) {
@@ -1836,7 +1855,13 @@ class VaultService {
           (meta, data) = _crypto.decryptEntryParts(payload, id, version, _deks);
         } else {
           final json = _crypto.isEncryptedEnvelope(payload)
-              ? _crypto.decryptEnvelope(payload, id, version, _deks)
+              ? _crypto.decryptEnvelope(
+                  payload,
+                  id,
+                  version,
+                  _deks,
+                  expectedBlobKind: BlobKind.entryData,
+                )
               : jsonDecode(utf8.decode(payload)) as Map<String, dynamic>;
           meta = {
             for (final key in const ['name', 'tags', 'tier'])
@@ -2031,9 +2056,13 @@ class VaultService {
           sealedAt--
         ) {
           try {
-            meta = _crypto.decryptEnvelope(payload, id, sealedAt, {
-              sealedWith: opening,
-            });
+            meta = _crypto.decryptEnvelope(
+              payload,
+              id,
+              sealedAt,
+              {sealedWith: opening},
+              expectedBlobKind: BlobKind.nodeMeta,
+            );
             break;
           } catch (_) {
             continue;
@@ -2493,7 +2522,13 @@ class VaultService {
           );
         } else {
           resealed = _crypto.encryptEnvelope(
-            _crypto.decryptEnvelope(payload, id, version, keys),
+            _crypto.decryptEnvelope(
+              payload,
+              id,
+              version,
+              keys,
+              expectedBlobKind: BlobKind.nodeMeta,
+            ),
             _deks[current]!,
             current,
             id,

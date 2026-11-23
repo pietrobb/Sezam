@@ -904,10 +904,19 @@ function encryptEnvelope(plaintextObj, blobKind, dekId, objectId, version, dek, 
 /**
  * Decrypt ciphertext envelope back to plaintext object.
  * Returns parsed JSON object.
+ *
+ * expectedKind is the BLOB_KIND the caller is about to read. Review 18c300f
+ * R16-L2: the header's kind is authenticated, but an entry's meta and data
+ * blobs share its id, version and key, so only this check tells them apart;
+ * on 18c300f the two swapped decrypted and the entry showed up empty.
  */
-function decryptEnvelope(envelopeBytes, objectId, version, dekMap, _sodium) {
+function decryptEnvelope(envelopeBytes, objectId, version, dekMap, _sodium, expectedKind) {
     validateCanonicalEnvelopeHeader(envelopeBytes);
     const blobKind = envelopeBytes[2];
+    if (!Number.isInteger(expectedKind)) throw new Error('decryptEnvelope needs the blob kind it reads');
+    if (blobKind !== expectedKind) {
+        throw new Error(`Unexpected blob kind ${blobKind} (expected ${expectedKind})`);
+    }
     const dekIdBytes = envelopeBytes.slice(3, 29);
     const dekId = new TextDecoder().decode(dekIdBytes).replace(/\0/g, '');
     const nonce = envelopeBytes.slice(29, 53);
@@ -966,8 +975,8 @@ function decryptEntryPayload(payloadBytes, objectId, version, dekMap, _sodium) {
     }
     const metaEnv = payloadBytes.slice(4, 4 + metaLen);
     const dataEnv = payloadBytes.slice(4 + metaLen);
-    const meta = decryptEnvelope(metaEnv, objectId, version, dekMap, _sodium);
-    const data = decryptEnvelope(dataEnv, objectId, version, dekMap, _sodium);
+    const meta = decryptEnvelope(metaEnv, objectId, version, dekMap, _sodium, BLOB_KIND.ENTRY_META);
+    const data = decryptEnvelope(dataEnv, objectId, version, dekMap, _sodium, BLOB_KIND.ENTRY_DATA);
     return { ...meta, tags: meta.tags || [], fields: (data && data.fields) || [] };
 }
 
@@ -3329,7 +3338,8 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
                 // Extract DEK ID from envelope header (bytes 3..29)
                 const nodeDekId = new TextDecoder().decode(payloadBytes.slice(3, 29)).replace(/\0/g, '');
                 // New format: encrypted envelope
-                const meta = decryptEnvelope(payloadBytes, obj.id, obj.version || 1, candidateDeks, _sodium);
+                const meta = decryptEnvelope(payloadBytes, obj.id, obj.version || 1, candidateDeks, _sodium,
+                    BLOB_KIND.NODE_META);
                 // A personal folder is this account's (signed by it, TL7) and
                 // sealed with a key of its own (its KEK opens it), never one an
                 // envelope gave: a teammate's node is no personal folder here.
@@ -3355,7 +3365,8 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
                 // Legacy single-envelope entry (pre-C6 web format): whole {name,tags,fields}
                 // in one ENTRY_DATA blob. Read it directly for backward compatibility.
                 const entryDekId = new TextDecoder().decode(payloadBytes.slice(3, 29)).replace(/\0/g, '');
-                const decrypted = decryptEnvelope(payloadBytes, obj.id, obj.version || 1, candidateDeks, _sodium);
+                const decrypted = decryptEnvelope(payloadBytes, obj.id, obj.version || 1, candidateDeks, _sodium,
+                    BLOB_KIND.ENTRY_DATA);
                 decryptedEntries.push({ ...decrypted, ...signedFields(obj), dekId: entryDekId });
             } else if (payloadBytes.length >= 4 + 53 && payloadBytes[4] === ENVELOPE_ALG && payloadBytes[5] === SCHEMA_VERSION) {
                 // Canonical two-envelope framing: u32be(meta_len) || meta_env || data_env
@@ -4114,14 +4125,15 @@ async function buildWebRekeyBatch(revokedUserId, _sodium) {
                 let newPayload;
                 if (syncObj.object_type === 'node') {
                     const plaintext = decryptEnvelope(
-                        oldPayload, syncObj.id, syncObj.version, state.deks, _sodium
+                        oldPayload, syncObj.id, syncObj.version, state.deks, _sodium, BLOB_KIND.NODE_META
                     );
                     newPayload = encryptEnvelope(
                         plaintext, BLOB_KIND.NODE_META, newDekId, syncObj.id, version, newDek, _sodium
                     );
                 } else {
                     const plaintext = oldPayload[0] === ENVELOPE_ALG
-                        ? decryptEnvelope(oldPayload, syncObj.id, syncObj.version, state.deks, _sodium)
+                        ? decryptEnvelope(oldPayload, syncObj.id, syncObj.version, state.deks, _sodium,
+                            BLOB_KIND.ENTRY_DATA)
                         : decryptEntryPayload(oldPayload, syncObj.id, syncObj.version, state.deks, _sodium);
                     newPayload = encryptEntryPayload(
                         plaintext, newDekId, syncObj.id, version, newDek, _sodium
@@ -7161,7 +7173,7 @@ async function renumberedAboveBase(vaultObj) {
     const bytes = base64ToBytes(vaultObj.payload);
     const payloadData = vaultObj.object_type === 'entry'
         ? decryptEntryPayload(bytes, vaultObj.id, vaultObj.version, state.deks, _sodium)
-        : decryptEnvelope(bytes, vaultObj.id, vaultObj.version, state.deks, _sodium);
+        : decryptEnvelope(bytes, vaultObj.id, vaultObj.version, state.deks, _sodium, BLOB_KIND.NODE_META);
     const sealed = await sealVaultObject({
         ...vaultObj, payloadData, dekId, version: Number(vaultObj.base_version) + 1,
     });
@@ -7330,7 +7342,7 @@ async function resealUnderFolderSuccessor(vaultObj, version = vaultObj.version, 
     const keys = { ...state.deks, [dekId]: oldKey };
     const payloadData = vaultObj.object_type === 'entry'
         ? decryptEntryPayload(bytes, vaultObj.id, vaultObj.version, keys, _sodium)
-        : decryptEnvelope(bytes, vaultObj.id, vaultObj.version, keys, _sodium);
+        : decryptEnvelope(bytes, vaultObj.id, vaultObj.version, keys, _sodium, BLOB_KIND.NODE_META);
     return sealVaultObject({ ...vaultObj, payloadData, dekId: successor, version });
 }
 
@@ -7419,7 +7431,7 @@ async function reviveFoldersOfUnsentWork(_sodium) {
             let meta = null;
             for (let sealedAt = tombstone - 1; !meta && sealedAt >= 0 && sealedAt > tombstone - 256; sealedAt--) {
                 try {
-                    meta = decryptEnvelope(bytes, held.id, sealedAt, state.deks, _sodium);
+                    meta = decryptEnvelope(bytes, held.id, sealedAt, state.deks, _sodium, BLOB_KIND.NODE_META);
                 } catch {
                     // sealed at a lower version (other clients' bumps)
                 }
@@ -9629,7 +9641,8 @@ function trashedNode(nodeId) {
     // A tombstone may still carry the blob sealed for the version before it.
     for (const version of [obj.version, obj.version - 1].filter(v => v >= 1)) {
         try {
-            const meta = decryptEnvelope(payloadBytes, obj.id, version, state.deks, state.sodium);
+            const meta = decryptEnvelope(payloadBytes, obj.id, version, state.deks, state.sodium,
+                BLOB_KIND.NODE_META);
             return { id: obj.id, parent_ref: obj.parent_ref, dekId,
                      personal: !!(meta && meta.personal) && (state.kekDekIds || []).includes(dekId) };
         } catch {

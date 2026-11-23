@@ -524,14 +524,14 @@ for (const path of process.argv.slice(1, 4)) {
     { value: 'secret' }, 3, dekId, objectId, 1, dek, context.sodium
   );
   const roundTrip = context.decryptEnvelope(
-    envelope, objectId, 1, { [dekId]: dek }, context.sodium
+    envelope, objectId, 1, { [dekId]: dek }, context.sodium, 3
   );
   assert.strictEqual(roundTrip.value, 'secret');
   for (const index of [0, 1, 2]) {
     const tampered = context.Uint8Array.from(envelope);
     tampered[index] ^= 1;
     assert.throws(() => context.decryptEnvelope(
-      tampered, objectId, 1, { [dekId]: dek }, context.sodium
+      tampered, objectId, 1, { [dekId]: dek }, context.sodium, 3
     ));
   }
   process.stdout.write('ok');
