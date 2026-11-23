@@ -1039,7 +1039,11 @@ class TeamLogMixin:
         from ..crypto.envelope_crypto import open_envelope
         from . import pending_states
 
-        state, me = self.team_state(), self._db.get_meta("user_id")
+        try:
+            state = self.team_state()
+        except Exception:  # noqa: BLE001 - a failed log check holds back team changes only (#436 rule 1)
+            return []
+        me = self._db.get_meta("user_id")
         if state is None or self._keypair is None:
             return []
         grants = dict(self.pending_team_grants())
