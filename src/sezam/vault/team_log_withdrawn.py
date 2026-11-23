@@ -71,10 +71,14 @@ def note_sent(db, records: list[dict], refused: bool) -> None:
 
 def note_stored(db, stored: dict[int, str]) -> None:
     """The local log now holds ``stored`` (seq -> hash): a sent record there
-    was taken, another one at its seq was left behind."""
+    was taken, another one at its seq was left behind. A withdrawn record
+    signed and taken again (the same change built on the same head after a
+    409) is in the log: no longer withdrawn (deep stateful run on c6d3dff)."""
     sent, gone = _load(db)
-    if not sent:
+    taken = gone & set(stored.values())
+    if not sent and not taken:
         return
+    gone -= taken
     for record_hash, (seq, _prev, _kind) in list(sent.items()):
         if seq in stored:
             del sent[record_hash]

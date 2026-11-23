@@ -2576,13 +2576,17 @@ class SyncMachine(RuleBasedStateMachine):
                 if blocker:
                     self.log.append(f"{device}: full resync refused: {blocker}")
                     return
+                row = self.devices[device].vault.db.fetchone("SELECT version FROM entries WHERE id = ?", (obj,))
+                # Its own unsent change (a deleted folder's entry, say) can hold
+                # that version number already: not the forgery.
+                own = row and row["version"]
                 try:
                     client.full_resync(confirmed=True)
                     outcome = "full resync done"
                 except REFUSALS as exc:
                     outcome = f"refused: {exc}"
                 row = self.devices[device].vault.db.fetchone("SELECT version FROM entries WHERE id = ?", (obj,))
-                held = row and row["version"]
+                held = row and row["version"] if (row and row["version"]) != own else None
             else:
                 tab = WebTab(self.url, self.tmp / "web-leaked.log")
                 try:
@@ -2592,10 +2596,17 @@ class SyncMachine(RuleBasedStateMachine):
                 outcome = f"refused: {result['error']}" if result["error"] else "signed in"
                 held = version if result["error"] is None or obj not in str(result["error"]) else None
         finally:
-            target.clear()
-            target.update(original)
-            for archive, bound in zip(archives, bounds):
-                archive["retired_seq"] = bound
+            # By id, not by the dicts above: a request that rolled back in
+            # between put the memory database's deep copy from its start in
+            # their place, the forgery with it (deep stateful run on c6d3dff).
+            for row in storage["vault_objects"]:
+                if row.get("id") == obj:
+                    row.clear()
+                    row.update(copy.deepcopy(original))
+            restore = {a.get("id"): bound for a, bound in zip(archives, bounds)}
+            for archive in storage.get("user_key_archives", []):
+                if archive.get("id") in restore:
+                    archive["retired_seq"] = restore[archive.get("id")]
         self.log.append(f"   -> {outcome}")
         coverage_event(f"leaked retired key ({how}): {outcome.split(':')[0]}")
         assert held != version, (

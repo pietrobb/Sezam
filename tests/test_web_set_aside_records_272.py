@@ -29,7 +29,7 @@ OUTBOX_OPS = [
 
 JOURNAL = OUTBOX_OPS + [
     "idbKeysRequest", "hexToBytes", "bytesToHex",
-    "pushWebRekeyBatch", "sendWebTeamRecords", "noteWebTeamRecordsSent", "prepareWebRekeyJournal", "finishWebRevocation",
+    "pushWebRekeyBatch", "sendWebTeamRecords", "noteWebTeamRecordsSent", "noteWebTeamRecordsTaken", "prepareWebRekeyJournal", "finishWebRevocation",
     "listSetAsideRecords", "finishSetAsideWebRevocations", "dropSetAsideRevocation",
 ]
 

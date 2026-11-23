@@ -8623,14 +8623,29 @@ async function noteWebTeamLogStored(records, _sodium) {
     await saveWebTeamLedger(ledger, _sodium);
 }
 
-/** POST team log records with `send`, noting them when the server does not take them. */
+/** The server took `records`: one withdrawn on a 409 and built the same again
+ * is this browser's will again (deep stateful run on c6d3dff, SM6). */
+async function noteWebTeamRecordsTaken(records, _sodium) {
+    if (!records.length || !state.kek || !_sodium) return;
+    const TL = globalThis.SezamTeamLog;
+    const ledger = await loadWebTeamLedger(_sodium);
+    const taken = records.map(r => TL.recordHash(r, _sodium)).filter(h => ledger.withdrawn.has(h));
+    if (!taken.length) return;
+    for (const hash of taken) ledger.withdrawn.delete(hash);
+    await saveWebTeamLedger(ledger, _sodium);
+}
+
+/** POST team log records with `send`, noting them when the server does or does not take them. */
 async function sendWebTeamRecords(records, send, _sodium) {
+    let result;
     try {
-        return await send();
+        result = await send();
     } catch (err) {
         await noteWebTeamRecordsSent(records, err, _sodium);
         throw err;
     }
+    await noteWebTeamRecordsTaken(records, _sodium);
+    return result;
 }
 
 async function catchUpWebTeamLog(head, local, pin, _sodium, fail) {

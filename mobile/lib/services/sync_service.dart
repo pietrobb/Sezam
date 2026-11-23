@@ -2689,6 +2689,11 @@ class SyncService {
               : RemakeOutcome.refused;
         }
         _checkResponse(response, 'team log');
+        // One withdrawn on a 409 and made the same again is taken now
+        // (deep stateful run on c6d3dff, SM6).
+        await _unwithdrawTeamRecords([
+          for (final r in records) TeamLog.recordHash(r),
+        ]);
         return RemakeOutcome.taken;
       },
       // As the desktop's set-aside queue: kept, with why.
@@ -2726,6 +2731,15 @@ class SyncService {
     await _db.setSetting(
       teamLogWithdrawnSetting,
       jsonEncode(({...await _teamLogWithdrawn(), ...hashes}.toList()..sort())),
+    );
+  }
+
+  Future<void> _unwithdrawTeamRecords(List<String> hashes) async {
+    final withdrawn = await _teamLogWithdrawn();
+    if (!hashes.any(withdrawn.contains)) return;
+    await _db.setSetting(
+      teamLogWithdrawnSetting,
+      jsonEncode((withdrawn.difference(hashes.toSet()).toList()..sort())),
     );
   }
 
