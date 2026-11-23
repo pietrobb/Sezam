@@ -224,6 +224,15 @@ class AIAccessSwitch(QObject):
         else:
             self._unanchored_epoch = None
             self.last_message = f"AI access is ON (epoch {result.epoch})."
+            try:
+                waits = ai_access.anchor_expected(Vault(self._vault_path))
+            except Exception:
+                waits = True
+            if waits:  # R16-L6: say what AI tools wait for
+                self.last_message += (
+                    " AI tools work once the sync server confirms the switch; if that server "
+                    "is gone for good, run 'sezam ai on --server-gone'."
+                )
         self._show(self.last_message)
 
     def _show(self, message: str) -> None:

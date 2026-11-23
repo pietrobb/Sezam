@@ -1294,7 +1294,7 @@ def _web(source, cases, incoming=()):
     functions = "\n".join(_web_function(source, name) for name in (
         "encodeAccountKeypair", "decodeAccountKeypair", "encryptAccountKeypair", "decryptAccountKeypair",
         "encryptKeypairWrap", "decryptKeypairWrap", "expandDesktopKeypair", "buildAAD",
-        "padPlaintext", "unpadPlaintext", "bytesToHex", "hexToBytes", "parsePreAnchor",
+        "padPlaintext", "paddedSize", "unpadPlaintext", "bytesToHex", "hexToBytes", "parsePreAnchor",
     ))
     constants = "\n".join(_web_constant(source, n) for n in (
         "ENVELOPE_ALG", "SCHEMA_VERSION", "BLOB_KIND", "PRE_ANCHOR_ENTRY_LEN", "PRE_ANCHOR_MAX",

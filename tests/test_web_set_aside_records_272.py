@@ -41,7 +41,7 @@ CHANGES = [
     "setAsideRecordsOfOldKek", "hexToBytes", "bytesToHex",
     "listSetAsideRecords", "openSetAsideWebChanges", "restoreSetAsideWebChanges",
     "passwordForms", "canonicalPassword",
-    "wrapDEK", "wrapDEKWithKey", "unwrapDEK", "buildAAD", "padPlaintext", "unpadPlaintext",
+    "wrapDEK", "wrapDEKWithKey", "unwrapDEK", "buildAAD", "padPlaintext", "paddedSize", "unpadPlaintext",
     "generateULID",
 ] + WEB_DIRTY_SAVE
 

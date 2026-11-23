@@ -130,7 +130,7 @@ def _web(vectors: dict) -> dict:
         "canonicalPassword", "passwordForms", "normalizeKdfParams", "deriveKEK", "deriveKEKViaWorker",
         "encodeAccountKeypair", "decodeAccountKeypair", "encryptAccountKeypair", "decryptAccountKeypair",
         "encryptKeypairWrap", "decryptKeypairWrap", "expandDesktopKeypair", "buildAAD",
-        "padPlaintext", "unpadPlaintext", "bytesToHex", "hexToBytes",
+        "padPlaintext", "paddedSize", "unpadPlaintext", "bytesToHex", "hexToBytes",
     ))
     constants = "\n".join(_web_constant(source, n) for n in (
         "ENVELOPE_ALG", "SCHEMA_VERSION", "BLOB_KIND", "ARGON2_HARD_FLOOR", "ARGON2_ACCOUNT_MAX",

@@ -108,8 +108,10 @@ def _state_verified(kek: bytes, db: VaultDB) -> bool:
     # home that verifies (deleting that home turns it off). A vault on no
     # server that had one needs 'sezam ai on' once.
     legacy = _mac(kek, STATE_MAC_KEY, db.get_meta(ENABLED_KEY), db.get_meta(EPOCH_KEY))
+    home = db.get_meta(ANCHOR_HOME_KEY)
     return (
-        db.get_meta(ANCHOR_HOME_KEY) is not None
+        home is not None
+        and '"released"' not in home  # a home let go (R16-L6) checks nothing
         and _verified(db, ANCHOR_HOME_MAC_KEY, _home_mac(kek, db))
         and _verified(db, STATE_MAC_KEY, legacy)
     )
@@ -258,11 +260,15 @@ def anchor_expected(vault: "Vault") -> bool:
         )
 
 
-def _seal_home(db: VaultDB, kek: bytes, home: AnchorHome | None) -> None:
-    """Seal ``home`` (None: the vault expects no anchor any more). A
-    verified 'on' is sealed again next to it (R16-H3: it names its home)."""
+def _seal_home(db: VaultDB, kek: bytes, home: AnchorHome | None, released: str | None = None) -> None:
+    """Seal ``home`` (None: the vault expects no anchor any more), or with
+    ``released`` the owner's word that this server is gone. A verified 'on'
+    is sealed again next to it (R16-H3: it names its home)."""
     was_on = _state_verified(kek, db)
-    if home is None:
+    if released is not None:
+        db.set_meta_json(ANCHOR_HOME_KEY, {"released": released})
+        db.set_meta(ANCHOR_HOME_MAC_KEY, _home_mac(kek, db))
+    elif home is None:
         db.execute("DELETE FROM vault_meta WHERE key IN (?, ?)", (ANCHOR_HOME_KEY, ANCHOR_HOME_MAC_KEY))
     else:
         db.set_meta_json(ANCHOR_HOME_KEY, {
@@ -282,12 +288,17 @@ def anchor_home(vault: "Vault") -> AnchorHome | None:
         raise AnchorUnverifiable("the vault is locked")
     db = vault.db
     with oplock.exclusive(db.path), db.transaction(immediate=True):
+        server_url, user_id = db.get_meta("server_url"), db.get_meta("user_id")
         if db.get_meta(ANCHOR_HOME_KEY) is not None or db.get_meta(ANCHOR_HOME_MAC_KEY) is not None:
             if not _verified(db, ANCHOR_HOME_MAC_KEY, _home_mac(kek, db)):
                 raise AnchorUnverifiable("the sealed AI anchor home does not verify")
             raw = db.get_meta_json(ANCHOR_HOME_KEY)
-            return AnchorHome(str(raw["anchor"]), str(raw["server_url"]), str(raw["user_id"]))
-        server_url, user_id = db.get_meta("server_url"), db.get_meta("user_id")
+            if "released" not in raw:
+                return AnchorHome(str(raw["anchor"]), str(raw["server_url"]), str(raw["user_id"]))
+            # R16-L6: the owner let this server go ('sezam ai on
+            # --server-gone'); a vault connected to another one anchors there.
+            if raw["released"] == server_url:
+                return None
         if not server_url or not user_id:
             return None
         home = AnchorHome(os.urandom(32).hex(), server_url, user_id)
@@ -310,11 +321,15 @@ def name_server(vault: "Vault", server_url: str) -> None:
             anchor_home(vault)
 
 
-def rehome_anchor(vault: "Vault") -> None:
+def rehome_anchor(vault: "Vault", server_gone: bool = False) -> None:
     """'sezam ai on' (fresh password): the anchor moves to the server the
     vault now syncs with, keeping its id (a server move, not an agent). On a
-    vault that syncs with no server any more the owner drops it (R16-L6: a
-    server that is gone kept AI access off for good)."""
+    vault that syncs with no server any more the owner drops it.
+
+    Review 18c300f R16-L6: a sync server that is gone kept AI access off for
+    good (nothing removes server_url). With ``server_gone`` the owner says
+    so: the vault stops expecting an anchor on that server until it connects
+    to another one (or 'sezam ai on' without it anchors there again)."""
     kek = _vault_kek(vault)
     db = vault.db
     server_url, user_id = db.get_meta("server_url"), db.get_meta("user_id")
@@ -323,6 +338,10 @@ def rehome_anchor(vault: "Vault") -> None:
     if not server_url or not user_id:
         with oplock.exclusive(db.path), db.transaction(immediate=True):
             _seal_home(db, kek, None)
+        return
+    if server_gone:
+        with oplock.exclusive(db.path), db.transaction(immediate=True):
+            _seal_home(db, kek, None, released=server_url)
         return
     try:
         home = anchor_home(vault)
@@ -437,8 +456,9 @@ def off_for_restore(db: VaultDB, live_epoch: int) -> AIAccessState:
     return state
 
 
-def enable(vault: "Vault", source: str) -> AIAccessState:
-    """Turn AI access on; the vault must be unlocked (fresh password)."""
+def enable(vault: "Vault", source: str, server_gone: bool = False) -> AIAccessState:
+    """Turn AI access on; the vault must be unlocked (fresh password).
+    ``server_gone``: anchored on no server, see rehome_anchor."""
     if not vault.is_unlocked:
         raise PermissionError("Turning AI access on requires the master password.")
     db = vault.db
@@ -449,7 +469,9 @@ def enable(vault: "Vault", source: str) -> AIAccessState:
     # Audit first: if it cannot be recorded, access stays off.
     vault._audit_log(
         "ai_on",
-        json.dumps({"epoch": state.epoch, **_origin(source)}, sort_keys=True).encode(),
+        json.dumps({
+            "epoch": state.epoch, **_origin(source), **({"server_gone": True} if server_gone else {}),
+        }, sort_keys=True).encode(),
         strict=True,
     )
     kek = _vault_kek(vault)
@@ -468,7 +490,7 @@ def enable(vault: "Vault", source: str) -> AIAccessState:
         db.set_meta(ENABLED_KEY, "1")
         db.set_meta(EPOCH_KEY, str(state.epoch))
         db.set_meta(STATE_MAC_KEY, _state_mac(kek, db))
-    rehome_anchor(vault)
+    rehome_anchor(vault, server_gone)
     return state
 
 

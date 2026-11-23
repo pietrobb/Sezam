@@ -309,6 +309,7 @@ def test_status_reports_without_secrets(env, shell):
             {"entry_id": reply["sessions"][0]["entry_id"], "agent": "a", "open_seconds": 0, "idle_seconds": 0}
         ],
         "remote_policy": "off",
+        "anchor": "none",  # R16-L6: a vault on no server waits for no anchor
     }
     assert SSH_PASSWORD not in json.dumps(reply) and PASSWORD not in json.dumps(reply)
     broker.close()

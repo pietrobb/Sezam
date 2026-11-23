@@ -354,7 +354,7 @@ def test_web_client_reproduces_the_shared_vectors():
         for name in (
             "validateCanonicalEnvelopeHeader", "buildAAD", "unpadPlaintext",
             "decryptEnvelope", "unwrapDEK", "signSyncObject", "buildAuditCanonical",
-            "keyRotationMessage", "padPlaintext", "encryptKeypairWrap", "decryptKeypairWrap",
+            "keyRotationMessage", "padPlaintext", "paddedSize", "encryptKeypairWrap", "decryptKeypairWrap",
             "expandDesktopKeypair", "base64ToBytes", "bytesToHex", "computeWebStateHash",
             "openDekEnvelope", "normalizeKdfParams", "deriveKEK", "deriveKEKViaWorker",
         )

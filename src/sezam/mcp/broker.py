@@ -246,8 +246,22 @@ class MCPBroker:
             "It turns on by itself once the server answers. If this vault no longer "
             "syncs with that server, connect it to its new server and run "
             "'sezam ai on' with the master password: the switch is anchored where the "
-            "vault syncs now.",
+            "vault syncs now. If that server is gone for good, 'sezam ai on "
+            "--server-gone' (master password) turns AI access on anchored nowhere.",
         )
+
+    def anchor_status(self) -> str:
+        """For 'sezam ai status' (R16-L6: a server that is gone kept AI access
+        off and nothing told the owner)."""
+        try:
+            if not ai_access.anchor_expected(self._vault):
+                return "none"
+        except Exception:
+            return "unreadable"
+        with self._brake_lock:
+            if self._anchor_checked_round != self._anchor_round:
+                return "not checked yet"
+            return "confirmed" if self._anchor_verified else "unconfirmed"
 
     def disable_ai(
         self, source: str, extra: dict | None = None
@@ -339,6 +353,7 @@ class MCPBroker:
             "remote_policy": (
                 self.remote_policy.last_result if self.remote_policy is not None else "off"
             ),
+            "anchor": self.anchor_status(),
         }
 
     def access_overview(self) -> list[dict]:

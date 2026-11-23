@@ -4128,14 +4128,20 @@ def _ai_off_remote_logins(vault: Vault, terminate: bool) -> list[tuple[str, str]
 
 
 @ai_group.command("on")
-def ai_on():
+@click.option(
+    "--server-gone", is_flag=True,
+    help="The sync server this vault syncs with is gone for good: anchor the "
+         "switch nowhere (connecting to another server anchors it there).",
+)
+def ai_on(server_gone: bool):
     """Turn AI access on again. Always asks for the master password."""
     from .vault import ai_access
 
     vault = _open_vault()
     _unlock_vault_fresh(vault, "Master password (required to turn AI access on): ")
     try:
-        state = ai_access.enable(vault, "cli")
+        server = vault.db.get_meta("server_url")
+        state = ai_access.enable(vault, "cli", server_gone=server_gone)
         home = ai_access.anchor_home(vault)
     except RuntimeError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -4143,10 +4149,19 @@ def ai_on():
         vault.lock()
     click.echo(f"AI access is ON (epoch {state.epoch}).")
     # R16-L6: where the switch is anchored, or that it is anchored nowhere.
-    if home is None:
+    if home is None and server_gone and server:
+        click.echo(
+            f"The AI switch is anchored on no sync server: {server} is gone. Until this vault "
+            "connects to a server, a program running as your OS user could write back an "
+            "earlier 'on' after 'sezam ai off'."
+        )
+    elif home is None:
         click.echo("The AI switch is anchored on no sync server: this vault syncs with none.")
     else:
-        click.echo(f"The AI switch is anchored on {home.server_url}.")
+        click.echo(
+            f"The AI switch is anchored on {home.server_url}. AI tools work once that server "
+            "confirms it; if it is gone for good, run 'sezam ai on --server-gone'."
+        )
 
 
 @ai_group.command("status")
@@ -4194,8 +4209,15 @@ def ai_status():
             f"  pid {reply.get('pid')}: AI {reply.get('ai_access')}, vault "
             f"{'unlocked' if reply.get('vault_unlocked') else 'locked'}, "
             f"{reply.get('ssh_sessions', 0)} SSH session(s), "
-            f"remote brake: {visible_text(str(reply.get('remote_policy', '?')))}"
+            f"remote brake: {visible_text(str(reply.get('remote_policy', '?')))}, "
+            f"switch anchor: {visible_text(str(reply.get('anchor', '?')))}"
         )
+        if reply.get("anchor") == "unconfirmed":
+            click.echo(
+                "    The sync server does not confirm the AI switch, so AI access stays off "
+                "there. It turns on once the server answers; if the server is gone for good, "
+                "run 'sezam ai on --server-gone'."
+            )
         for s in reply.get("sessions") or []:
             if not isinstance(s, dict):
                 continue
