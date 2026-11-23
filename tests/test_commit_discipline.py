@@ -35,6 +35,13 @@ def test_a_message_with_the_checklist_and_a_red_line_passes():
     (_message(red="Red on main: python -m pytest"), "no 'Red on"),  # a sha, not a branch
     (_message(red="No fix:"), "no 'Red on"),  # a reason
     ("Subject only\n", "no 'Checklist"),
+    # CI run 45104077580: the hook took red lines CI cannot run.
+    (_message(red="Red on 1234567: cd mobile && flutter test test/x_test.dart"), "not 'python -m pytest"),
+    (_message(red="Red on 1234567: pytest tests/test_x.py"), "not 'python -m pytest"),
+    (_message(red="Red on 1234567: tests/test_x.py::test_y (2 failed)"), "not 'python -m pytest"),
+    (_message(red="Red on 1234567: none; a comment only."), "not 'python -m pytest"),
+    (_message(red="Red on 1234567: SEZAM_X=1 python -m pytest tests/test_x.py"), "not 'python -m pytest"),
+    (_message(red="Red on 1234567: python -m pytest \"tests/test_x.py"), "does not parse"),
 ])
 def test_a_message_without_them_is_refused(message, problem):
     problems = cd.check_message(message)

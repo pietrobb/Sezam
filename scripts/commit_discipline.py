@@ -55,7 +55,22 @@ def check_message(text: str) -> list[str]:
             problems.append(f"checklist answers missing: {', '.join(map(str, missing))}")
     if not RED.search(text) and not NO_FIX.search(text):
         problems.append("no 'Red on <sha>: <command>' line (or 'No fix: <reason>')")
+    # CI run 45104077580: the hook took any text after 'Red on <sha>:' (a
+    # flutter command, a test path, prose) and only CI, after the push,
+    # found 40 red lines it could not run.
+    problems += [why for _, command in red_lines(text) if (why := command_problem(command))]
     return problems
+
+
+def command_problem(command: str) -> str:
+    """'' when CI can run ``command`` as a red line."""
+    try:
+        argv = shlex.split(command, posix=True)
+    except ValueError as exc:
+        return f"red command does not parse ({exc}): {command}"
+    if argv[:3] != ["python", "-m", "pytest"]:
+        return f"red command is not 'python -m pytest ...': {command}"
+    return ""
 
 
 def red_lines(text: str) -> list[tuple[str, str]]:
@@ -85,9 +100,9 @@ def verify_red(commit: str, sha: str, command: str, repo: Path, timeout: int) ->
         return f"red sha {sha} is not a commit here"
     if _git("merge-base", full, commit, cwd=repo).strip() != full:
         return f"red sha {sha} is not an ancestor of {commit[:12]}"
+    if why := command_problem(command):
+        return why
     argv = shlex.split(command, posix=True)
-    if argv[:3] != ["python", "-m", "pytest"]:
-        return f"red command is not 'python -m pytest ...': {command}"
     # The commit's tests (added or changed under tests/) on the code before it.
     changed = _git("diff", "--name-only", "--diff-filter=AM", f"{commit}^", commit, "--", "tests", cwd=repo).split()
     work = Path(tempfile.mkdtemp(prefix="sezam-red-"))
@@ -132,6 +147,8 @@ def check_range(base: str, head: str, repo: Path, verify: bool, timeout: int) ->
             problems.append(f"{commit[:12]} {subject[:60]}: {problem}")
         if verify:
             for sha, command in red_lines(text):
+                if command_problem(command):
+                    continue  # check_message named it
                 if why := verify_red(commit, sha, command, repo, timeout):
                     problems.append(f"{commit[:12]} {subject[:60]}: {why}")
     return problems
