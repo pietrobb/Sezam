@@ -49,6 +49,30 @@ LEGACY_CHECKED_META = "key_vouchers_checked"
 RETIRED_SEEN_META = "key_vouchers_retired_seen"
 
 
+def legacy_post_allowed(
+    *, fingerprint: str, checked: Optional[str], pending_identity: bool,
+    own_key: str, server_own_key: Optional[str], held_count: int,
+) -> bool:
+    """Whether a device posts its held versions now (R16-M4: the desktop's
+    and the phone's rule, tests/vectors/key_voucher_post.json).
+
+    Not again under keys it already posted under; not during its own identity
+    rotation; not when the server's current key of its account is not its
+    own (rotated elsewhere: its list would not count); not before it holds
+    anything. ``held_count`` is what it held before this pull: a version a
+    pull brings is not named by that pull (a server withholding the team log
+    serves a new device what it likes)."""
+    return (
+        checked != fingerprint and not pending_identity
+        and server_own_key == own_key and held_count > 0
+    )
+
+
+def legacy_entries(held, own_listed) -> list:
+    """What the device's list names: what it held that its account's lists do not."""
+    return sorted(set(held) - set(own_listed))
+
+
 def voucher_entry(obj: dict) -> Optional[key_vouchers.Entry]:
     """(id, version, payload_hash) of a served object, or None when malformed."""
     obj_id, version, payload_hash = obj.get("id"), obj.get("version", 1), obj.get("payload_hash")
@@ -213,18 +237,23 @@ class VoucherMixin:
         #443 and after it sees an identity rotation in the team, for rotations whose
         accounts never sync again. Neither retired_seq nor commit_seq is read."""
         fingerprint = self._voucher_fingerprint()
-        if self._db.get_meta(LEGACY_CHECKED_META) == fingerprint or self._pending_identity() is not None:
+        checked = self._db.get_meta(LEGACY_CHECKED_META)
+        own_key = bytes(self._keypair.signing_pk)
+        pending = self._pending_identity() is not None
+        if checked == fingerprint or pending:
             return
         self._get_signing_pks(self._user_id)
-        if self._voucher_keys.get(self._user_id) != self._keypair.signing_pk:
-            return
         if self._held_cache is None:
             self._held_cache = frozenset(self._held_entries())
-        if not self._held_cache:
+        server_own = self._voucher_keys.get(self._user_id)
+        if not legacy_post_allowed(
+            fingerprint=fingerprint, checked=checked, pending_identity=pending,
+            own_key=own_key.hex(), server_own_key=server_own.hex() if server_own else None,
+            held_count=len(self._held_cache),
+        ):
             return  # a new device: what it would vouch for, it has not seen yet
-        own_key = bytes(self._keypair.signing_pk)
         try:
-            new = sorted(self._held_cache - self._lists_of(self._user_id, own_key))
+            new = legacy_entries(self._held_cache, self._lists_of(self._user_id, own_key))
             for voucher_list in self._signed_lists(new):
                 self._request("POST", "/api/users/me/key-vouchers", voucher_list, auth=True)
         except RuntimeError as exc:

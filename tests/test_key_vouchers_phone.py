@@ -36,9 +36,15 @@ def test_a_new_phone_refuses_what_a_leaked_retired_key_signs_under_any_bound(
         # and vouches for it; his new phone takes it from that list.
         db._storage["key_vouchers"] = []
         client.pull()
+        # R16-M4: what Bob writes after his list; his new phone's first
+        # pull brings it and must not vouch for it (the desktop's rule: a
+        # list names only what the device held before the pull).
+        bob.create_entry(bob.db.get_meta("root_node_id"), "wifi", [{"key": "password", "value": "w", "sensitive": True}])
+        client.push()
     finally:
         bob.lock()
     assert {v["user_id"] for v in db._storage["key_vouchers"]} == {bob_id}
+    lists = list(db._storage["key_vouchers"])
     vouched = [
         o["id"] for o in db._storage["vault_objects"]
         if o["object_type"] == "entry" and o["parent_ref"] == team[5]["Ops"]
@@ -47,6 +53,7 @@ def test_a_new_phone_refuses_what_a_leaked_retired_key_signs_under_any_bound(
         "username": "bob", "password": PASSWORD, "forged": [], "vouched": vouched,
     }, {}, PHONE_TEST)
     assert "All tests passed!" in honest, honest
+    assert db._storage["key_vouchers"] == lists
 
     [archive] = db._storage["user_key_archives"]
     archive["retired_seq"] = 10**9

@@ -690,6 +690,58 @@ class SyncService {
     ],
   };
 
+  /// R16-M4: the desktop's legacy_post_allowed (sync_vouchers.py), checked
+  /// against tests/vectors/key_voucher_post.json on both.
+  static bool legacyVoucherPostAllowed({
+    required String fingerprint,
+    required String? checked,
+    required bool pendingIdentity,
+    required String ownKey,
+    required String? serverOwnKey,
+    required int heldCount,
+  }) =>
+      checked != fingerprint &&
+      !pendingIdentity &&
+      serverOwnKey == ownKey &&
+      heldCount > 0;
+
+  /// The desktop's legacy_entries: what was held that the account's lists do
+  /// not name, sorted (keyVoucherKey strings).
+  static List<String> legacyVoucherEntries(
+    Set<String> held,
+    Set<String> ownListed,
+  ) {
+    List<Object> parts(String key) {
+      final [id, version, hash] = key.split(':');
+      return [id, int.parse(version), hash];
+    }
+
+    return held.difference(ownListed).toList()..sort((a, b) {
+      final (x, y) = (parts(a), parts(b));
+      final byId = (x[0] as String).compareTo(y[0] as String);
+      if (byId != 0) return byId;
+      final byVersion = (x[1] as int).compareTo(y[1] as int);
+      return byVersion != 0
+          ? byVersion
+          : (x[2] as String).compareTo(y[2] as String);
+    });
+  }
+
+  /// Every retired key this pull's signers' rings named (the desktop's
+  /// RETIRED_SEEN_META): a new one moves the fingerprint, so the next pull
+  /// posts again.
+  Future<void> _rememberRetiredKeysSeen(
+    Map<String, List<Uint8List>> authorKeys,
+  ) async {
+    final stored = await _db.getSetting(keyVouchersRetiredSeenSetting);
+    final seen = <String>{
+      if (stored != null) ...(jsonDecode(stored) as List).cast<String>(),
+      for (final keys in authorKeys.values)
+        for (final key in keys.skip(1)) bytesToHex(key),
+    }.toList()..sort();
+    await _db.setSetting(keyVouchersRetiredSeenSetting, jsonEncode(seen));
+  }
+
   /// The voucher lists of [userId]'s current key (goal #443); a server from
   /// before them has none, which vouches for nothing.
   Future<Object?> _fetchKeyVoucherLists(String userId) async {
@@ -718,21 +770,23 @@ class SyncService {
   /// its first pull with #443 and after it sees an identity rotation in the
   /// team: a member with only a phone vouches for its new phones and web
   /// sessions, an admin for every member.
+  ///
+  /// R16-M4: with the desktop's checks (legacyVoucherPostAllowed, the shared
+  /// tests/vectors/key_voucher_post.json): run before the pull's objects are
+  /// verified, so the list names only what the phone held before this pull (a
+  /// new phone names nothing a server withholding the team log served it),
+  /// and only while the phone's key is its account's current one.
   Future<void> _postHeldVouchers(
     String userId,
     Uint8List signingPk,
     TeamState? team,
-    Map<String, List<Uint8List>> authorKeys,
   ) async {
     final secret = _vault.signingSecretKey;
     if (secret == null) return;
     final stored = await _db.getSetting(keyVouchersRetiredSeenSetting);
-    final seen = <String>{
+    final seen = <String>[
       if (stored != null) ...(jsonDecode(stored) as List).cast<String>(),
-      for (final keys in authorKeys.values)
-        for (final key in keys.skip(1)) bytesToHex(key),
-    }.toList()..sort();
-    await _db.setSetting(keyVouchersRetiredSeenSetting, jsonEncode(seen));
+    ]..sort();
     final members = [
       for (final MapEntry(key: id, value: member)
           in team?.members.entries ?? <MapEntry<String, TeamMember>>[])
@@ -741,16 +795,29 @@ class SyncService {
     final fingerprint = _crypto.sha256Hex(
       utf8.encode([bytesToHex(signingPk), ...members, ...seen].join('\n')),
     );
-    if (await _db.getSetting(keyVouchersCheckedSetting) == fingerprint) return;
+    final checked = await _db.getSetting(keyVouchersCheckedSetting);
+    if (checked == fingerprint) return;
     final held = heldVoucherKeys(await _db.getAllObjects());
-    if (held.isEmpty) return; // what it would vouch for, it has not seen yet
+    final serverOwn = held.isEmpty
+        ? null
+        : (await _fetchPublicKeys(userId))['signing_pk'];
+    if (!legacyVoucherPostAllowed(
+      fingerprint: fingerprint,
+      checked: checked,
+      pendingIdentity: false, // the phone makes no identity rotation
+      ownKey: bytesToHex(signingPk),
+      serverOwnKey: serverOwn is String ? serverOwn.toLowerCase() : null,
+      heldCount: held.length,
+    )) {
+      return;
+    }
     final own = vouchedEntries(
       userId,
       signingPk,
       await _fetchKeyVoucherLists(userId),
     );
     final entries = <List<Object>>[];
-    for (final key in held.difference(own)) {
+    for (final key in legacyVoucherEntries(held, own)) {
       final [id, version, payloadHash] = key.split(':');
       final entry = <Object>[id, int.parse(version), payloadHash];
       try {
@@ -2009,6 +2076,14 @@ class SyncService {
     // The log this pull brings decides which keys it retired (capability run
     // 294), as on the desktop: a fresh phone holds no log of its own yet.
     final teamLog = await _syncTeamLog(teamLogHead, checkpoint);
+    // R16-M4: as the desktop, before this pull's objects are verified: the
+    // list names only what the phone held before it.
+    try {
+      await _postHeldVouchers(currentUserId, signingPk, teamLog?.team);
+    } on Exception {
+      // The next pull posts again (the fingerprint is kept only once every
+      // list went).
+    }
     final authorKeys = <String, List<Uint8List>>{};
     final vouchedBySigner = <String, Set<String>>{};
     final listsByPoster = <String, Set<String>>{};
@@ -2513,17 +2588,7 @@ class SyncService {
         // The item stays queued; the push reports it.
       }
     }
-    try {
-      await _postHeldVouchers(
-        currentUserId,
-        signingPk,
-        teamLog?.team,
-        authorKeys,
-      );
-    } on Exception {
-      // The pull is committed; the next pull posts again (the fingerprint
-      // is kept only once every list went).
-    }
+    await _rememberRetiredKeysSeen(authorKeys);
 
     return PullResult(
       newObjects: verified.length - conflicts.length,
@@ -2555,7 +2620,9 @@ class SyncService {
           _vault.userId!,
         )).isNotEmpty,
         ownUserId: _vault.userId,
-        ownKeys: _vault.signingPublicKey == null || _vault.encryptionPublicKey == null
+        ownKeys:
+            _vault.signingPublicKey == null ||
+                _vault.encryptionPublicKey == null
             ? null
             : [
                 TeamLog.toHex(_vault.signingPublicKey!),

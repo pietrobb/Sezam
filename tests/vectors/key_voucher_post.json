@@ -1,0 +1,62 @@
+{
+  "description": "R16-M4: when a desktop or a phone posts the list of the versions it holds (legacy key vouchers, goal #443), and what the list names. 'held' is what the device held before this pull; 'post' false: nothing is posted and the fingerprint is not stored.",
+  "cases": [
+    {
+      "name": "first sync with #443 of a device that holds versions",
+      "fingerprint": "f1", "checked": null, "pending_identity": false,
+      "own_key": "aa", "server_own_key": "aa",
+      "held": [["01A", 1, "h1"], ["01B", 2, "h2"]], "own_listed": [["01A", 1, "h1"]],
+      "post": true, "entries": [["01B", 2, "h2"]]
+    },
+    {
+      "name": "a new device holds nothing before its first pull: what that pull brings is not named",
+      "fingerprint": "f1", "checked": null, "pending_identity": false,
+      "own_key": "aa", "server_own_key": "aa",
+      "held": [], "own_listed": [],
+      "post": false, "entries": []
+    },
+    {
+      "name": "already posted under these keys",
+      "fingerprint": "f1", "checked": "f1", "pending_identity": false,
+      "own_key": "aa", "server_own_key": "aa",
+      "held": [["01A", 1, "h1"]], "own_listed": [],
+      "post": false, "entries": [["01A", 1, "h1"]]
+    },
+    {
+      "name": "the account's key was rotated elsewhere: this device's key is not the server's current one",
+      "fingerprint": "f2", "checked": "f1", "pending_identity": false,
+      "own_key": "aa", "server_own_key": "bb",
+      "held": [["01A", 1, "h1"]], "own_listed": [],
+      "post": false, "entries": [["01A", 1, "h1"]]
+    },
+    {
+      "name": "the server names no current key of this account",
+      "fingerprint": "f2", "checked": "f1", "pending_identity": false,
+      "own_key": "aa", "server_own_key": null,
+      "held": [["01A", 1, "h1"]], "own_listed": [],
+      "post": false, "entries": [["01A", 1, "h1"]]
+    },
+    {
+      "name": "this device's own identity rotation is pending",
+      "fingerprint": "f2", "checked": "f1", "pending_identity": true,
+      "own_key": "aa", "server_own_key": "aa",
+      "held": [["01A", 1, "h1"]], "own_listed": [],
+      "post": false, "entries": [["01A", 1, "h1"]]
+    },
+    {
+      "name": "a rotation in the team: posted again, only what its lists do not name yet",
+      "fingerprint": "f2", "checked": "f1", "pending_identity": false,
+      "own_key": "aa", "server_own_key": "aa",
+      "held": [["01C", 3, "h3"], ["01A", 1, "h1"], ["01B", 2, "h2"]],
+      "own_listed": [["01A", 1, "h1"], ["01B", 2, "h2"]],
+      "post": true, "entries": [["01C", 3, "h3"]]
+    },
+    {
+      "name": "everything is named already: nothing to post, the fingerprint is stored",
+      "fingerprint": "f2", "checked": "f1", "pending_identity": false,
+      "own_key": "aa", "server_own_key": "aa",
+      "held": [["01A", 1, "h1"]], "own_listed": [["01A", 1, "h1"]],
+      "post": true, "entries": []
+    }
+  ]
+}
