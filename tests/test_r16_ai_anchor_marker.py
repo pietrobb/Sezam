@@ -18,7 +18,8 @@ import pytest
 
 from sezam.mcp import broker as broker_mod
 from sezam.vault import ai_access
-from tests.test_integration_client_server import PASSWORD
+from sezam import cli
+from tests.test_integration_client_server import PASSWORD, _vault
 from tests.test_integration_client_server import server  # noqa: F401  (fixture)
 from tests.test_review7_ai_switch_replay_h6 import _copy_rows, _write_rows
 from tests.test_review13_ai_switch_anchor import (
@@ -75,6 +76,32 @@ def test_an_on_copied_before_the_home_existed_does_not_come_back(laptop):  # noq
     second = _broker(laptop)
     assert _refused(second) in ("ai_disabled", "ai_anchor_unverified")
     _stop(second)
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "Stated limit (capability review 502, operator decision pending): an 'on' sealed "
+    "before the vault ever named a server names no home, and the admin's KEK and "
+    "identity do not change at connect, so no local seal tells it from a vault "
+    "whose anchor rows were deleted."))
+def test_an_on_copied_before_the_first_connect_does_not_come_back(server, tmp_path):  # noqa: F811
+    url, _ = server
+    vault = _vault(tmp_path / "laptop", "admin")
+    assert vault.db.get_meta(ai_access.ANCHOR_HOME_KEY) is None
+    early = _copy_rows(vault)
+    cli._server_connect_flow(url, vault, PASSWORD)
+    first = _broker(vault)
+    assert _allowed(first)
+    _ai_off_elsewhere(vault)
+    first.remote_policy.poll_once()
+    _stop(first)
+    _write_rows(vault, early)
+    for key in DROPPED:
+        _delete_meta(vault, key)
+    _reopen(vault)
+    try:
+        assert not ai_access.read_state(vault).enabled
+    finally:
+        vault.lock()
 
 
 def test_an_on_sealed_before_the_fix_counts_only_next_to_its_home(laptop):  # noqa: F811

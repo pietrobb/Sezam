@@ -299,7 +299,10 @@ def name_server(vault: "Vault", server_url: str) -> None:
     """The vault now syncs with ``server_url``; its anchor home is sealed in
     the same step. Capability review 501: made lazily by the first broker,
     the home left the 'on' sealed without one valid until then, and a copy
-    of those rows taken meanwhile came back once the home rows were deleted."""
+    of those rows taken meanwhile came back once the home rows were deleted.
+    An 'on' sealed before the vault ever named a server (creation, 'ai on'
+    with no server) still names no home: rows copied then roll the switch
+    back to that time (stated limit, test_r16_ai_anchor_marker)."""
     db = vault.db
     with oplock.exclusive(db.path):
         db.set_meta("server_url", server_url)

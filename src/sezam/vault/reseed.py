@@ -16,7 +16,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..usernames import normalize_username
-from . import oplock, outbox, pending_states
+from . import ai_access, oplock, outbox, pending_states
 from .onboarding import complete_bootstrap_upload
 from .snapshots import take_snapshot
 from .sync_client import (
@@ -181,7 +181,7 @@ def _upload_and_push(vault: Vault, server_url: str, password: str, state: str, r
     # Signs in with the identity key: fails closed if someone else's account
     # took the server meanwhile.
     client = complete_bootstrap_upload(vault, server_url, password)
-    db.set_meta("server_url", server_url)
+    ai_access.name_server(vault, server_url)
     if state.startswith(("bootstrap ", "rejoin ")):
         # A rejoining member sends only its own items: envelopes, key
         # archives and audit records are the admin's to send.
@@ -235,7 +235,7 @@ def _bootstrap(vault: Vault, client: SyncClient, server_url: str,
         raise
     if resp.get("user_id") != user_id:
         raise RuntimeError("The server bootstrapped a different account id")
-    db.set_meta("server_url", server_url)
+    ai_access.name_server(vault, server_url)
     pending_states.mark_bootstrap_upload_pending(db, True)
 
 
