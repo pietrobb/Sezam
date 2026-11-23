@@ -151,7 +151,7 @@ def test_refuses_entries_that_are_not_an_ed25519_ssh_ca(ca_pem):
 def test_script_is_valid_sh(ca_pem, tmp_path):
     path = tmp_path / "setup.sh"
     path.write_text(host_setup_script(
-        _entry(ca_pem), "Servers/Web-AI", web_root="/var/www/site", sudo_command="/bin/true"
+        _entry(ca_pem), "Servers/Web-AI", web_root="/var/www/site", sudo_command="/usr/local/sbin/deploy"
     ))
     result = subprocess.run(["sh", "-n", str(path)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
@@ -196,8 +196,15 @@ if not GOLDEN and os.environ.get("SEZAM_REQUIRE_HOST_SETUP") == "1":  # CI host 
 def test_printed_script_gives_a_certificate_only_account(tmp_path, ca_pem):
     user = "ai-web"
     script = tmp_path / "setup.sh"
+    # R14-M4 (ca80b80): an unlisted system program such as /bin/true is refused;
+    # the operator's root-owned script outside the system directories is the way.
+    deploy = "/usr/local/sbin/sezam-test-deploy"
+    os.makedirs("/usr/local/sbin", exist_ok=True)
+    with open(deploy, "w") as f:
+        f.write("#!/bin/sh\nexit 0\n")
+    os.chmod(deploy, 0o755)
     script.write_text(host_setup_script(
-        _entry(ca_pem, cert_ttl_minutes="1"), "Servers/Web-AI", web_root="/var/www/site", sudo_command="/bin/true"
+        _entry(ca_pem, cert_ttl_minutes="1"), "Servers/Web-AI", web_root="/var/www/site", sudo_command=deploy
     ))
     os.makedirs("/var/www/site", exist_ok=True)
     os.makedirs("/etc/cron.d", exist_ok=True)  # no systemd here: the reaper goes to cron.d
