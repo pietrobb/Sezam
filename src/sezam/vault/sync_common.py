@@ -147,6 +147,7 @@ TEAM_LOG_REQUIRED = "team_log_required"
 TEAM_LOG_UNREADABLE = "team_log_unreadable"
 # Per-object code of a refused push object.
 REVOKED_ENVELOPE = "revoked_envelope"
+TEAM_LOG_ENVELOPE = "team_log_envelope"
 COLLECTED_OBJECT = "collected_object"
 ACCOUNT_EXISTS = "account_exists"
 USERNAME_TAKEN = "username_taken"

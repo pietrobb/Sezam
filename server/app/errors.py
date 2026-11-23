@@ -35,6 +35,9 @@ TEAM_LOG_REQUIRED = "team_log_required"
 TEAM_LOG_UNREADABLE = "team_log_unreadable"
 # Per-object code of a refused push object (PushObjectResult.code).
 REVOKED_ENVELOPE = "revoked_envelope"
+# R15 #441 (capability finding 494): an envelope the team log does not give to
+# its account (team_log.envelope_refusal). Sent again as is, it is refused again.
+TEAM_LOG_ENVELOPE = "team_log_envelope"
 # The write's base is older than a deleted copy tombstone GC collected: the
 # server keeps only that copy's (version, hash), no payload to show.
 COLLECTED_OBJECT = "collected_object"
@@ -57,7 +60,7 @@ ERROR_CODES = frozenset({
     IDENTITY_KEY_RETIRED, TOKEN_INVALID, TOKEN_REVOKED, REVOKED_ENVELOPE,
     COLLECTED_OBJECT, TEAM_LOG_HEAD_MOVED, TEAM_LOG_REFUSED, TEAM_LOG_REQUIRED, TEAM_LOG_UNREADABLE,
     ACCOUNT_EXISTS, USERNAME_TAKEN, ORG_RECOVERY_SUPERSEDED, INVALID_KEY_VOUCHERS,
-    KEY_VOUCHERS_INCOMPLETE,
+    KEY_VOUCHERS_INCOMPLETE, TEAM_LOG_ENVELOPE,
 })
 
 

@@ -42,6 +42,7 @@ from ..errors import (
     KEY_CHANGE_NEEDS_PROOF,
     KEY_VOUCHERS_INCOMPLETE,
     REVOKED_ENVELOPE,
+    TEAM_LOG_ENVELOPE,
     STALE_KEY_EPOCH,
     WRONG_CURRENT_PASSWORD,
     ApiError,
@@ -897,7 +898,9 @@ async def _sync_push(
                                 envelope_acl_node, obj.access_level, regrant=regrant,
                             )
                             if refusal:
-                                conflicts.append(PushObjectResult(id=obj.id, error=refusal))
+                                conflicts.append(PushObjectResult(
+                                    id=obj.id, error=refusal, code=TEAM_LOG_ENVELOPE,
+                                ))
                                 continue
                 elif obj.access_level is not None:
                     conflicts.append(PushObjectResult(

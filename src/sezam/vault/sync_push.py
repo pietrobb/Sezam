@@ -46,6 +46,7 @@ from .sync_common import (
     IDENTITY_ROTATION_NEEDS_NEW_KEYS,
     KEY_CHANGE_MISSES_DEKS,
     REVOKED_ENVELOPE,
+    TEAM_LOG_ENVELOPE,
     serialize_audit_row,
     server_error,
     STALE_KEY_EPOCH,
@@ -857,7 +858,11 @@ class PushMixin:
                         (obj["id"], obj["id"], self._user_id),
                     )
                 if obj and obj["object_type"] == "envelope" and (
-                    conflict.get("code") == REVOKED_ENVELOPE
+                    # R15 #441 (capability finding 494): an envelope sent without
+                    # the access.set that gives its key (whatever lost it) is
+                    # withdrawn once and reported, not resent on every push. A
+                    # queued grant goes with its records (_push_team_grants).
+                    conflict.get("code") in (REVOKED_ENVELOPE, TEAM_LOG_ENVELOPE)
                 ):
                     outbox.refuse(self._db, outbox.ENVELOPE, obj["id"])
             personal_roots_refused(self._db, self._dek_mgr, resp.get("conflicts", []), list(accepted_ids))
