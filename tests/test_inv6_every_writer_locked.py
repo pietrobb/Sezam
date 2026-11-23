@@ -359,6 +359,9 @@ LOCK_SITES = {
     ("sezam/vault/sync_push.py", "PushMixin.push", "@oplock.held"),
     ("sezam/vault/sync_rekey.py", "RekeyMixin.close_rekey_if_landed", "@oplock.held"),
     ("sezam/vault/sync_resync.py", "ResyncMixin.full_resync", "@oplock.held"),
+    # caed6b9 (R14-M1): the push before it, the envelopes and the role records
+    # under one hold; test_review14_handover_m1.py.
+    ("sezam/vault/team_migration.py", "hand_over_admin", "@oplock.held"),
     ("sezam/vault/team_log_local.py", "TeamLogMixin.append_team_log", "@oplock.held"),
     ("sezam/vault/team_log_local.py", "TeamLogMixin.flush_team_log", "@oplock.held"),
     ("sezam/vault/team_log_local.py", "TeamLogMixin.queue_team_changes", "@oplock.held"),

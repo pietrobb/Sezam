@@ -3601,35 +3601,42 @@ class TeamLogMachine(SyncMachine):
             self.member_forges_a_restore_of_the_lost_log(data, race, path)
 
     @precondition(lambda self: self._server_log() and self._member_desktops())
-    @rule(data=st.data())
-    def yield_the_admin_role_and_take_it_back(self, data):
-        """(Named to sort after every other rule: the saved examples in
-        property_seeds.txt keep their shape.)
+    @rule(data=st.data(), chain=st.booleans(), unsent=st.booleans())
+    def yield_the_admin_role_and_take_it_back(self, data, chain, unsent):
+        """(Three arguments and this name sort it after every other rule,
+        RuleStrategy orders by argument count, then name: the saved examples
+        in property_seeds.txt keep their shape.)
 
         'sezam team-log hand-over' to a member desktop, whose push re-keys
-        what the admin held only as admin, and back the same way (review
-        8bc70f7 M1). The role is the admin's authority: the round trip leaves
-        the member's access in the log as it was (a handover granted none),
-        and no envelope of a current key the log does not give them
-        (an_envelope_goes_with_its_access)."""
+        what the admin held only as admin, on to a third member if ``chain``,
+        and back to the admin (review 8bc70f7 M1). The role is the admin's
+        authority: after EVERY hop each member's access in the log is as it
+        was (a handover grants none, only what the admin had queued for them
+        goes out), and after the round trip no envelope of a current key the
+        log does not give them (an_envelope_goes_with_its_access). With
+        ``unsent`` the admin hands over with an edit not yet pushed: it goes
+        out first, or the handover is refused."""
         from sezam.vault.team_migration import hand_over_admin
 
-        state = teamlog.replay(self._server_log())
-        candidates = [
-            u for u in self._member_desktops()
-            if u in state.members and state.members[u].active and not teamlog.is_admin(state, u)
-            and u not in self.waiting and u not in self.unconfirmed
-        ]
-        user_id = self._pick(data, candidates, "member")
+        start = teamlog.replay(self._server_log())
+        user_id = self._pick(data, self._may_take_the_role(start), "member")
         if user_id is None:
             return
         device = self._device(data)
         dev = self._command(device)
         admin_id = dev.vault.db.get_meta("user_id")
-        if not teamlog.is_admin(state, admin_id):
+        if not teamlog.is_admin(start, admin_id):
             return
         name = self.members[user_id].name
-        access_before = {folder: users.get(user_id) for folder, users in state.access.items()}
+        edit = []
+        folder = self._pick(data, self._folders(device), "folder") if unsent else None
+        if folder is not None:
+            title = self._token("E")
+            self._local(device, f"create entry {title} in {folder}", lambda v: edit.append(v.create_entry(
+                folder, title, [{"key": "password", "value": title, "sensitive": True}])))
+        queued = dev.client.pending_team_changes() + [
+            change for kept in dev.client.pending_team_grants().values() for change in kept]
+        sent_for = {(c["user_id"], c["folder"]) for kind, c in queued if kind == "access.set"}
         try:
             hand_over_admin(dev.vault, dev.client, user_id, lambda _fp: True)
         except (RuntimeError, ValueError, teamlog.TeamLogError) as exc:
@@ -3639,37 +3646,76 @@ class TeamLogMachine(SyncMachine):
                 f"a refused handover to {name} landed\n" + self._trace())
             return
         self.log.append(f"{device}: hands the admin role to {name}")
-        member = self.members[user_id]
-        for attempt in range(2):
-            client = self._new_client(member.vault)
-            try:
-                client.pull()
-                revocation.push_with_queued_revocations(member.vault, client)
-                hand_over_admin(member.vault, client, admin_id, lambda _fp: True)
-                break
-            except (RuntimeError, ValueError, teamlog.TeamLogError) as exc:
-                self.log.append(f"{name}: hand the admin role back refused: {exc}")
-                if attempt == 1:
-                    raise AssertionError(f"{name} cannot hand the admin role back: {exc!r}\n" + self._trace()) from exc
-                self._member_sync(user_id)  # settles its conflicts, as the refusal says
+        if edit:
+            coverage_event("handover with an unsent edit")
+            assert not dev.vault.db.fetchone(
+                "SELECT 1 FROM outbox WHERE object_id = ? AND state = 'queued'", (edit[0],)), (
+                f"{device} handed the role over and left its unsent edit behind\n" + self._trace())
+        holders = [user_id]
+        self._the_handover_granted_nothing(start, holders, sent_for)
+        third = self._pick(data, self._may_take_the_role(teamlog.replay(self._server_log())), "next admin") if chain else None
+        if third is not None:
+            self._member_hands_over(user_id, third)
+            coverage_event("handover chain")
+            holders.append(third)
+            self._the_handover_granted_nothing(start, holders, sent_for)
+        self._member_hands_over(holders[-1], admin_id)
         coverage_event("handover round trip")
-        self.log.append(f"{name}: hands the admin role back")
-        self._call(device, "pull")  # the member's re-keys, then 'sezam push' re-keys what it held as admin
+        self._call(device, "pull")  # the members' re-keys, then 'sezam push' re-keys what it held as admin
         self._push(device)
         state = teamlog.replay(self._server_log())
-        assert teamlog.is_admin(state, admin_id), f"{name} handed the role back, the log disagrees\n" + self._trace()
-        changed = {
-            folder: (level, state.access.get(folder, {}).get(user_id))
-            for folder, level in access_before.items() if state.access.get(folder, {}).get(user_id) != level
-        }
-        assert not changed, f"a handover round trip changed {name}'s access: {changed}\n" + self._trace()
-        for folder in state.folders:
-            if state.folders[folder][-1][1] == user_id:
-                coverage_event("handover: a folder waits for the admin's re-key")
-                continue
-            if user_id not in state.access.get(folder, {}):
-                assert not teamlog.may_hold_key(state, user_id, teamlog.current_key(state, folder)), (
-                    f"{name} holds {folder}'s current key after the role went back\n" + self._trace())
+        assert teamlog.is_admin(state, admin_id), f"the role went back to {device}, the log disagrees\n" + self._trace()
+        self._the_handover_granted_nothing(start, holders, sent_for)
+        for holder in holders:
+            for folder in state.folders:
+                if state.folders[folder][-1][1] == holder:
+                    coverage_event("handover: a folder waits for the admin's re-key")
+                    continue
+                if holder not in state.access.get(folder, {}):
+                    assert not teamlog.may_hold_key(state, holder, teamlog.current_key(state, folder)), (
+                        f"{self.members[holder].name} holds {folder}'s current key after the role went back\n"
+                        + self._trace())
+
+    def _may_take_the_role(self, state) -> list[str]:
+        return [
+            u for u in self._member_desktops()
+            if u in state.members and state.members[u].active and not teamlog.is_admin(state, u)
+            and u not in self.waiting and u not in self.unconfirmed
+        ]
+
+    def _member_hands_over(self, from_id: str, to_id: str) -> None:
+        """A member desktop that holds the admin role syncs, then hands it on."""
+        from sezam.vault.team_migration import hand_over_admin
+
+        name = self.members[from_id].name
+        to = self.members[to_id].name if to_id in self.members else "the admin"
+        for attempt in range(2):
+            client = self._new_client(self.members[from_id].vault)
+            try:
+                client.pull()
+                revocation.push_with_queued_revocations(self.members[from_id].vault, client)
+                hand_over_admin(self.members[from_id].vault, client, to_id, lambda _fp: True)
+                break
+            except (RuntimeError, ValueError, teamlog.TeamLogError) as exc:
+                self.log.append(f"{name}: hand the admin role to {to} refused: {exc}")
+                if attempt == 1:
+                    raise AssertionError(f"{name} cannot hand the admin role to {to}: {exc!r}\n" + self._trace()) from exc
+                self._member_sync(from_id)  # settles its conflicts, as the refusal says
+        self.log.append(f"{name}: hands the admin role " + ("back" if to_id not in self.members else f"to {to}"))
+
+    def _the_handover_granted_nothing(self, start, holders: list[str], sent_for: set) -> None:
+        """M1, checked after each hop: no access.set for a member the role went
+        to, except what the admin had queued for them before the handover."""
+        state = teamlog.replay(self._server_log())
+        for user_id in holders:
+            changed = {
+                folder: (start.access.get(folder, {}).get(user_id), state.access.get(folder, {}).get(user_id))
+                for folder in set(start.access) | set(state.access)
+                if state.access.get(folder, {}).get(user_id) != start.access.get(folder, {}).get(user_id)
+                and (user_id, folder) not in sent_for
+            }
+            assert not changed, (
+                f"a handover changed {self.members[user_id].name}'s access: {changed}\n" + self._trace())
 
     @invariant()
     def the_server_log_follows_the_rules(self):
@@ -3731,13 +3777,25 @@ class TeamLogMachine(SyncMachine):
     def an_envelope_goes_with_its_access(self):
         """INV-6: a grant's envelope and its access.set land in one request.
         A live envelope an admin sealed to a member for a key the log knows
-        is there only while the log gives that member the folder."""
+        is there only while the log gives that member the folder.
+
+        A server that lost its log and took back a shorter copy (another
+        device's) lacks the grant until the device that made it puts its
+        record back (R15 #441, default run on 4ee7d65): until then the
+        grant is in that device's copy, which continues the server's."""
         if not hasattr(self, "db"):
             return
         records = self._server_log()
         if not records:
             return
         state = teamlog.replay(records)
+        server = [teamlog.record_hash(r) for r in records]
+        ahead = []
+        for _name, vault in self._log_vaults():
+            rows = [{"body": r["body"], "sig": r["sig"]}
+                    for r in vault.db.fetchall("SELECT body, sig FROM team_log ORDER BY seq")]
+            if len(rows) > len(records) and [teamlog.record_hash(r) for r in rows[:len(records)]] == server:
+                ahead.append(teamlog.replay(rows))
         for obj in self.db._storage.get("vault_objects", []):
             target = obj.get("target_user_id")
             if obj["object_type"] != "envelope" or obj.get("is_deleted") or target not in self.members:
@@ -3751,6 +3809,10 @@ class TeamLogMachine(SyncMachine):
             folder, gen = state.dek_index.get(obj.get("parent_ref"), (None, None))
             if folder is None or gen != len(state.folders[folder]) - 1:
                 continue  # not a log key, or an older generation (kept for history)
+            if not state.access.get(folder, {}).get(target) and any(
+                    copy.access.get(folder, {}).get(target) for copy in ahead):
+                coverage_event("a grant waits in a device's copy the restored server lost")
+                continue
             assert state.access.get(folder, {}).get(target), (
                 f"{self.members[target].name} has an envelope of {folder}'s current key "
                 f"({obj.get('parent_ref')}) the log gives them no access to\n" + self._trace())
@@ -5194,8 +5256,10 @@ def test_sync_state_machine_team_log_under_attack(loopback_server, monkeypatch):
 
 def test_sync_state_machine_team_log_hands_the_role_over_and_back(loopback_server, monkeypatch):
     """Review 8bc70f7 M1 (goal #417): A -> member -> A with a folder shared
-    with the member and one that is not. Before, the handover granted the
-    member write to the second folder and the round trip left it there."""
+    with the member and one that is not. Before, the first handover granted
+    the member write to the second folder (red on ba79e6b at the check after
+    that hop, %TEMP%\\r14_m1_sm_mid_red.log); the end-of-trip check alone
+    missed it, the folder's grant was not yet in the log at the start."""
     monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
     TeamLogMachine.server = loopback_server
     machine = TeamLogMachine()
@@ -5213,7 +5277,7 @@ def test_sync_state_machine_team_log_hands_the_role_over_and_back(loopback_serve
         other = next(u for u in machine._active_members() if u != member)
         machine._grant("A", other, own_key[1], "read")  # a team folder not shared with the member
         machine._member_sync(member)
-        machine.yield_the_admin_role_and_take_it_back(_Scripted(member=member, device="A"))
+        machine.yield_the_admin_role_and_take_it_back(_Scripted(member=member, device="A"), False, False)
         assert any(line.endswith("hands the admin role back") for line in machine.log), machine._trace()
         machine.track_member_keys()
         machine.the_server_log_follows_the_rules()

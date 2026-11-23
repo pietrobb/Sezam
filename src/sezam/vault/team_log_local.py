@@ -1012,6 +1012,91 @@ class TeamLogMixin:
             team_changes=changes,
         )
 
+    def log_pre_log_grants(self) -> list[dict]:
+        """A grant sealed before this device knew the team log goes into it.
+
+        Stateful run on 4ee7d65: device B shared a folder while it held no
+        copy of the log A had just founded, so the grant took the path
+        without a log; its push failed ("goes with the next push"). With a
+        log the server takes another account's envelope only with an
+        access.set, so the queued envelope was refused on every push of B
+        for good. It now becomes a team grant, as founding the log would have
+        made it on this device: the folder's key (and those below) and the
+        access.set, sent with it in one atomic request. When the log does not
+        allow that (not an admin here, the member is not in the log or has
+        another key now, the key is no current one) the envelope is
+        withdrawn, as a refused grant is; returned for the push's conflicts.
+        """
+        from nacl.exceptions import CryptoError
+
+        from ..crypto.envelope_crypto import open_envelope
+
+        state, me = self.team_state(), self._db.get_meta("user_id")
+        if state is None or self._keypair is None:
+            return []
+        grants = self.pending_team_grants()
+        rows = [
+            row for row in self._db.fetchall(
+                "SELECT ae.id, ae.dek_id, ae.user_id, ae.access_level, ae.encrypted_dek, n.id AS folder "
+                "FROM access_envelopes ae JOIN outbox o ON o.kind = 'envelope' AND o.object_id = ae.id "
+                "AND o.state = 'queued' LEFT JOIN nodes n ON n.dek_id = ae.dek_id AND n.is_deleted = 0 "
+                "AND EXISTS (SELECT 1 FROM deks d WHERE d.id = ae.dek_id AND d.node_id = n.id) "
+                "WHERE ae.user_id <> ? AND ae.created_by = ? ORDER BY o.seq",
+                (me, me),
+            )
+            if row["id"] not in grants
+        ]
+        projected = projected_team_state(self._db, me) if rows else None
+        withdrawn = []
+        for row in rows:
+            if row["dek_id"] in projected.dek_index:
+                continue  # a key the log knows: the log's rules decide it as any envelope
+            member = projected.members.get(row["user_id"])
+            reason = None
+            if row["folder"] is None:
+                reason = "its folder is gone"
+            elif not teamlog.is_admin(projected, me) or not self.team_log_trusted(state):
+                reason = "only a trusted team log's admin shares a folder"
+            elif member is None or not member.active:
+                reason = "the member is not in the team log"
+            else:
+                try:
+                    opened = open_envelope(
+                        bytes(row["encrypted_dek"]),
+                        self._keypair.to_nacl_private_key().encode(),
+                        bytes.fromhex(member.encryption_pk),
+                    )
+                    opened[:] = b"\x00" * len(opened)
+                except CryptoError:
+                    reason = "it is sealed for a key the team log no longer names for the member"
+            if reason is None:
+                changes = [("folder.key", {"folder": row["folder"], "dek_id": row["dek_id"], "prev_dek_id": None})]
+                changes.extend(
+                    ("folder.key", {"folder": folder, "dek_id": dek_id, "prev_dek_id": None})
+                    for folder, dek_id in unlogged_folder_keys(self._db, projected.dek_index, row["folder"])
+                    if folder != row["folder"]
+                )
+                changes.append(("access.set", {
+                    "folder": row["folder"], "user_id": row["user_id"], "level": row["access_level"],
+                }))
+                try:
+                    self.queue_team_grant(row["id"], changes)
+                    projected = projected_team_state(self._db, me)
+                    continue
+                except teamlog.TeamLogError as exc:
+                    reason = f"the team log refuses it: {exc}"
+            logger.error("A grant made before the team log was withdrawn (%s): %s", reason, row["id"])
+            with self._db.transaction():
+                self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (row["id"],))
+                outbox.sent(self._db, outbox.ENVELOPE, row["id"])
+            self._push_cache.pop(row["id"], None)
+            withdrawn.append({
+                "id": row["id"], "user_id": row["user_id"], "folder": row["folder"],
+                "error": f"A share made before this device had the team log was withdrawn: {reason}; "
+                         "share the folder again",
+            })
+        return withdrawn
+
     def _refresh_team_log(self) -> None:
         if not self._token:
             self.authenticate()

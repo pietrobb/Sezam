@@ -1156,17 +1156,19 @@ class TestAuditLog:
     def audit(self, vault):
         return AuditLog(vault.db)
 
+    # 5ca0582 (R15 #438, R13-10): a record is signed only by the identity the
+    # vault is bound to, so the records here are the vault's own.
     @pytest.fixture
-    def signing_key(self, keypair):
-        return keypair.to_nacl_signing_key()
+    def signing_key(self, vault):
+        return vault.keypair.to_nacl_signing_key()
 
     @pytest.fixture
-    def verify_key_bytes(self, keypair):
-        return keypair.signing_pk
+    def verify_key_bytes(self, vault):
+        return vault.keypair.signing_pk
 
     @pytest.fixture
-    def actor_id(self):
-        return new_ulid()
+    def actor_id(self, vault):
+        return vault._user_id
 
     def test_ed25519_signed_record(self, audit, signing_key, verify_key_bytes, actor_id):
         record_id = audit.append(
@@ -1270,10 +1272,11 @@ class TestAuditLog:
     def test_nonexistent_record_verify_returns_false(self, audit, keypair):
         assert audit.verify_record("nonexistent_ulid_12345678", keypair.signing_pk) is False
 
-    def test_audit_with_encrypted_details(self, vault, keypair):
+    def test_audit_with_encrypted_details(self, vault):
         audit = AuditLog(vault.db)
+        keypair = vault.keypair
         sk = keypair.to_nacl_signing_key()
-        actor_id = new_ulid()
+        actor_id = vault._user_id
         audit_dek_id, audit_dek = vault.dek_mgr.get_audit_dek()
 
         record_id = audit.append(

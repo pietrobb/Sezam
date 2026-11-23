@@ -695,8 +695,8 @@ priečinku jadro drží `former_admins` (priečinok → admini odovzdaní počas
 ktorú starý admin zapečatil na ten kľúč (`envelope_valid`). Re-key priečinka, odobratie člena alebo priečinok
 založený neskôr to končí (vektory `handover_*`). Pole nie je v `to_json`, staré vektory ostali bajt po bajte.
 Re-key robí nový admin (review c78fd19 R13-8, inak by starý admin kľúče a výnimku držal navždy): desktop
-`hand_over_admin` pred `member.role` dá novému adminovi zápis s obálkou do každého priečinka, ktorého kľúč
-nemá, a jeho najbližší push (`finish_handover_rekeys`, `sezam push` aj GUI) re-keyuje každý priečinok, kde je
+`hand_over_admin` pošle v jednej atomickej požiadavke s `member.role` novému adminovi obálku každého kľúča,
+ktorý nemá (bez `access.set`: kľúče drží rolou, `may_hold_key`, review 8bc70f7 M1), a jeho najbližší push (`finish_handover_rekeys`, `sezam push` aj GUI) re-keyuje každý priečinok, kde je
 starý admin vo `former_admins` a nemá zápis z `access.set`. Nový kľúč dostanú príjemcovia z denníka, starý
 admin len so svojím `access.set`; archív nemení nikoho za odobratého.
 

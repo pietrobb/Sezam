@@ -233,22 +233,12 @@ class DEKManager:
             raise CryptoError("The team key has no trusted identity")
         trusted = log_trusted(self._db, user_id, keys, team)
         if not trusted:
-            from ..crypto.keys import KeyPair
-            from . import pending_states
-            from .key_rotation import open_old_keypair
-
-            journal = pending_states.key_change_journal(self._db)
-            if "identity" in journal and int(journal.get("epoch", -1)) > pending_states.last_pushed_key_epoch(self._db):
-                private = open_old_keypair(journal, self._kek, user_id)
-                if private is not None:
-                    try:
-                        previous = KeyPair.from_private_only(private)
-                        try:
-                            trusted = log_trusted(self._db, user_id, previous, team)
-                        finally:
-                            previous.zeroize()
-                    finally:
-                        private[:] = bytes(len(private))
+            previous = self._unpushed_rotation_keypair(user_id)
+            if previous is not None:
+                try:
+                    trusted = log_trusted(self._db, user_id, previous, team)
+                finally:
+                    previous.zeroize()
         if not trusted:
             raise TeamKeyRefused("The team log's founder is not confirmed on this device")
         # A key the log replaced opens while the log lets this account hold
@@ -259,10 +249,42 @@ class DEKManager:
         return team
 
     def _open_team_envelope(self, dek_id: str, team) -> bytearray:
+        user_id, keys = self._identity()
+        try:
+            return self._open_team_envelope_with(dek_id, team, user_id, keys)
+        except CryptoError:
+            previous = self._unpushed_rotation_keypair(user_id)
+            if previous is None:
+                raise
+        # R15 #441 (stateful run): until this device's identity rotation is
+        # on the server the log still names the old key, and an envelope
+        # another member sealed to it (the former admin's, after a handover
+        # and back) opens only with the old private key.
+        try:
+            return self._open_team_envelope_with(dek_id, team, user_id, previous)
+        finally:
+            previous.zeroize()
+
+    def _unpushed_rotation_keypair(self, user_id: str):
+        from ..crypto.keys import KeyPair
+        from . import pending_states
+        from .key_rotation import open_old_keypair
+
+        journal = pending_states.key_change_journal(self._db)
+        if "identity" not in journal or int(journal.get("epoch", -1)) <= pending_states.last_pushed_key_epoch(self._db):
+            return None
+        private = open_old_keypair(journal, self._kek, user_id)
+        if private is None:
+            return None
+        try:
+            return KeyPair.from_private_only(private)
+        finally:
+            private[:] = bytes(len(private))
+
+    def _open_team_envelope_with(self, dek_id: str, team, user_id: str, keys) -> bytearray:
         from .. import teamlog
         from ..crypto.envelope_crypto import open_envelope
 
-        user_id, keys = self._identity()
         for env in self._db.fetchall(
             "SELECT * FROM access_envelopes WHERE dek_id = ? AND user_id = ? "
             "AND id NOT IN (SELECT envelope_id FROM withdrawn_envelopes)", (dek_id, user_id)

@@ -17,7 +17,7 @@ import pytest
 
 import sezam.vault.dek as dek_mod
 from sezam.vault.crud import Vault
-from sezam.vault.dek import KeyChangedElsewhere
+from sezam.vault.db import VaultChangedElsewhere
 from tests.test_ai_p3_session_limits import FAST_PARAMS
 
 OLD = "stale-kek-old-password"
@@ -71,7 +71,10 @@ def test_a_password_change_between_the_check_and_the_wrap_misses_no_dek(
             gui.create_node("g")
         else:
             gui.create_personal_folder("p")
-    except KeyChangedElsewhere:
+    except VaultChangedElsewhere:
+        # KeyChangedElsewhere at the wrap, or (since 3e17d5f the change waits
+        # for the vault lock) the generation check of the audit record after
+        # it: refused either way; no DEK stays under a dead KEK (checked below).
         pass
     finally:
         assert other, "the wrap under the GUI's KEK never ran"

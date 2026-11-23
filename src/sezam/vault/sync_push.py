@@ -85,8 +85,9 @@ class PushMixin:
             # first pull took the account's tree. A device whose own tree the
             # account is (it registered it) pushes as before.
             self.pull()
+        withdrawn = self.log_pre_log_grants()
         resp = self._push_checked()
-        refused = self._push_team_grants()
+        refused = withdrawn + self._push_team_grants()
         if refused:
             resp = {**resp, "conflicts": list(resp.get("conflicts") or []) + refused}
         return resp
@@ -94,13 +95,21 @@ class PushMixin:
     def _envelope_object(self, row) -> dict:
         obj = self._push_cache.get(row["id"])
         if obj is None:
+            # R15 (goal #441): the level is not signed and the log decides it;
+            # a level change leaves the envelope as it was, so a resend (after
+            # a restore took it from the server) goes at the log's level.
+            level = row["access_level"]
+            team = self.team_state()
+            if team is not None:
+                folder = team.dek_index.get(row["dek_id"], (None, None))[0]
+                level = team.access.get(folder, {}).get(row["user_id"]) or level
             obj = self._make_sync_object(
                 id=row["id"],
                 object_type="envelope",
                 payload=row["encrypted_dek"],
                 parent_ref=row["dek_id"],
                 target_user_id=row["user_id"],
-                access_level=row["access_level"],
+                access_level=level,
                 version=1,
             )
             self._push_cache[row["id"]] = obj

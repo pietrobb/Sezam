@@ -236,6 +236,7 @@ def reseal_envelopes_for_rotation(
     team = local_team_state(db)
     withheld = queued_for_removal(db)
     if team is not None and teamlog.is_admin(team, user_id):
+        foreign = set(db.get_meta_json("foreign_dek_ids") or [])
         for folder in sorted(team.folders):
             dek_id = teamlog.current_key(team, folder)
             if not db.fetchone("SELECT 1 FROM deks WHERE id = ?", (dek_id,)):
@@ -245,8 +246,19 @@ def reseal_envelopes_for_rotation(
             dek_mgr._team_key_state(dek_id)
             if not teamlog.may_seal(team, folder):
                 raise RuntimeError("The team folder needs a re-key before identity rotation")
-            for uid, encryption_pk, level in teamlog.key_recipients(team, folder):
-                if uid == user_id or uid in withheld:
+            recipients = [r for r in teamlog.key_recipients(team, folder) if r[0] != user_id]
+            if dek_id in foreign:
+                # R15 #441 (stateful run): a key the admin holds only by an
+                # envelope (the former admin re-keyed the folder and handed the
+                # role back) is sealed to this account's old key, and nobody
+                # else may reissue it: after the rotation no device of the
+                # account opened the folder. The admin seals it to itself.
+                recipients.append((
+                    user_id, bytes(new_keypair.encryption_pk).hex(),
+                    team.access.get(folder, {}).get(user_id, "write"),
+                ))
+            for uid, encryption_pk, level in recipients:
+                if uid in withheld:
                     continue
                 new_id = new_ulid()
                 db.execute(
@@ -3270,10 +3282,17 @@ class Vault:
                     (new_dek_id, old_dek_id),
                 )
 
-                # Re-encrypt all entries in these folders that used the old DEK
+                # Re-encrypt all entries in these folders that used the old DEK.
+                # R15 #441 (stateful run): not those of a deleted folder. The
+                # server takes nothing live below one, so the batch was refused
+                # on every push; and the push revived the folder for them, which
+                # a new admin, who cannot open the parent's key it is sealed
+                # with, could not (CryptoError on every push). They keep the
+                # old key, as the rest of the trash does.
                 entry_rows = self._db.fetchall(
                     "SELECT id, node_id, encrypted_meta, encrypted_data, dek_id, version "
-                    f"FROM entries WHERE node_id IN ({id_marks}) AND is_deleted = 0",
+                    f"FROM entries WHERE node_id IN ({id_marks}) AND is_deleted = 0 "
+                    "AND node_id IN (SELECT id FROM nodes WHERE is_deleted = 0)",
                     tuple(affected_ids),
                 )
 
