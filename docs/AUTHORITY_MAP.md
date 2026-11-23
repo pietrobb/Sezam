@@ -243,6 +243,7 @@ The client side of every route; the team log's records are checked against the l
 | `has_pending_key_change` | — | — | — | test_sync_state_machine.py |
 | `list_shares` | — | — | — | test_crypto.py |
 | `list_users` | — | — | — | test_crypto.py |
+| `log_pre_log_grants` | a share sealed before this device knew the log becomes a team grant, or is withdrawn | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `SyncClient.push` |
 | `pending_team_changes` | — | — | — | test_review10_team_queue.py |
 | `pending_team_grants` | — | — | — | test_review9_team_log_durability.py |
 | `pin_envelope_holder_keys` | pins the keys of the members this account sealed folders for | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `SyncClient.prepare_key_change` |

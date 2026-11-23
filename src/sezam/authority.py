@@ -177,6 +177,8 @@ SYNC: dict[str, Op] = {
     "has_pending_key_change": read("tests/test_sync_state_machine.py"),
     "list_shares": read("tests/test_crypto.py", calls=("/api/shares",)),
     "list_users": read("tests/test_crypto.py", calls=("/api/users",)),
+    "log_pre_log_grants": local("a share sealed before this device knew the log becomes a team grant, or is withdrawn",
+                                part_of=("SyncClient.push",)),
     "pending_team_changes": read("tests/test_review10_team_queue.py"),
     "pending_team_grants": read("tests/test_review9_team_log_durability.py"),
     "pin_envelope_holder_keys": local("pins the keys of the members this account sealed folders for",
