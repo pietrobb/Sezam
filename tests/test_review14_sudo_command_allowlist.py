@@ -61,7 +61,7 @@ def test_a_system_program_off_the_list_is_refused(ca_pem, command):
     "/usr/local/sbin/deploy-site",
     "/usr/local/sbin/deploy-site --env=prod",
     "/bin/sh /usr/local/sbin/deploy-site",
-    "/usr/bin/python3 /opt/site/deploy.py",
+    "/usr/bin/python3 /usr/local/sbin/deploy.py",
 ])
 def test_listed_commands_and_root_owned_scripts_pass(ca_pem, command):
     host_setup_script(_entry(ca_pem), "p", web_root="/var/www/site", sudo_command=command)
@@ -73,21 +73,20 @@ def _calls(script: str, name: str) -> list[str]:
 
 def test_the_host_refuses_a_script_that_resolves_to_a_system_program(ca_pem):
     script = host_setup_script(_entry(ca_pem), "p", sudo_command="/bin/sh /usr/local/sbin/deploy-site")
-    assert _calls(script, "sezam_not_a_system_program") == [
-        "sezam_not_a_system_program /usr/local/sbin/deploy-site"
-    ]
-    assert script.index("sezam_not_a_system_program /") < script.index("visudo -cf")
+    assert _calls(script, "sezam_operator_script") == ["sezam_operator_script /usr/local/sbin/deploy-site arg"]
+    assert script.index("sezam_operator_script /") < script.index("visudo -cf")
     # A listed system command has no script to check.
     listed = host_setup_script(_entry(ca_pem), "p", sudo_command="/usr/bin/systemctl reload nginx")
-    assert _calls(listed, "sezam_not_a_system_program") == []
+    assert _calls(listed, "sezam_operator_script") == []
 
 
 @pytest.mark.skipif(not (SH or _wsl_sh()), reason="needs a POSIX sh with readlink (or WSL)")
 def test_the_host_check_refuses_a_system_program_and_passes_a_script(ca_pem):
     script = host_setup_script(_entry(ca_pem), "p", sudo_command="/usr/local/sbin/deploy-site")
-    function = re.search(r"^(sezam_not_a_system_program\(\) \{\n.*?\n\})$", script, re.S | re.M).group(1)
+    function = re.search(r"^(sezam_operator_script\(\) \{\n.*?\n\})$", script, re.S | re.M).group(1)
+    scripts = 'd=$(mktemp -d); SEZAM_SCRIPTS=$d; printf "#!/bin/sh\\n" > "$d/deploy-site"; '
 
-    tool = _run(function, "sezam_not_a_system_program /usr/bin/env")
-    assert tool.returncode != 0 and "system program" in tool.stderr, tool.stdout + tool.stderr
-    own = _run(function, "sezam_not_a_system_program /usr/local/sbin/deploy-site")
+    tool = _run(function, scripts + 'ln -s /usr/bin/env "$d/env"; sezam_operator_script "$d/env" run')
+    assert tool.returncode != 0 and "not a script in" in tool.stderr, tool.stdout + tool.stderr
+    own = _run(function, scripts + 'sezam_operator_script "$d/deploy-site" run')
     assert own.returncode == 0, own.stdout + own.stderr

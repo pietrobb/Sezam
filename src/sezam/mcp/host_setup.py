@@ -80,6 +80,12 @@ _SYSTEM_COMMANDS = {
 }
 
 
+# Review 18c300f R16-L1: where the operator's own root scripts live. Any other
+# program outside the system directories passed as 'a script', so
+# '/opt/conda/bin/ipython' (a root shell) did; now that is an allowlist too.
+SCRIPT_DIR = "/usr/local/sbin"
+
+
 def _system_program(path: str) -> bool:
     return any(path.startswith(top + "/") for top in _TOOL_DIRS)
 
@@ -92,8 +98,8 @@ def _not_listed() -> HostSetupError:
     )
     return HostSetupError(
         f"--sudo-command may run a system program only as one of: {shapes}. For anything else "
-        "write a root-owned script outside the system directories (e.g. /usr/local/sbin/deploy) "
-        "and give that, or '/bin/sh /usr/local/sbin/deploy'."
+        f"write a root-owned script in {SCRIPT_DIR} (e.g. {SCRIPT_DIR}/deploy) "
+        f"and give that, or '/bin/sh {SCRIPT_DIR}/deploy'."
     )
 
 
@@ -113,8 +119,9 @@ def _sudo_paths(command: str, web_root: Optional[str]) -> tuple[list[str], Optio
     """The program of a --sudo-command and every path among its arguments,
     refused where the AI may rewrite them; the printed script checks each
     of them on the host as well (_ROOT_ONLY). With them the operator's
-    script the command runs (None for a listed system command), which the
-    host must not resolve to a system program (_NOT_A_SYSTEM_PROGRAM).
+    script the command runs (None for a listed system command): one in
+    SCRIPT_DIR, which the host checks is still there after resolving
+    symlinks and, run directly, is a script (_OPERATOR_SCRIPT).
 
     Review 1141a20: '--web-root /var/www/site --sudo-command
     /var/www/site/deploy.sh' gave root to whatever the AI wrote into
@@ -151,7 +158,7 @@ def _sudo_paths(command: str, web_root: Optional[str]) -> tuple[list[str], Optio
         return paths, None
     else:
         script = program
-    if _system_program(script):
+    if not script.startswith(SCRIPT_DIR + "/"):
         raise _not_listed()
     return paths, script
 
@@ -174,16 +181,23 @@ _ROOT_ONLY = r"""sezam_root_only() {
   done
 }"""
 
-# R14-M4 on the host: the operator's script is not a system program under
-# another name (a symlink /usr/local/sbin/deploy -> /usr/bin/make).
-_NOT_A_SYSTEM_PROGRAM = (
-    "sezam_not_a_system_program() {\n"
-    '  r=$(readlink -f -- "$1" || printf \'%s\' "$1")\n'
+# R14-M4 / R16-L1 on the host: the operator's script resolves to a file in
+# SEZAM_SCRIPTS (not a symlink to /usr/bin/make or /opt/conda/bin/ipython)
+# and, when sudo runs it directly ($2 = run), is a script, not a program
+# copied there.
+_OPERATOR_SCRIPT = (
+    "sezam_operator_script() {\n"
+    '  r=$(readlink -f -- "$1") && [ -f "$r" ] || { echo "Sezam: $1 is not a file." >&2; return 1; }\n'
     '  case "$r" in\n'
-    "    " + "|".join(f"{top}/*" for top in _TOOL_DIRS) + ")\n"
-    '      echo "Sezam: $1 is the system program $r; --sudo-command runs a system program only as listed." >&2\n'
-    "      return 1;;\n"
+    '    "$SEZAM_SCRIPTS"/*) ;;\n'
+    '    *) echo "Sezam: $1 is $r, not a script in $SEZAM_SCRIPTS; --sudo-command runs a system program'
+    ' only as listed." >&2\n'
+    "       return 1;;\n"
     "  esac\n"
+    '  if [ "$2" = run ] && [ "$(head -c 2 -- "$r")" != "#!" ]; then\n'
+    '    echo "Sezam: $1 has no #! line: a program there is run only by a shell or interpreter." >&2\n'
+    "    return 1\n"
+    "  fi\n"
     "}"
 )
 
@@ -377,7 +391,9 @@ def host_setup_script(
             "#    could rewrite them.",
             _ROOT_ONLY,
             *(f"sezam_root_only {q(p)}" for p in sudo_paths),
-            *((_NOT_A_SYSTEM_PROGRAM, f"sezam_not_a_system_program {q(sudo_script)}") if sudo_script else ()),
+            *((f"SEZAM_SCRIPTS={SCRIPT_DIR}", _OPERATOR_SCRIPT,
+               f"sezam_operator_script {q(sudo_script)} {'run' if sudo_paths[0] == sudo_script else 'arg'}")
+              if sudo_script else ()),
             f"printf '%s\\n' {q(f'{user} ALL=(root) NOPASSWD: {_sudoers_command(sudo_command)}')} > {staged}",
             f"visudo -cf {staged}",
             f"chmod 0440 {staged}",
