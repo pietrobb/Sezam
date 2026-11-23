@@ -9,6 +9,7 @@ import logging
 import base64
 import csv
 import getpass
+import http.client
 import json
 import os
 import stat
@@ -16,6 +17,7 @@ import struct
 import sys
 import tempfile
 import time
+import urllib.error
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +29,7 @@ from .securefile import csv_escape, private_output
 from .usernames import normalize_username
 from .vault import ai_access, oplock
 from .vault.crud import Vault, require_usable_password
+from .vault.db import VaultSchemaTooNew
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +350,16 @@ class _SezamGroup(click.Group):
         except oplock.VaultBusy as exc:
             # R16-M3: a message, not a traceback; nothing was written.
             raise click.ClickException(str(exc)) from exc
+        except VaultSchemaTooNew as exc:
+            raise click.ClickException(str(exc)) from exc
+        except (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError) as exc:
+            # Review 18c300f R16-L7: an unreachable server was a traceback
+            # (URLError) in push, pull, share, revoke, change-password...
+            reason = getattr(exc, "reason", None) or exc
+            raise click.ClickException(
+                f"The sync server could not be reached ({reason}). Check the connection "
+                "and run the command again."
+            ) from exc
 
 
 @click.group(cls=_SezamGroup)
@@ -1269,9 +1282,6 @@ def rotate_identity():
     warning and should confirm the new fingerprint with you.
     """
     vault = _open_vault()
-    server_url = vault.db.get_meta("server_url")
-    if not server_url:
-        raise click.ClickException("Identity keys are used only with a server; none is set")
     _check_rate_limit()
     password = _get_password("Master password: ")
     try:
@@ -1282,6 +1292,11 @@ def rotate_identity():
         time.sleep(2)
         sys.exit(1)
     _clear_failed_attempts()
+    # R16-L7: read before the unlock it was 'Database not open' (traceback).
+    server_url = vault.db.get_meta("server_url")
+    if not server_url:
+        vault.lock()
+        raise click.ClickException("Identity keys are used only with a server; none is set")
 
     from .vault.snapshots import SnapshotError
     from .vault.sync_client import SyncClient

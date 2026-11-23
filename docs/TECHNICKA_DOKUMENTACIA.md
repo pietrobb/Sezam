@@ -2360,7 +2360,7 @@ Lokálne zmeny po čase snapshotu sa obnovou stratia, ak nie sú na serveri. Tre
 
 **`sezam restore <súbor>`** vráti trezor zo zálohy `sezam export <súbor> --format backup` rovnakými krokmi 2–7 (heslo platné pri zálohe, `pre-restore` snapshot, zámok `inuse`). Trezor, ktorý ešte neexistuje, len vytvorí zo zálohy (review 526419e N3).
 
-**Verzia schémy.** Pri otvorení `sezam.db` sa pred akýmkoľvek zápisom porovná `vault_meta.schema_version` s verziou, ktorú tento Sezam pozná. Trezor novšej verzie (aj nečitateľná hodnota) sa odmietne (`VaultSchemaTooNew`: aktualizujte Sezam) a súbor sa nezmení. Rovnako sa odmietne snapshot alebo záloha novšej schémy pri obnove. Trezor bez kľúča je pôvodná verzia 1 (review 526419e N3).
+**Verzia schémy.** Pri otvorení `sezam.db` sa pred akýmkoľvek zápisom porovná `vault_meta.schema_version` s verziou, ktorú tento Sezam pozná. Trezor novšej verzie (aj nečitateľná hodnota) sa odmietne (`VaultSchemaTooNew`: aktualizujte Sezam) a súbor sa nezmení. Rovnako sa odmietne snapshot alebo záloha novšej schémy pri obnove. Trezor bez kľúča je pôvodná verzia 1 (review 526419e N3). Verzia 2 je schéma s tabuľkou `outbox` (bez `is_dirty` a vedľajších tabuliek `object_base_*`); prechod z 1 ju zapíše v tej istej transakcii ako prestavbu tabuliek, aj trezoru, ktorý už mal outbox, ale ešte verziu 1. Verzia d14d368 (pozná len 1) takýto trezor odmietne hneď pri otvorení a nič nezapíše, namiesto pádu na `no such column: is_dirty` (review 18c300f R16-L7). Verzia formátu envelope (`schema_version` v AAD, stále 1) je iná hodnota a nemení sa. CLI hlási trezor novšej schémy aj nedostupný sync server jednou vetou, nie tracebackom.
 
 ### 16.5a Kôš a história záznamu
 

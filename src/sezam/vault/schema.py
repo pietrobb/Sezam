@@ -7,7 +7,11 @@ import hashlib
 import struct
 from typing import Optional
 
-SCHEMA_VERSION = 1
+# 2: the outbox replaced is_dirty and the object_base_* side tables
+# (docs/SYNC_SINGLE_SOURCE.md). Review 18c300f R16-L7: that change kept 1, so
+# d14d368 (knows 1) opened an upgraded vault and died on its is_dirty
+# triggers with a raw sqlite error; now it refuses with its own message.
+SCHEMA_VERSION = 2
 
 
 def row_payload(meta: bytes, data: Optional[bytes]) -> bytes:

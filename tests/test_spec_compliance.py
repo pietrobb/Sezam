@@ -1867,9 +1867,10 @@ class TestSearchIndex:
 class TestSchemaIntegrity:
     """Verify SQLite schema matches spec expectations."""
 
-    def test_schema_version_is_1(self):
+    def test_schema_version_is_2(self):
+        # 2 = the outbox schema (R16-L7); d14d368 knows only 1 and refuses it.
         from sezam.vault.schema import SCHEMA_VERSION
-        assert SCHEMA_VERSION == 1
+        assert SCHEMA_VERSION == 2
 
     def test_all_tables_created(self, vault):
         tables = vault.db.fetchall(

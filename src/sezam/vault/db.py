@@ -257,6 +257,7 @@ class VaultDB:
             and not has_table("envelope_sync_state")
             and not has_table("audit_sync_state")
             and not _has_pending_meta(conn)
+            and meta("schema_version") == str(SCHEMA_VERSION)
         ):
             return
         if not locked:  # INV-6: it rewrites the outbox and vault_meta; looked at again once held
@@ -335,6 +336,12 @@ class VaultDB:
             conn.executemany(
                 "UPDATE outbox SET body = '{\"revived\":true}' WHERE kind = 'write' AND object_id = ?",
                 [(folder,) for folder in revived],
+            )
+            # R16-L7: an older version that knows only 1 now refuses the
+            # vault instead of failing on the is_dirty it expects.
+            conn.execute(
+                "INSERT OR REPLACE INTO vault_meta (key, value) VALUES ('schema_version', ?)",
+                (str(SCHEMA_VERSION),),
             )
             conn.execute("COMMIT")
         except BaseException:
