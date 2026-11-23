@@ -57,6 +57,25 @@ class MigrationResult:
     hidden: list[HiddenItem] = field(default_factory=list)
 
 
+def _pull_current(client: SyncClient) -> None:
+    """The pull before an admin's team-log command (R16-Z, deep stateful run).
+
+    A pull that finds the server went back to a backup answers with a warning
+    and applies nothing. The command then acted on a server that had lost what
+    this account wrote after the backup while ``unsent_work`` saw it as sent:
+    a handover left those writes behind for good. It waits for the full resync,
+    which keeps them and sends them again.
+    """
+    from .sync_common import FULL_RESYNC_HINT, SERVER_ROLLBACK_META
+
+    pulled = client.pull()
+    if pulled.get("rollback_warning") or client._db.get_meta(SERVER_ROLLBACK_META) is not None:
+        raise RuntimeError(
+            "The server went back to an older state (restored from a backup?); "
+            f"nothing was sent. {FULL_RESYNC_HINT}"
+        )
+
+
 def _member_keys(vault: Vault, client: SyncClient, user_id: str) -> tuple[str, str, str]:
     """The member's pinned (signing, encryption) keys as hex and their fingerprint."""
     client.verified_encryption_pk(user_id)  # pins them; a key change raises
@@ -200,7 +219,7 @@ def add_member(
     only the server vouches for."""
     if not client._token:
         client.authenticate()
-    client.pull()
+    _pull_current(client)
     state = client.team_state()
     if state is None:
         raise RuntimeError("This organisation has no team log yet ('sezam team-log init').")
@@ -284,7 +303,7 @@ def hand_over_admin(
 
     if not client._token:
         client.authenticate()
-    client.pull()
+    _pull_current(client)
     _state, member = _admin_member(vault, client, user_id)
     fingerprint = compute_fingerprint(bytes.fromhex(member.signing_pk), bytes.fromhex(member.encryption_pk))
     confirmed = dict(vault.db.get_meta_json(CONFIRMED_MEMBER_KEYS_META) or {})
@@ -360,7 +379,7 @@ def readmit_member(
 
     if not client._token:
         client.authenticate()
-    client.pull()
+    _pull_current(client)
     state = client.team_state()
     me = vault.db.get_meta("user_id")
     if state is None:
@@ -475,7 +494,7 @@ def found_team_log(
         client.authenticate()
     client._founding_team_log = True
     try:
-        client.pull()
+        _pull_current(client)
     finally:
         client._founding_team_log = False
     if client.team_state() is not None or vault.db.get_meta(GENESIS_META):
