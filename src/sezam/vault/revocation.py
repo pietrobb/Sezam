@@ -10,7 +10,7 @@ from .crud import RekeyBlockedByConflicts
 from .sync_client import CONFIRMED_MEMBER_KEYS_META
 from .sync_limits import SyncUnitTooLarge
 from .sync_common import ServerError, queued_for_removal, server_error
-from .team_log_local import local_team_state, projected_team_state, unlogged_folder_keys
+from .team_log_local import PRE_LOG_GRANTS_META, local_team_state, projected_team_state, unlogged_folder_keys
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,11 @@ def grant_member(
             raise MemberKeyUnconfirmed(user_id, fingerprint)
         confirmed[user_id] = fingerprint
         vault.db.set_meta_json(CONFIRMED_MEMBER_KEYS_META, confirmed)
-    envelope_id = vault.grant_folder_access(node_id, user_id, encryption_pk, access_level)
+    with vault.db.transaction(immediate=True):
+        envelope_id = vault.grant_folder_access(node_id, user_id, encryption_pk, access_level)
+        # A log founded before this push lands makes it a team grant (log_pre_log_grants).
+        marked = list(vault.db.get_meta_json(PRE_LOG_GRANTS_META) or [])
+        vault.db.set_meta_json(PRE_LOG_GRANTS_META, marked + [envelope_id])
     return _push_grant(vault, client, envelope_id)
 
 

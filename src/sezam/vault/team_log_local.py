@@ -78,7 +78,9 @@ from .team_log_state import (  # noqa: F401 - re-exported: callers import these 
 
 logger = logging.getLogger(__name__)
 
-
+# Envelope ids grant_member sealed while this device had no team log (R15
+# #441); log_pre_log_grants makes them team grants once a log is here.
+PRE_LOG_GRANTS_META = "pre_log_grants"
 
 
 class TeamLogMixin:
@@ -1027,28 +1029,24 @@ class TeamLogMixin:
         another key now, the key is no current one) the envelope is
         withdrawn, as a refused grant is; returned for the push's conflicts.
 
-        Saved seed (TeamLogMachine, on 005074b): an identity rotation re-seals
-        a member's envelope on a key the log does not know (the server lost
-        the log). That new envelope replaces one the server holds and goes in
-        the rotation's atomic batch; taken for a new grant here it was held
-        back until the key change landed, and the batch missed it on every
-        push for good. A pending re-key's envelopes are the batch's.
+        Only envelopes grant_member sealed on its path without a log are such
+        grants (PRE_LOG_GRANTS_META, written with the envelope). Taking every
+        queued envelope on a key the log does not know for one logged what the
+        log's rules refuse: an identity rotation's re-sealed envelope (saved
+        seed on 005074b; held back from its own atomic batch, every push
+        failed with "Atomic re-key batch is missing") and an envelope sealed
+        without an access.set while the log was known (R13-10; it went into
+        the log instead of being refused).
         """
         from nacl.exceptions import CryptoError
 
         from ..crypto.envelope_crypto import open_envelope
-        from . import pending_states
 
-        try:
-            state = self.team_state()
-        except Exception:  # noqa: BLE001 - a failed log check holds back team changes only (#436 rule 1)
+        marked = set(self._db.get_meta_json(PRE_LOG_GRANTS_META) or [])
+        if not marked:
             return []
         me = self._db.get_meta("user_id")
-        if state is None or self._keypair is None:
-            return []
-        grants = dict(self.pending_team_grants())
-        grants.update(dict.fromkeys(pending_states.rekey_batch(self._db).get("object_ids", [])))
-        rows = [
+        queued = [
             row for row in self._db.fetchall(
                 "SELECT ae.id, ae.dek_id, ae.user_id, ae.access_level, ae.encrypted_dek, n.id AS folder "
                 "FROM access_envelopes ae JOIN outbox o ON o.kind = 'envelope' AND o.object_id = ae.id "
@@ -1057,8 +1055,18 @@ class TeamLogMixin:
                 "WHERE ae.user_id <> ? AND ae.created_by = ? ORDER BY o.seq",
                 (me, me),
             )
-            if row["id"] not in grants
+            if row["id"] in marked
         ]
+        if len(queued) != len(marked):
+            self._db.set_meta_json(PRE_LOG_GRANTS_META, [row["id"] for row in queued])  # sent or gone
+        try:
+            state = self.team_state()
+        except Exception:  # noqa: BLE001 - a failed log check holds back team changes only (#436 rule 1)
+            return []
+        if state is None or self._keypair is None:
+            return []
+        grants = self.pending_team_grants()
+        rows = [row for row in queued if row["id"] not in grants]
         projected = projected_team_state(self._db, me) if rows else None
         withdrawn = []
         for row in rows:
@@ -1108,6 +1116,7 @@ class TeamLogMixin:
                 "error": f"A share made before this device had the team log was withdrawn: {reason}; "
                          "share the folder again",
             })
+        self._db.set_meta_json(PRE_LOG_GRANTS_META, [])  # each is now a team grant, the log's, or withdrawn
         return withdrawn
 
     def _refresh_team_log(self) -> None:
