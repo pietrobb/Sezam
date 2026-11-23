@@ -10,25 +10,38 @@ import os
 import struct
 
 MAX_PADDING = 0xFFFF
+BUCKET = 0x10000
+
+
+def padded_size(n: int) -> int:
+    """Size a padded blob of n bytes takes (spec 2.6, review 18c300f R16-L3).
+
+    The next power of two, at least 32; where that needs more padding than
+    the u16 prefix holds (n above 128 KiB), the next multiple of 64 KiB. On
+    18c300f padding stopped at 0xFFFF bytes there and the blob told its exact
+    length. web app.js and mobile crypto_service.dart paddedSize: the same.
+    """
+    target = max(32, _next_power_of_2(n))
+    if target - n > MAX_PADDING:
+        target = -(-n // BUCKET) * BUCKET
+    return target
+
+
+def pad_json(data: bytes) -> bytes:
+    """A JSON text padded with trailing spaces to padded_size: for blobs read
+    as JSON without the u16 prefix (share links), which every JSON parser
+    reads as before."""
+    return data + b" " * (padded_size(len(data)) - len(data))
 
 
 def pad(data: bytes) -> bytes:
     """Pad data before encryption.
 
     Format: u16be(padding_len) + random_padding_bytes + actual_data
-    Total padded size is rounded up to next power of 2, minimum 32 bytes.
+    Total padded size is padded_size(2 + len(data)).
     """
-    # Minimum total size = 32 bytes (including the 2-byte length prefix)
-    min_total = 32
-    # Calculate minimum required: 2 (length prefix) + data
     raw_total = 2 + len(data)
-
-    # Round up to next power of 2, minimum 32
-    target = max(min_total, _next_power_of_2(raw_total))
-
-    # The u16 prefix caps padding at 0xFFFF; above that the target is no
-    # longer a power of two, but the format stays readable by every client.
-    padding_len = min(max(target - 2 - len(data), 0), MAX_PADDING)
+    padding_len = padded_size(raw_total) - raw_total
 
     padding_bytes = os.urandom(padding_len) if padding_len > 0 else b""
     return struct.pack(">H", padding_len) + padding_bytes + data

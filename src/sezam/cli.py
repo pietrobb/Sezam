@@ -3306,8 +3306,10 @@ def share(path: str, expires: str, views: int, pin: bool, notify_on_view: bool):
     raw_share_id = os.urandom(32)
     share_id = base64.urlsafe_b64encode(raw_share_id).decode("ascii").rstrip("=")
 
-    # Serialize entry to JSON for encryption
-    entry_json = json.dumps(entry, separators=(",", ":"), default=str).encode("utf-8")
+    # Serialize entry to JSON for encryption; padded so the blob tells only
+    # its size class, as an envelope does (review 18c300f R16-L3).
+    from .crypto.padding import pad_json
+    entry_json = pad_json(json.dumps(entry, separators=(",", ":"), default=str).encode("utf-8"))
 
     # Encrypt with XChaCha20-Poly1305 using nacl directly (standalone, no vault DEK envelope)
     # AAD per spec 6.1: alg(1B) || schema_version(1B) || blob_kind=3(1B) || raw_share_id(32B) || u32be(1)

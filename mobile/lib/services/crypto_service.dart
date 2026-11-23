@@ -15,7 +15,6 @@
 ///   alg(1) + schema(1) + kind(1) + dekId(26) + objectId(26) + version_u32be(4)
 
 import 'dart:convert';
-import 'dart:math' show min;
 import 'dart:typed_data';
 
 import 'package:sodium_libs/sodium_libs_sumo.dart';
@@ -25,6 +24,29 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../models/vault_models.dart';
 import 'password_forms.dart';
+
+/// Size a padded blob of [n] bytes takes (spec 2.6): the next power of two,
+/// at least 32; where that needs more padding than the u16 prefix holds, the
+/// next multiple of 64 KiB. Review 18c300f R16-L3: padding stopped at 0xFFFF
+/// bytes there and the blob told its exact length. Python
+/// padding.padded_size and web paddedSize: the same.
+int paddedSize(int n) {
+  var target = 32;
+  while (target < n) {
+    target *= 2;
+  }
+  if (target - n > 0xFFFF) target = (n + 0xFFFF) ~/ 0x10000 * 0x10000;
+  return target;
+}
+
+/// A JSON text padded with trailing spaces to [paddedSize], for blobs read as
+/// JSON without the u16 prefix (share links); every JSON parser reads it.
+Uint8List padJson(List<int> json) {
+  final padded = Uint8List(paddedSize(json.length));
+  padded.setRange(0, json.length, json);
+  padded.fillRange(json.length, padded.length, 0x20);
+  return padded;
+}
 
 class CryptoService {
   // Singleton
@@ -176,18 +198,11 @@ class CryptoService {
     return aad;
   }
 
-  /// Pad plaintext to nearest power of 2 (min 32 bytes).
+  /// Pad plaintext to [paddedSize] of 2 + its length.
   /// Format: u16be(paddingLen) + random_padding + data
   Uint8List padPlaintext(Uint8List data) {
-    const minSize = 32;
-    final totalNeeded = 2 + data.length; // 2 bytes for padding_len prefix
-    var targetSize = minSize;
-    while (targetSize < totalNeeded) {
-      targetSize *= 2;
-    }
-    // u16 prefix caps padding at 0xFFFF (same rule as Python/web).
-    final paddingLen = min(targetSize - 2 - data.length, 0xFFFF);
-    targetSize = 2 + paddingLen + data.length;
+    final targetSize = paddedSize(2 + data.length); // 2: padding_len prefix
+    final paddingLen = targetSize - 2 - data.length;
     final padded = Uint8List(targetSize);
     final view = ByteData.sublistView(padded);
     view.setUint16(0, paddingLen, Endian.big);

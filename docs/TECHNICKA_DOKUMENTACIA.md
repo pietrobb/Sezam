@@ -296,16 +296,23 @@ Header: 53 bajtov (plain text, ale autentifikovaný cez AAD)
 Pred šifrovaním sa plaintext padduje:
 
 ```python
+def padded_size(n: int) -> int:
+    target = max(32, next_power_of_2(n))       # minimum 32 bajtov
+    if target - n > 0xFFFF:                     # viac, než u16 prefix unesie (n > 128 KiB)
+        target = -(-n // 0x10000) * 0x10000     # najbližší násobok 64 KiB
+    return target
+
 def pad(data: bytes) -> bytes:
-    min_padded = max(len(data) + 2, 32)  # minimum 32 bajtov
-    # Zaokrúhlenie na najbližšiu mocninu 2
-    target = 1
-    while target < min_padded:
-        target <<= 1
-    padding_len = target - len(data) - 2
+    padding_len = padded_size(len(data) + 2) - len(data) - 2
     padding_bytes = os.urandom(padding_len)  # RANDOM, nie zero!
     return struct.pack('>H', padding_len) + padding_bytes + data
 ```
+
+Blob tak prezradí len svoju veľkostnú triedu, nikdy presnú dĺžku (review
+18c300f R16-L3: padding sa predtým zastavil na 0xFFFF bajtoch). Share link
+(JSON bez u16 prefixu) sa dopĺňa medzerami na tú istú `padded_size` — každý
+JSON parser ho prečíta ako predtým. Pravidlo pre všetkých troch klientov:
+`tests/vectors/padding.json`.
 
 ```
 Padded plaintext formát:

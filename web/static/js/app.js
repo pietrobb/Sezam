@@ -846,17 +846,25 @@ function offerSezamKeyDownload(backupBytes, username) {
 }
 
 /**
- * Pad plaintext to nearest power of 2 (min 32 bytes).
+ * Size a padded blob of n bytes takes: the next power of 2 (min 32); where
+ * that needs more padding than the u16 prefix holds, the next multiple of
+ * 64 KiB. Review 18c300f R16-L3: padding stopped at 0xFFFF bytes there and
+ * the blob told its exact length. Python padding.padded_size, mobile: same.
+ */
+function paddedSize(n) {
+    let target = 32;
+    while (target < n) target *= 2;
+    if (target - n > 0xFFFF) target = Math.ceil(n / 0x10000) * 0x10000;
+    return target;
+}
+
+/**
+ * Pad plaintext to paddedSize(2 + data.length).
  * Format: u16be(padding_len) + random_padding + data
  */
 function padPlaintext(data) {
-    const minSize = 32;
-    const totalNeeded = 2 + data.length; // 2 bytes for padding_len prefix
-    let targetSize = minSize;
-    while (targetSize < totalNeeded) targetSize *= 2;
-    // u16 prefix caps padding at 0xFFFF (same rule as Python/mobile).
-    const paddingLen = Math.min(targetSize - 2 - data.length, 0xFFFF);
-    targetSize = 2 + paddingLen + data.length;
+    const targetSize = paddedSize(2 + data.length); // 2 bytes for padding_len prefix
+    const paddingLen = targetSize - 2 - data.length;
     const padded = new Uint8Array(targetSize);
     const view = new DataView(padded.buffer);
     view.setUint16(0, paddingLen, false); // u16be

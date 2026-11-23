@@ -140,7 +140,8 @@ class ShareService {
     final shareId = _base64UrlNoPadding(rawShareId);
 
     // 2. Encrypt entry JSON with the share ID bound as AAD (spec 6.1).
-    final plaintext = Uint8List.fromList(utf8.encode(jsonEncode(entry)));
+    // Padded so the blob tells only its size class (review 18c300f R16-L3).
+    final plaintext = padJson(utf8.encode(jsonEncode(entry)));
     final nonceLength = _nonceBytes ?? _crypto.aeadNonceBytes;
     final nonce =
         _randomBytes?.call(nonceLength) ?? _crypto.randomBytes(nonceLength);

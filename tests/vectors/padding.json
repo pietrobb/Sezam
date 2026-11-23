@@ -1,0 +1,20 @@
+{
+  "about": "Review 18c300f R16-L3: the size a padded blob of n bytes takes (spec 2.6). The next power of two, at least 32; where that needs more padding than the u16 prefix holds, the next multiple of 64 KiB. Checked by tests/test_r16_padding.py (Python, web) and mobile/test/r16_padding_test.dart.",
+  "padded_size": [
+    [0, 32],
+    [1, 32],
+    [32, 32],
+    [33, 64],
+    [65535, 65536],
+    [65536, 65536],
+    [65537, 131072],
+    [131072, 131072],
+    [131073, 196608],
+    [196608, 196608],
+    [196609, 262144],
+    [300000, 327680],
+    [1000000, 1048576],
+    [1048577, 1114112],
+    [10485760, 10485760]
+  ]
+}
