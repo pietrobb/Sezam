@@ -11,7 +11,8 @@ Every case says by hand what a device must answer (fork_refusal in each
 client: src/sezam/teamlog.py, web/static/js/teamlog.js, mobile team_log.dart):
 
 * a record of this account on the server's side that the device withdrew,
-  a role change of this account there that was not lost here, or a key change
+  a role change or a member added by this account there that was not lost
+  here (also next to every lost change made again), or a key change
   of this account there that was not lost here and names keys the device
   does not hold: refused;
 * a lost change of another account that is not on the server's side: refused
@@ -31,7 +32,7 @@ import json
 from pathlib import Path
 
 from sezam import teamlog as tl
-from tests.team_log_vectors import A, B, B2, C, D, E, F1, K, Log
+from tests.team_log_vectors import A, B, B2, C, D, E, F1, F2, K, Log
 
 VECTORS_PATH = Path(__file__).parent / "vectors" / "team_log_fork.json"
 
@@ -42,6 +43,12 @@ def _base() -> Log:
 
 def _from(log: Log) -> list[dict]:
     return log.records[3:]
+
+
+def _other(log: Log) -> Log:
+    # What another device of the admin made on the server's side meanwhile: a
+    # new folder's key (never a member or a role, which a fork may not bring).
+    return log.key(F2, 0, K[2], None)
 
 
 def _handover(log: Log, to=B) -> Log:
@@ -82,29 +89,39 @@ def build_cases() -> list[dict]:
     case("rotation_to_keys_nobody_holds", removal, rotated,
          refusal="its record 3 names keys this device does not hold")
     case("rotation_to_the_keys_held", removal, rotated, held=E, missing=[3])
-    case("rotation_that_was_lost", rotated, _from(_base().member(D).rotate(A, E)), held=E)
-    case("handover_that_was_lost", handed, _from(_handover(_base().member(D))))
+    case("rotation_that_was_lost", rotated, _from(_other(_base()).rotate(A, E)), held=E)
+    case("handover_that_was_lost", handed, _from(_handover(_other(_base()))))
     # A readmit (member.remove + member.add, one append) the server serves
     # half of: Bob out for good. Neither half is made again whole.
     readmit = _from(_base().remove(B).member(B2))
-    case("readmit_split_removal_kept", readmit, _from(_base().member(D).remove(B)),
+    case("readmit_split_removal_kept", readmit, _from(_other(_base()).remove(B)),
          refusal="it holds one half of the readmit at record 3")
-    case("readmit_neither_half", readmit, _from(_base().member(D)), missing=[3, 4])
-    case("readmit_whole", readmit, _from(_base().member(D).remove(B).member(B2)))
+    case("readmit_neither_half", readmit, _from(_other(_base())), missing=[3, 4])
+    case("readmit_whole", readmit, _from(_other(_base()).remove(B).member(B2)))
     # Goal #442: another device of this account put back a shorter copy.
     own = _from(_base().key(F1, 0, K[1], None).access(F1, B, "write"))
-    case("own_fork_shorter", own, _from(_base().member(D)), missing=[3, 4])
-    case("own_fork_again", own, _from(_base().member(D).key(F1, 0, K[1], None).access(F1, B, "write")))
-    case("own_fork_partly_again", own, _from(_base().member(D).key(F1, 0, K[1], None)), missing=[4])
+    case("own_fork_shorter", own, _from(_other(_base())), missing=[3, 4])
+    case("own_fork_again", own, _from(_other(_base()).key(F1, 0, K[1], None).access(F1, B, "write")))
+    case("own_fork_partly_again", own, _from(_other(_base()).key(F1, 0, K[1], None)), missing=[4])
+    # Review 18c300f capability finding 498: every lost change made again and
+    # one more own record the server kept: a fork holds what was lost, not more.
+    def again() -> Log:
+        return _other(_base()).key(F1, 0, K[1], None).access(F1, B, "write")
+    case("own_fork_again_and_a_handover", own, _from(_handover(again())),
+         refusal="its record 6 changes a role this device did not lose")
+    case("own_fork_again_and_a_member_added", own, _from(again().member(D)),
+         refusal="its record 6 adds a member this device did not lose")
+    case("own_fork_again_and_a_rotation", own, _from(again().rotate(A, E)),
+         refusal="its record 6 names keys this device does not hold")
     # A member's device (R16-H1, honest server): what it saw is on the
     # server's side once the admin's device made it again there.
-    case("member_before_the_admin_made_it_again", own, _from(_base().member(D)), user=B, held=B,
+    case("member_before_the_admin_made_it_again", own, _from(_other(_base())), user=B, held=B,
          refusal="record 3 this device saw is not on the server's side (it follows once its author makes that change again)")
     case("member_after_the_admin_made_it_again", own,
-         _from(_base().member(D).key(F1, 0, K[1], None).access(F1, B, "write")), user=B, held=B)
+         _from(_other(_base()).key(F1, 0, K[1], None).access(F1, B, "write")), user=B, held=B)
     case("member_sees_another_accounts_role_change", own,
          _from(_handover(_base().key(F1, 0, K[1], None).access(F1, B, "write"), to=C)), user=B, held=B)
-    case("no_account", own, _from(_base().member(D)), user=None, held=None,
+    case("no_account", own, _from(_other(_base())), user=None, held=None,
          refusal="record 3 this device saw is not on the server's side (it follows once its author makes that change again)")
     return cases
 

@@ -6,7 +6,7 @@ TEAM LOG MISMATCH.
 
 from __future__ import annotations
 
-from tests.team_log_vectors import A, B, C, D, F1, K, Log
+from tests.team_log_vectors import A, B, C, D, F1, F2, K, Log
 from tests.test_review_web import pytestmark  # noqa: F401
 from tests.test_team_log_web_pull import _run
 
@@ -73,14 +73,22 @@ def test_a_fork_of_this_accounts_own_records_is_followed_once_nothing_is_lost():
     then made the lost changes again. Before they are back the fork stays
     'went back'; once each is on the server's side it is followed. Review
     18c300f R16-H1: also with a record of another account on that side (a
-    member's rotation the server took first); never with a role change of
-    this account that was not lost here."""
+    member's rotation the server took first); never with a role change or a
+    member added by this account that was not lost here, also next to every
+    lost change made again (capability finding 498)."""
     own = "state.userId = ids.A; const got = await attempt(); return { ...got, posted };"
-    shorter = Log().genesis().member(B).member(D)
+    shorter = Log().genesis().member(B).key(F2, 0, K[2], None)
     assert "went back (head 2 < 4)" in _restore(own, shorter)["error"]
-    again = Log().genesis().member(B).member(D).member(C).key(F1, 0, K[1], None).access(F1, B, "write")
+    again = Log().genesis().member(B).key(F2, 0, K[2], None).member(C).key(F1, 0, K[1], None).access(F1, B, "write")
     result = _restore(own, again)
     assert result == {"seq": 5, "posted": []}, result
+    added = Log().genesis().member(B).member(D).member(C).key(F1, 0, K[1], None).access(F1, B, "write")
+    assert "its record 2 adds a member this device did not lose" in _restore(own, added)["error"]
+    for extra in (lambda log: log.member(D),
+                  lambda log: log.add("member.role", A, {"user_id": B.uid, "role": "admin"})):
+        more = extra(Log().genesis().member(B).key(F2, 0, K[2], None).member(C).key(F1, 0, K[1], None)
+                     .access(F1, B, "write"))
+        assert "this device did not lose" in _restore(own, more)["error"], extra
     other = Log().genesis().member(B).rotate(B, D).member(C).key(F1, 0, K[1], None).access(F1, B, "write")
     assert _restore(own, other) == {"seq": 5, "posted": []}
     handed = Log().genesis().member(B).add("member.role", A, {"user_id": B.uid, "role": "admin"}).add(

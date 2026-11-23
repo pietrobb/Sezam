@@ -538,6 +538,9 @@ const SezamTeamLog = (() => {
       if (body.type === 'member.role' && !was.has(changeKey(body))) {
         return { refusal: `its record ${seq} changes a role this device did not lose`, missing: [] };
       }
+      if (body.type === 'member.add' && !was.has(changeKey(body))) {
+        return { refusal: `its record ${seq} adds a member this device did not lose`, missing: [] };
+      }
       if (body.type === 'member.keys' && !was.has(changeKey(body)) && (heldKeys === null ||
           body.data.signing_pk !== heldKeys[0] || body.data.encryption_pk !== heldKeys[1])) {
         return { refusal: `its record ${seq} names keys this device does not hold`, missing: [] };

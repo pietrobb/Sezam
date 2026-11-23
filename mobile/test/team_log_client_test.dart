@@ -395,9 +395,11 @@ void main() {
       }
 
       expect(await from('own_fork_shorter'), contains('went back (head 2 < 4)'));
-      final followed = await from('own_fork_again') as LocalTeamLog;
-      expect(followed.team.headSeq, 5);
-      expect(followed.records, records('own_fork_again'));
+      // Capability finding 498 (R16-H1): the other device added Dave there,
+      // a member this phone did not lose: refused, the forget offer stays.
+      // A fork with what was lost and nothing more is followed
+      // (r16_fork_following_test.dart, own_fork_again).
+      expect(await from('own_fork_again'), contains('its record 2 adds a member this device did not lose'));
       // Review 18c300f R16-H1: a member's rotation the server took first
       // takes nothing of this phone's; a member's phone follows too once
       // every change it saw is on the server's side (18c300f: 'does not

@@ -701,8 +701,8 @@ def fork_refusal(
     A server keeps every record a device signed, also one it refused or one
     the device withdrew; a fork built of them handed the admin role over or
     named keys nobody holds. So: no record of this account in ``theirs`` that
-    the device withdrew (``withdrawn``: record hashes); no role change of this
-    account there that was not lost here; no key change of this account there
+    the device withdrew (``withdrawn``: record hashes); no role change and no
+    member added by this account there that was not lost here; no key change of this account there
     unless it was lost here or names the keys this device holds
     (``held_keys``: signing, encryption pk hex). Every lost change of another
     account is on the server's side (its device made it again there); this
@@ -720,6 +720,8 @@ def fork_refusal(
             return f"its record {seq} is one this device withdrew", []
         if body["type"] == "member.role" and change_key(body) not in was:
             return f"its record {seq} changes a role this device did not lose", []
+        if body["type"] == "member.add" and change_key(body) not in was:
+            return f"its record {seq} adds a member this device did not lose", []
         if body["type"] == "member.keys" and change_key(body) not in was and (
                 held_keys is None
                 or (body["data"]["signing_pk"], body["data"]["encryption_pk"]) != tuple(held_keys)):

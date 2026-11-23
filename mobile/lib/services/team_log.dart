@@ -757,6 +757,9 @@ class TeamLog {
       if (body['type'] == 'member.role' && !was.contains(changeKey(body))) {
         return ('its record $seq changes a role this device did not lose', const []);
       }
+      if (body['type'] == 'member.add' && !was.contains(changeKey(body))) {
+        return ('its record $seq adds a member this device did not lose', const []);
+      }
       final data = body['data'] as Map;
       if (body['type'] == 'member.keys' &&
           !was.contains(changeKey(body)) &&
