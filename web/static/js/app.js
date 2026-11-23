@@ -3610,6 +3610,7 @@ async function loadWebLocalStateLocked(session, _sodium) {
         try {
             confirmedGenesis = await loadConfirmedTeamGenesis(_sodium);
             forgottenGenesis = await loadForgottenTeamGenesis(_sodium);
+            await loadWebTeamLedger(_sodium);
         } catch (err) {
             damaged = teamLogMismatch(`anchor held in this browser cannot be read (${err.message}); ` +
                 'confirming the team\'s founder again (Team trust) replaces it', 'local_damaged');
@@ -7892,6 +7893,9 @@ async function saveConfirmedTeamGenesis(genesis, _sodium) {
     const forgotten = damaged ? await loadForgottenTeamGenesis(_sodium).catch(() => []) : await loadForgottenTeamGenesis(_sodium);
     if (damaged || forgotten.includes(genesis)) await saveForgottenTeamGenesis(forgotten.filter(g => g !== genesis), _sodium);
     state.forgottenTeamGenesis = forgotten.filter(g => g !== genesis);
+    if (damaged && !await loadWebTeamLedger(_sodium).then(() => true, () => false)) {
+        await saveWebTeamLedger({ sent: {}, withdrawn: new Set(), setAside: [] }, _sodium);
+    }
     state.teamLogDamaged = null;
 }
 
@@ -8539,7 +8543,7 @@ async function remakeWebLostTeamChanges(lost, missing, served, team, _sodium) {
 }
 
 function webTeamLedgerAad() {
-    return new TextEncoder().encode(`sezam-web-team-ledger-v1:${state.userId}`);
+    return new TextEncoder().encode(`sezam-web-team-ledger-v2:${state.userId}`);
 }
 
 /**
@@ -8548,21 +8552,33 @@ function webTeamLedgerAad() {
  * (sent: hash -> [seq, prev]) and the ones it withdrew - the server answered
  * 4xx, the log holds another record at that seq, or it followed a fork
  * without them (capability finding 505). A server that keeps a
- * withdrawn record never puts it in this browser's log. Sealed under the KEK.
+ * withdrawn record never puts it in this browser's log.
+ *
+ * Capability finding 520: sealed under the KEK, it no longer opened after a
+ * password change or org recovery here, or a sign-in with a password changed
+ * elsewhere, and read as empty. Like the sync checkpoint it guards against
+ * the server, not this browser, so this browser's own random key seals it,
+ * which no key change of the account touches. One that does not open refuses
+ * the team (INV-7: local_damaged; confirming the founder again starts it anew).
  */
 async function loadWebTeamLedger(_sodium) {
     const empty = { sent: {}, withdrawn: new Set(), setAside: [] };
     if (!state.kek || !state.userId) return empty;
     const stored = await idbKeysRequest('readonly', store => store.get(`team_ledger:${state.userId}`));
-    if (!stored || !stored.encrypted_ledger) return empty;
+    if (!stored) return empty;
     try {
+        if (stored.sealed !== 'device-v2' || typeof stored.encrypted_ledger !== 'string') {
+            throw new Error('unknown format');
+        }
         const packed = hexToBytes(stored.encrypted_ledger);
         const nonceLen = _sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES;
         const parsed = JSON.parse(new TextDecoder().decode(_sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-            null, packed.slice(nonceLen), webTeamLedgerAad(), packed.slice(0, nonceLen), state.kek)));
+            null, packed.slice(nonceLen), webTeamLedgerAad(), packed.slice(0, nonceLen),
+            await syncCheckpointKey('device-v2', _sodium))));
         return { sent: parsed.sent || {}, withdrawn: new Set(parsed.withdrawn || []), setAside: parsed.set_aside || [] };
-    } catch {
-        return empty;
+    } catch (err) {
+        throw new Error(
+            `the record of this browser's withdrawn team-log changes cannot be read (${err.message})`);
     }
 }
 
@@ -8575,15 +8591,16 @@ async function saveWebTeamLedger(ledger, _sodium) {
             if (ledger.withdrawn.has(prev)) { delete ledger.sent[hash]; ledger.withdrawn.add(hash); moved = true; }
         }
     }
+    const key = await syncCheckpointKey('device-v2', _sodium, true);
     const nonce = _sodium.randombytes_buf(_sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
     const ciphertext = _sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(new TextEncoder().encode(JSON.stringify({
         sent: ledger.sent, withdrawn: [...ledger.withdrawn].sort(), set_aside: ledger.setAside || [],
-    })), webTeamLedgerAad(), null, nonce, state.kek);
+    })), webTeamLedgerAad(), null, nonce, key);
     const packed = new Uint8Array(nonce.length + ciphertext.length);
     packed.set(nonce, 0);
     packed.set(ciphertext, nonce.length);
     await idbKeysRequest('readwrite', store => store.put({
-        id: `team_ledger:${state.userId}`, encrypted_ledger: bytesToHex(packed),
+        id: `team_ledger:${state.userId}`, sealed: 'device-v2', encrypted_ledger: bytesToHex(packed),
     }));
 }
 

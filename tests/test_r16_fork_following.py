@@ -172,6 +172,7 @@ WEB_LEDGER = """
     refuse = true;
     try { await pushWebRekeyBatch({ objects: [], team_log: [removal] }, sodium); } catch (err) { }
     refuse = false;
+    AFTER_REFUSAL
     serverRecords = serverRecords.concat([removal]);  // the server kept what it refused
     try {
         const got = await syncWebTeamLog(head(serverRecords), local, null, sodium);
@@ -184,10 +185,34 @@ WEB_LEDGER = """
 def test_the_page_never_takes_a_record_the_server_refused():
     """On 18c300f the page followed it: the removal the admin saw refused
     (and may have dropped since) was in its log after the next pull."""
-    log = _base()
-    script = WEB_LEDGER.replace("ME_SK", json.dumps((bytes(A.sk) + bytes(A.sk.verify_key)).hex()))
-    result = _web_run(script, log)
+    result = _web_ledger("")
     assert "which this browser withdrew" in result.get("error", ""), result
+
+
+def _web_ledger(after_refusal: str) -> dict:
+    script = (WEB_LEDGER.replace("ME_SK", json.dumps((bytes(A.sk) + bytes(A.sk.verify_key)).hex()))
+              .replace("AFTER_REFUSAL", after_refusal))
+    return _web_run(script, _base())
+
+
+@pytest.mark.skipif(node_problem() is not None, reason="node is needed for app.js")
+def test_the_page_keeps_what_it_withdrew_across_a_new_kek():
+    """Capability finding 520: the ledger was sealed under the KEK. A password
+    change or org recovery here, or a sign-in with a password changed on
+    another device, gave the session a new KEK; the ledger no longer opened,
+    read as empty, and the refused removal entered the log."""
+    result = _web_ledger("state.kek = new Uint8Array(32).fill(8);")
+    assert "which this browser withdrew" in result.get("error", ""), result
+
+
+@pytest.mark.skipif(node_problem() is not None, reason="node is needed for app.js")
+def test_a_ledger_that_does_not_open_refuses_the_team_log():
+    """Capability finding 520: a ledger that does not open read as empty."""
+    result = _web_ledger("""
+        const row = store.get(`team_ledger:${ids.A}`);
+        store.set(row.id, { ...row, encrypted_ledger: row.encrypted_ledger.slice(0, -1) +
+                             (row.encrypted_ledger.endsWith('0') ? '1' : '0') });""")
+    assert "withdrawn team-log changes" in result.get("error", ""), result
 
 
 # R16-M5: the browser makes this account's lost changes again on the server's

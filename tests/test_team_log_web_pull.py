@@ -58,7 +58,10 @@ def _run(script: str, log: Log, served: Log | None = None):
     """
     if script.lstrip().startswith("(async"):
         script = "return " + script.lstrip()
-    return _run_source(TEAMLOG_JS + "\nvar ENVELOPE_ALG = 1, SCHEMA_VERSION = 1, TEAM_LOG_PAGES = 1000;\n" + "\n".join(_function(n) for n in FUNCTIONS),
+    # This browser's own random key (the real one lives in IndexedDB).
+    device_key = "" if "syncCheckpointKey" in FUNCTIONS else "var syncCheckpointKey = async () => new Uint8Array(32).fill(5);\n"
+    return _run_source(TEAMLOG_JS + "\nvar ENVELOPE_ALG = 1, SCHEMA_VERSION = 1, TEAM_LOG_PAGES = 1000;\n" + device_key
+                       + "\n".join(_function(n) for n in FUNCTIONS),
                        "(async () => {" + prelude + script + "\n})()")
 
 
