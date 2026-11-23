@@ -42,7 +42,7 @@ KEYS = {
 
 FUNCTIONS = [
     "provenDekSuccessors", "finalDekSuccessor", "retiredFolderDekIds",
-    "nearestFolderDekId", "unwrapDEK", "buildAAD", "unpadPlaintext", "keyAuthors", "folderTreeOwner", "ulidTimeMs",
+    "nearestFolderDekId", "unwrapDEK", "buildAAD", "idBytes26", "unpadPlaintext", "keyAuthors", "folderTreeOwner", "ulidTimeMs",
 ]
 CONSTANTS = (
     "const ENVELOPE_ALG = 1; const SCHEMA_VERSION = 1;\n"

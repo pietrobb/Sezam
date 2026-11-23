@@ -21,7 +21,7 @@ from tests.test_review_web import _run, pytestmark  # noqa: F401
 
 VECTORS = json.loads(
     (Path(__file__).resolve().parent / "vectors" / "key_vouchers.json").read_text(encoding="utf-8"))
-FUNCTIONS = ["keyVoucherKey", "canonicalKeyVoucherEntries", "keyVoucherMessage", "vouchedEntries", "hexToBytes"]
+FUNCTIONS = ["keyVoucherKey", "canonicalKeyVoucherEntries", "keyVoucherMessage", "idBytes26", "vouchedEntries", "hexToBytes"]
 
 
 def test_web_reproduces_the_key_voucher_vectors():

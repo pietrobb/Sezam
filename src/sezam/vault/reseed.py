@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from ..models import ulid_to_bytes
 from ..usernames import normalize_username
 from . import ai_access, oplock, outbox, pending_states
 from .onboarding import complete_bootstrap_upload
@@ -56,7 +57,7 @@ def reseed_message(
     return (
         context
         + bytes(challenge)
-        + user_id.encode("ascii").ljust(26, b"\x00")[:26]
+        + ulid_to_bytes(user_id)
         + len(name).to_bytes(2, "big")
         + name
         + bytes(signing_pk)

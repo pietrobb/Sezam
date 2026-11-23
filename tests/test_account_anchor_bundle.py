@@ -1293,7 +1293,7 @@ def test_account_bundle_authentication_and_rewrap():
 def _web(source, cases, incoming=()):
     functions = "\n".join(_web_function(source, name) for name in (
         "encodeAccountKeypair", "decodeAccountKeypair", "encryptAccountKeypair", "decryptAccountKeypair",
-        "encryptKeypairWrap", "decryptKeypairWrap", "expandDesktopKeypair", "buildAAD",
+        "encryptKeypairWrap", "decryptKeypairWrap", "expandDesktopKeypair", "buildAAD", "idBytes26",
         "padPlaintext", "paddedSize", "unpadPlaintext", "bytesToHex", "hexToBytes", "parsePreAnchor",
     ))
     constants = "\n".join(_web_constant(source, n) for n in (

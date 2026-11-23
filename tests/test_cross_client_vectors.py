@@ -352,7 +352,7 @@ def test_web_client_reproduces_the_shared_vectors():
     functions = "\n".join(
         _web_function(app, name)
         for name in (
-            "validateCanonicalEnvelopeHeader", "buildAAD", "unpadPlaintext",
+            "validateCanonicalEnvelopeHeader", "buildAAD", "idBytes26", "unpadPlaintext",
             "decryptEnvelope", "unwrapDEK", "signSyncObject", "buildAuditCanonical",
             "keyRotationMessage", "padPlaintext", "paddedSize", "encryptKeypairWrap", "decryptKeypairWrap",
             "expandDesktopKeypair", "base64ToBytes", "bytesToHex", "computeWebStateHash",

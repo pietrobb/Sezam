@@ -22,9 +22,16 @@ def ulid_to_bytes(ulid_str: str) -> bytes:
     Web (TextEncoder over the 26-char string) and mobile (utf8 of the string)
     both encode this way, so the desktop client must match them byte-for-byte or
     cross-client Poly1305 verification fails. Shorter ids are right-padded with
-    NUL to a fixed 26 bytes, matching JS `padEnd(26,'\\0')` / Dart `padRight(26)`.
+    NUL to a fixed 26 bytes, matching JS `idBytes26` / Dart `idBytes26`.
+
+    R16-Z SM3 (INV-3): an id longer than 26 bytes, or one holding a NUL, is a
+    ValueError, never cut or padded into the bytes of another id: a server
+    appending a character to a signed parent_ref kept the signature valid.
     """
-    return ulid_str.encode("ascii").ljust(26, b"\x00")[:26]
+    raw = ulid_str.encode("ascii")
+    if len(raw) > 26 or b"\x00" in raw:
+        raise ValueError(f"An id is at most 26 ASCII characters without NUL, not {ulid_str!r}")
+    return raw.ljust(26, b"\x00")
 
 
 def bytes_to_ulid(data: bytes) -> str:

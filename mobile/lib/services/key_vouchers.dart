@@ -66,9 +66,7 @@ Uint8List keyVoucherMessage(
   }
   final items = canonicalKeyVoucherEntries(entries);
   final out = BytesBuilder()..add(utf8.encode('sezam-key-vouchers-v1\x00'));
-  final user = Uint8List(26);
-  final userBytes = utf8.encode(userId);
-  user.setRange(0, userBytes.length < 26 ? userBytes.length : 26, userBytes);
+  final user = CryptoService.idBytes26(userId);
   out
     ..add(user)
     ..add(signingPk);

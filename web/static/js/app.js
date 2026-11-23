@@ -402,13 +402,25 @@ function buildAAD(blobKind, dekId, objectId, version) {
     aad[0] = ENVELOPE_ALG;
     aad[1] = SCHEMA_VERSION;
     aad[2] = blobKind;
-    const dekIdBytes = new TextEncoder().encode((dekId || '').padEnd(26, '\0').slice(0, 26));
-    aad.set(dekIdBytes, 3);
-    const objIdBytes = new TextEncoder().encode((objectId || '').padEnd(26, '\0').slice(0, 26));
-    aad.set(objIdBytes, 29);
+    aad.set(idBytes26(dekId), 3);
+    aad.set(idBytes26(objectId), 29);
     const view = new DataView(aad.buffer);
     view.setUint32(55, version >>> 0, false); // u32 big-endian
     return aad;
+}
+
+// R16-Z SM3 (INV-3): a 26-byte id field holds exactly one id. A longer id
+// (or one holding a NUL, or non-ASCII) throws instead of being cut or padded
+// into another id's bytes: a server appending a character to a signed
+// parent_ref kept the signature valid. Same as sezam.models.ulid_to_bytes.
+function idBytes26(id) {
+    const text = String(id ?? '');
+    if (text.length > 26 || !/^[\x01-\x7f]*$/.test(text)) {
+        throw new Error('An id is at most 26 ASCII characters without NUL');
+    }
+    const out = new Uint8Array(26);
+    out.set(new TextEncoder().encode(text));
+    return out;
 }
 
 // Portable account bundle: versioned keys + independently confirmed genesis,
@@ -898,7 +910,7 @@ function encryptEnvelope(plaintextObj, blobKind, dekId, objectId, version, dek, 
     const ciphertext = _sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(padded, aad, null, nonce, dek);
 
     // Build envelope binary
-    const dekIdBytes = new TextEncoder().encode((dekId || '').padEnd(26, '\0').slice(0, 26));
+    const dekIdBytes = idBytes26(dekId);
     const envelope = new Uint8Array(1 + 1 + 1 + 26 + nonce.length + ciphertext.length);
     envelope[0] = ENVELOPE_ALG;
     envelope[1] = SCHEMA_VERSION;
@@ -7616,14 +7628,10 @@ async function sealVaultObject(obj) {
  *   || u8(is_deleted) || u32be(version) || payload_hash(32B)
  */
 function signSyncObject(_sodium, id, objectType, parentRef, targetUserId, isDeleted, version, payloadHashBytes) {
-    const idBytes = new TextEncoder().encode((id || '').padEnd(26, '\0').slice(0, 26));
+    const idBytes = idBytes26(id);
     const otBytes = new TextEncoder().encode(objectType || '');
-    const prBytes = parentRef
-        ? new TextEncoder().encode(parentRef.padEnd(26, '\0').slice(0, 26))
-        : new Uint8Array(26);
-    const tuBytes = targetUserId
-        ? new TextEncoder().encode(targetUserId.padEnd(26, '\0').slice(0, 26))
-        : new Uint8Array(26);
+    const prBytes = parentRef ? idBytes26(parentRef) : new Uint8Array(26);
+    const tuBytes = targetUserId ? idBytes26(targetUserId) : new Uint8Array(26);
 
     // Build canonical data
     const parts = [
@@ -7674,14 +7682,10 @@ function verifyObjectSignature(obj, signingPk, _sodium) {
         const signatureBytes = hexToBytes(sigHex);
         const payloadHashBytes = hexToBytes(obj.payload_hash || '');
 
-        const idBytes = new TextEncoder().encode((obj.id || '').padEnd(26, '\0').slice(0, 26));
+        const idBytes = idBytes26(obj.id);
         const otBytes = new TextEncoder().encode(obj.object_type || '');
-        const prBytes = obj.parent_ref
-            ? new TextEncoder().encode(obj.parent_ref.padEnd(26, '\0').slice(0, 26))
-            : new Uint8Array(26);
-        const tuBytes = obj.target_user_id
-            ? new TextEncoder().encode(obj.target_user_id.padEnd(26, '\0').slice(0, 26))
-            : new Uint8Array(26);
+        const prBytes = obj.parent_ref ? idBytes26(obj.parent_ref) : new Uint8Array(26);
+        const tuBytes = obj.target_user_id ? idBytes26(obj.target_user_id) : new Uint8Array(26);
 
         // R15 #428 (INV-3): exactly the values kept, never a truncated one.
         const isDeleted = obj.is_deleted ?? 0;
@@ -9123,8 +9127,7 @@ async function computeWebStateHash(syncObjects, _sodium) {
 // Must match server/app/auth.py:key_rotation_message.
 function keyRotationMessage(userId, oldSigningPk, oldEncryptionPk, newSigningPk, newEncryptionPk) {
     const context = new TextEncoder().encode('sezam-key-rotation-v1');
-    const userIdBytes = new Uint8Array(26);
-    userIdBytes.set(new TextEncoder().encode(userId).slice(0, 26));
+    const userIdBytes = idBytes26(userId);
     const message = new Uint8Array(context.length + 26 + 128);
     let offset = 0;
     for (const part of [context, userIdBytes, oldSigningPk, oldEncryptionPk, newSigningPk, newEncryptionPk]) {
@@ -9171,8 +9174,7 @@ function keyVoucherMessage(userId, signingPk, entries) {
     const items = canonicalKeyVoucherEntries(entries);
     const encoder = new TextEncoder();
     const domain = encoder.encode('sezam-key-vouchers-v1\0');
-    const user = new Uint8Array(26);
-    user.set(encoder.encode(String(userId)).slice(0, 26));
+    const user = idBytes26(userId);
     const out = new Uint8Array(domain.length + 26 + 32 + 4 + items.length * 66);
     const view = new DataView(out.buffer);
     let at = 0;

@@ -129,7 +129,7 @@ def _web(vectors: dict) -> dict:
         "preAnchorCheck", "parsePreAnchor", "mergePreAnchor", "addPreAnchor", "passwordReopensPreAnchor",
         "canonicalPassword", "passwordForms", "normalizeKdfParams", "deriveKEK", "deriveKEKViaWorker",
         "encodeAccountKeypair", "decodeAccountKeypair", "encryptAccountKeypair", "decryptAccountKeypair",
-        "encryptKeypairWrap", "decryptKeypairWrap", "expandDesktopKeypair", "buildAAD",
+        "encryptKeypairWrap", "decryptKeypairWrap", "expandDesktopKeypair", "buildAAD", "idBytes26",
         "padPlaintext", "paddedSize", "unpadPlaintext", "bytesToHex", "hexToBytes",
     ))
     constants = "\n".join(_web_constant(source, n) for n in (

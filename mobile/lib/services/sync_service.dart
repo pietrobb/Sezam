@@ -316,9 +316,7 @@ String computeStateHash(
   final elements = <Uint8List>[];
   for (final object in objects) {
     final id = object['id'] as String;
-    final idBytes = Uint8List.fromList(
-      utf8.encode(id.padRight(26, '\x00').substring(0, 26)),
-    );
+    final idBytes = CryptoService.idBytes26(id);
     final versionBytes = ByteData(4)
       ..setUint32(0, object['version'] as int, Endian.big);
     final payloadHash = crypto.sha256Bytes(object['payload'] as Uint8List);
@@ -649,9 +647,7 @@ class SyncService {
     Uint8List newSigningPk,
     Uint8List newEncryptionPk,
   ) {
-    final userIdBytes = Uint8List(26);
-    final encoded = utf8.encode(userId);
-    userIdBytes.setRange(0, encoded.length.clamp(0, 26), encoded);
+    final userIdBytes = CryptoService.idBytes26(userId);
     return Uint8List.fromList([
       ...utf8.encode('sezam-key-rotation-v1'),
       ...userIdBytes,
@@ -3439,7 +3435,7 @@ Uint8List rejoinMessage(
   int keyEpoch,
 ) {
   final name = utf8.encode(username);
-  final id = Uint8List(26)..setAll(0, ascii.encode(userId).take(26));
+  final id = CryptoService.idBytes26(userId);
   final epoch = ByteData(8)..setUint64(0, keyEpoch);
   return (BytesBuilder(copy: false)
         ..add(utf8.encode('sezam-rejoin-v1'))

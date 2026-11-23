@@ -82,6 +82,7 @@ def test_the_web_refuses_a_value_its_signature_does_not_cover():
       }
       return out;
     })()""" % (ID, PAYLOAD_HASH)
-    result = _run_source(_function("hexToBytes") + _function("verifyObjectSignature"), script)
+    result = _run_source(
+        _function("hexToBytes") + _function("idBytes26") + _function("verifyObjectSignature"), script)
     assert result.pop("honest") is True
     assert result == dict.fromkeys(result, False), result

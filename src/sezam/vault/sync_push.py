@@ -1237,8 +1237,8 @@ class PushMixin:
 
     @staticmethod
     def _id_to_bytes(id_str: str) -> bytes:
-        """Encode ID as 26-byte UTF-8 padded string (matching server encoding)."""
-        return id_str.encode("utf-8").ljust(26, b"\x00")[:26]
+        """Encode ID as 26-byte NUL-padded string; ValueError on a longer one."""
+        return ulid_to_bytes(id_str)
 
     @staticmethod
     def _build_signature_payload(

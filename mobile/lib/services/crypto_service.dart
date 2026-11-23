@@ -181,15 +181,8 @@ class CryptoService {
     aad[1] = EnvelopeConstants.schemaVersion;
     aad[2] = blobKind;
 
-    // DEK ID padded/truncated to 26 bytes
-    final dekIdBytes = utf8.encode(dekId.padRight(26, '\x00').substring(0, 26));
-    aad.setRange(3, 29, dekIdBytes);
-
-    // Object ID padded/truncated to 26 bytes
-    final objIdBytes = utf8.encode(
-      objectId.padRight(26, '\x00').substring(0, 26),
-    );
-    aad.setRange(29, 55, objIdBytes);
+    aad.setRange(3, 29, idBytes26(dekId));
+    aad.setRange(29, 55, idBytes26(objectId));
 
     // Version as u32 big-endian
     final versionBytes = ByteData(4)..setUint32(0, version, Endian.big);
@@ -256,7 +249,7 @@ class CryptoService {
     );
 
     // Build envelope binary
-    final dekIdBytes = utf8.encode(dekId.padRight(26, '\x00').substring(0, 26));
+    final dekIdBytes = idBytes26(dekId);
     final envelopeLen =
         EnvelopeConstants.headerLen + nonce.length + ciphertext.length;
     final envelope = Uint8List(envelopeLen);
@@ -464,9 +457,7 @@ class CryptoService {
       ),
     );
 
-    final kekDekIdPadded = utf8.encode(
-      kekDekId.padRight(26, '\x00').substring(0, 26),
-    );
+    final kekDekIdPadded = idBytes26(kekDekId);
     final envelopeLen =
         EnvelopeConstants.headerLen + nonce.length + ciphertext.length;
     final envelope = Uint8List(envelopeLen);
@@ -745,9 +736,7 @@ class CryptoService {
       ),
     );
 
-    final kekDekIdPadded = utf8.encode(
-      kekDekId.padRight(26, '\x00').substring(0, 26),
-    );
+    final kekDekIdPadded = idBytes26(kekDekId);
     final envelopeLen =
         EnvelopeConstants.headerLen + nonce.length + ciphertext.length;
     final envelope = Uint8List(envelopeLen);
@@ -971,14 +960,12 @@ class CryptoService {
     if (version < 0 || version > 0xFFFFFFFF) {
       throw ArgumentError.value(version, 'version', 'must fit a u32');
     }
-    final idBytes = _padToLength(utf8.encode(id), 26);
+    final idBytes = idBytes26(id);
     final otBytes = utf8.encode(objectType);
-    final parentBytes = parentRef != null
-        ? _padToLength(utf8.encode(parentRef), 26)
-        : Uint8List(26);
-    final targetBytes = targetUserId != null
-        ? _padToLength(utf8.encode(targetUserId), 26)
-        : Uint8List(26);
+    final parentBytes =
+        parentRef != null ? idBytes26(parentRef) : Uint8List(26);
+    final targetBytes =
+        targetUserId != null ? idBytes26(targetUserId) : Uint8List(26);
     final payloadHash = _hexToBytes(payloadHashHex);
 
     final versionBytes = ByteData(4)..setUint32(0, version, Endian.big);
@@ -1131,11 +1118,17 @@ class CryptoService {
 
   // ── Helpers ──
 
-  Uint8List _padToLength(List<int> input, int length) {
-    final result = Uint8List(length);
-    final copyLen = input.length < length ? input.length : length;
-    result.setRange(0, copyLen, input);
-    return result;
+  /// R16-Z SM3 (INV-3): a 26-byte id field holds exactly one id. A longer
+  /// id (or one holding a NUL, or non-ASCII) is refused instead of being cut
+  /// or padded into another id's bytes: a server appending a character to a
+  /// signed parent_ref kept the signature valid. Same as desktop
+  /// ulid_to_bytes and web idBytes26.
+  static Uint8List idBytes26(String id) {
+    if (id.length > 26 || id.codeUnits.any((c) => c == 0 || c > 0x7f)) {
+      throw ArgumentError.value(
+          id, 'id', 'must be at most 26 ASCII characters without NUL');
+    }
+    return Uint8List(26)..setRange(0, id.length, id.codeUnits);
   }
 
   Uint8List _hexToBytes(String hex) {

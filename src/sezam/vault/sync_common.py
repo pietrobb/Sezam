@@ -286,7 +286,7 @@ def key_rotation_message(
     """
     return (
         _KEY_ROTATION_CONTEXT
-        + user_id.encode("utf-8").ljust(26, b"\x00")[:26]
+        + ulid_to_bytes(user_id)
         + bytes(old_signing_pk)
         + bytes(old_encryption_pk)
         + bytes(new_signing_pk)

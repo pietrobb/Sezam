@@ -28,6 +28,8 @@ from typing import Iterable
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
 
+from .models import ulid_to_bytes
+
 DOMAIN = b"sezam-key-vouchers-v1\x00"
 MAX_ENTRIES = 200_000
 _ID = re.compile(r"^[0-9A-Za-z]{26}$")  # OBJECT_ID in server/app/models/schemas.py
@@ -62,7 +64,7 @@ def voucher_message(user_id: str, signing_pk: bytes, entries: Iterable) -> bytes
     items = canonical_entries(entries)
     return (
         DOMAIN
-        + user_id.encode("utf-8").ljust(26, b"\x00")[:26]
+        + ulid_to_bytes(user_id)
         + bytes(signing_pk)
         + len(items).to_bytes(4, "big")
         + b"".join(

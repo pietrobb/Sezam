@@ -154,7 +154,7 @@ def test_desktop_reader_who_pinned_the_old_key_verifies_after_confirming(reader,
 
 WEB_FUNCTIONS = [
     "hexToBytes", "bytesToBase64", "parseCanonicalAuditRecord", "buildAuditCanonical", "verifyAuditGraph",
-    "keyRotationMessage", "verifyArchivedKeyChain", "getUserSigningPks",
+    "keyRotationMessage", "idBytes26", "verifyArchivedKeyChain", "getUserSigningPks",
 ]
 
 
