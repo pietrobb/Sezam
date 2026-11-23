@@ -749,6 +749,45 @@ async def _refuse_restored_founder(
     })
 
 
+def _signs_later(member_id: str, keys, bodies: list[dict], steps: list[dict]) -> bool:
+    """A record of ``bodies`` signed by ``member_id`` while the log still gives it ``keys``."""
+    for body, step in zip(bodies, steps):
+        if body["author"] == member_id:
+            return True
+        if body["data"].get("user_id") == member_id and step["keys"] != keys:
+            return False
+    return False
+
+
+async def _refuse_restored_admin_off_keys(
+    cur, body: dict, step: dict, later: list[dict], later_steps: list[dict], user_id: str,
+) -> None:
+    """INV-2 (nightly run 45009540361): a record of a restore that makes a
+    member the admin needs, as on an append, an account that signs in with
+    the keys the log gives it then (review 4acfdde R11 #5).
+
+    ``_check_against_users`` skips that check on history: the account may
+    have rotated since (a backup older than the rotation). The member's own
+    device is there when it uploads the log itself or signs a later record of
+    it on those keys: on the main path it sends its rotation again first (a
+    session that proves the log's key, dependencies.py) and the append takes
+    the role. Otherwise the former admin handed the role to an account that
+    no device of it could use, which no append would take."""
+    if body["type"] not in ("genesis", "member.add", "member.role") or not step["admin"]:
+        return
+    member_id, keys = body["data"]["user_id"], step["keys"]
+    row = await _user_row(cur, member_id)
+    if keys is not None and _keys_match(row, {"signing_pk": keys[0], "encryption_pk": keys[1]}):
+        return
+    if member_id == user_id or _signs_later(member_id, keys, later, later_steps):
+        return
+    raise ApiError(400, TEAM_LOG_REFUSED, {
+        "message": "a restored team log makes an account the admin on keys it does not sign in with "
+                   "(it uploads the log itself, or sends its key rotation first)",
+        "seq": body.get("seq"),
+    })
+
+
 async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepared] = None) -> TeamState:
     """Put back records this server lost (restored from a backup, moved).
 
@@ -770,8 +809,9 @@ async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepar
     await _refuse_restored_founder(cur, bodies, prepared.before, current, uploader, user_id, lock=True)
     await _refuse_superseded_recovery(cur, bodies, restored=current, uploader=user_id)
     now_ms = int(time.time() * 1000)
-    for record, body, step in zip(records, bodies, steps):
+    for index, (record, body, step) in enumerate(zip(records, bodies, steps)):
         await _check_against_users(cur, body, None, step, history=True)
+        await _refuse_restored_admin_off_keys(cur, body, step, bodies[index + 1:], steps[index + 1:], user_id)
         await cur.execute(
             "INSERT INTO team_log (seq, prev, hash, body, sig, author, created_at) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s)",

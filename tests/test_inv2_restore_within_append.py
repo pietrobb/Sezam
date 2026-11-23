@@ -44,8 +44,9 @@ from unittest import mock
 
 import pytest
 from hypothesis import HealthCheck, given, settings, target
-from hypothesis import event as coverage_event
+from hypothesis import event
 from hypothesis import strategies as st
+from hypothesis.control import currently_in_test_context
 from nacl.signing import SigningKey
 
 from sezam import teamlog
@@ -55,6 +56,12 @@ from tests import property_seeds
 from tests.test_server_spec import MockDatabase, _create_regular_user
 
 EXAMPLES = int(os.environ.get("SEZAM_PROPERTY_EXAMPLES", "0"))
+
+
+def coverage_event(value: str) -> None:
+    """Hypothesis statistics; the fixed counterexamples below run the oracle outside a property."""
+    if currently_in_test_context():
+        event(value)
 NAMES = ("A", "B", "C")  # registered accounts; A founds the honest log
 MADE_UP = "D"  # no account on the server
 # Review e443cbc H3: accounts the main path refuses to name, which the generator
@@ -484,8 +491,10 @@ class NormalPath:
     one author per append and one new identity per push (member.keys ends an
     append)."""
 
-    def __init__(self, server: dict, me: str, stolen: str | None = None):
+    def __init__(self, server: dict, me: str, stolen: str | None = None, held: tuple = ()):
+        """``held``: the identity keys the uploader holds (its own, a stolen one)."""
         self.db = _db(server)
+        self.held = {key.pk for key in held}
         self.kept = [{"body": r["body"], "sig": r["sig"]}
                      for r in sorted(server.get("team_log", []), key=lambda r: r["seq"])]
         self.me = me
@@ -508,6 +517,7 @@ class NormalPath:
             self.db._storage["org_recovery_blobs"] = [{
                 "id": 1, "created_by": author, "recovery_signing_pk": bytes.fromhex(named[-1]),
             }]
+        self._send_lost_rotations()
         rules = self.batch[0][1]["v"]
         if rules < teamlog.FORMAT_VERSION:  # E4: the append as today's records of the same changes
             coverage_event("restore exception E4 records under older rules")
@@ -522,6 +532,23 @@ class NormalPath:
         if pending:
             _set_row_keys(self.db, author, *pending)
         return ""
+
+    def _send_lost_rotations(self) -> None:
+        """An account of the uploader's whose rotation the server lost (it
+        signs in with a key the log retired) sends the rotation again: a
+        session that proves the log's current key may (server/app/dependencies.py,
+        capability runs 294/300), and the uploader holds that key."""
+        rows = self.db._storage["team_log"]
+        state = teamlog.replay([{"body": r["body"], "sig": r["sig"]} for r in sorted(rows, key=lambda r: r["seq"])])
+        for uid in sorted(self.mine):
+            row = next((u for u in self.db._storage["users"] if u["id"] == uid), None)
+            member = state.members.get(uid)
+            if (row is None or row["status"] != "active" or member is None or not member.active
+                    or member.signing_pk not in self.held
+                    or not team_log.key_retired(state, uid, row["signing_pk"])):
+                continue
+            coverage_event("main path: a device sends the rotation the server lost again")
+            _set_row_keys(self.db, uid, member.signing_pk, member.encryption_pk)
 
     def _provision(self, data: dict) -> None:
         """E2, as its reason says: the admin provisions the account first, and
@@ -660,7 +687,7 @@ def test_restore_takes_nothing_the_normal_path_refuses(data):
         return
     coverage_event(f"restore took forged={len(forger.records)}")
     target(float(len(forger.records)), label="forged records a restore took")
-    why = NormalPath(storage, me, stolen).takes(honest.records[kept:], upload)
+    why = NormalPath(storage, me, stolen, forger.held).takes(honest.records[kept:], upload)
     assert not why, (
         f"restore by {me} took more than the normal path would: {why}\n"
         f"honest kept on the server: {kept}, honest uploaded: {upto - kept}, "
@@ -738,6 +765,52 @@ def test_counterexample_the_admin_re_adds_a_member_on_keys_of_its_own():
 
     assert NormalPath(storage, "C").takes(honest.records, upload)  # the main path refuses
     assert not restore(_db(storage), upload, IDS["C"])
+
+
+def _handover_to_a_lost_rotation() -> tuple[Honest, int, dict, list]:
+    """A adds B, B rotates; the server comes back from the backup before the
+    rotation. A then hands the role to B and leaves (records the server never had)."""
+    honest = Honest(Keys())
+    assert honest._commit("A", [("member.add", "A", {
+        "user_id": IDS["B"], "signing_pk": honest.current("B").pk,
+        "encryption_pk": honest.current("B").enc, "role": "member",
+    })])
+    new = honest.keys.new()
+    assert honest._commit("B", [_rotation(honest.state, "B", new)], rotate=new)
+    kept, storage = honest.snapshots[1]
+    forger = Forger(honest, "A", teamlog.replay(honest.records))
+    key = forger._key_of(IDS["A"])
+    forger._try("member.role", IDS["A"], {"user_id": IDS["B"], "role": "admin"}, key)
+    forger._try("member.remove", IDS["A"], {"user_id": IDS["A"]}, key)
+    assert forger.labels == ["member.role(A->B)", "member.remove(A->A)"]
+    return honest, kept, storage, forger.records
+
+
+def test_counterexample_the_admin_role_to_a_rotation_the_server_lost():
+    """Nightly stateful-deep run 45009540361 on 2c6b22e (R15-N1): the restore
+    made B the only admin while its account signed in with the key B's lost
+    rotation retired. An append refuses that role until B sends its rotation
+    again (readmit it first); no device of B was there to do it."""
+    honest, kept, storage, forged = _handover_to_a_lost_rotation()
+    upload = honest.records[kept:] + forged
+    forger_keys = tuple(honest.account["A"])
+
+    assert NormalPath(storage, "A", None, forger_keys).takes(honest.records[kept:], upload)  # main path refuses
+    REFUSED.clear()
+    assert not restore(_db(storage), upload, IDS["A"])
+    assert "admin on keys it does not sign in with" in str(REFUSED[-1:])
+
+
+def test_the_member_with_the_lost_rotation_uploads_the_handover_itself():
+    """The same records from B's device (holding A's key too): on the main path
+    B sends its rotation again and A's append takes the role; so does the restore."""
+    honest, kept, storage, forged = _handover_to_a_lost_rotation()
+    upload = honest.records[kept:] + forged
+    held = tuple(honest.account["B"]) + (honest.current("A"),)
+
+    assert not NormalPath(storage, "B", "A", held).takes(honest.records[kept:], upload)
+    REFUSED.clear()
+    assert restore(_db(storage), upload, IDS["B"]), REFUSED[-1:]
 
 
 @pytest.mark.parametrize("seed", property_seeds.load("test_inv2_restore_within_append.py"), ids=str)
