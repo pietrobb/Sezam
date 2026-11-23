@@ -17,7 +17,7 @@ import logging
 from typing import Optional
 
 from .. import teamlog
-from . import oplock, outbox, team_log_withdrawn
+from . import oplock, outbox, team_log_fork, team_log_withdrawn
 from ..models import new_ulid
 from .sync_common import (
     ATOMIC_BATCH_CONFLICT,
@@ -297,7 +297,7 @@ class TeamLogMixin:
         except TeamLogMismatch as exc:
             if local is None or exc.cause not in ("went_back", "differs", "does_not_replay"):
                 raise
-            adopted, reason = self._follow_fork(local, server_head)
+            adopted, reason = team_log_fork.follow_fork(self, local, server_head)
             if adopted is None:
                 if reason:
                     raise TeamLogMismatch(f"{exc} It forks from this device's copy and is not followed: "
@@ -365,117 +365,6 @@ class TeamLogMixin:
         if raced:
             return self._sync_team_log(server_head)
         return state
-
-    # A record of these kinds is queued again as the change it made; a
-    # genesis or member.keys is bound to the head it was signed on. R16-M5:
-    # the same kinds as the page and the phone (teamlog.js REMADE_KINDS,
-    # team_log.dart remadeKinds), org.recovery.wrap too.
-    _REQUEUED_KINDS = frozenset({
-        "member.add", "member.role", "member.remove", "access.set", "folder.key", "org.recovery",
-        "org.recovery.wrap",
-    })
-
-    def _follow_fork(self, local: teamlog.TeamState, server_head: dict):
-        """Follow a server log that forks from the local copy, as far as
-        teamlog.fork_refusal allows; this account's lost changes that are not
-        on the server's side are queued again. (state, None), or (None, why
-        not) - the mismatch stands.
-
-        Goal #442 (bg344 random run of TeamLogMachine on a3f84bb): the server
-        lost its log, and the admin's device A put back its shorter copy with
-        the link of its own rotation; B, which held the grant A had not
-        pulled, stayed on 'went back' for good. Nothing of B's is lost: each
-        change it made goes out again on the new head (or is set aside,
-        shown by 'sezam team-log queue').
-
-        Review 18c300f R16-H1: every fork of this account's records was
-        followed. The server keeps what it refused, so a hand-over the admin
-        had seen refused (and removed Bob since) made Bob the admin, and a
-        dropped identity rotation named keys nobody holds. A member's device
-        never followed a fork, also not once the admin's device had made the
-        lost changes again on the server's side: 'does not replay' for good.
-        """
-        records: list[dict] = []
-        for _ in range(FETCH_PAGES):
-            page = self._request("GET", f"/api/team-log?since={len(records) - 1}", auth=True).get("records") or []
-            page = page[:max(server_head["seq"] + 1 - len(records), 0)]
-            if not page:
-                break
-            records.extend(page)
-            if len(records) > server_head["seq"]:
-                break
-        rows = self._db.fetchall("SELECT body, sig, hash FROM team_log ORDER BY seq")
-        fork = next((i for i, (row, record) in enumerate(zip(rows, records))
-                     if teamlog.record_hash(record) != row["hash"]), None)
-        if not fork:  # another genesis, or the server's log is a prefix of this copy
-            return None, None
-        keypair = getattr(self, "_keypair", None)
-        held = None if keypair is None else (keypair.signing_pk.hex(), keypair.encryption_pk.hex())
-        lost_records = [{"body": row["body"], "sig": row["sig"]} for row in rows[fork:]]
-        try:
-            reason, missing = teamlog.fork_refusal(
-                lost_records, records[fork:], self._user_id, held, team_log_withdrawn.withdrawn(self._db),
-            )
-        except teamlog.TeamLogError:
-            return None, None
-        if reason:
-            return None, reason
-        lost = [teamlog.parse_body(row["body"]) for row in rows[fork:]]
-        missing_bodies = [body for body in lost if body["seq"] in missing]
-        links = [body for body in missing_bodies if body["type"] == "member.keys"]
-        changes = [body for body in missing_bodies if body["type"] != "member.keys"]
-        if any(body["type"] not in self._REQUEUED_KINDS for body in changes) or len(links) > 1:
-            return None, None
-        try:
-            state = teamlog.replay(records)
-        except teamlog.TeamLogError:
-            return None, None
-        if (state.head_seq != server_head["seq"] or state.head_hash != server_head.get("hash")
-                or teamlog.admin_policy_refusal(state)):
-            return None, None
-        if links and not self._rotation_linked_again(state, links[0]):
-            return None, None
-        batch = new_ulid()  # set aside together or not at all, as they were made
-        requeued = [[body["type"], {**body["data"], "_batch": batch}] for body in changes]
-        with self._db.transaction(immediate=True):
-            if self._local_head_seq() != local.head_seq:
-                return None, None  # another process moved the copy meanwhile: the next pull compares again
-            self._db.execute("DELETE FROM team_log WHERE seq >= ?", (fork,))
-            # Capability finding 505: this account's records left behind are
-            # withdrawn - a server serving them again later is not followed
-            # (their changes go out again, or are set aside).
-            team_log_withdrawn.withdraw(self._db, teamlog.fork_abandoned(lost_records, self._user_id))
-            self._store_team_log(records[fork:], state)
-            if requeued:
-                _set_queued_changes(self._db, requeued + queued_changes(self._db))
-        logger.warning("Followed the server's team log from record %s, which forks from this device's copy; "
-                       "%s own change(s) queued again", fork, len(requeued))
-        return state, None
-
-    def _rotation_linked_again(self, state: teamlog.TeamState, body: dict) -> bool:
-        """``body`` (a member.keys lost in the fork) links to this device's keys
-        from the old ones of its unpushed identity rotation, which the log
-        ``state`` still names: the push signs it again on that head
-        (add_identity_team_record), so nothing is lost by following.
-
-        Goal #442 (bg34 targeted run on c7a0e49): the server went back to a
-        backup from before B's rotation, A then put its org recovery on the
-        restored log, and B's every push stopped on 'does not replay'.
-        """
-        data = body["data"]
-        member = state.members.get(self._user_id)
-        if (data.get("user_id") != self._user_id or member is None or not member.active
-                or (data.get("signing_pk"), data.get("encryption_pk"))
-                != (self._keypair.signing_pk.hex(), self._keypair.encryption_pk.hex())):
-            return False
-        old = self._pending_old_keypair()
-        if old is None:
-            return False
-        try:
-            old_pk = old.signing_pk.hex()
-            return member.signing_pk == old_pk and not teamlog.signing_key_retired(state, self._user_id, old_pk)
-        finally:
-            old.zeroize()
 
     def _refuse_as_served(self, server_head: Optional[dict], genesis: Optional[str], lost: TeamLogMismatch):
         """Raise ``lost`` (a cause that offers to forget the pin) only as far as
