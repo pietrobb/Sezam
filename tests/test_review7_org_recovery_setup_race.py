@@ -13,11 +13,12 @@ from __future__ import annotations
 import threading
 
 import pytest
-from nacl.public import PrivateKey, SealedBox
+from nacl.public import SealedBox
 
 import sezam.vault.crud as crud_mod
 from sezam.crypto.shamir import reconstruct_secret
 from sezam.vault.crud import Vault
+from sezam.vault.key_rotation import org_recovery_box_key
 from tests.test_ai_p3_session_limits import FAST_PARAMS
 
 OLD = "org-race-old-password"
@@ -77,5 +78,5 @@ def test_the_shares_open_the_kek_the_vault_has_after_a_racing_password_change(
         stale = fresh.db.get_meta("org_recovery_stale")
     finally:
         fresh.db.close()
-    restored = SealedBox(PrivateKey(bytes(secret))).decrypt(wrapped)
+    restored = SealedBox(org_recovery_box_key(secret)).decrypt(wrapped)  # R16-L4: version 2
     assert stale == "1" or restored == _kek_of(tmp_path)  # old code: the old KEK, not stale

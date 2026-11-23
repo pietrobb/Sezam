@@ -47,25 +47,62 @@ def _open(kek: bytes, aad: bytes, sealed_hex: str) -> bytearray:
     ))
 
 
-_ORG_RECOVERY_AAD = b"sezam-org-recovery-v1"
+# Review 18c300f R16-L4: version 1 used the Shamir recovery secret itself as
+# the blob's AEAD key, the Ed25519 seed and the X25519 key. Version 2 (every
+# new setup, desktop and web) derives each key with HKDF-SHA256 under its own
+# label; version 1 recoveries keep working. The version of a recovery is the
+# one whose Ed25519 key the server and the team log know it by.
+ORG_RECOVERY_VERSIONS = (2, 1)
+_ORG_RECOVERY_AAD = {1: b"sezam-org-recovery-v1", 2: b"sezam-org-recovery-v2"}
+_ORG_RECOVERY_HKDF_SALT = b"sezam-org-recovery-v2"
 
 
-def org_recovery_server_wrap(kek: bytes, recovery_secret: bytes) -> bytes:
+def _hkdf_sha256(secret: bytes, info: bytes) -> bytes:
+    """RFC 5869 HKDF-SHA256, 32 bytes (one block); the web uses WebCrypto HKDF."""
+    prk = hmac.new(_ORG_RECOVERY_HKDF_SALT, bytes(secret), hashlib.sha256).digest()
+    return hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
+
+
+def _org_recovery_key(recovery_secret: bytes, purpose: str, version: int) -> bytes:
+    if version == 1:
+        return bytes(recovery_secret)
+    if version != 2:
+        raise ValueError(f"Unknown org recovery version {version}")
+    return _hkdf_sha256(recovery_secret, b"sezam/org-recovery/v2/" + purpose.encode("ascii"))
+
+
+def org_recovery_server_wrap(kek: bytes, recovery_secret: bytes, version: int = 2) -> bytes:
     """The server's org recovery blob in the web format: nonce(24) ||
-    XChaCha20-Poly1305(KEK) under the 32-byte Shamir recovery secret, so the
-    same shares work in the web vault (review e4cd15a #1)."""
+    XChaCha20-Poly1305(KEK) under the recovery's wrap key, so the same shares
+    work in the web vault (review e4cd15a #1)."""
     nonce = os.urandom(_NONCE_LEN)
     return nonce + crypto_aead_xchacha20poly1305_ietf_encrypt(
-        bytes(kek), _ORG_RECOVERY_AAD, nonce, bytes(recovery_secret)
+        bytes(kek), _ORG_RECOVERY_AAD[version], nonce,
+        _org_recovery_key(recovery_secret, "kek-wrap", version),
     )
 
 
-def org_recovery_signing_key(recovery_secret: bytes):
+def org_recovery_signing_key(recovery_secret: bytes, version: int = 2):
     """Ed25519 key the server knows the recovery by; the web derives the same
-    one (crypto_sign_seed_keypair of the recovery secret)."""
+    one (crypto_sign_seed_keypair of the derived seed)."""
     from nacl.signing import SigningKey
 
-    return SigningKey(bytes(recovery_secret))
+    return SigningKey(_org_recovery_key(recovery_secret, "ed25519", version))
+
+
+def org_recovery_box_key(recovery_secret: bytes, version: int = 2):
+    """X25519 key the vault's local KEK wrap (org_recovery_wrapped_kek) is sealed to."""
+    from nacl.public import PrivateKey
+
+    return PrivateKey(_org_recovery_key(recovery_secret, "x25519", version))
+
+
+def org_recovery_version(recovery_secret: bytes, signing_pk_hex: str | None) -> int | None:
+    """The version whose Ed25519 key is ``signing_pk_hex``; None if neither."""
+    for version in ORG_RECOVERY_VERSIONS:
+        if signing_pk_hex and bytes(org_recovery_signing_key(recovery_secret, version).verify_key).hex() == signing_pk_hex:
+            return version
+    return None
 
 
 def org_recovery_rewrap_message(

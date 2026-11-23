@@ -33,6 +33,7 @@ from .key_rotation import (
     org_recovery_rewrap_message,
     org_recovery_server_wrap,
     org_recovery_signing_key,
+    org_recovery_version,
 )
 
 if TYPE_CHECKING:
@@ -812,10 +813,16 @@ class SyncClient(
             except RuntimeError as exc:
                 logger.warning("No org recovery proof for the password change: %s", exc)
                 return {}
-            signature = org_recovery_signing_key(secret).sign(bytes.fromhex(challenge)).signature
+            signing_key = org_recovery_signing_key(secret, self._org_recovery_version(secret))
+            signature = signing_key.sign(bytes.fromhex(challenge)).signature
             return {"recovery_challenge": challenge, "recovery_signature": signature.hex()}
         finally:
             secret[:] = b"\x00" * len(secret)
+
+    def _org_recovery_version(self, secret: bytes) -> int:
+        """R16-L4: the key version of this vault's recovery (the one its Ed25519
+        key is); a recovery with no such key here is version 1."""
+        return org_recovery_version(secret, self._db.get_meta("org_recovery_signing_pk")) or 1
 
     def _restore_org_recovery_blob(self, journal: dict, key_epoch: int) -> None:
         """After an org recovery's change landed, wrap the new KEK into the
@@ -826,8 +833,9 @@ class SyncClient(
         if secret is None:
             return
         try:
-            wrapped = org_recovery_server_wrap(self._dek_mgr._kek, secret)
-            signing_key = org_recovery_signing_key(secret)
+            version = self._org_recovery_version(secret)
+            wrapped = org_recovery_server_wrap(self._dek_mgr._kek, secret, version)
+            signing_key = org_recovery_signing_key(secret, version)
             threshold = int(self._db.get_meta("org_recovery_threshold") or "2")
             total = int(self._db.get_meta("org_recovery_shares") or "2")
             body = {

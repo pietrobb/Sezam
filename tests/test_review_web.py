@@ -76,7 +76,7 @@ HELPERS = [
     "openWebDirtyState", "withWebDirtyStateLock", "mergeWebKeyed", "mergeWebDirtyState", "replaceWebKeyed",
     "withLegacyWebBase", "webOwnEarlierPush", "rememberWebSent", "webPushOrder", "webPulledIsStale",
     "teamLogMismatch", "webLocalTeamLogRefusal", "webInPersonalTree", "webIsAdmin", "webPinnedTeamGenesis",
-    "rememberWebKdfState",
+    "rememberWebKdfState", "orgRecoveryKeys", "fetchOrgRecoveryBlob",
 ]
 
 

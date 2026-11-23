@@ -31,10 +31,12 @@ from .audit import AuditLog
 from .db import IdentityChangedElsewhere, VaultDB
 from .dek import DEKManager
 from .key_rotation import (
+    ORG_RECOVERY_VERSIONS,
     make_journal,
     open_current_auth_proof,
     open_old_kek,
     open_old_keypair,
+    org_recovery_box_key,
     org_recovery_server_wrap,
     org_recovery_signing_key,
 )
@@ -2602,14 +2604,15 @@ class Vault:
         # restored a key the vault no longer has.
         self._dek_mgr._wrapping_kek_id()
 
-        from nacl.public import PrivateKey, SealedBox
+        from nacl.public import SealedBox
+        from nacl.utils import random as random_bytes
 
         from ..crypto.shamir import split_secret
 
-        recovery_private_key = PrivateKey.generate()
-        recovery_secret = bytearray(bytes(recovery_private_key))
-        recovery_pk = bytes(recovery_private_key.public_key)
-        wrapped_kek = SealedBox(recovery_private_key.public_key).encrypt(
+        # R16-L4: the shares carry a secret each key is derived from (version 2).
+        recovery_secret = bytearray(random_bytes(32))
+        recovery_pk = bytes(org_recovery_box_key(recovery_secret).public_key)
+        wrapped_kek = SealedBox(org_recovery_box_key(recovery_secret).public_key).encrypt(
             bytes(self._dek_mgr._kek)
         )
         # What the server keeps (review e4cd15a #1): the key it checks the
@@ -2679,7 +2682,7 @@ class Vault:
             shares: List of (index, share_bytes) Shamir shares.
             new_password: New master password to set.
         """
-        from nacl.public import PrivateKey, PublicKey, SealedBox
+        from nacl.public import PublicKey, SealedBox
 
         from ..crypto.shamir import reconstruct_secret
 
@@ -2712,11 +2715,18 @@ class Vault:
         # Unwrap the KEK only when the reconstructed private key matches the
         # configured public key. This also rejects a valid-but-wrong share set.
         try:
-            recovery_private_key = PrivateKey(bytes(recovery_key))
-            if bytes(recovery_private_key.public_key) != bytes(recovery_pk):
-                # A recovery set up on the web, adopted by adopt_org_recovery.
-                recovery_private_key = org_recovery_signing_key(recovery_key).to_curve25519_private_key()
-            if bytes(recovery_private_key.public_key) != bytes(recovery_pk):
+            # R16-L4: a version 2 setup here, or a version 1 one (the secret
+            # itself); a web setup adopted by adopt_org_recovery is sealed to
+            # its Ed25519 key's X25519 form (the log names only that key).
+            candidates = [org_recovery_box_key(recovery_key, version) for version in ORG_RECOVERY_VERSIONS]
+            candidates += [
+                org_recovery_signing_key(recovery_key, version).to_curve25519_private_key()
+                for version in ORG_RECOVERY_VERSIONS
+            ]
+            recovery_private_key = next(
+                (key for key in candidates if bytes(key.public_key) == bytes(recovery_pk)), None
+            )
+            if recovery_private_key is None:
                 raise ValueError("Recovery shares do not match this vault.")
             kek = bytearray(
                 SealedBox(recovery_private_key).decrypt(bytes.fromhex(wrapped_kek_hex))

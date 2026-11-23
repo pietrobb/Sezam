@@ -3044,7 +3044,10 @@ console.log(JSON.stringify(shares.map(([index, bytes]) =>
         body = src.split("async function handleOrgRecovery", 1)[1].split(
             "// ── Start ──", 1
         )[0]
-        assert "crypto_sign_seed_keypair(recoveryKey)" in body
+        # R16-L4: the proof key comes from the rebuilt secret by its version
+        # (tests/test_r16_org_recovery_key_separation.py).
+        assert "await fetchOrgRecoveryBlob(recoveryKey, _sodium)" in body
+        assert "const recoverySigningKeypair = recoveryKeys.signing;" in body
         assert "'/api/org-recovery/challenge'" in body
         assert "signature: bytesToHex(proofSignature)" in body
         assert "blob_hash" not in body

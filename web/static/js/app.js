@@ -6425,6 +6425,49 @@ async function currentPasswordProof(password) {
     return null;
 }
 
+// Review 18c300f R16-L4: version 1 used the Shamir recovery secret itself as
+// the blob's AEAD key and the Ed25519 seed. Version 2 (every new setup)
+// derives each with HKDF-SHA256 under its own label, as key_rotation.py does;
+// version 1 recoveries keep working. A new setup is version 2.
+async function orgRecoveryKeys(secret, version, _sodium) {
+    const encode = (text) => new TextEncoder().encode(text);
+    let wrapKey;
+    let seed;
+    if (version === 1) {
+        wrapKey = secret.slice();
+        seed = secret.slice();
+    } else if (version === 2) {
+        const ikm = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits']);
+        const derive = async (purpose) => new Uint8Array(await crypto.subtle.deriveBits({
+            name: 'HKDF', hash: 'SHA-256', salt: encode('sezam-org-recovery-v2'),
+            info: encode('sezam/org-recovery/v2/' + purpose),
+        }, ikm, 256));
+        wrapKey = await derive('kek-wrap');
+        seed = await derive('ed25519');
+    } else {
+        throw new Error('Unknown org recovery version ' + version);
+    }
+    const signing = _sodium.crypto_sign_seed_keypair(seed);
+    _sodium.memzero(seed);
+    return { version, wrapKey, signing, aad: encode('sezam-org-recovery-v' + version) };
+}
+
+// The server's blob of the recovery the secret rebuilds: the server knows a
+// recovery by the Ed25519 key of its version, newest version first.
+async function fetchOrgRecoveryBlob(secret, _sodium) {
+    let recoveryKeys = null;
+    let blobResp = null;
+    for (const version of [2, 1]) {
+        recoveryKeys = await orgRecoveryKeys(secret, version, _sodium);
+        blobResp = await fetch(API_BASE + '/api/org-recovery/blob?recovery_signing_pk='
+            + bytesToHex(recoveryKeys.signing.publicKey));
+        if (blobResp.status !== 404) break;
+        _sodium.memzero(recoveryKeys.wrapKey);
+        _sodium.memzero(recoveryKeys.signing.privateKey);
+    }
+    return { recoveryKeys, blobResp };
+}
+
 // Bytes the recovery key signs to re-store its server blob without the
 // password (review d615826; server: routers/recovery.py, desktop: key_rotation.py).
 function orgRecoveryRewrapMessage(userId, keyEpoch, threshold, totalShares, wrappedKek, _sodium) {
@@ -10728,15 +10771,16 @@ async function handleShamirGenerate() {
 
         const _sodium = await ensureSodium();
 
-        // 1. Generate 32-byte recovery key
+        // 1. Generate the 32-byte recovery secret and its keys (R16-L4).
         const recoveryKey = _sodium.randombytes_buf(32);
+        const recoveryKeys = await orgRecoveryKeys(recoveryKey, 2, _sodium);
 
-        // 2. Wrap current KEK with recovery key using XChaCha20-Poly1305
+        // 2. Wrap current KEK with the recovery wrap key using XChaCha20-Poly1305
         const nonce = _sodium.randombytes_buf(_sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
-        const aad = new TextEncoder().encode('sezam-org-recovery-v1');
         const ciphertext = _sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
-            state.kek, aad, null, nonce, recoveryKey
+            state.kek, recoveryKeys.aad, null, nonce, recoveryKeys.wrapKey
         );
+        _sodium.memzero(recoveryKeys.wrapKey);
 
         // Build wrapped blob: nonce(24) || ciphertext(32+16)
         const wrappedBlob = new Uint8Array(nonce.length + ciphertext.length);
@@ -10744,7 +10788,7 @@ async function handleShamirGenerate() {
         wrappedBlob.set(ciphertext, nonce.length);
 
         // 3. Derive a proof keypair and split the recovery key into shares.
-        const recoverySigningKeypair = _sodium.crypto_sign_seed_keypair(recoveryKey);
+        const recoverySigningKeypair = recoveryKeys.signing;
         const recoverySigningPk = recoverySigningKeypair.publicKey;
         const shares = shamirSplit(recoveryKey, threshold, total);
 
@@ -11049,13 +11093,12 @@ async function handleOrgRecovery(threshold, totalShares) {
 
         // 1. Reconstruct recovery key and its deterministic proof keypair.
         const recoveryKey = shamirReconstruct(shares);
-        const recoverySigningKeypair = _sodium.crypto_sign_seed_keypair(recoveryKey);
 
         // 2. Fetch the wrapped KEK blob of this recovery key from the server
         // (stored, or from the team log after a restore: capability run 316).
-        const blobResp = await fetch(API_BASE + '/api/org-recovery/blob?recovery_signing_pk='
-            + bytesToHex(recoverySigningKeypair.publicKey));
+        const { recoveryKeys, blobResp } = await fetchOrgRecoveryBlob(recoveryKey, _sodium);
         if (!blobResp.ok) throw new Error(t('recovery.blob_load_failed'));
+        const recoverySigningKeypair = recoveryKeys.signing;
         const blobData = await blobResp.json();
         // The owner's KEK changed after setup: the shares would only recover a
         // KEK that opens nothing (lockout review #3).
@@ -11066,12 +11109,12 @@ async function handleOrgRecovery(threshold, totalShares) {
         if (wrappedBlob.length < 25) throw new Error(t('recovery.blob_invalid'));
         const nonce = wrappedBlob.slice(0, 24);
         const ciphertext = wrappedBlob.slice(24);
-        const aad = new TextEncoder().encode('sezam-org-recovery-v1');
+        const aad = recoveryKeys.aad;
 
         let recoveredKek;
         try {
             recoveredKek = new Uint8Array(
-                _sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(null, ciphertext, aad, nonce, recoveryKey)
+                _sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(null, ciphertext, aad, nonce, recoveryKeys.wrapKey)
             );
         } catch {
             throw new Error(t('recovery.decrypt_failed'));
@@ -11168,7 +11211,7 @@ async function handleOrgRecovery(threshold, totalShares) {
             _sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES
         );
         const newRecoveryCiphertext = _sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
-            newKek, aad, null, newRecoveryNonce, recoveryKey
+            newKek, aad, null, newRecoveryNonce, recoveryKeys.wrapKey
         );
         const newWrappedRecovery = new Uint8Array(
             newRecoveryNonce.length + newRecoveryCiphertext.length
@@ -11267,6 +11310,7 @@ async function handleOrgRecovery(threshold, totalShares) {
         await rememberWebKdfState(_sodium);
 
         _sodium.memzero(recoverySigningKeypair.privateKey);
+        _sodium.memzero(recoveryKeys.wrapKey);
         _sodium.memzero(recoveryKey);
         _sodium.memzero(recoveredKek);
 
