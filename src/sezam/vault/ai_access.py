@@ -93,7 +93,26 @@ def _mac(kek: bytes, *fields: str | None) -> str:
 
 
 def _state_mac(kek: bytes, db: VaultDB) -> str:
-    return _mac(kek, STATE_MAC_KEY, db.get_meta(ENABLED_KEY), db.get_meta(EPOCH_KEY))
+    # Review 18c300f R16-H3: an 'on' names the anchor home it was sealed
+    # next to, so deleting the home rows (and server_url) no longer turns a
+    # vault that expects its anchor into one that expects none: the 'on'
+    # stops verifying.
+    return _mac(kek, STATE_MAC_KEY, db.get_meta(ENABLED_KEY), db.get_meta(EPOCH_KEY),
+                db.get_meta(ANCHOR_HOME_KEY))
+
+
+def _state_verified(kek: bytes, db: VaultDB) -> bool:
+    if _verified(db, STATE_MAC_KEY, _state_mac(kek, db)):
+        return True
+    # An 'on' sealed before R16-H3 names no home: it counts only next to a
+    # home that verifies (deleting that home turns it off). A vault on no
+    # server that had one needs 'sezam ai on' once.
+    legacy = _mac(kek, STATE_MAC_KEY, db.get_meta(ENABLED_KEY), db.get_meta(EPOCH_KEY))
+    return (
+        db.get_meta(ANCHOR_HOME_KEY) is not None
+        and _verified(db, ANCHOR_HOME_MAC_KEY, _home_mac(kek, db))
+        and _verified(db, STATE_MAC_KEY, legacy)
+    )
 
 
 def _remote_mac(kek: bytes, db: VaultDB) -> str:
@@ -116,7 +135,7 @@ def rewrap_macs(db: VaultDB, old_kek: bytes | bytearray, new_kek: bytes | bytear
     """KEK change (password change, adopted rotation): what verified under
     the old KEK is sealed under the new one; anything else stays unverified."""
     old, new = bytes(old_kek), bytes(new_kek)
-    if _verified(db, STATE_MAC_KEY, _state_mac(old, db)):
+    if _state_verified(old, db):
         db.set_meta(STATE_MAC_KEY, _state_mac(new, db))
     if _verified(db, REMOTE_APPLIED_MAC_KEY, _remote_mac(old, db)):
         db.set_meta(REMOTE_APPLIED_MAC_KEY, _remote_mac(new, db))
@@ -135,9 +154,7 @@ def read_state(vault: "Vault") -> AIAccessState:
         kek = _vault_kek(vault)
         with _meta_db(vault) as db:
             state = _parse(db.get_meta(ENABLED_KEY), db.get_meta(EPOCH_KEY))
-            if state.enabled and kek is not None and not _verified(
-                db, STATE_MAC_KEY, _state_mac(kek, db)
-            ):
+            if state.enabled and kek is not None and not _state_verified(kek, db):
                 logger.warning("AI access state does not verify; treating it as off")
                 return AIAccessState(False, state.epoch)
             return state
@@ -156,7 +173,7 @@ def verified_on_epoch(vault: "Vault") -> int | None:
     try:
         with _meta_db(vault) as db:
             state = _parse(db.get_meta(ENABLED_KEY), db.get_meta(EPOCH_KEY))
-            if state.enabled and _verified(db, STATE_MAC_KEY, _state_mac(kek, db)):
+            if state.enabled and _state_verified(kek, db):
                 return state.epoch
     except Exception:
         logger.warning("AI access state is unreadable; treating it as off", exc_info=True)
@@ -241,11 +258,19 @@ def anchor_expected(vault: "Vault") -> bool:
         )
 
 
-def _seal_home(db: VaultDB, kek: bytes, home: AnchorHome) -> None:
-    db.set_meta_json(ANCHOR_HOME_KEY, {
-        "anchor": home.anchor, "server_url": home.server_url, "user_id": home.user_id,
-    })
-    db.set_meta(ANCHOR_HOME_MAC_KEY, _home_mac(kek, db))
+def _seal_home(db: VaultDB, kek: bytes, home: AnchorHome | None) -> None:
+    """Seal ``home`` (None: the vault expects no anchor any more). A
+    verified 'on' is sealed again next to it (R16-H3: it names its home)."""
+    was_on = _state_verified(kek, db)
+    if home is None:
+        db.execute("DELETE FROM vault_meta WHERE key IN (?, ?)", (ANCHOR_HOME_KEY, ANCHOR_HOME_MAC_KEY))
+    else:
+        db.set_meta_json(ANCHOR_HOME_KEY, {
+            "anchor": home.anchor, "server_url": home.server_url, "user_id": home.user_id,
+        })
+        db.set_meta(ANCHOR_HOME_MAC_KEY, _home_mac(kek, db))
+    if was_on:
+        db.set_meta(STATE_MAC_KEY, _state_mac(kek, db))
 
 
 def anchor_home(vault: "Vault") -> AnchorHome | None:
@@ -272,11 +297,17 @@ def anchor_home(vault: "Vault") -> AnchorHome | None:
 
 def rehome_anchor(vault: "Vault") -> None:
     """'sezam ai on' (fresh password): the anchor moves to the server the
-    vault now syncs with, keeping its id (a server move, not an agent)."""
+    vault now syncs with, keeping its id (a server move, not an agent). On a
+    vault that syncs with no server any more the owner drops it (R16-L6: a
+    server that is gone kept AI access off for good)."""
     kek = _vault_kek(vault)
     db = vault.db
     server_url, user_id = db.get_meta("server_url"), db.get_meta("user_id")
-    if kek is None or not server_url or not user_id:
+    if kek is None:
+        return
+    if not server_url or not user_id:
+        with oplock.exclusive(db.path), db.transaction(immediate=True):
+            _seal_home(db, kek, None)
         return
     try:
         home = anchor_home(vault)

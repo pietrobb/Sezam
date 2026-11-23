@@ -186,7 +186,7 @@ def test_an_ai_off_queued_during_the_unlock_flush_is_kept(vault, tmp_path, monke
 
 
 BRAKE_KEY_NAMES = {"ENABLED_KEY", "EPOCH_KEY", "STATE_MAC_KEY", "PENDING_AUDIT_KEY"}
-BRAKE_READS = {"get_meta", "get_meta_json", "_pending", "_verified", "_state_mac", "_parse"}
+BRAKE_READS = {"get_meta", "get_meta_json", "_pending", "_verified", "_state_mac", "_state_verified", "_parse"}
 BRAKE_WRITES = {"set_meta", "set_meta_json", "execute"}
 # Functions that read and rewrite a brake key outside their own immediate
 # transaction, with why no brake can land in between.
@@ -194,6 +194,8 @@ BRAKE_REWRITES_ELSEWHERE = {
     "seal_new_vault": "a vault being created or imported; nothing else has it open",
     "rewrap_macs": "inside the KEK change's transaction, which already holds the write lock "
                    "(rewrap_all_deks writes the DEKs first)",
+    "_seal_home": "called only inside the immediate transaction of anchor_home / rehome_anchor "
+                  "(R16-H3: a verified 'on' is sealed again next to its new home)",
 }
 
 

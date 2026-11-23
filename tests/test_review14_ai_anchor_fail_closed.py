@@ -118,7 +118,9 @@ def test_a_home_that_does_not_verify_keeps_ai_off(laptop):  # noqa: F811
     _write_rows(laptop, {ai_access.ANCHOR_HOME_KEY: '{"anchor":"' + "ab" * 32
                          + '","server_url":"http://127.0.0.1:9","user_id":"x"}'})
     second = _broker(laptop)
-    assert _refused(second) == "ai_anchor_unverified"
+    # R16-H3: the replayed 'on' names the home it was sealed next to; with
+    # another home it does not verify at all.
+    assert _refused(second) == "ai_disabled"
     _stop(second)
 
 

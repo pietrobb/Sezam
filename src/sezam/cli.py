@@ -4124,11 +4124,17 @@ def ai_on():
     _unlock_vault_fresh(vault, "Master password (required to turn AI access on): ")
     try:
         state = ai_access.enable(vault, "cli")
+        home = ai_access.anchor_home(vault)
     except RuntimeError as exc:
         raise click.ClickException(str(exc)) from exc
     finally:
         vault.lock()
     click.echo(f"AI access is ON (epoch {state.epoch}).")
+    # R16-L6: where the switch is anchored, or that it is anchored nowhere.
+    if home is None:
+        click.echo("The AI switch is anchored on no sync server: this vault syncs with none.")
+    else:
+        click.echo(f"The AI switch is anchored on {home.server_url}.")
 
 
 @ai_group.command("status")

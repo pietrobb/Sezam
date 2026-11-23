@@ -243,7 +243,10 @@ class MCPBroker:
             "ai_anchor_unverified",
             "AI access stays off: the sync server could not confirm the AI switch "
             "(it is unreachable, or the vault's anchor record does not verify). "
-            "It turns on by itself once the server answers.",
+            "It turns on by itself once the server answers. If this vault no longer "
+            "syncs with that server, connect it to its new server and run "
+            "'sezam ai on' with the master password: the switch is anchored where the "
+            "vault syncs now.",
         )
 
     def disable_ai(
