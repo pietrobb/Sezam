@@ -53,6 +53,9 @@ DEFERRED_WRITES_META = "writes_below_unknown_folders"
 # (review 8595ec1, R10-C: what a founding hid came back only by a full resync).
 LOG_REFUSED_WRITES_META = "writes_without_log_write_access"
 NO_WRITE_ACCESS = "team log gives no write access here"
+# id -> [version, payload_hash] of the server copy last refused here (not
+# applied). R16-Z SM4: a refused re-key batch builds on it when it rebases.
+REFUSED_COPIES_META = "refused_server_copies"
 
 _ADMIN_ONLY = ("envelope", "dek_archive", "audit")
 
@@ -243,6 +246,7 @@ class WritersMixin:
 
         deferred = stored(DEFERRED_WRITES_META)
         no_access = stored(LOG_REFUSED_WRITES_META)
+        refused_copies = stored(REFUSED_COPIES_META)
         vouched = self._vouched_writers()
         # This account's top-level nodes: signed by it in this batch (a new
         # device's first pull: its root is adopted only after), or the root
@@ -386,18 +390,21 @@ class WritersMixin:
             if decided and parent not in ignored:
                 if refusal is None:
                     ignored.pop(obj_id, None)
+                    refused_copies.pop(obj_id, None)
                     continue
                 logger.warning(
                     "Pulled %s %s below folder %s by %s: %s; not applied",
                     obj["object_type"], obj_id, parent, author, refusal,
                 )
                 ignored[obj_id] = parent
+                refused_copies[obj_id] = [obj.get("version"), obj.get("payload_hash")]
                 if refusal == NO_WRITE_ACCESS and not obj.get("is_deleted"):
                     no_access[obj_id] = obj
                 skipped.add(obj_id)
                 continue
             if parent not in ignored and allowed(obj, author):
                 ignored.pop(obj_id, None)
+                refused_copies.pop(obj_id, None)
                 continue
             if parent not in ignored:
                 logger.warning(
@@ -405,8 +412,10 @@ class WritersMixin:
                     "or not under that key; not applied", obj["object_type"], obj_id, parent, author,
                 )
             ignored[obj_id] = parent
+            refused_copies[obj_id] = [obj.get("version"), obj.get("payload_hash")]
             skipped.add(obj_id)
 
+        self._db.set_meta_json(REFUSED_COPIES_META, refused_copies)
         self._db.set_meta_json(WRITER_ACCOUNTS_META, sorted(signers))
         self._db.set_meta_json(DEK_SIGNERS_META, dek_signers)
         self._db.set_meta_json(IGNORED_WRITES_META, ignored)

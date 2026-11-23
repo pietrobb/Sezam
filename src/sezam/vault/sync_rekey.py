@@ -24,6 +24,7 @@ from .sync_common import (
     reseal_key_row,
     vouched_access_level,
 )
+from .sync_writers import REFUSED_COPIES_META
 from .team_log_local import local_team_state, projected_team_state
 from .team_log_state import log_read_once
 
@@ -164,6 +165,41 @@ class RekeyMixin:
         }
         settled: set[str] = set()
         visited: set[str] = set()
+        refused_copies = self._db.get_meta_json(REFUSED_COPIES_META) or {}
+
+        def onto_refused_copy(table: str, row, kinds: tuple[tuple[str, BlobKind], ...]) -> None:
+            """R16-Z SM5 (deep stateful run): the server holds a newer copy of
+            a batch object that this device refused (its author may not write
+            there by the log here, e.g. the former admin after a handover), so
+            no shadow came. Resent as it was, the batch was refused for good.
+            The device's own copy stays, one version above the refused one."""
+            copy = refused_copies.get(row["id"]) if row["id"] in object_ids else None
+            if copy is None or row["is_deleted"] or rekeyed_versions.get(row["id"]) != row["version"]:
+                return
+            server_version, server_hash = copy
+            if (server_version, server_hash) == (row["base_version"], row["base_hash"]):
+                return
+            version = max(server_version + 1, row["version"])
+            sealed = []
+            for column, kind in kinds:
+                blob = bytes(row[column])
+                dek_raw = parse_envelope(blob).dek_id
+                dek = self._dek_mgr.unlock_dek(bytes_to_ulid(dek_raw))
+                sealed.append(encrypt(
+                    plaintext=decrypt(blob, dek, ulid_to_bytes(row["id"]), row["version"],
+                                      expected_blob_kind=kind),
+                    dek=dek, dek_id=dek_raw, object_id=ulid_to_bytes(row["id"]),
+                    version=version, blob_kind=kind,
+                ))
+            columns = ", ".join(f"{column} = ?" for column, _kind in kinds)
+            self._db.execute(
+                f"UPDATE {table} SET {columns}, version = ? WHERE id = ?",
+                (*sealed, version, row["id"]),
+            )
+            self._set_base(row["id"], server_version, server_hash)
+            rekeyed_versions[row["id"]] = version
+            settled.add(row["id"])
+
         revoked_holders = self._revoked_unpinned_holders(list(dek_map), revoked_user_id)
         revoked_holders |= queued_for_removal(self._db)
 
@@ -221,7 +257,7 @@ class RekeyMixin:
                     )
 
                 for row in self._db.fetchall(
-                    "SELECT id, parent_id, encrypted_meta, version, is_deleted, "
+                    "SELECT id, parent_id, encrypted_meta, version, is_deleted, base_version, base_hash, "
                     f"{outbox.queued('nodes')} AS queued FROM nodes "
                     f"WHERE (id IN ({marks}) OR parent_id IN ({marks}) "
                     f"OR (id IN ({out_marks}) AND {outbox.queued('nodes')})) "
@@ -235,6 +271,7 @@ class RekeyMixin:
                     if row["queued"]:
                         shadow = shadows.get(node_id) if node_id in object_ids else None
                         if shadow is None:
+                            onto_refused_copy("nodes", row, (("encrypted_meta", BlobKind.NODE_META),))
                             continue
                         blob = bytes(shadow["server_payload"])
                         version = shadow["server_version"]
@@ -313,8 +350,8 @@ class RekeyMixin:
                     settled.add(node_id)
 
                 for row in self._db.fetchall(
-                    "SELECT id, node_id, encrypted_meta, encrypted_data, dek_id, version, "
-                    f"{outbox.queued('entries')} AS queued, is_deleted FROM entries "
+                    "SELECT id, node_id, encrypted_meta, encrypted_data, dek_id, version, base_version, "
+                    f"base_hash, {outbox.queued('entries')} AS queued, is_deleted FROM entries "
                     f"WHERE (node_id IN ({marks}) "
                     f"OR (id IN ({out_marks}) AND {outbox.queued('entries')})) "
                     f"AND (is_deleted = 0 OR {outbox.queued('entries')})",
@@ -325,6 +362,9 @@ class RekeyMixin:
                     if row["queued"]:
                         shadow = shadows.get(entry_id) if entry_id in object_ids else None
                         if shadow is None:
+                            onto_refused_copy("entries", row, (
+                                ("encrypted_meta", BlobKind.ENTRY_META), ("encrypted_data", BlobKind.ENTRY_DATA),
+                            ))
                             continue
                         payload = bytes(shadow["server_payload"])
                         version = shadow["server_version"]
