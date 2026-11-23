@@ -58,7 +58,7 @@ def test_an_item_over_1_mib_is_never_queued():
 
 ATOMIC = [
     "syncPayloadBytes", "assertSyncObjectFits", "assertSyncUnitFits", "splitForPush",
-    "postAtomicSyncBatch", "pushWebRekeyBatch", "generateULID",
+    "postAtomicSyncBatch", "pushWebRekeyBatch", "sendWebTeamRecords", "noteWebTeamRecordsSent", "generateULID",
 ]
 
 

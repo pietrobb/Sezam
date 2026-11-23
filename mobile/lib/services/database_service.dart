@@ -426,9 +426,25 @@ class DatabaseService {
     String? writePolicy,
     String? accessLevel,
     ({int version, String? hash})? rebaseOn,
+    int? replacesVersion,
   }) async {
     final db = await database;
     await db.transaction((txn) async {
+      // Review 18c300f R16-M1: a local edit replaces the version it was made
+      // on. A sync that stored another version meanwhile (the edit awaited in
+      // between) is not overwritten by an edit numbered like it.
+      if (replacesVersion != null) {
+        final held = await txn.query(
+          'vault_objects',
+          columns: ['version'],
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        final current = held.isEmpty ? null : held.first['version'] as int?;
+        if (current != replacesVersion) {
+          throw StaleRowException(id, replacesVersion, current);
+        }
+      }
       // A server copy is its own base. A local change keeps the base of the
       // row it replaces, unless it is rebased on a newer server copy
       // (conflict "keep mine").
@@ -1194,4 +1210,16 @@ class DatabaseService {
     await close();
     await databaseFactory.deleteDatabase(path);
   }
+}
+
+/// A local edit found another version stored than the one it was made on
+/// (R16-M1); nothing was written.
+class StaleRowException implements Exception {
+  final String id;
+  final int expected;
+  final int? current;
+  const StaleRowException(this.id, this.expected, this.current);
+
+  @override
+  String toString() => 'Object $id changed meanwhile (edited v$expected, now v$current)';
 }

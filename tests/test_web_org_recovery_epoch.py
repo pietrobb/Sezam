@@ -56,7 +56,7 @@ def _generate(status: dict, answer: bool):
       return calls;
     """
     return _run(
-        ["handleShamirGenerate", "bytesToHex", "anchorWebOrgRecovery"], f"(async () => {{ {script} }})()"
+        ["handleShamirGenerate", "bytesToHex", "anchorWebOrgRecovery", "sendWebTeamRecords", "noteWebTeamRecordsSent"], f"(async () => {{ {script} }})()"
     )
 
 
@@ -104,7 +104,8 @@ ANCHOR = STUBS + """
     return {};
   };
 """
-ANCHOR_FUNCTIONS = ["handleShamirGenerate", "bytesToHex", "anchorWebOrgRecovery", "webTeamLogTrusted"]
+ANCHOR_FUNCTIONS = ["handleShamirGenerate", "bytesToHex", "anchorWebOrgRecovery", "webTeamLogTrusted",
+                    "sendWebTeamRecords", "noteWebTeamRecordsSent"]
 
 
 def test_web_setup_names_the_recovery_key_in_the_team_log():

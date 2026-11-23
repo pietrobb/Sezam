@@ -35,7 +35,7 @@ def _run(batch_accepted: bool) -> dict:
     src = APP_JS.read_text(encoding="utf-8")
     functions = "\n".join(
         _function(src, name) for name in (
-            "pushWebRekeyBatch", "retryAllWebDirtyObjects", "finishWebRevocation",
+            "pushWebRekeyBatch", "sendWebTeamRecords", "noteWebTeamRecordsSent", "retryAllWebDirtyObjects", "finishWebRevocation",
             "prepareWebRekeyJournal",
         )
     )

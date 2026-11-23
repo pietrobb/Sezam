@@ -1446,23 +1446,33 @@ class VaultService {
     );
 
     final storedRow = await _db.getObject(entryId);
-    await _db.upsertObject(
-      id: entryId,
-      objectType: 'entry',
-      payload: payload,
-      ownerId: existing.ownerId ?? _userId,
-      parentRef: existing.parentRef,
-      version: newVersion,
-      // Keep the last server-confirmed sequence: a local edit is not a new
-      // never-synced object (see SyncService._computeStateHash).
-      commitSeq: storedRow?['commit_seq'] as int?,
-      payloadHash: payloadHash,
-      clientSignature: signature,
-      queued: true,
-      writePolicy: updatedPolicy,
-      accessLevel: storedRow?['access_level'] as String?,
-      rebaseOn: rebaseOn,
-    );
+    try {
+      await _db.upsertObject(
+        id: entryId,
+        objectType: 'entry',
+        payload: payload,
+        ownerId: existing.ownerId ?? _userId,
+        parentRef: existing.parentRef,
+        version: newVersion,
+        // Keep the last server-confirmed sequence: a local edit is not a new
+        // never-synced object (see SyncService._computeStateHash).
+        commitSeq: storedRow?['commit_seq'] as int?,
+        payloadHash: payloadHash,
+        clientSignature: signature,
+        queued: true,
+        writePolicy: updatedPolicy,
+        accessLevel: storedRow?['access_level'] as String?,
+        rebaseOn: rebaseOn,
+        // R16-M1: a sync awaited above stored another version: not replaced.
+        replacesVersion: rebaseOn == null ? existing.version : null,
+      );
+    } on StaleRowException catch (e) {
+      throw StaleEntryEditException(
+        entryId,
+        expectedVersion: e.expected,
+        currentVersion: e.current ?? e.expected,
+      );
+    }
 
     final updated = VaultEntry(
       id: entryId,

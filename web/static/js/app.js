@@ -7249,10 +7249,23 @@ function isSameSyncVersion(queued, sent) {
         queued.payload === sent.payload;
 }
 
+// Review 18c300f R16-M1: an edit names the server copy it was made on when it
+// is made, not when it is sent. A pull that brought another device's version
+// while the edit was sealed (or waited for the sync lock) became its base, and
+// the edit was renumbered over that version: the other device's change was
+// lost without a conflict. Now the server sees the old base: a conflict shown.
+// A queued change keeps its queue's base (a pull never replaces it).
+function webBaseNow(id) {
+    if (state.outbox[id]) return {};
+    const base = webBase(id);
+    return base ? { base_version: base.version, base_payload_hash: base.payload_hash } : {};
+}
+
 async function pushVaultObject(obj) {
     // Keep the exact encrypted payload until the server explicitly accepts it.
     // A later full resync can therefore export every unsynchronised change.
-    await pushEncryptedVaultObject(await sealVaultObject(obj));
+    const base = ['node', 'entry'].includes(obj.object_type) ? webBaseNow(obj.id) : {};
+    await pushEncryptedVaultObject({ ...await sealVaultObject(obj), ...base });
 }
 
 async function pushVaultObjectLocked(obj) {
@@ -10076,6 +10089,7 @@ async function handleDeleteConfirm() {
 
         // Push as deleted — preserve the entry's inherited encryption scope.
         const version = (entry.version || 1) + 1;
+        const base = webBaseNow(entryId);  // R16-M1: the copy it was made on
         const entryData = { name: entry.name, tags: entry.tags || [], fields: entry.fields || [] };
         const entryDekId = resolveWriteDekId(entry.parent_ref, entry);
         const entryDek = state.deks[entryDekId];
@@ -10111,6 +10125,7 @@ async function handleDeleteConfirm() {
             payload_hash: payloadHash,
             signature: bytesToHex(delSig),
             write_policy: entry.write_policy || 'owner_only',
+            ...base,
         });
 
         closeDeleteModal();

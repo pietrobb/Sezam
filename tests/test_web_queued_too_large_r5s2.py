@@ -56,7 +56,7 @@ def test_the_bar_offers_to_drop_it_and_the_tombstone_fits():
 
 def test_deleting_an_oversized_entry_sends_a_tombstone_that_fits():
     result = _run(
-        ["handleDeleteConfirm"],
+        ["handleDeleteConfirm", "webBaseNow", "webBase"],
         """
         globalThis.t = (key) => key;
         const el = () => ({ classList: { add() {}, remove() {} }, dataset: { entryId: 'E' } });
@@ -66,6 +66,7 @@ def test_deleting_an_oversized_entry_sends_a_tombstone_that_fits():
         globalThis.canEditObject = () => true;
         globalThis.resolveWriteDekId = () => 'D';
         globalThis.state.deks = { D: new Uint8Array(32) };
+        globalThis.state.outbox = {};
         globalThis.state.entries = { E: { id: 'E', name: 'big', version: 3,
             fields: [{ key: 'note', value: 'x'.repeat(1100 * 1024) }] } };
         globalThis.encryptEntryPayload = (data) =>

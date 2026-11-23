@@ -15,7 +15,7 @@ from nacl.exceptions import CryptoError
 
 from ..crypto.aead import BlobKind, decrypt, encrypt, parse_envelope
 from ..models import EntryData, EntryMeta, NodeMeta, bytes_to_ulid, ulid_to_bytes
-from . import outbox
+from . import oplock, outbox
 from .sealed import open_sealed
 
 if TYPE_CHECKING:
@@ -175,6 +175,7 @@ def _write(vault: Vault, nodes: list[tuple], entries: list[tuple]) -> None:
     vault._rebuild_search_index()
 
 
+@oplock.held  # R16-M1: the version read is the one replaced (a pull waits)
 def restore_entry(vault: Vault, entry_id: str) -> None:
     """Bring back a deleted entry into its folder (which must exist)."""
     vault._require_unlocked()
@@ -192,6 +193,7 @@ def restore_entry(vault: Vault, entry_id: str) -> None:
     vault._audit_log("write", json.dumps({"target": entry_id, "action": "restore"}).encode())
 
 
+@oplock.held  # R16-M1: the version read is the one replaced (a pull waits)
 def restore_node(vault: Vault, node_id: str) -> int:
     """Bring back a deleted folder with its deleted subfolders and entries.
 

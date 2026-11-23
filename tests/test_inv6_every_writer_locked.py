@@ -332,10 +332,14 @@ LOCK_SITES = {
     ("sezam/vault/crud.py", "Vault.adopt_account_kek", "@oplock.held"),
     ("sezam/vault/crud.py", "Vault.change_password", "@oplock.held"),
     ("sezam/vault/crud.py", "Vault.grant_folder_access", "@oplock.held"),
+    ("sezam/vault/crud.py", "Vault.move_entry", "@oplock.held"),  # R16-M1
+    ("sezam/vault/crud.py", "Vault.move_node", "@oplock.held"),  # R16-M1
     ("sezam/vault/crud.py", "Vault.org_recovery", "@oplock.held"),
+    ("sezam/vault/crud.py", "Vault.rename_node", "@oplock.held"),  # R16-M1
     ("sezam/vault/crud.py", "Vault.rekey_after_handover", "@oplock.held"),
     ("sezam/vault/crud.py", "Vault.rekey_after_revocation", "@oplock.held"),
     ("sezam/vault/crud.py", "Vault.setup_org_recovery", "@oplock.held"),
+    ("sezam/vault/crud.py", "Vault.update_entry", "@oplock.held"),  # R16-M1
     ("sezam/vault/db.py", "VaultDB._ordered", "oplock.exclusive"),
     ("sezam/vault/db.py", "VaultDB._settle_transaction", "oplock.exclusive"),
     ("sezam/vault/db.py", "VaultDB._upgrade_sync_columns", "oplock.exclusive"),
@@ -368,6 +372,8 @@ LOCK_SITES = {
     ("sezam/vault/team_log_local.py", "TeamLogMixin.append_team_log", "@oplock.held"),
     ("sezam/vault/team_log_local.py", "TeamLogMixin.flush_team_log", "@oplock.held"),
     ("sezam/vault/team_log_local.py", "TeamLogMixin.queue_team_changes", "@oplock.held"),
+    ("sezam/vault/trash.py", "restore_entry", "@oplock.held"),  # R16-M1
+    ("sezam/vault/trash.py", "restore_node", "@oplock.held"),  # R16-M1
 }
 
 # Every call on a connection that is not VaultDB.execute/executemany (which

@@ -2168,7 +2168,7 @@ class TestWebRevocationRekey:
         )[0]
 
         assert flow.index("await saveWebRekeyJournal(journal, _sodium)") < flow.index(
-            "await pushWebRekeyBatch(journal)"
+            "await pushWebRekeyBatch(journal, _sodium)"
         # rindex: the success path's clear (review d150605 S3 adds an earlier
         # one that drops a journal the server can never take).
         ) < flow.index("method: 'DELETE'") < flow.rindex("await clearWebRekeyJournal(revokedUserId, _sodium)")
@@ -3462,6 +3462,10 @@ class TestWebPersonalDekInheritance:
         deleter = "async function handleDeleteConfirm" + src.split(
             "async function handleDeleteConfirm", 1
         )[1].split("// ── Auto-lock", 1)[0]
+        bases = "\n".join(
+            name + src.split(name, 1)[1].split("\n}\n", 1)[0] + "\n}\n"
+            for name in ("function webBase(", "function webBaseNow(")
+        )
         migrator = "async function migrateLegacyPersonalDescendants" + src.split(
             "async function migrateLegacyPersonalDescendants", 1
         )[1].split("/**\n * Perform TOFU", 1)[0]
@@ -3487,8 +3491,11 @@ state.allEntries = [
   {{ id: 'foreign', owner_id: 'OTHER_USER', signer: 'OTHER_USER', parent_ref: 'foreignRoot' }},
   {{ id: 'opaque', _undecryptable: true, parent_ref: 'missing' }},
 ];
+state.outbox = {{}};
+state.acceptedBases = {{}};
 {resolver}
 {deleter}
+{bases}
 {migrator}
 assert.strictEqual(resolveInheritedPersonalDekId('grandchild'), 'PERSONAL_DEK');
 assert.strictEqual(resolveInheritedPersonalDekId('shared'), undefined);
