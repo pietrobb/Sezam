@@ -676,6 +676,13 @@ class RekeyMixin:
 
         def due(row, blob: bytes, folder_id: str) -> Optional[tuple[str, bytes, bytearray]]:
             if not row["mine"]:
+                # R15 #441 rule (crud rekey_folder), here too: another
+                # writer's item below a deleted folder keeps the old key, as
+                # the rest of the trash does. R16-Z SM4 let a new admin open
+                # that key again, and its re-seal revived the folder, whose
+                # name is sealed with a parent key it never holds.
+                if row["folder_deleted"]:
+                    return None
                 try:
                     found = successor(blob, folder_id)
                 except (CryptoError, KeyError, ValueError):
@@ -702,11 +709,15 @@ class RekeyMixin:
             with log_read_once(self._db):
                 nodes = self._db.fetchall(
                     f"SELECT id, parent_id, encrypted_meta, version, {outbox.queued('nodes')} AS queued, "
+                    "EXISTS (SELECT 1 FROM nodes p WHERE p.id = nodes.parent_id AND p.is_deleted = 1) "
+                    "AS folder_deleted, "
                     + mine.format(t="nodes") + " FROM nodes WHERE is_deleted = 0"
                 )
                 entries = self._db.fetchall(
                     "SELECT id, node_id, dek_id, encrypted_meta, encrypted_data, version, "
                     f"{outbox.queued('entries')} AS queued, "
+                    "EXISTS (SELECT 1 FROM nodes p WHERE p.id = entries.node_id AND p.is_deleted = 1) "
+                    "AS folder_deleted, "
                     + mine.format(t="entries") + " FROM entries WHERE is_deleted = 0"
                 )
                 sealed = [(bytes(r["encrypted_meta"]), r["parent_id"] or r["id"]) for r in nodes]

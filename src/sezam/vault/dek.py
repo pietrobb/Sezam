@@ -284,11 +284,27 @@ class DEKManager:
     def _open_team_envelope_with(self, dek_id: str, team, user_id: str, keys) -> bytearray:
         from .. import teamlog
         from ..crypto.envelope_crypto import open_envelope
+        from . import pending_states
 
-        for env in self._db.fetchall(
+        envelopes = [dict(row) for row in self._db.fetchall(
             "SELECT * FROM access_envelopes WHERE dek_id = ? AND user_id = ? "
             "AND id NOT IN (SELECT envelope_id FROM withdrawn_envelopes)", (dek_id, user_id)
-        ):
+        )]
+        # R16-Z SM4 (deep stateful run): this device's own re-key batch
+        # withdrew the old key's envelopes here, its own too, before the
+        # server took the batch. Until it does, that envelope is still this
+        # account's authority to the key: another process (or this one after
+        # a restart) rebasing the refused batch must open the old key, and
+        # held only through the envelope it never could. Same checks below.
+        withdrawn = {row["envelope_id"] for row in self._db.fetchall(
+            "SELECT envelope_id FROM withdrawn_envelopes")}
+        envelopes += [
+            {**item, "encrypted_dek": bytes.fromhex(item["encrypted_dek"])}
+            for item in pending_states.rekey_batch(self._db).get("envelope_tombstones") or []
+            if item.get("dek_id") == dek_id and item.get("user_id") == user_id
+            and item.get("created_by") in team.members and item["id"] not in withdrawn
+        ]
+        for env in envelopes:
             if not teamlog.envelope_valid(team, env["created_by"], user_id, dek_id,
                                           env["access_level"], bytes(keys.encryption_pk).hex()):
                 continue
