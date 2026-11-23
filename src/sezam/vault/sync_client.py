@@ -689,8 +689,15 @@ class SyncClient(
         password the server has now, as after a change made on another device;
         the local journal goes with it. Returns the adopted key_epoch.
         """
+        from .team_log_withdrawn import withdraw_sent
+
         pending_states.refuse_if_blocked(self._db, pending_states.ABANDON_KEY_CHANGE)
-        return self.adopt_rotated_key_material(vault, account_password)
+        epoch = self.adopt_rotated_key_material(vault, account_password)
+        # R16-H1: the dropped rotation's member.keys, if it went out, names
+        # keys nobody holds now; a server that kept it never puts it in this log.
+        with self._db.transaction(immediate=True):
+            withdraw_sent(self._db, "member.keys")
+        return epoch
 
     @oplock.held
     def finish_pending_change(self, vault: "Vault", account_password: str) -> None:

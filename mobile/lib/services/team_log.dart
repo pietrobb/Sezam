@@ -721,6 +721,75 @@ class TeamLog {
     return admins > 1 ? 'more than one admin' : null;
   }
 
+  /// The change a record made, as a device makes it again on another head:
+  /// a folder.key's generation and a member.keys' proof are bound to the head.
+  static String changeKey(Map<String, dynamic> body) {
+    final data = Map<String, dynamic>.from(body['data'] as Map)
+      ..remove('gen')
+      ..remove('new_key_sig');
+    return canonical({'type': body['type'], 'data': data});
+  }
+
+  /// Review 18c300f R16-H1 (src/sezam/teamlog.py fork_refusal,
+  /// tests/vectors/team_log_fork.json): whether a device follows a server
+  /// log that forks from its copy. [lost]: its records from the fork on;
+  /// [theirs]: the server's; [heldKeys]: [signing, encryption] pk hex or
+  /// null; [withdrawn]: record hashes. (refusal, missing): a refusal null
+  /// follows, missing are the seqs of this account's lost changes not on
+  /// the server's side.
+  static (String?, List<int>) forkRefusal(
+    List<Map<String, dynamic>> lost,
+    List<Map<String, dynamic>> theirs,
+    String? userId,
+    List<String>? heldKeys,
+    Set<String> withdrawn,
+  ) {
+    final lostBodies = [for (final r in lost) parseBody(r['body'], -1)];
+    final theirBodies = [for (final r in theirs) parseBody(r['body'], -1)];
+    final was = {for (final body in lostBodies) changeKey(body)};
+    for (var i = 0; i < theirs.length; i++) {
+      final body = theirBodies[i];
+      if (userId == null || body['author'] != userId) continue;
+      final seq = body['seq'];
+      if (withdrawn.contains(recordHash(theirs[i]))) {
+        return ('its record $seq is one this device withdrew', const []);
+      }
+      if (body['type'] == 'member.role' && !was.contains(changeKey(body))) {
+        return ('its record $seq changes a role this device did not lose', const []);
+      }
+      final data = body['data'] as Map;
+      if (body['type'] == 'member.keys' &&
+          !was.contains(changeKey(body)) &&
+          (heldKeys == null ||
+              data['signing_pk'] != heldKeys[0] ||
+              data['encryption_pk'] != heldKeys[1])) {
+        return ('its record $seq names keys this device does not hold', const []);
+      }
+    }
+    final made = {for (final body in theirBodies) changeKey(body)};
+    for (var i = 0; i + 1 < lostBodies.length; i++) {
+      // A readmit (member.remove + member.add of one member, one append)
+      // is on the server's side whole or not at all.
+      final first = lostBodies[i];
+      final second = lostBodies[i + 1];
+      if (first['type'] == 'member.remove' &&
+          second['type'] == 'member.add' &&
+          (first['data'] as Map)['user_id'] == (second['data'] as Map)['user_id'] &&
+          made.contains(changeKey(first)) != made.contains(changeKey(second))) {
+        return ('it holds one half of the readmit at record ${first['seq']}', const []);
+      }
+    }
+    final missing = <int>[];
+    for (final body in lostBodies) {
+      if (made.contains(changeKey(body))) continue;
+      if (userId == null || body['author'] != userId) {
+        return ("record ${body['seq']} this device saw is not on the server's side (it follows once its author makes that change again)", const []);
+      }
+      missing.add(body['seq'] as int);
+    }
+    return (null, missing);
+  }
+
   /// A deletion of an object sealed with a team key needs write access there.
   static String? tombstoneRefusal(TeamState s, String userId, String? storedDekId) {
     final found = storedDekId == null ? null : s.dekIndex[storedDekId];

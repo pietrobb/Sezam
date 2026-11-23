@@ -683,6 +683,65 @@ def admin_policy_refusal(state: TeamState) -> Optional[str]:
     return None
 
 
+def change_key(body: dict) -> str:
+    """The change a record made, as a device makes it again on another head:
+    a folder.key's generation and a member.keys' proof are bound to the head."""
+    data = {k: v for k, v in body["data"].items() if k not in ("gen", "new_key_sig")}
+    return canonical({"type": body["type"], "data": data})
+
+
+def fork_refusal(
+    lost: list[dict], theirs: list[dict], user_id: Optional[str],
+    held_keys: Optional[tuple[str, str]], withdrawn,
+) -> tuple[Optional[str], list[int]]:
+    """Whether a device follows a server log that forks from its copy (review
+    18c300f R16-H1, tests/vectors/team_log_fork.json).
+
+    ``lost``: the device's records from the fork on; ``theirs``: the server's.
+    A server keeps every record a device signed, also one it refused or one
+    the device withdrew; a fork built of them handed the admin role over or
+    named keys nobody holds. So: no record of this account in ``theirs`` that
+    the device withdrew (``withdrawn``: record hashes); no role change of this
+    account there that was not lost here; no key change of this account there
+    unless it was lost here or names the keys this device holds
+    (``held_keys``: signing, encryption pk hex). Every lost change of another
+    account is on the server's side (its device made it again there); this
+    account's own that are not are returned by seq, for the device to make
+    again. (reason, []) refuses; (None, missing seqs) follows.
+    """
+    lost_bodies = [parse_body(record["body"]) for record in lost]
+    their_bodies = [parse_body(record["body"]) for record in theirs]
+    was = {change_key(body) for body in lost_bodies}
+    for record, body in zip(theirs, their_bodies):
+        if user_id is None or body["author"] != user_id:
+            continue
+        seq = body["seq"]
+        if record_hash(record) in withdrawn:
+            return f"its record {seq} is one this device withdrew", []
+        if body["type"] == "member.role" and change_key(body) not in was:
+            return f"its record {seq} changes a role this device did not lose", []
+        if body["type"] == "member.keys" and change_key(body) not in was and (
+                held_keys is None
+                or (body["data"]["signing_pk"], body["data"]["encryption_pk"]) != tuple(held_keys)):
+            return f"its record {seq} names keys this device does not hold", []
+    made = {change_key(body) for body in their_bodies}
+    for first, second in zip(lost_bodies, lost_bodies[1:]):
+        # A readmit (member.remove + member.add of one member, one append)
+        # is on the server's side whole or not at all.
+        if (first["type"], second["type"]) == ("member.remove", "member.add") and \
+                first["data"]["user_id"] == second["data"]["user_id"] and \
+                (change_key(first) in made) != (change_key(second) in made):
+            return f"it holds one half of the readmit at record {first['seq']}", []
+    missing = []
+    for body in lost_bodies:
+        if change_key(body) in made:
+            continue
+        if user_id is None or body["author"] != user_id:
+            return f"record {body['seq']} this device saw is not on the server's side (it follows once its author makes that change again)", []
+        missing.append(body["seq"])
+    return None, missing
+
+
 def tombstone_refusal(state: TeamState, user_id: str, stored_dek_id: Optional[str]) -> Optional[str]:
     """A deletion of an object sealed with a team key needs write access there."""
     found = state.dek_index.get(stored_dek_id) if stored_dek_id else None

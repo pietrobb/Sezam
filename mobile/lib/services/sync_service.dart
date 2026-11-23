@@ -2555,6 +2555,12 @@ class SyncService {
           _vault.userId!,
         )).isNotEmpty,
         ownUserId: _vault.userId,
+        ownKeys: _vault.signingPublicKey == null || _vault.encryptionPublicKey == null
+            ? null
+            : [
+                TeamLog.toHex(_vault.signingPublicKey!),
+                TeamLog.toHex(_vault.encryptionPublicKey!),
+              ],
         fetchPage: (since) async {
           final response = await _http.get(
             Uri.parse('$_serverUrl/api/team-log?since=$since'),

@@ -511,6 +511,60 @@ const SezamTeamLog = (() => {
     return admins.length > 1 ? 'more than one admin' : null;
   }
 
+  // The change a record made, as a device makes it again on another head:
+  // a folder.key's generation and a member.keys' proof are bound to the head.
+  function changeKey(body) {
+    const { gen: _gen, new_key_sig: _sig, ...data } = body.data;
+    return canonical({ type: body.type, data });
+  }
+
+  // Review 18c300f R16-H1 (src/sezam/teamlog.py fork_refusal,
+  // tests/vectors/team_log_fork.json): whether a device follows a server log
+  // that forks from its copy. lost: its records from the fork on; theirs: the
+  // server's; heldKeys: [signingPk, encryptionPk] hex or null; withdrawn: a
+  // Set of record hashes. { refusal, missing }: refusal null follows, missing
+  // the seqs of this account's lost changes not on the server's side.
+  function forkRefusal(lost, theirs, userId, heldKeys, withdrawn, sodium) {
+    const lostBodies = lost.map((record) => parseBody(record.body, null));
+    const theirBodies = theirs.map((record) => parseBody(record.body, null));
+    const was = new Set(lostBodies.map(changeKey));
+    for (let i = 0; i < theirs.length; i++) {
+      const body = theirBodies[i];
+      if (userId === null || body.author !== userId) continue;
+      const seq = body.seq;
+      if (withdrawn.has(recordHash(theirs[i], sodium))) {
+        return { refusal: `its record ${seq} is one this device withdrew`, missing: [] };
+      }
+      if (body.type === 'member.role' && !was.has(changeKey(body))) {
+        return { refusal: `its record ${seq} changes a role this device did not lose`, missing: [] };
+      }
+      if (body.type === 'member.keys' && !was.has(changeKey(body)) && (heldKeys === null ||
+          body.data.signing_pk !== heldKeys[0] || body.data.encryption_pk !== heldKeys[1])) {
+        return { refusal: `its record ${seq} names keys this device does not hold`, missing: [] };
+      }
+    }
+    const made = new Set(theirBodies.map(changeKey));
+    for (let i = 0; i + 1 < lostBodies.length; i++) {
+      // A readmit (member.remove + member.add of one member, one append)
+      // is on the server's side whole or not at all.
+      const [first, second] = [lostBodies[i], lostBodies[i + 1]];
+      if (first.type === 'member.remove' && second.type === 'member.add' &&
+          first.data.user_id === second.data.user_id &&
+          made.has(changeKey(first)) !== made.has(changeKey(second))) {
+        return { refusal: `it holds one half of the readmit at record ${first.seq}`, missing: [] };
+      }
+    }
+    const missing = [];
+    for (const body of lostBodies) {
+      if (made.has(changeKey(body))) continue;
+      if (userId === null || body.author !== userId) {
+        return { refusal: `record ${body.seq} this device saw is not on the server's side (it follows once its author makes that change again)`, missing: [] };
+      }
+      missing.push(body.seq);
+    }
+    return { refusal: null, missing };
+  }
+
   function tombstoneRefusal(state, userId, storedDekId) {
     const found = storedDekId !== null && own(state.dekIndex, storedDekId) ? state.dekIndex[storedDekId] : null;
     if (found !== null && !mayWrite(state, found[0], userId)) return 'team log gives no write access here';
@@ -533,7 +587,7 @@ const SezamTeamLog = (() => {
     emptyState, stateToJson, applyRecord, replay, nextBody,
     isTeamFolder, currentKey, keyGeneration, isStale, maySeal, isAdmin, mayWrite, keyRecipients,
     mayHoldKey, envelopeValid, itemRefusal, tombstoneRefusal, moveRefusal, adminPolicyRefusal,
-    signingKeyRetired,
+    signingKeyRetired, changeKey, forkRefusal,
   };
 })();
 

@@ -398,10 +398,13 @@ void main() {
       final followed = await from('own_fork_again') as LocalTeamLog;
       expect(followed.team.headSeq, 5);
       expect(followed.records, records('own_fork_again'));
-      expect(await from('own_fork_other_author'), contains('does not replay'));
-      // Another account's copy: not its own records, never followed.
+      // Review 18c300f R16-H1: a member's rotation the server took first
+      // takes nothing of this phone's; a member's phone follows too once
+      // every change it saw is on the server's side (18c300f: 'does not
+      // replay' for good). tests/vectors/team_log_fork.json has the rule.
+      expect((await from('own_fork_other_author') as LocalTeamLog).records, records('own_fork_other_author'));
       final served = records('own_fork_again');
-      expect(await sync(served, head: headOf(served), local: local, ownUserId: b), contains('does not replay'));
+      expect((await sync(served, head: headOf(served), local: local, ownUserId: b) as LocalTeamLog).records, served);
     });
 
     test('a head with two admins is refused, a handover is followed', () async {

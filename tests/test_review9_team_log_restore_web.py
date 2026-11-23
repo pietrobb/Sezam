@@ -6,7 +6,7 @@ TEAM LOG MISMATCH.
 
 from __future__ import annotations
 
-from tests.team_log_vectors import B, C, D, F1, K, Log
+from tests.team_log_vectors import A, B, C, D, F1, K, Log
 from tests.test_review_web import pytestmark  # noqa: F401
 from tests.test_team_log_web_pull import _run
 
@@ -71,8 +71,10 @@ def test_a_forked_or_other_genesis_server_log_is_never_built_on():
 def test_a_fork_of_this_accounts_own_records_is_followed_once_nothing_is_lost():
     """Goal #442: another device of this account put back a shorter copy and
     then made the lost changes again. Before they are back the fork stays
-    'went back'; once each is on the server's side it is followed; a fork
-    with a record of another account never is."""
+    'went back'; once each is on the server's side it is followed. Review
+    18c300f R16-H1: also with a record of another account on that side (a
+    member's rotation the server took first); never with a role change of
+    this account that was not lost here."""
     own = "state.userId = ids.A; const got = await attempt(); return { ...got, posted };"
     shorter = Log().genesis().member(B).member(D)
     assert "went back (head 2 < 4)" in _restore(own, shorter)["error"]
@@ -80,7 +82,10 @@ def test_a_fork_of_this_accounts_own_records_is_followed_once_nothing_is_lost():
     result = _restore(own, again)
     assert result == {"seq": 5, "posted": []}, result
     other = Log().genesis().member(B).rotate(B, D).member(C).key(F1, 0, K[1], None).access(F1, B, "write")
-    assert "does not replay" in _restore(own, other)["error"]
+    assert _restore(own, other) == {"seq": 5, "posted": []}
+    handed = Log().genesis().member(B).add("member.role", A, {"user_id": B.uid, "role": "admin"}).add(
+        "member.role", A, {"user_id": A.uid, "role": "member"}).member(C, by=B)
+    assert "changes a role this device did not lose" in _restore(own, handed)["error"]
 
 
 def test_a_refused_upload_stays_a_mismatch():

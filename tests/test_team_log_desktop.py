@@ -291,26 +291,32 @@ def test_a_log_rolled_back_by_the_server_is_never_followed_back(team):
     assert max(r["seq"] for r in db._storage["team_log"]) == 1
 
 
-def test_a_forked_log_is_refused(team):
+def test_a_forked_log_is_refused_while_a_record_seen_here_is_missing(team):
+    """A fork that drops a change this device saw is refused; once the
+    admin's device made it again on the server's side it is followed
+    (review 18c300f R16-H1: a member stayed on 'does not replay' for good)."""
     db, admin, admin_client, bob, bob_client = team
     _found_with_bob(admin_client, bob)
     bob_client._refresh_team_log()
     # The server swaps record 1 for another valid one the admin signed
-    # (say, for a device that never sent it) and adds one more on top.
+    # (say, for a device that never sent it).
     admin.db.execute("DELETE FROM team_log WHERE seq = 1")
     db._storage["team_log"] = [r for r in db._storage["team_log"] if r["seq"] == 0]
     _forget_server_cache()
     admin_client.append_team_log([("folder.key", {"folder": new_ulid(), "dek_id": new_ulid(), "prev_dek_id": None})])
+    with pytest.raises(TeamLogMismatch, match="record 1 this device saw is not on the server's side"):
+        bob_client._refresh_team_log()
+    assert bob_client.team_state().members[bob.db.get_meta("user_id")].role == "member"
+    assert bob_client.team_state().head_seq == 1
     admin_client.append_team_log([("member.add", {
         "user_id": bob.db.get_meta("user_id"),
         "signing_pk": bytes(bob.keypair.signing_pk).hex(),
         "encryption_pk": bytes(bob.keypair.encryption_pk).hex(),
         "role": "member",
     })])
-    with pytest.raises(TeamLogMismatch, match="does not replay"):
-        bob_client.pull()
-    assert bob_client.team_state().members[bob.db.get_meta("user_id")].role == "member"
-    assert bob_client.team_state().head_seq == 1
+    bob_client._refresh_team_log()
+    assert bob_client.team_state().head_seq == 2
+    assert bob_client.team_state().head_hash == admin_client.team_state().head_hash
 
 
 def test_a_server_without_the_log_gets_it_back(team):

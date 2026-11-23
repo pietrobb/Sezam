@@ -17,12 +17,13 @@ import logging
 from typing import Optional
 
 from .. import teamlog
-from . import oplock, outbox
+from . import oplock, outbox, team_log_withdrawn
 from ..models import new_ulid
 from .sync_common import (
     ATOMIC_BATCH_CONFLICT,
     TEAM_LOG_HEAD_MOVED,
     TEAM_LOG_REFUSED,
+    ServerError,
     _RevokedEnvelopesRefused,
     server_error,
 )
@@ -229,13 +230,14 @@ class TeamLogMixin:
 
     def _store_team_log(self, records: list[dict], state: teamlog.TeamState) -> None:
         start = state.head_seq - len(records) + 1
-        current = None
+        stored = {}
         for offset, record in enumerate(records):
-            current = teamlog.record_hash(record)
+            stored[start + offset] = teamlog.record_hash(record)
             self._db.execute(
                 "INSERT INTO team_log (seq, body, sig, hash) VALUES (?, ?, ?, ?)",
-                (start + offset, record["body"], record["sig"], current),
+                (start + offset, record["body"], record["sig"], stored[start + offset]),
             )
+        team_log_withdrawn.note_stored(self._db, stored)
         if self._db.get_meta(GENESIS_META) is None:
             self._db.set_meta(GENESIS_META, state.genesis_hash)
 
@@ -295,8 +297,11 @@ class TeamLogMixin:
         except TeamLogMismatch as exc:
             if local is None or exc.cause not in ("went_back", "differs", "does_not_replay"):
                 raise
-            adopted = self._adopt_own_account_fork(local, server_head)
+            adopted, reason = self._follow_fork(local, server_head)
             if adopted is None:
+                if reason:
+                    raise TeamLogMismatch(f"{exc} It forks from this device's copy and is not followed: "
+                                          f"{reason}.", exc.cause) from exc
                 raise
             return adopted
 
@@ -332,6 +337,16 @@ class TeamLogMixin:
                 break
         if held is not None and len(fetched) > held[0] and teamlog.record_hash(fetched[held[0]]) not in held[1]:
             raise TeamLogMismatch(f"The server's team log differs at record {held[0]}.", "differs")
+        gone = team_log_withdrawn.withdrawn(self._db)
+        for record in fetched:
+            if teamlog.record_hash(record) in gone:
+                # R16-H1: the server kept a record it refused, or one this
+                # device went on without; it is not this account's will.
+                raise TeamLogMismatch(
+                    f"The server's team log holds record {teamlog.parse_body(record['body'])['seq']}, "
+                    "which this device withdrew (the server refused it, or this device went on without it).",
+                    "differs",
+                )
         if state is None or state.head_seq != server_head["seq"] or state.head_hash != server_head.get("hash"):
             raise TeamLogMismatch("The server's team log does not reach the head it announced.", "short_of_head")
         if pinned is None and state.genesis_hash != server_head.get("genesis_hash"):
@@ -357,18 +372,25 @@ class TeamLogMixin:
         "member.add", "member.role", "member.remove", "access.set", "folder.key", "org.recovery",
     })
 
-    def _adopt_own_account_fork(self, local: teamlog.TeamState, server_head: dict) -> Optional[teamlog.TeamState]:
-        """Follow a server log that forks from the local copy where both sides
-        are this account's own records; the local ones are queued again.
+    def _follow_fork(self, local: teamlog.TeamState, server_head: dict):
+        """Follow a server log that forks from the local copy, as far as
+        teamlog.fork_refusal allows; this account's lost changes that are not
+        on the server's side are queued again. (state, None), or (None, why
+        not) - the mismatch stands.
 
         Goal #442 (bg344 random run of TeamLogMachine on a3f84bb): the server
         lost its log, and the admin's device A put back its shorter copy with
         the link of its own rotation; B, which held the grant A had not
-        pulled, stayed on 'went back' for good. The server cannot sign as
-        this account, so either side is a choice of this account's devices:
-        the server's is followed, and nothing of B's is lost - each change
-        it made goes out again on the new head (or is set aside, shown by
-        'sezam team-log queue'). None (the mismatch stands) for any other fork.
+        pulled, stayed on 'went back' for good. Nothing of B's is lost: each
+        change it made goes out again on the new head (or is set aside,
+        shown by 'sezam team-log queue').
+
+        Review 18c300f R16-H1: every fork of this account's records was
+        followed. The server keeps what it refused, so a hand-over the admin
+        had seen refused (and removed Bob since) made Bob the admin, and a
+        dropped identity rotation named keys nobody holds. A member's device
+        never followed a fork, also not once the admin's device had made the
+        lost changes again on the server's side: 'does not replay' for good.
         """
         records: list[dict] = []
         for _ in range(FETCH_PAGES):
@@ -379,38 +401,49 @@ class TeamLogMixin:
             records.extend(page)
             if len(records) > server_head["seq"]:
                 break
-        rows = self._db.fetchall("SELECT body, hash FROM team_log ORDER BY seq")
+        rows = self._db.fetchall("SELECT body, sig, hash FROM team_log ORDER BY seq")
         fork = next((i for i, (row, record) in enumerate(zip(rows, records))
                      if teamlog.record_hash(record) != row["hash"]), None)
         if not fork:  # another genesis, or the server's log is a prefix of this copy
-            return None
+            return None, None
+        keypair = getattr(self, "_keypair", None)
+        held = None if keypair is None else (keypair.signing_pk.hex(), keypair.encryption_pk.hex())
+        try:
+            reason, missing = teamlog.fork_refusal(
+                [{"body": row["body"], "sig": row["sig"]} for row in rows[fork:]], records[fork:],
+                self._user_id, held, team_log_withdrawn.withdrawn(self._db),
+            )
+        except teamlog.TeamLogError:
+            return None, None
+        if reason:
+            return None, reason
         lost = [teamlog.parse_body(row["body"]) for row in rows[fork:]]
-        theirs = [teamlog.parse_body(record["body"]) for record in records[fork:]]
-        links = [body for body in lost if body["type"] == "member.keys"]
-        changes = [body for body in lost if body["type"] != "member.keys"]
-        if any(body["author"] != self._user_id for body in lost + theirs) or any(
-                body["type"] not in self._REQUEUED_KINDS for body in changes) or len(links) > 1:
-            return None
+        missing_bodies = [body for body in lost if body["seq"] in missing]
+        links = [body for body in missing_bodies if body["type"] == "member.keys"]
+        changes = [body for body in missing_bodies if body["type"] != "member.keys"]
+        if any(body["type"] not in self._REQUEUED_KINDS for body in changes) or len(links) > 1:
+            return None, None
         try:
             state = teamlog.replay(records)
         except teamlog.TeamLogError:
-            return None
+            return None, None
         if (state.head_seq != server_head["seq"] or state.head_hash != server_head.get("hash")
                 or teamlog.admin_policy_refusal(state)):
-            return None
+            return None, None
         if links and not self._rotation_linked_again(state, links[0]):
-            return None
+            return None, None
         batch = new_ulid()  # set aside together or not at all, as they were made
         requeued = [[body["type"], {**body["data"], "_batch": batch}] for body in changes]
         with self._db.transaction(immediate=True):
             if self._local_head_seq() != local.head_seq:
-                return None  # another process moved the copy meanwhile: the next pull compares again
+                return None, None  # another process moved the copy meanwhile: the next pull compares again
             self._db.execute("DELETE FROM team_log WHERE seq >= ?", (fork,))
             self._store_team_log(records[fork:], state)
-            _set_queued_changes(self._db, requeued + queued_changes(self._db))
-        logger.warning("Followed the server's team log from record %s, written by another device of this "
-                       "account; %s own change(s) queued again", fork, len(requeued))
-        return state
+            if requeued:
+                _set_queued_changes(self._db, requeued + queued_changes(self._db))
+        logger.warning("Followed the server's team log from record %s, which forks from this device's copy; "
+                       "%s own change(s) queued again", fork, len(requeued))
+        return state, None
 
     def _rotation_linked_again(self, state: teamlog.TeamState, body: dict) -> bool:
         """``body`` (a member.keys lost in the fork) links to this device's keys
@@ -1157,7 +1190,10 @@ class TeamLogMixin:
             records = self.team_log_records(pending + [list(c) for c in extra])
             try:
                 result = send(records)
-            except RuntimeError as exc:
+            except BaseException as exc:
+                self._note_not_taken(records, exc)
+                if not isinstance(exc, RuntimeError):
+                    raise
                 if attempt == 0 and server_error(exc, 409, TEAM_LOG_HEAD_MOVED):
                     self._refresh_team_log()
                     continue
@@ -1173,6 +1209,18 @@ class TeamLogMixin:
                 _drop_sent_changes(self._db, pending)
             return result
         raise AssertionError("unreachable")
+
+    def _note_not_taken(self, records: list[dict], exc: BaseException) -> None:
+        """R16-H1: ``records`` went out and the server did not take them. An
+        answer 4xx applied none of them: they are withdrawn, whatever the
+        server keeps. Any other failure leaves it open (a lost reply): the
+        next pull shows whether they landed."""
+        seen = set()
+        while exc is not None and id(exc) not in seen and not isinstance(exc, ServerError):
+            seen.add(id(exc))
+            exc = exc.__cause__
+        refused = isinstance(exc, ServerError) and 400 <= exc.status < 500
+        team_log_withdrawn.note_sent(self._db, records, refused)
 
     def _send_queue_overflow(self, extra: int) -> None:
         """Append the queue's head on its own while it exceeds one append.
@@ -1195,7 +1243,10 @@ class TeamLogMixin:
             records = [record for _, record in part]
             try:
                 self._request("POST", "/api/team-log", {"records": records}, auth=True)
-            except RuntimeError as exc:
+            except BaseException as exc:
+                self._note_not_taken(records, exc)
+                if not isinstance(exc, RuntimeError):
+                    raise
                 if moved < 2 and server_error(exc, 409, TEAM_LOG_HEAD_MOVED):
                     moved += 1
                     self._refresh_team_log()

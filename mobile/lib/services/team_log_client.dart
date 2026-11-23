@@ -412,6 +412,7 @@ Future<LocalTeamLog?> syncTeamLog({
   String? confirmedGenesis,
   bool leftEarlierLog = false,
   String? ownUserId,
+  List<String>? ownKeys,
   required Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
   Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)? restore,
 }) async {
@@ -477,39 +478,33 @@ Future<LocalTeamLog?> syncTeamLog({
         !const ['went_back', 'differs', 'does_not_replay'].contains(e.cause)) {
       rethrow;
     }
-    final followed = await _followOwnAccountFork(log, head, local, pin, ownUserId, fetchPage);
+    final LocalTeamLog? followed;
+    try {
+      followed = await _followFork(log, head, local, pin, ownUserId, ownKeys, fetchPage);
+    } on _ForkRefused catch (refused) {
+      throw TeamLogMismatch(
+          "${e.detail}; it forks from this phone's copy and is not followed: ${refused.reason}", e.cause);
+    }
     if (followed == null) rethrow;
     return followed;
   }
 }
 
-/// The change a record made, as another device of this account makes it
-/// again on another head: a folder.key's generation and a member.keys'
-/// proof are bound to that head.
-String _ownTeamChange(Map<String, dynamic> body) {
-  final data = Map<String, dynamic>.from(body['data'] as Map)
-    ..remove('gen')
-    ..remove('new_key_sig');
-  final keys = data.keys.toList()..sort();
-  return jsonEncode([
-    body['type'],
-    [for (final k in keys) [k, data[k]]],
-  ]);
-}
-
 /// Goal #442 (bg344 random run of TeamLogMachine): the server lost its log
 /// and one device of this account put back a shorter copy, so it forks from
-/// what this phone holds. Both sides are this account's records, which the
-/// server cannot sign: the phone follows the server's side, but only once
-/// every change of its own lost records is on it (the desktop that made
-/// them queues them again; nothing this phone saw is forgotten). Null: the
-/// mismatch stands.
-Future<LocalTeamLog?> _followOwnAccountFork(
+/// what this phone holds. Review 18c300f R16-H1: the server keeps what a
+/// device of this account withdrew (a hand-over the server refused, a
+/// dropped rotation), so a fork is followed only as far as
+/// [TeamLog.forkRefusal] allows; a member's phone follows once every change
+/// it saw is on the server's side (on 18c300f: 'does not replay' for good).
+/// Null: the mismatch stands; [_ForkRefused]: it stands, and why.
+Future<LocalTeamLog?> _followFork(
   TeamLog log,
   Map<String, dynamic> head,
   LocalTeamLog local,
   Map<String, dynamic>? pin,
-  String ownUserId,
+  String? ownUserId,
+  List<String>? ownKeys,
   Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
 ) async {
   final headSeq = head['seq'];
@@ -538,14 +533,16 @@ Future<LocalTeamLog?> _followOwnAccountFork(
   if (fork == 0 || fork == served.length || fork == local.records.length) return null;
   final TeamState team;
   try {
-    final lost = [
-      for (var i = fork; i < local.records.length; i++) TeamLog.parseBody(local.records[i]['body'], i),
-    ];
-    final theirs = [for (var i = fork; i < served.length; i++) TeamLog.parseBody(served[i]['body'], i)];
-    if ([...lost, ...theirs].any((body) => body['author'] != ownUserId)) return null;
-    final made = {for (final body in theirs) _ownTeamChange(body)};
-    if (!lost.every((body) => made.contains(_ownTeamChange(body)))) return null;
+    // This phone sends no records of its own, so it withdrew none.
+    final (refusal, missing) = TeamLog.forkRefusal(
+        local.records.sublist(fork), served.sublist(fork), ownUserId, ownKeys, const {});
+    if (refusal != null) throw _ForkRefused(refusal);
+    // Nor does it make its own lost changes again: the fork waits until
+    // they are on the server's side.
+    if (missing.isNotEmpty) return null;
     team = log.replay(served);
+  } on _ForkRefused {
+    rethrow;
   } catch (_) {
     return null;
   }
@@ -553,6 +550,11 @@ Future<LocalTeamLog?> _followOwnAccountFork(
     return null;
   }
   return LocalTeamLog(served, team);
+}
+
+class _ForkRefused implements Exception {
+  _ForkRefused(this.reason);
+  final String reason;
 }
 
 Future<LocalTeamLog> _catchUpTeamLog(

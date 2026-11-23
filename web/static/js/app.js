@@ -4257,18 +4257,22 @@ async function buildWebRekeyBatch(revokedUserId, _sodium) {
     };
 }
 
-async function pushWebRekeyBatch(journal) {
+async function pushWebRekeyBatch(journal, _sodium = state.sodium) {
     // The journal is the only queue for these objects: in outbox a
     // Retry would send them one by one (lockout review M5).
     const teamLog = Array.isArray(journal.team_log) ? journal.team_log : [];
     if (!journal.objects.length) {
         // Only the member.remove (no team folder to re-key).
-        if (teamLog.length) await apiFetch('/api/team-log', { method: 'POST', body: { records: teamLog } });
+        if (teamLog.length) {
+            await sendWebTeamRecords(teamLog, () => apiFetch('/api/team-log', {
+                method: 'POST', body: { records: teamLog },
+            }), _sodium);
+        }
         return;
     }
-    const response = await postAtomicSyncBatch(journal.objects, {
+    const response = await sendWebTeamRecords(teamLog, () => postAtomicSyncBatch(journal.objects, {
         key_epoch: state.keyEpoch, ...(teamLog.length ? { team_log: teamLog } : {}),
-    });
+    }), _sodium);
     const acceptedIds = new Set((response?.accepted || []).map(item => item.id));
     if ((response?.conflicts || []).length ||
             journal.objects.some(obj => !acceptedIds.has(obj.id))) {
@@ -4310,11 +4314,11 @@ async function finishWebRevocation(revokedUserId, _sodium) {
     if (journal.phase === 'prepared') {
         try {
             try {
-                if (journal.objects.length || journal.team_log?.length) await pushWebRekeyBatch(journal);
+                if (journal.objects.length || journal.team_log?.length) await pushWebRekeyBatch(journal, _sodium);
             } catch (err) {
                 if (!err.rekeyBatchRefused && err.status !== 409 && !err.syncUnitTooLarge) throw err;
                 journal = await prepareWebRekeyJournal(revokedUserId, _sodium);
-                if (journal.objects.length || journal.team_log?.length) await pushWebRekeyBatch(journal);
+                if (journal.objects.length || journal.team_log?.length) await pushWebRekeyBatch(journal, _sodium);
             }
         } catch (err) {
             if (err.status === 400 && journal.team_log?.length) {
@@ -8311,34 +8315,39 @@ async function syncWebTeamLog(head, local, pin, _sodium) {
     if (pinned && head.genesis_hash !== pinned) {
         await failAsServed(head, pinned, 'starts with another genesis than this browser saw', 'other_genesis');
     }
+    let result;
     try {
-        return await catchUpWebTeamLog(head, local, pin, _sodium, fail);
+        result = await catchUpWebTeamLog(head, local, pin, _sodium, fail);
     } catch (err) {
         if (!local || !['went_back', 'differs', 'does_not_replay'].includes(err.teamLogCause)) throw err;
-        const followed = await followOwnAccountFork(head, local, pin, _sodium);
+        const followed = await followWebTeamLogFork(head, local, pin, _sodium);
+        if (followed?.refusal) {
+            fail(`${err.message.replace(/^TEAM LOG MISMATCH: the server's team log /, '')}; it forks from this browser's copy and is ` +
+                 `not followed: ${followed.refusal}`, err.teamLogCause);
+        }
         if (!followed) throw err;
-        return followed;
+        result = followed;
     }
+    await noteWebTeamLogStored(result.records, _sodium);
+    return result;
 }
 
-/** The change a record made, as another device of this account makes it again
- * on another head: a folder.key's generation and a member.keys' proof are
- * bound to that head. */
-function ownTeamChange(body) {
-    const { gen: _gen, new_key_sig: _sig, ...data } = body.data || {};
-    return JSON.stringify([body.type, Object.keys(data).sort().map(k => [k, data[k]])]);
+/** This browser's identity keys as the team log names them, or null. */
+function webHeldTeamKeys(_sodium) {
+    if (!state.keypair?.signingPk || !state.keypair?.encryptionSk) return null;
+    return [bytesToHex(state.keypair.signingPk), bytesToHex(_sodium.crypto_scalarmult_base(state.keypair.encryptionSk))];
 }
 
 /**
  * Goal #442 (bg344 random run of TeamLogMachine): the server lost its log and
  * one device of this account put back a shorter copy, so it forks from what
- * this browser holds. Both sides are this account's records, which the
- * server cannot sign: the browser follows the server's side, but only once
- * every change of its own lost records is on it (the desktop that made them
- * queues them again; nothing this browser saw is forgotten). Returns
- * {records, team}, or null: the mismatch stands.
+ * this browser holds. Review 18c300f R16-H1: the server keeps what it refused
+ * (a hand-over the admin took back, a dropped rotation), so a fork is
+ * followed only as far as SezamTeamLog.forkRefusal allows; a member's browser
+ * follows once every change it saw is on the server's side. Returns
+ * {records, team}, {refusal}, or null: the mismatch stands.
  */
-async function followOwnAccountFork(head, local, pin, _sodium) {
+async function followWebTeamLogFork(head, local, pin, _sodium) {
     const TL = globalThis.SezamTeamLog;
     if (!Number.isSafeInteger(head.seq) || head.seq < 0) return null;
     if (pin && (!Number.isSafeInteger(pin.seq) || pin.seq > local.team.headSeq ||
@@ -8354,11 +8363,17 @@ async function followOwnAccountFork(head, local, pin, _sodium) {
     while (fork < served.length && fork < local.records.length &&
            TL.recordHash(served[fork], _sodium) === TL.recordHash(local.records[fork], _sodium)) fork++;
     if (fork === 0 || fork === served.length || fork === local.records.length) return null;
-    const lost = local.records.slice(fork).map(r => TL.parseBody(r.body));
-    const theirs = served.slice(fork).map(r => TL.parseBody(r.body));
-    if ([...lost, ...theirs].some(body => body.author !== state.userId)) return null;
-    const made = new Set(theirs.map(ownTeamChange));
-    if (!lost.every(body => made.has(ownTeamChange(body)))) return null;
+    let verdict;
+    try {
+        verdict = TL.forkRefusal(local.records.slice(fork), served.slice(fork), state.userId || null,
+                                 webHeldTeamKeys(_sodium), (await loadWebTeamLedger(_sodium)).withdrawn, _sodium);
+    } catch {
+        return null;
+    }
+    if (verdict.refusal) return { refusal: verdict.refusal };
+    // This browser does not make its own lost changes again: the fork waits
+    // until they are on the server's side.
+    if (verdict.missing.length) return null;
     let team;
     try {
         team = TL.replay(served, _sodium);
@@ -8366,8 +8381,102 @@ async function followOwnAccountFork(head, local, pin, _sodium) {
         return null;
     }
     if (team.headSeq !== head.seq || team.headHash !== head.hash || TL.adminPolicyRefusal(team)) return null;
-    console.warn(`Followed the server's team log from record ${fork}, written by another device of this account`);
+    console.warn(`Followed the server's team log from record ${fork}, which forks from this browser's copy`);
     return { records: served, team };
+}
+
+function webTeamLedgerAad() {
+    return new TextEncoder().encode(`sezam-web-team-ledger-v1:${state.userId}`);
+}
+
+/**
+ * Review 18c300f R16-H1 (desktop: vault/team_log_withdrawn.py): the records
+ * of this account this browser sent while the server has not taken them
+ * (sent: hash -> [seq, prev]) and the ones it withdrew - the server answered
+ * 4xx, or the log holds another record at that seq. A server that keeps a
+ * withdrawn record never puts it in this browser's log. Sealed under the KEK.
+ */
+async function loadWebTeamLedger(_sodium) {
+    const empty = { sent: {}, withdrawn: new Set() };
+    if (!state.kek || !state.userId) return empty;
+    const stored = await idbKeysRequest('readonly', store => store.get(`team_ledger:${state.userId}`));
+    if (!stored || !stored.encrypted_ledger) return empty;
+    try {
+        const packed = hexToBytes(stored.encrypted_ledger);
+        const nonceLen = _sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES;
+        const parsed = JSON.parse(new TextDecoder().decode(_sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+            null, packed.slice(nonceLen), webTeamLedgerAad(), packed.slice(0, nonceLen), state.kek)));
+        return { sent: parsed.sent || {}, withdrawn: new Set(parsed.withdrawn || []) };
+    } catch {
+        return empty;
+    }
+}
+
+async function saveWebTeamLedger(ledger, _sodium) {
+    if (!state.kek || !state.userId) return;
+    // A record signed on a withdrawn one is withdrawn with it.
+    for (let moved = true; moved;) {
+        moved = false;
+        for (const [hash, [, prev]] of Object.entries(ledger.sent)) {
+            if (ledger.withdrawn.has(prev)) { delete ledger.sent[hash]; ledger.withdrawn.add(hash); moved = true; }
+        }
+    }
+    const nonce = _sodium.randombytes_buf(_sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
+    const ciphertext = _sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(new TextEncoder().encode(JSON.stringify({
+        sent: ledger.sent, withdrawn: [...ledger.withdrawn].sort(),
+    })), webTeamLedgerAad(), null, nonce, state.kek);
+    const packed = new Uint8Array(nonce.length + ciphertext.length);
+    packed.set(nonce, 0);
+    packed.set(ciphertext, nonce.length);
+    await idbKeysRequest('readwrite', store => store.put({
+        id: `team_ledger:${state.userId}`, encrypted_ledger: bytesToHex(packed),
+    }));
+}
+
+/** `records` went out and the server did not take them: refused (an answer
+ * 4xx applied none of them) or not known (the next pull shows it). */
+async function noteWebTeamRecordsSent(records, err, _sodium) {
+    if (!records.length || !state.kek || !_sodium) return;
+    const TL = globalThis.SezamTeamLog;
+    const refused = Number.isInteger(err?.status) && err.status >= 400 && err.status < 500;
+    const ledger = await loadWebTeamLedger(_sodium);
+    for (const record of records) {
+        const hash = TL.recordHash(record, _sodium);
+        const body = TL.parseBody(record.body, null);
+        if (refused) {
+            delete ledger.sent[hash];
+            ledger.withdrawn.add(hash);
+        } else {
+            ledger.withdrawn.delete(hash);
+            ledger.sent[hash] = [body.seq, body.prev];
+        }
+    }
+    await saveWebTeamLedger(ledger, _sodium);
+}
+
+/** The log this browser follows is `records`: a sent record there was taken,
+ * another one at its seq was left behind. */
+async function noteWebTeamLogStored(records, _sodium) {
+    if (!state.kek) return;
+    const ledger = await loadWebTeamLedger(_sodium);
+    const sent = Object.entries(ledger.sent).filter(([, [seq]]) => seq < records.length);
+    if (!sent.length) return;
+    const TL = globalThis.SezamTeamLog;
+    for (const [hash, [seq]] of sent) {
+        delete ledger.sent[hash];
+        if (TL.recordHash(records[seq], _sodium) !== hash) ledger.withdrawn.add(hash);
+    }
+    await saveWebTeamLedger(ledger, _sodium);
+}
+
+/** POST team log records with `send`, noting them when the server does not take them. */
+async function sendWebTeamRecords(records, send, _sodium) {
+    try {
+        return await send();
+    } catch (err) {
+        await noteWebTeamRecordsSent(records, err, _sodium);
+        throw err;
+    }
 }
 
 async function catchUpWebTeamLog(head, local, pin, _sodium, fail) {
@@ -8401,6 +8510,14 @@ async function catchUpWebTeamLog(head, local, pin, _sodium, fail) {
     }
     if (team.headSeq !== head.seq || team.headHash !== head.hash) fail('does not reach the head it announced', 'short_of_head');
     if (team.genesisHash !== head.genesis_hash) fail('genesis differs from the head it announced', 'head_genesis');
+    const { withdrawn } = await loadWebTeamLedger(_sodium);
+    for (let seq = localSeq + 1; withdrawn.size && seq < records.length; seq++) {
+        // R16-H1: the server kept a record it refused, or one this browser went on without.
+        if (withdrawn.has(TL.recordHash(records[seq], _sodium))) {
+            fail(`holds record ${seq}, which this browser withdrew (the server refused it, or this ` +
+                 'browser went on without it)', 'differs');
+        }
+    }
     // TL7: the server refuses such an append; a head with it is not followed.
     const refusal = TL.adminPolicyRefusal(team);
     if (refusal) fail(`is refused at its head: ${refusal}`, 'refused_at_head');
@@ -8521,7 +8638,10 @@ async function anchorWebOrgRecovery(recoveryPkHex, store, _sodium) {
         const logged = (after.orgRecoveryWrap || {})[state.userId] || null;
         const changed = !logged || Object.keys(wrap).some(k => logged[k] !== wrap[k]);
         if (changed && Number.isInteger(wrap.key_epoch)) append('org.recovery.wrap', wrap);
-        if (records.length) await apiFetch('/api/team-log', { method: 'POST', body: { records } });
+        if (records.length) {
+            await sendWebTeamRecords(records, () => apiFetch('/api/team-log', { method: 'POST', body: { records } }),
+                                     _sodium);
+        }
         return '';
     } catch (err) {
         console.warn('The team log did not take the org recovery key:', err.message || err);
