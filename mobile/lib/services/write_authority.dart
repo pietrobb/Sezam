@@ -22,6 +22,14 @@ import 'team_log.dart';
 String? _signer(Map<String, dynamic> row, String? ownUserId) =>
     row['signer_id'] as String? ?? row['owner_id'] as String? ?? ownUserId;
 
+/// [row] is this account's: its verified signer, or a row never pulled
+/// written before this vault was connected (the temporary 'local' identity).
+bool isOwnRow(Map<String, dynamic> row, String? ownUserId) {
+  final signer = _signer(row, ownUserId);
+  return ownUserId != null &&
+      (signer == ownUserId || (row['signer_id'] == null && signer == 'local'));
+}
+
 bool _isEnvelope(Uint8List bytes) =>
     bytes.length >= 53 && bytes[0] == 1 && bytes[1] == 1;
 
@@ -317,11 +325,7 @@ Set<String> refusedLogPersonalTree(
   final byId = {for (final row in rows) row['id'] as String: row};
   // A row never pulled (no verified signer) written before this vault was
   // connected names the temporary 'local' identity.
-  bool own(Map<String, dynamic> row) {
-    final signer = _signer(row, ownUserId);
-    return ownUserId != null &&
-        (signer == ownUserId || (row['signer_id'] == null && signer == 'local'));
-  }
+  bool own(Map<String, dynamic> row) => isOwnRow(row, ownUserId);
   final rootKeys = <String, String?>{};
 
   /// The key of the personal root above folder [id] (itself included), when

@@ -3312,6 +3312,15 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         ? state.userId : candidateSyncObjects[obj.id]?.signer || null);
     const decryptedNodes = [];
     const decryptedEntries = [];
+    // Review 18c300f R16-H2: what the sealed content says comes first and the
+    // object's own fields after it. On 18c300f a member with write access in a
+    // team folder pushed a node whose content said {"id": <the victim's
+    // personal root>, "personal": true}; it took that root's place and what
+    // the victim saved in its personal tree was sealed with the team key.
+    const signedFields = obj => ({
+        id: obj.id, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id,
+        signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only',
+    });
 
     for (const obj of nodeObjs) {
         try {
@@ -3321,12 +3330,16 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
                 const nodeDekId = new TextDecoder().decode(payloadBytes.slice(3, 29)).replace(/\0/g, '');
                 // New format: encrypted envelope
                 const meta = decryptEnvelope(payloadBytes, obj.id, obj.version || 1, candidateDeks, _sodium);
-                const isPersonal = !!(meta && meta.personal);
-                decryptedNodes.push({ id: obj.id, ...meta, personal: isPersonal, dekId: nodeDekId, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only' });
+                // A personal folder is this account's (signed by it, TL7) and
+                // sealed with a key of its own (its KEK opens it), never one an
+                // envelope gave: a teammate's node is no personal folder here.
+                const isPersonal = !!(meta && meta.personal) && verifiedSigner(obj) === state.userId &&
+                    kekDekIds.has(nodeDekId);
+                decryptedNodes.push({ ...meta, ...signedFields(obj), personal: isPersonal, dekId: nodeDekId });
             } else {
                 // Legacy format: plaintext base64 JSON (transition support)
                 const payload = JSON.parse(atob(obj.payload));
-                decryptedNodes.push({ id: obj.id, ...payload, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only' });
+                decryptedNodes.push({ ...payload, ...signedFields(obj), personal: false, dekId: undefined });
             }
         } catch (err) {
             console.warn('Failed to decrypt node', obj.id, err.message);
@@ -3343,16 +3356,16 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
                 // in one ENTRY_DATA blob. Read it directly for backward compatibility.
                 const entryDekId = new TextDecoder().decode(payloadBytes.slice(3, 29)).replace(/\0/g, '');
                 const decrypted = decryptEnvelope(payloadBytes, obj.id, obj.version || 1, candidateDeks, _sodium);
-                decryptedEntries.push({ id: obj.id, ...decrypted, dekId: entryDekId, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only' });
+                decryptedEntries.push({ ...decrypted, ...signedFields(obj), dekId: entryDekId });
             } else if (payloadBytes.length >= 4 + 53 && payloadBytes[4] === ENVELOPE_ALG && payloadBytes[5] === SCHEMA_VERSION) {
                 // Canonical two-envelope framing: u32be(meta_len) || meta_env || data_env
                 const entryDekId = new TextDecoder().decode(payloadBytes.slice(7, 33)).replace(/\0/g, '');
                 const decrypted = decryptEntryPayload(payloadBytes, obj.id, obj.version || 1, candidateDeks, _sodium);
-                decryptedEntries.push({ id: obj.id, ...decrypted, dekId: entryDekId, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only' });
+                decryptedEntries.push({ ...decrypted, ...signedFields(obj), dekId: entryDekId });
             } else {
                 // Legacy format: plaintext base64 JSON
                 const payload = JSON.parse(atob(obj.payload));
-                decryptedEntries.push({ id: obj.id, ...payload, parent_ref: obj.parent_ref, version: obj.version || 1, owner_id: obj.owner_id, signer: verifiedSigner(obj), write_policy: obj.write_policy || 'owner_only' });
+                decryptedEntries.push({ ...payload, ...signedFields(obj), dekId: undefined });
             }
         } catch (err) {
             console.warn('Failed to decrypt entry', obj.id, err.message);
@@ -9543,7 +9556,8 @@ function trashedNode(nodeId) {
     for (const version of [obj.version, obj.version - 1].filter(v => v >= 1)) {
         try {
             const meta = decryptEnvelope(payloadBytes, obj.id, version, state.deks, state.sodium);
-            return { id: obj.id, parent_ref: obj.parent_ref, personal: !!(meta && meta.personal), dekId };
+            return { id: obj.id, parent_ref: obj.parent_ref, dekId,
+                     personal: !!(meta && meta.personal) && (state.kekDekIds || []).includes(dekId) };
         } catch {
             // the other version
         }

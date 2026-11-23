@@ -38,7 +38,19 @@ def personal_roots_refused(db, dek_mgr, conflicts: list[dict], accepted: list[st
 
 
 def is_personal_root(db, dek_mgr, node_id: str) -> bool:
-    """Is ``node_id`` a top-level folder whose own sealed meta marks it personal?"""
+    """Is ``node_id`` a top-level folder whose own sealed meta marks it
+    personal, sealed with a key of this account's own?
+
+    Review 18c300f R16-H2: the mark is what the sealed meta says, so a member
+    who holds a team key (a team folder's, or an admin's shared root key)
+    could push a top-level node sealed with it that says ``personal``; this
+    account's device took it for its personal folder, and what it saved there
+    was sealed with a key the member holds. A personal root's key is this
+    account's alone: its KEK opens it, no envelope gives it to anyone and the
+    team log names no folder with it.
+    """
+    from .team_log_state import team_key_ids
+
     row = db.fetchone(
         "SELECT parent_id, encrypted_meta, version FROM nodes WHERE id = ? AND is_deleted = 0",
         (node_id,),
@@ -47,12 +59,15 @@ def is_personal_root(db, dek_mgr, node_id: str) -> bool:
         return False
     try:
         blob = bytes(row["encrypted_meta"])
-        dek = dek_mgr.unlock_dek(bytes_to_ulid(parse_envelope(blob).dek_id))
+        dek_id = bytes_to_ulid(parse_envelope(blob).dek_id)
+        dek = dek_mgr.unlock_dek(dek_id)
         plain = decrypt(blob, dek, ulid_to_bytes(node_id), row["version"],
                         expected_blob_kind=BlobKind.NODE_META)
-        return NodeMeta.from_json(plain).personal
+        if not NodeMeta.from_json(plain).personal:
+            return False
     except (CryptoError, KeyError, ValueError, TypeError):
         return False
+    return not dek_mgr.opened_by_envelope(dek_id) and dek_id not in team_key_ids(db)
 
 
 def personal_root_ids(db, dek_mgr) -> list[str]:

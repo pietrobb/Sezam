@@ -79,7 +79,11 @@ def test_every_decrypted_copy_carries_its_verified_signer():
               or "decryptedEntries.push(" in line]
     assert len(pushes) == 7
     tail = pull.split("decryptedEntries.push({\n", 1)[1].split("});", 1)[0]
-    assert all("signer: verifiedSigner(obj)" in line for line in pushes[:-1])
+    # R16-H2: the signed fields come from signedFields(obj), after the content.
+    signed = pull.split("const signedFields = obj => ({", 1)[1].split("});", 1)[0]
+    assert "signer: verifiedSigner(obj)" in signed
+    assert all("...signedFields(obj)" in line or "signer: verifiedSigner(obj)" in line
+               for line in pushes[:-1])
     assert "signer: verifiedSigner(obj)" in tail
     assert "candidateSyncObjects[obj.id]?.signer" in pull
 

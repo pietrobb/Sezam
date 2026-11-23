@@ -617,7 +617,11 @@ class VaultService {
         final commitSeq = row['commit_seq'] as int?;
 
         if (_crypto.isEncryptedEnvelope(payload)) {
+          // Review 18c300f R16-H2: the personal mark is what the sealed meta
+          // says; it counts on a folder this account signed (a teammate
+          // holding a team key could seal one that says it), as the web's.
           final json = _crypto.decryptEnvelope(payload, id, version, _deks);
+          json['personal'] = json['personal'] == true && isOwnRow(row, _userId);
           _nodes[id] = VaultNode.fromJson(
             id,
             json,
@@ -628,7 +632,8 @@ class VaultService {
           );
         } else {
           // Legacy plaintext
-          final json = jsonDecode(utf8.decode(payload)) as Map<String, dynamic>;
+          final json = jsonDecode(utf8.decode(payload)) as Map<String, dynamic>
+            ..remove('personal');
           _nodes[id] = VaultNode.fromJson(
             id,
             json,

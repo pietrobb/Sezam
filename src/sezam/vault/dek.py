@@ -370,6 +370,10 @@ class DEKManager:
         self._dek_cache[dek_id] = raw_dek
         return raw_dek
 
+    def opened_by_envelope(self, dek_id: str) -> bool:
+        """``dek_id`` was opened through a team envelope, not this KEK."""
+        return dek_id in self._box_keys
+
     def can_unwrap(self, dek_id: str, encrypted_dek: bytes, version: int) -> bool:
         """True when this user's KEK opens the wrap (i.e. the DEK is ours)."""
         try:
