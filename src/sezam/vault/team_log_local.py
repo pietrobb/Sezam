@@ -967,10 +967,16 @@ class TeamLogMixin:
                 if not row["unsent"] and not self.team_log_records(changes):
                     self.drop_team_grant(envelope_id)
                     continue
-                self._send_push(
+                result = self._send_push(
                     [self._envelope_object(row)], True, key_epoch, {}, False, {envelope_id},
                     team_changes=changes,
                 )
+                if result.get("rollback_warning"):
+                    # R15 #441 (saved seed TeamLogMachine@7): the server was restored
+                    # and applied nothing. Dropped as sent, the access.set was lost
+                    # while the envelope stayed queued, and the full resync then
+                    # sent it alone: refused on every push for good.
+                    return refused
             except (RuntimeError, _RevokedEnvelopesRefused, teamlog.TeamLogError) as exc:
                 if not (
                     isinstance(exc, (_RevokedEnvelopesRefused, teamlog.TeamLogError))
@@ -1009,10 +1015,12 @@ class TeamLogMixin:
             for envelope_id in envelope_ids
         ]
         key_epoch = int(self._db.get_meta("key_epoch") or "0")
-        self._send_push(
+        result = self._send_push(
             [self._envelope_object(row) for row in rows], True, key_epoch, {}, False, set(envelope_ids),
             team_changes=changes,
         )
+        if result.get("rollback_warning"):
+            raise RuntimeError(result["rollback_warning"])  # nothing was handed over
 
     def log_pre_log_grants(self) -> list[dict]:
         """A grant sealed before this device knew the team log goes into it.
