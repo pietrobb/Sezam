@@ -1026,15 +1026,24 @@ class TeamLogMixin:
         allow that (not an admin here, the member is not in the log or has
         another key now, the key is no current one) the envelope is
         withdrawn, as a refused grant is; returned for the push's conflicts.
+
+        Saved seed (TeamLogMachine, on 005074b): an identity rotation re-seals
+        a member's envelope on a key the log does not know (the server lost
+        the log). That new envelope replaces one the server holds and goes in
+        the rotation's atomic batch; taken for a new grant here it was held
+        back until the key change landed, and the batch missed it on every
+        push for good. A pending re-key's envelopes are the batch's.
         """
         from nacl.exceptions import CryptoError
 
         from ..crypto.envelope_crypto import open_envelope
+        from . import pending_states
 
         state, me = self.team_state(), self._db.get_meta("user_id")
         if state is None or self._keypair is None:
             return []
-        grants = self.pending_team_grants()
+        grants = dict(self.pending_team_grants())
+        grants.update(dict.fromkeys(pending_states.rekey_batch(self._db).get("object_ids", [])))
         rows = [
             row for row in self._db.fetchall(
                 "SELECT ae.id, ae.dek_id, ae.user_id, ae.access_level, ae.encrypted_dek, n.id AS folder "
