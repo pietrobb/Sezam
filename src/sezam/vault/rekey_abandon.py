@@ -54,6 +54,51 @@ def superseded_rekey(client: "SyncClient") -> bool:
     )
 
 
+UNPULLED = "unpulled"
+
+
+def meet_server(client: "SyncClient") -> Optional[str]:
+    """Pull before a re-key batch's first send; drop it if another re-key superseded it.
+
+    Review 4acfdde R11 #3: another device of this account may have re-keyed
+    the same folders; built on this device's unpulled copy, a second re-key
+    of the same keys lands too and devices split between the two new keys.
+    The pull binds the folders to the landed key, and the batch it
+    superseded is dropped (the member is queued again for what they still
+    hold). Pulled after the batch is made, so a conflict the pull brings
+    does not hold the re-key up (SM37); the envelopes it withdraws stay
+    withdrawn.
+
+    R16-Z (SecondAdminMachine deep run on b20ece6): that pull ran once, in
+    the revocation queue, and failed (the account keys had changed); the
+    next push sent the batch unchecked. It landed beside the other device's
+    re-key of a folder deleted here, and a member granted meanwhile lost the
+    folder. The batch carries ``unpulled`` until a pull after it succeeded;
+    every push meets the server first. Returns the pull's rollback warning
+    (nothing applied: the batch waits) or None.
+    """
+    db = client._db
+    if getattr(client, "_meeting_server", False):
+        return None
+    client._meeting_server = True
+    try:
+        pulled = client.pull()
+    finally:
+        client._meeting_server = False
+    if pulled.get("rollback_warning"):
+        return pulled["rollback_warning"]
+    if superseded_rekey(client):
+        abandon_pending_rekey(client)
+        return None
+    with db.transaction():
+        pending = pending_states.rekey_batch(db)
+        for item in pending.get("envelope_tombstones") or []:
+            db.execute("DELETE FROM access_envelopes WHERE id = ?", (item["id"],))
+        if pending:
+            pending_states.set_rekey_batch(db, {k: v for k, v in pending.items() if k != UNPULLED})
+    return None
+
+
 def _grant_again(client: "SyncClient", grant, dek_id: Optional[str]) -> None:
     """Seal a grant the dropped batch held under its new key for ``dek_id``,
     the key the folder uses now, to the member's pinned key.

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from . import oplock, outbox, pending_states, sync_core
 from .crud import RekeyBlockedByConflicts
+from .rekey_abandon import UNPULLED, meet_server
 from .sync_client import CONFIRMED_MEMBER_KEYS_META
 from .sync_limits import SyncUnitTooLarge
 from .sync_common import ServerError, queued_for_removal, server_error
@@ -365,28 +366,17 @@ def finish_queued_revocations(vault: Vault, client: SyncClient) -> dict[str, int
                 # members after them go on.
                 too_large[user_id] = str(exc)
                 continue
-            if (pending_states.rekey_batch(vault.db).get("dek_map") or None) and user_id not in pulled:
-                # Review 4acfdde R11 #3 (state machine, second admin): another
-                # device of this account had already re-keyed the member's
-                # folders. Built on this device's unpulled copy, a second
-                # re-key of the same keys landed too (nothing in it clashed):
-                # devices split between the two new keys and a member granted
-                # meanwhile lost the folder. Before its first send the batch
-                # meets what the server holds: one another re-key superseded
-                # is dropped (the next round re-keys what the member still
-                # holds on the current keys). Pulled after the batch is made,
-                # so a conflict the pull brings does not hold the re-key up
-                # (SM37); the envelopes the batch withdraws stay withdrawn.
-                from .rekey_abandon import abandon_pending_rekey, superseded_rekey
-
+            batch = pending_states.rekey_batch(vault.db)
+            if batch.get("dek_map") and user_id not in pulled:
+                # Review 4acfdde R11 #3: before its first send the batch meets
+                # what the server holds (rekey_abandon.meet_server); one
+                # another re-key superseded is dropped and the next round
+                # re-keys what the member still holds on the current keys.
+                # Marked first: if the pull fails, every push meets it (R16-Z).
                 pulled.add(user_id)
-                client.pull()
-                if superseded_rekey(client):
-                    abandon_pending_rekey(client)
-                else:
-                    with vault.db.transaction():
-                        for item in pending_states.rekey_batch(vault.db).get("envelope_tombstones") or []:
-                            vault.db.execute("DELETE FROM access_envelopes WHERE id = ?", (item["id"],))
+                pending_states.set_rekey_batch(vault.db, {**batch, UNPULLED: True})
+                if meet_server(client):
+                    break  # the server went back: the batch waits for the full resync
                 continue
             if count > 0 or pending_states.rekey_batch(vault.db):
                 continue  # the batch is now pending: the next round sends it

@@ -15,6 +15,7 @@ from ..models import EntryData, bytes_to_ulid, new_ulid, ulid_to_bytes
 from . import oplock, outbox, pending_states
 from .audit import AuditLog
 from .personal_root import in_personal_tree, personal_root_ids, personal_roots_refused
+from .rekey_abandon import UNPULLED, meet_server
 from .sealed import open_sealed
 from .sync_limits import (
     SyncUnitTooLarge,
@@ -86,6 +87,10 @@ class PushMixin:
             # first pull took the account's tree. A device whose own tree the
             # account is (it registered it) pushes as before.
             self.pull()
+        if pending_states.rekey_batch(self._db).get(UNPULLED):
+            rollback = meet_server(self)
+            if rollback:
+                return {"accepted": [], "conflicts": [], "rollback_warning": rollback}
         withdrawn = self.log_pre_log_grants()
         resp = self._push_checked()
         refused = withdrawn + self._push_team_grants()
