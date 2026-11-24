@@ -1984,7 +1984,7 @@ class VaultService {
   }
 
   /// Brings back a folder another device deleted while this phone created or
-  /// edited an item in it (desktop sync_pull._revive_folders_of_unsent; the
+  /// edited an item in it (desktop sync_state._revive_folders_of_unsent; the
   /// conformance scenario offline_write_under_deleted_folder). The server
   /// refuses an item below a deleted folder, so without this the item stayed
   /// queued for good. The folder comes back one version above its tombstone

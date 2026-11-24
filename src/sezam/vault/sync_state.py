@@ -1,4 +1,4 @@
-"""Sync checkpoint, rollback check and per-object base versions (spec 8.3).
+"""Sync checkpoint, rollback check, per-object base versions (spec 8.3) and folders revived for unsent work.
 
 Part of SyncClient (sync_client.py); split out without a change of behaviour.
 """
@@ -12,11 +12,12 @@ import struct
 import time
 from typing import Optional
 
-from ..crypto.aead import BlobKind, decrypt, encrypt
-from ..models import new_ulid, ulid_to_bytes
+from ..crypto.aead import BlobKind, decrypt, encrypt, parse_envelope
+from ..models import bytes_to_ulid, new_ulid, ulid_to_bytes
 
 from . import outbox, sync_core
 from .schema import row_payload_hash
+from .sealed import open_sealed
 from .sync_common import (
     _CHECKPOINT_META_KEY,
     COMMIT_ANCHOR_META,
@@ -27,7 +28,7 @@ from .sync_common import (
 
 
 class SyncStateMixin:
-    """SyncClient methods: sync checkpoint, rollback check and per-object base versions (spec 8.3)."""
+    """SyncClient methods: sync checkpoint, rollback check, per-object base versions, revived folders."""
 
     # ── Sync Checkpoint (spec 8.3) ──
 
@@ -441,3 +442,78 @@ class SyncStateMixin:
         else:
             # A push reply carries no server time: no older one stands for it.
             self._db.execute("DELETE FROM object_server_time WHERE object_id = ?", (object_id,))
+
+    def _revive_folders_of_unsent(self) -> None:
+        """Bring back a folder deleted elsewhere that holds unsent work.
+
+        Capability review 100: another device deleted the folder while this
+        one created or edited an item in it. The pulled tombstone (or a full
+        resync's snapshot) left the unsent item below a deleted folder, which
+        the server refuses on every push (review d150605 #1), so the item never
+        left this device. The folder is restored one version above the
+        tombstone, as the trash does, and goes out ahead of the item.
+        """
+        for _ in range(64):  # one level of folders per round
+            rows = self._db.fetchall(
+                "SELECT n.id, n.encrypted_meta, n.version FROM nodes n WHERE n.is_deleted = 1 "
+                "AND (EXISTS (SELECT 1 FROM entries e WHERE e.node_id = n.id "
+                f"AND {outbox.queued('e')} AND e.is_deleted = 0) "
+                "OR EXISTS (SELECT 1 FROM nodes c WHERE c.parent_id = n.id "
+                f"AND {outbox.queued('c')} AND c.is_deleted = 0))"
+            )
+            if not rows:
+                return
+            if self._dek_mgr is None:
+                raise RuntimeError("Unlock the vault to keep work in a folder deleted elsewhere")
+            for row in rows:
+                blob = bytes(row["encrypted_meta"])
+                dek_id = parse_envelope(blob).dek_id
+                dek = self._dek_mgr.unlock_dek(bytes_to_ulid(dek_id))
+                meta = open_sealed(
+                    blob, dek, row["id"], row["version"], BlobKind.NODE_META, deleted=True
+                )[0]
+                # R16-Z SM18: above every version this device sent, too, as
+                # _rebase_local does (SM22). A rename this device sent at the
+                # tombstone's version + 1 can be on the server (its reply lost
+                # or lied about); revived at that version, a second content of
+                # it went out, the server's copy no longer read as this
+                # device's own write, and the folder was refused on every push
+                # with no conflict left to settle.
+                sent = self._db.fetchone(
+                    "SELECT MAX(version) AS v FROM object_sent_version WHERE object_id = ?",
+                    (row["id"],),
+                )["v"]
+                version = max(row["version"], sent or 0) + 1
+                outbox.queue_write(self._db, row["id"])
+                self._db.execute(
+                    "UPDATE nodes SET encrypted_meta = ?, version = ?, is_deleted = 0 "
+                    "WHERE id = ?",
+                    (encrypt(
+                        plaintext=meta, dek=dek, dek_id=dek_id,
+                        object_id=ulid_to_bytes(row["id"]), version=version,
+                        blob_kind=BlobKind.NODE_META,
+                    ), version, row["id"]),
+                )
+                outbox.mark_revived(self._db, row["id"])
+                logger.warning(
+                    "Folder %s was deleted on another device but holds unsent work "
+                    "here; it is kept and sent again", row["id"],
+                )
+
+    def _revived_ancestors(self, object_ids: set[str]) -> set[str]:
+        """Revived folders not sent yet that hold one of the given objects."""
+        revived = outbox.revived_folders(self._db)
+        found: set[str] = set()
+        for obj_id in object_ids:
+            row = self._db.fetchone(
+                "SELECT parent_id AS p FROM nodes WHERE id = ? UNION ALL "
+                "SELECT node_id AS p FROM entries WHERE id = ?", (obj_id, obj_id),
+            )
+            parent = row["p"] if row else None
+            for _ in range(64):
+                if parent is None or parent not in revived or parent in found:
+                    break
+                found.add(parent)
+                row = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (parent,))
+                parent = row["parent_id"] if row else None
+        return found

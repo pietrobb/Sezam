@@ -7500,7 +7500,7 @@ async function resealOwnWritesUnderSuccessors() {
 
 /**
  * A folder another device deleted while this browser queued an item in it
- * comes back (desktop sync_pull._revive_folders_of_unsent, phone
+ * comes back (desktop sync_state._revive_folders_of_unsent, phone
  * VaultService.reviveFoldersOfUnsent; conformance scenario
  * offline_write_under_deleted_folder, docs/SYNC_SINGLE_SOURCE.md point 4a).
  * The server refuses an item below a deleted folder, so Retry failed on it for
