@@ -9,17 +9,22 @@ is false, or a draw whose role is not on offer, fails the test.
 
 INV-7: after a revocation every member who still has access to a shared folder
 decrypts all of its nodes, through tombstone GC, a server backup restore and
-a restore from trash (teardown checks it after the settle).
+a restore from trash (teardown checks it after the settle). Teardown skips
+revoked or inactive members and folders that are not live without a word
+(finding 540), so the test also requires that it checked m6, that F1 was
+live, and that a node and an entry under F1 opened with m6's keys.
 """
 
 from __future__ import annotations
 
 import contextlib
+from unittest import mock
 
 import pytest
 from hypothesis import HealthCheck, Phase, given, settings, strategies as st
 from hypothesis.stateful import INVARIANT_MARKER, RULE_MARKER
 
+from sezam.crypto.aead import BlobKind
 from tests import test_sync_state_machine as sm
 from tests.test_sync_state_machine import loopback_server  # noqa: F401  (fixture)
 
@@ -149,5 +154,39 @@ def _run_g11(_):
 
 
 def test_g11_second_admin_path_keeps_every_member_able_to_decrypt(loopback_server):  # noqa: F811
+    # Capability finding 540: teardown's INV-7 loop silently skips revoked or
+    # inactive members, granted folders not live on the reference and objects
+    # outside them. Record what it checked for m6 so a pass cannot be empty.
+    checked: dict = {}
+    current: list = []
+    reads, opener = sm.SecondAdminMachine._check_member_reads, sm.open_sealed
+
+    def recording_reads(self, member, member_keys, reference, live, content_dek):
+        rec = checked.setdefault(member.name, {"opened": []})
+        rec["granted_live"] = [
+            reference.db.fetchone("SELECT 1 FROM nodes WHERE id = ? AND is_deleted = 0", (f,)) is not None
+            for f in sorted(self.granted[member.user_id])
+        ]
+        current.append(rec)
+        try:
+            return reads(self, member, member_keys, reference, live, content_dek)
+        finally:
+            current.pop()
+
+    def recording_open(payload, key, obj_id, version, kind, *args, **kwargs):
+        out = opener(payload, key, obj_id, version, kind, *args, **kwargs)
+        if current:
+            current[-1]["opened"].append(kind)
+        return out
+
     sm.SecondAdminMachine.server = loopback_server
-    _run_g11()
+    with mock.patch.object(sm.SecondAdminMachine, "_check_member_reads", recording_reads), \
+            mock.patch.object(sm, "open_sealed", recording_open):
+        _run_g11()
+    m6 = checked.get("m6")
+    assert m6 is not None, f"teardown never checked m6's reads (revoked or not active): {sorted(checked)}"
+    assert m6["granted_live"] and all(m6["granted_live"]), f"m6's granted F1 is not live at teardown: {m6}"
+    opened = m6["opened"]
+    assert BlobKind.NODE_META in opened and BlobKind.ENTRY_META in opened, (
+        f"teardown opened no node and entry under F1 for m6: {opened}"
+    )
