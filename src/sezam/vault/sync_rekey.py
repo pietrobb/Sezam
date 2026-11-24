@@ -822,6 +822,93 @@ class RekeyMixin:
         for object_id in resealed:
             self._push_cache.pop(object_id, None)
 
+    def _current_folder_key(self, dek_id: str, user_id: str, granted_at: int) -> tuple[Optional[str], bool]:
+        """The current key of the folder a retired ``dek_id`` was replaced
+        for (None if there is none), and whether a re-key on the way withdrew
+        ``user_id`` (granted at ``granted_at`` ms)."""
+        from ulid import ULID
+
+        from .dek import archive_removed
+
+        seen = {dek_id}
+        withdrawn = False
+        while True:
+            link = self._dek_mgr.successor_link(dek_id)
+            if link is None or link[0] in seen:
+                return None, withdrawn
+            dek_id, archive_id = link
+            removed = archive_removed(archive_id, dek_id, self._dek_mgr.unlock_dek(dek_id), user_id)
+            if removed is None:
+                removed = granted_at <= ULID.from_str(dek_id).milliseconds
+            withdrawn = withdrawn or removed
+            row = self._db.fetchone("SELECT node_id, scope FROM deks WHERE id = ?", (dek_id,))
+            if row is not None and row["node_id"] and row["scope"] in ("folder", "root"):
+                return dek_id, withdrawn
+            seen.add(dek_id)
+
+    def _rotation_envelopes_on_successors(self) -> None:
+        """R16-Z SM20 (deep stateful run): an unsent identity rotation re-sealed
+        a grant under a folder key another device's re-key has since replaced
+        (pulled after the rotation was built). The server takes no live
+        envelope under a key that names no folder any more ('envelope
+        references unknown DEK') and refused the whole rotation on every push.
+        As for a grant outside the rotation (SM19c, _grant_again_on_successors):
+        the retired copy leaves the unit; a member the re-key neither withdrew
+        nor gave the current key gets it on that key, in the unit."""
+        pending = pending_states.rekey_batch(self._db)
+        if not pending.get("identity_rotation") or self._dek_mgr is None or self._keypair is None:
+            return
+        from ulid import ULID
+
+        from ..crypto.envelope_crypto import create_envelope
+
+        tombstoned = {item["id"] for item in pending.get("envelope_tombstones") or []}
+        resealed = [i for i in pending.get("object_ids") or [] if i not in tombstoned]
+        if not resealed:
+            return
+        rows = self._db.fetchall(
+            "SELECT e.id, e.dek_id, e.user_id, e.access_level FROM access_envelopes e "
+            "JOIN deks d ON d.id = e.dek_id WHERE d.scope = 'folder' AND d.node_id IS NULL "
+            f"AND e.id IN ({','.join('?' * len(resealed))})",
+            tuple(resealed),
+        )
+        object_ids = list(pending["object_ids"])
+        withheld = queued_for_removal(self._db)
+        own_sk = self._keypair.to_nacl_private_key().encode()
+        changed = False
+        with self._db.transaction():
+            for env in rows:
+                current, withdrawn = self._current_folder_key(
+                    env["dek_id"], env["user_id"], ULID.from_str(env["id"]).milliseconds
+                )
+                if current is None:
+                    continue
+                self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (env["id"],))
+                object_ids.remove(env["id"])
+                self._push_cache.pop(env["id"], None)
+                changed = True
+                key_row = self._db.fetchone(
+                    "SELECT encryption_pk FROM known_keys WHERE user_id = ?", (env["user_id"],)
+                )
+                if withdrawn or key_row is None or env["user_id"] in withheld or self._db.fetchone(
+                    "SELECT 1 FROM access_envelopes WHERE dek_id = ? AND user_id = ?",
+                    (current, env["user_id"]),
+                ):
+                    continue
+                new_id = new_ulid()
+                self._db.execute(
+                    "INSERT INTO access_envelopes "
+                    "(id, dek_id, user_id, created_by, access_level, encrypted_dek) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (new_id, current, env["user_id"], self._user_id, env["access_level"],
+                     create_envelope(self._dek_mgr.unlock_dek(current), own_sk, bytes(key_row["encryption_pk"]))),
+                )
+                object_ids.append(new_id)
+                # Envelopes are pushed with their folder.
+                outbox.queue_writes(self._db, "nodes", "id = (SELECT node_id FROM deks WHERE id = ?)", (current,))
+            if changed:
+                pending_states.set_rekey_batch(self._db, {**pending, "object_ids": object_ids})
+
     def _grant_again_on_successors(self) -> None:
         """Give a member granted under a key a re-key replaced the folder's current key.
 
@@ -858,26 +945,7 @@ class RekeyMixin:
             return  # the pending re-key decides about these members
         from ulid import ULID
 
-        from .dek import archive_removed
-
-        def current_key(dek_id: str, user_id: str, granted_at: int) -> tuple[Optional[str], bool]:
-            seen = {dek_id}
-            withdrawn = False
-            while True:
-                link = self._dek_mgr.successor_link(dek_id)
-                if link is None or link[0] in seen:
-                    return None, withdrawn
-                dek_id, archive_id = link
-                removed = archive_removed(
-                    archive_id, dek_id, self._dek_mgr.unlock_dek(dek_id), user_id
-                )
-                if removed is None:
-                    removed = granted_at <= ULID.from_str(dek_id).milliseconds
-                withdrawn = withdrawn or removed
-                row = self._db.fetchone("SELECT node_id, scope FROM deks WHERE id = ?", (dek_id,))
-                if row is not None and row["node_id"] and row["scope"] in ("folder", "root"):
-                    return dek_id, withdrawn
-                seen.add(dek_id)
+        current_key = self._current_folder_key
 
         # R16-Z SM19c: a grant never sent under a key a re-key replaced. Once
         # the folder's current key holds the member (or the re-key withdrew

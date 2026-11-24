@@ -312,6 +312,7 @@ class PushMixin:
         self.flush_team_log()
         # A re-key's new key goes to the log's recipients as the log is now.
         self._reseal_team_rekey(self.team_state())
+        self._rotation_envelopes_on_successors()
         pending_rekey = pending_states.rekey_batch(self._db)
         key_epoch = int(self._db.get_meta("key_epoch") or "0")
         last_pushed_key_epoch = pending_states.last_pushed_key_epoch(self._db)
