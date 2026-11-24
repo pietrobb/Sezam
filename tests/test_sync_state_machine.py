@@ -1915,6 +1915,11 @@ class SyncMachine(RuleBasedStateMachine):
         for dev in self.devices.values():
             with contextlib.suppress(Exception):
                 self.admin_pks.add(bytes(dev.vault.keypair.encryption_pk))
+        # R16-Z: a member who held the admin role sealed keys too (to itself).
+        self.member_pks = getattr(self, "member_pks", set())
+        for member in self.members.values():
+            with contextlib.suppress(Exception):
+                self.member_pks.add(bytes(member.vault.keypair.encryption_pk))
 
     # ── the web client (one browser tab, the unmodified app.js) ──
     #
@@ -2899,7 +2904,7 @@ class SyncMachine(RuleBasedStateMachine):
             member_keys: dict[str, bytes] = {}
             for envelope in envelopes:
                 dek = None
-                for pk in self.admin_pks:
+                for pk in self.admin_pks | getattr(self, "member_pks", set()):
                     with contextlib.suppress(Exception):
                         dek = bytes(open_envelope(bytes(envelope["payload"]), member.encryption_sk, pk))
                         break

@@ -778,6 +778,21 @@ def test_a_team_folder_is_re_keyed_to_the_logs_recipients_only():
     assert result["askedPk"] == [B.uid]
 
 
+def test_the_admin_with_access_of_its_own_seals_the_new_key_to_itself_too():
+    """R16-Z deep run (also on 18c300f): the log gives this account write to
+    F1 of its own (a member who took the admin role back keeps it). Skipped as
+    the re-keying admin, it held no envelope of the new key once the role went
+    on, and lost the folder: exactly the log's recipients get it."""
+    result = _run("""(async () => {
+        const batch = await attempt();
+        const newDek = batch.objects.find(o => o.object_type === 'dek' && o.parent_ref === ids.F1);
+        return batch.objects.filter(o => o.object_type === 'envelope' && !o.is_deleted &&
+                                          o.parent_ref === newDek.id)
+            .map(o => [o.target_user_id, o.access_level]).sort();
+    })()""", _team().access(F1, A, "write"))
+    assert result == sorted([[A.uid, "write"], [B.uid, "write"]])
+
+
 def test_a_member_without_team_folders_is_only_removed_from_the_log():
     log = Log().genesis().member(B).member(C).key(F1, 0, K[1], None).access(F1, B, "write")
     result = _run("""(async () => {

@@ -4276,8 +4276,9 @@ async function buildWebRekeyBatch(revokedUserId, _sodium) {
     let after = plan ? plan.after : null;
     for (const folder of logFolders) {
         const oldDekId = TL.currentKey(after, folder);
+        // R16-Z: exactly the log's recipients, this account too when the log
+        // gives it access of its own (it lost the folder on handing back).
         const recipients = TL.keyRecipients(after, folder)
-            .filter(([userId]) => userId !== state.userId)
             .map(([userId, pkHex, level]) => [userId, hexToBytes(pkHex), level]);
         const newDekId = await rekeyOne(oldDekId, folder, async () => recipients);
         const record = TL.signRecord(TL.nextBody(after, 'folder.key', state.userId, {

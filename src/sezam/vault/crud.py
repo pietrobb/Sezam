@@ -3465,8 +3465,11 @@ class Vault:
                             "The team log's founder is not confirmed on this device; "
                             "no folder key is sealed until it is."
                         )
+                    # R16-Z deep run (also on 18c300f): this account too, when
+                    # the log gives it access of its own (a member who took the
+                    # admin role); skipped, it lost the folder on handing back.
                     for uid, encryption_pk, level in teamlog.key_recipients(team, node_id):
-                        if uid in withheld or uid == self._user_id:
+                        if uid in withheld:
                             continue
                         from nacl.public import Box, PublicKey as NaClPublicKey
 

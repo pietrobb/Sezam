@@ -561,7 +561,7 @@ class RekeyMixin:
                 want = {
                     uid: (encryption_pk, level)
                     for uid, encryption_pk, level in teamlog.key_recipients(state, found[0])
-                    if uid not in withheld and uid != self._user_id
+                    if uid not in withheld  # this account too (crud._rekey_rows, R16-Z)
                 }
                 have: set[str] = set()
                 for row in self._db.fetchall(
