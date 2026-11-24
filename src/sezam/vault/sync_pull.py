@@ -1045,7 +1045,18 @@ class PullMixin:
                 meta = open_sealed(
                     blob, dek, row["id"], row["version"], BlobKind.NODE_META, deleted=True
                 )[0]
-                version = row["version"] + 1
+                # R16-Z SM18: above every version this device sent, too, as
+                # _rebase_local does (SM22). A rename this device sent at the
+                # tombstone's version + 1 can be on the server (its reply lost
+                # or lied about); revived at that version, a second content of
+                # it went out, the server's copy no longer read as this
+                # device's own write, and the folder was refused on every push
+                # with no conflict left to settle.
+                sent = self._db.fetchone(
+                    "SELECT MAX(version) AS v FROM object_sent_version WHERE object_id = ?",
+                    (row["id"],),
+                )["v"]
+                version = max(row["version"], sent or 0) + 1
                 outbox.queue_write(self._db, row["id"])
                 self._db.execute(
                     "UPDATE nodes SET encrypted_meta = ?, version = ?, is_deleted = 0 "
