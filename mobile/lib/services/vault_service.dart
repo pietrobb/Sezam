@@ -1523,13 +1523,23 @@ class VaultService {
         if ((row['is_deleted'] as int? ?? 0) == 1) {
           final payload = row['payload'] as Uint8List;
           final payloadHash = _crypto.sha256Hex(payload);
-          await assertTrustedTeamWrites([row]);
+          // Capability run 567: the phone moves nothing, so a delete kept on
+          // top of the server copy stays where that copy is. Its own older
+          // parent read as a move; with that parent moved below the folder
+          // meanwhile, the server refused it (folder_move_cycle) every push.
+          final serverRow = serverHash == null ? null : shadow!['server_row'];
+          final String? parentRef = serverRow is String
+              ? (jsonDecode(serverRow) as Map)['parent_ref'] as String?
+              : row['parent_ref'] as String?;
+          await assertTrustedTeamWrites([
+            {...row, 'parent_ref': parentRef},
+          ]);
           await _db.upsertObject(
             id: objectId,
             objectType: row['object_type'] as String,
             payload: payload,
             ownerId: row['owner_id'] as String?,
-            parentRef: row['parent_ref'] as String?,
+            parentRef: parentRef,
             targetUserId: row['target_user_id'] as String?,
             version: version,
             commitSeq: row['commit_seq'] as int?,
@@ -1538,7 +1548,7 @@ class VaultService {
             clientSignature: _crypto.signSyncObject(
               id: objectId,
               objectType: row['object_type'] as String,
-              parentRef: row['parent_ref'] as String?,
+              parentRef: parentRef,
               targetUserId: row['target_user_id'] as String?,
               isDeleted: 1,
               version: version,

@@ -79,6 +79,35 @@ async def test_a_longer_crossed_chain_in_one_batch_is_refused(app_client, admin,
 
 
 @pytest.mark.asyncio
+async def test_a_stale_write_with_its_old_parent_is_an_ordinary_conflict(app_client, admin, mock_db):  # noqa: F811
+    """Capability run 567: the phone never moves a folder, but it rewrites one
+    with the parent it holds (a key rotation). If another device meanwhile
+    moved that parent below the folder, the stale write got folder_move_cycle,
+    a code only a device that moved the folder itself acts on. A write not
+    built on the stored copy is a plain version conflict, which every client
+    resolves by pulling."""
+    sk, token = admin
+    body = await _push(app_client, token, [_wire(sk, X, "node", Y, 2, sealed(ROOT_DEK))])
+    assert [a["id"] for a in body["accepted"]] == [X], body
+    base_hash = next(o for o in mock_db._storage["vault_objects"] if o["id"] == X)["payload_hash"]
+    # Another device takes X back to the top and puts Y below it.
+    body = await _push(app_client, token, [
+        _wire(sk, X, "node", ROOT, 3, sealed(ROOT_DEK)),
+        _wire(sk, Y, "node", X, 2, sealed(ROOT_DEK)),
+    ])
+    assert sorted(a["id"] for a in body["accepted"]) == [X, Y], body
+    # The phone, still on X v2 under Y, rewrites X.
+    stale = _wire(sk, X, "node", Y, 3, sealed(ROOT_DEK))
+    stale.update(base_version=2, base_payload_hash=base_hash)
+    body = await _push(app_client, token, [stale])
+    assert body["accepted"] == [], body
+    conflict = body["conflicts"][0]
+    assert conflict.get("code") != "folder_move_cycle", body
+    assert (conflict["error"], conflict["server_version"]) == ("conflict", 3), body
+    assert _parent(mock_db, X) == ROOT and _parent(mock_db, Y) == X
+
+
+@pytest.mark.asyncio
 async def test_an_ordinary_move_still_lands(app_client, admin, mock_db):  # noqa: F811
     sk, token = admin
     body = await _push(app_client, token, [_wire(sk, X, "node", Y, 2, sealed(ROOT_DEK))])
