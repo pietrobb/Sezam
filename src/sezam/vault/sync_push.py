@@ -43,6 +43,7 @@ from .sync_common import (
     RESEED_ARCHIVES_META,
     ATOMIC_BATCH_CONFLICT,
     COLLECTED_OBJECT,
+    FOLDER_KEY_MOVED,
     HISTORY_CHANGED,
     IDENTITY_ROTATION_NEEDS_NEW_KEYS,
     KEY_CHANGE_MISSES_DEKS,
@@ -594,7 +595,7 @@ class PushMixin:
         except RuntimeError as exc:
             if (
                 pending_rekey and not password_rewrap_pending
-                and getattr(exc.__cause__, "code", None) == "folder_key_moved"
+                and getattr(exc.__cause__, "code", None) == FOLDER_KEY_MOVED
             ):
                 # Stateful test (review e443cbc R15, #429): another device of
                 # this account re-keyed the folder after this batch was made
