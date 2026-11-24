@@ -17,6 +17,7 @@ from ..models import bytes_to_ulid, new_ulid, ulid_to_bytes
 from . import oplock, outbox, pending_states, sync_core
 from .rekey_abandon import abandon_pending_rekey, superseded_rekey
 from .schema import row_payload_hash
+from .sealed import open_sealed
 
 from .sync_common import (
     logger,
@@ -172,24 +173,30 @@ class RekeyMixin:
             a batch object that this device refused (its author may not write
             there by the log here, e.g. the former admin after a handover), so
             no shadow came. Resent as it was, the batch was refused for good.
-            The device's own copy stays, one version above the refused one."""
+            The device's own copy stays, one version above the refused one.
+
+            R16-Z SM18 (TeamLogMachine): a tombstone too. The former admin's
+            re-key moved a folder deleted here onto its key; refused here, the
+            tombstone went out on its old base for good. Its blobs stay sealed
+            below the row version (a delete only bumps it), as _rebase_local
+            reseals them."""
             copy = refused_copies.get(row["id"]) if row["id"] in object_ids else None
-            if copy is None or row["is_deleted"] or rekeyed_versions.get(row["id"]) != row["version"]:
+            if copy is None or rekeyed_versions.get(row["id"]) != row["version"]:
                 return
             server_version, server_hash = copy
             if (server_version, server_hash) == (row["base_version"], row["base_hash"]):
                 return
             version = max(server_version + 1, row["version"])
+            deleted = bool(row["is_deleted"])
             sealed = []
             for column, kind in kinds:
                 blob = bytes(row[column])
                 dek_raw = parse_envelope(blob).dek_id
                 dek = self._dek_mgr.unlock_dek(bytes_to_ulid(dek_raw))
                 sealed.append(encrypt(
-                    plaintext=decrypt(blob, dek, ulid_to_bytes(row["id"]), row["version"],
-                                      expected_blob_kind=kind),
+                    plaintext=open_sealed(blob, dek, row["id"], row["version"], kind, deleted=deleted)[0],
                     dek=dek, dek_id=dek_raw, object_id=ulid_to_bytes(row["id"]),
-                    version=version, blob_kind=kind,
+                    version=version - 1 if deleted else version, blob_kind=kind,
                 ))
             columns = ", ".join(f"{column} = ?" for column, _kind in kinds)
             self._db.execute(
