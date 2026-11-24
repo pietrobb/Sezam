@@ -8605,11 +8605,13 @@ async function saveWebTeamLedger(ledger, _sodium) {
 }
 
 /** `records` went out and the server did not take them: refused (an answer
- * 4xx applied none of them) or not known (the next pull shows it). */
+ * 4xx applied none of them) or not known (the next pull shows it). A 409
+ * refuses the request, not the records: another device of this account may
+ * have put the same record in the log (desktop: _note_not_taken). */
 async function noteWebTeamRecordsSent(records, err, _sodium) {
     if (!records.length || !state.kek || !_sodium) return;
     const TL = globalThis.SezamTeamLog;
-    const refused = Number.isInteger(err?.status) && err.status >= 400 && err.status < 500;
+    const refused = Number.isInteger(err?.status) && err.status >= 400 && err.status < 500 && err.status !== 409;
     const ledger = await loadWebTeamLedger(_sodium);
     for (const record of records) {
         const hash = TL.recordHash(record, _sodium);

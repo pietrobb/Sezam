@@ -1800,6 +1800,25 @@ class Vault:
         ):
             self._refuse_tier2_in_team_folder(new_parent_id)
 
+    def _refuse_team_grant_over_tier2(self, node_id: str) -> None:
+        """TL7, as a move (above): with a team log, a grant makes the folder a
+        team folder, and a tier-2 item below it keeps a key the log does not
+        name. R16-Z deep run on b20ece6: the devices that held it showed it,
+        the member and a new sign-in of the page (which judge by the log) did
+        not. It moves out first."""
+        if self._team_for(node_id) is None:
+            return
+        if self._db.fetchone(
+            "WITH RECURSIVE t(id) AS (SELECT ? UNION SELECT n.id FROM nodes n JOIN t ON n.parent_id = t.id) "
+            "SELECT 1 FROM entries e JOIN deks d ON d.id = e.dek_id "
+            "WHERE e.node_id IN (SELECT id FROM t) AND e.is_deleted = 0 AND d.scope = 'tier2'",
+            (node_id,),
+        ):
+            raise ValueError(
+                "This folder holds a tier-2 entry, whose own key is not in the team log: shared, "
+                "nobody else could read it. Move it to a folder of its own first."
+            )
+
     def _is_descendant(self, candidate_id: str, ancestor_id: str) -> bool:
         """Check if candidate_id is a descendant of (or equal to) ancestor_id."""
         current = candidate_id
@@ -2934,6 +2953,7 @@ class Vault:
         if row["scope"] not in ("folder", "root"):
             raise ValueError(f"A {row['scope']} folder key is never shared")
         dek_id = row["id"]
+        self._refuse_team_grant_over_tier2(node_id)
 
         from ..crypto.envelope_crypto import create_envelope, open_envelope
 

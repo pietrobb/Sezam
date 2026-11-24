@@ -1110,12 +1110,18 @@ class TeamLogMixin:
         """R16-H1: ``records`` went out and the server did not take them. An
         answer 4xx applied none of them: they are withdrawn, whatever the
         server keeps. Any other failure leaves it open (a lost reply): the
-        next pull shows whether they landed."""
+        next pull shows whether they landed.
+
+        A 409 (the log moved on, a conflict) refuses the request, not the
+        records: the same record may be in the log already - another device
+        of this account made the same change on the same head (R16-Z deep run
+        on b20ece6: B withdrew A's identical grant and refused the log for
+        good). It stays open; the log shows whether it was taken."""
         seen = set()
         while exc is not None and id(exc) not in seen and not isinstance(exc, ServerError):
             seen.add(id(exc))
             exc = exc.__cause__
-        refused = isinstance(exc, ServerError) and 400 <= exc.status < 500
+        refused = isinstance(exc, ServerError) and 400 <= exc.status < 500 and exc.status != 409
         team_log_withdrawn.note_sent(self._db, records, refused)
 
     def _send_queue_overflow(self, extra: int) -> None:

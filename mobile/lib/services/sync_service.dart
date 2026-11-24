@@ -2679,14 +2679,18 @@ class SyncService {
           headers: _authHeaders(),
           body: jsonEncode({'records': records}),
         );
+        if (response.statusCode == 409) {
+          // The head moved: the request is refused, not the records - another
+          // device of this account may have put the same ones in the log
+          // (desktop: _note_not_taken). The phone still holds the changes.
+          return RemakeOutcome.moved;
+        }
         if (response.statusCode >= 400 && response.statusCode < 500) {
           // Taken by none: a server that keeps them is not followed (R16-H1).
           await _withdrawTeamRecords([
             for (final r in records) TeamLog.recordHash(r),
           ]);
-          return response.statusCode == 409
-              ? RemakeOutcome.moved
-              : RemakeOutcome.refused;
+          return RemakeOutcome.refused;
         }
         _checkResponse(response, 'team log');
         // One withdrawn on a 409 and made the same again is taken now

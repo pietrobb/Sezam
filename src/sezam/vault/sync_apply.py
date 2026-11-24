@@ -437,6 +437,12 @@ class ApplyMixin:
             )
             outbox.sent(self._db, outbox.WITHDRAWAL, obj_id)
             return
+        if not dek_id or not self._db.fetchone("SELECT 1 FROM deks WHERE id = ?", (dek_id,)):
+            # R16-Z deep run: a server that left the key out of this pull (its
+            # checkpoint stops before it) sent the envelope on it; stored, it
+            # failed the whole batch on the foreign key. The next pull brings both.
+            logger.warning("Envelope %s on key %s this vault does not hold; not stored", obj_id, dek_id)
+            return
         user_id = obj.get("target_user_id", "")
         created_by = self._signer_id(obj)
         self.require_trusted_team_log()
