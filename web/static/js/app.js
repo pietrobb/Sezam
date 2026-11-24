@@ -3571,6 +3571,11 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
         return;
     }
     if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
+    if (await resealQueuedUnderSuccessors(_sodium)) {
+        await pullAndBuildTreeLocked(session);
+        return;
+    }
+    if (session !== state.sessionSerial) throw new Error('The session this sync started in has ended; nothing was saved');
     if (requeued) {
         // The tree above was built before they were queued again.
         await pullAndBuildTreeLocked(session);
@@ -7496,6 +7501,33 @@ async function resealOwnWritesUnderSuccessors() {
         }
     }
     return sent;
+}
+
+/**
+ * R16-Z SM19a: a write queued here under a folder key a re-key replaced was
+ * shown as an item the page cannot open (the log refuses the old key for
+ * reading) until Retry sealed it again, and for good while it was in
+ * conflict, which Retry does not send. Sealed again under the folder's current
+ * key as soon as the re-key is pulled, in the queue and in the conflict, as
+ * the desktop's _reseal_under_successors and the phone's
+ * resealUnsentOnCurrentKeys do. Returns how many were sealed again.
+ */
+async function resealQueuedUnderSuccessors(_sodium) {
+    let changed = 0;
+    const context = {};
+    for (const queued of Object.values(state.outbox || {})) {
+        if (!['node', 'entry'].includes(queued.object_type) || queued.is_deleted) continue;
+        const resealed = await resealUnderFolderSuccessor(queued, queued.version, context);
+        if (!resealed || resealed === queued) continue;  // as it is, or the new key is not here yet
+        const copy = { ...queued, ...resealed };  // the base it builds on stays
+        state.outbox[queued.id] = copy;
+        if (state.syncConflicts[queued.id]) {
+            state.syncConflicts[queued.id] = { ...state.syncConflicts[queued.id], local_object: copy };
+        }
+        changed += 1;
+    }
+    if (changed) await saveWebDirtyState(state.outbox, state.syncConflicts, _sodium);
+    return changed;
 }
 
 /**
