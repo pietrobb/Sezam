@@ -104,6 +104,24 @@ def test_an_on_copied_before_the_first_connect_does_not_come_back(server, tmp_pa
         vault.lock()
 
 
+def test_a_reseed_seals_the_home_with_the_server_it_names(server, tmp_path):  # noqa: F811
+    """286ca53: the reseed's bootstrap named the server without its home, so
+    the 'on' stayed home-less until the first broker (as connect did before
+    5785a49)."""
+    from sezam.vault.reseed import reseed_server
+
+    url, _ = server
+    vault = _vault(tmp_path / "laptop", "admin")
+    assert vault.db.get_meta("server_url") is None
+    reseed_server(vault, url, PASSWORD)
+    try:
+        assert vault.db.get_meta("server_url") == url
+        home = vault.db.get_meta_json(ai_access.ANCHOR_HOME_KEY)
+        assert home and home["server_url"] == url
+    finally:
+        vault.lock()
+
+
 def test_an_on_sealed_before_the_fix_counts_only_next_to_its_home(laptop):  # noqa: F811
     """A vault upgraded with AI on keeps it while its home verifies."""
     first = _broker(laptop)
