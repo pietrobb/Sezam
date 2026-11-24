@@ -83,6 +83,22 @@ def test_the_new_admin_rekeys_what_the_former_admin_held(team, server, tmp_path,
     )
 
 
+def test_a_former_admin_still_pushes(team, server):  # noqa: F811
+    """Stateful test SM14 (R16-Z): 'sezam push' on the former admin's desktop
+    looked for revoked holders of the envelopes it sealed as admin, and the
+    server, whose log names another admin, answered the user list with
+    "Admin required": every push of that desktop failed from then on."""
+    _db, admin, admin_client, bob, bob_client = team
+    _found_with_bob(admin_client, bob)
+    bob_id = bob.db.get_meta("user_id")
+    ops = _ops(admin)
+    revocation.grant_member(admin, admin_client, bob_id, ops, "read")
+    hand_over_admin(admin, admin_client, bob_id, lambda fingerprint: True)
+    admin.create_entry(ops, "after", [{"key": "password", "value": "pw"}])
+    result = revocation.push_with_queued_revocations(admin, admin_client)
+    assert result["rekeyed"] == {} and not result["blocked"]
+
+
 def test_a_former_admin_with_write_access_keeps_the_key(team, server):  # noqa: F811
     """A folder the former admin may write anyway is not re-keyed for them."""
     _db, admin, admin_client, bob, bob_client = team

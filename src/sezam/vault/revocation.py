@@ -244,6 +244,11 @@ def queue_revoked_holders(vault: Vault, client: SyncClient) -> None:
     team_logged = local_team_state(vault.db) is not None
     if team_logged:
         client._refresh_team_log()
+        # Stateful test SM14 (R16-Z): a former admin's envelopes are the new
+        # admin's to re-key (the handover re-keys them); the user list is not
+        # this account's any more, and asking for it failed every push.
+        if not teamlog.is_admin(local_team_state(vault.db), me):
+            return
     try:
         users = client.list_users()
     except ServerError as exc:

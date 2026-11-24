@@ -3397,9 +3397,16 @@ class TeamLogMachine(SyncMachine):
         return [{"body": r["body"], "sig": r["sig"]} for r in rows]
 
     def _lost_log_forgers(self) -> dict[str, list[dict]]:
-        """Members not admin in their own copy of the log, with that copy."""
+        """Members not admin in their own copy of the log, with that copy.
+
+        Not a member the operator flagged admin on the server: with no log
+        there, the flag is what lets an account found one (as 'team-log init'
+        does), and every device pinned to the lost genesis refuses the new
+        one (other_genesis, INV-8)."""
         forgers = {}
         for user_id in self._member_desktops():
+            if self._is_admin(user_id):
+                continue
             local = self._local_log(user_id)
             try:
                 state = teamlog.replay(local)
