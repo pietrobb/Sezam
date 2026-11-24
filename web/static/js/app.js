@@ -4319,6 +4319,7 @@ async function pushWebRekeyBatch(journal, _sodium = state.sodium) {
     }
     const response = await sendWebTeamRecords(teamLog, () => postAtomicSyncBatch(journal.objects, {
         key_epoch: state.keyEpoch, ...(teamLog.length ? { team_log: teamLog } : {}),
+        ...(journal.check_token ? { check_seq: journal.check_seq, check_token: journal.check_token } : {}),
     }), _sodium);
     const acceptedIds = new Set((response?.accepted || []).map(item => item.id));
     if ((response?.conflicts || []).length ||
@@ -4343,6 +4344,12 @@ async function prepareWebRekeyJournal(revokedUserId, _sodium) {
         objects: batch.objects,
         team_log: batch.team_log,
     };
+    // R16-Z SM16: the commit the batch was built on. A folder key another
+    // device of this account committed after it makes the server refuse the
+    // batch (folder_key_moved); it is rebuilt from the pull, never stored next.
+    const checkSeq = state.syncCheckpoint?.last_sync_seq || 0;
+    const checkToken = checkSeq > 0 ? state.syncCheckpoint.commit_token || null : null;
+    if (checkToken) Object.assign(journal, { check_seq: checkSeq, check_token: checkToken });
     await saveWebRekeyJournal(journal, _sodium);
     return journal;
 }
