@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Callable, Optional
 
+from .. import teamlog
 from . import oplock, outbox, pending_states, sync_core
 from .crud import RekeyBlockedByConflicts
 from .rekey_abandon import UNPULLED, meet_server
@@ -504,6 +505,14 @@ def revoke_member(vault: Vault, client: Optional[SyncClient], user_id: str) -> i
         team = local_team_state(vault.db)
         member = team.members.get(user_id) if team is not None else None
         if member is not None and member.active:
+            if not teamlog.is_admin(team, vault.db.get_meta("user_id")):
+                # Deep run on 84d55f2 (also on 18c300f): an account the server
+                # flags admin but the log does not hold as one cannot sign the
+                # removal; before, the raw TeamLogError escaped. As the web.
+                raise RuntimeError(
+                    f"This account is not an admin in the team log, so it cannot remove {user_id}. "
+                    "Pull first; if it still is not, an admin the team log names has to revoke."
+                )
             # A signed member.remove (the server revokes the account with
             # it); kept for the next push if it cannot be sent now.
             client.queue_team_changes([("member.remove", {"user_id": user_id})])
