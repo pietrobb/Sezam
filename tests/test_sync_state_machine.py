@@ -3197,7 +3197,11 @@ class TeamLogMachine(SyncMachine):
             # change's author makes it again (deep stateful run on c6d3dff):
             # it waits as for lost records; teardown checks it ends.
             author_remakes = "once its author makes that change again" in str(cause)
-            if not (isinstance(cause, TeamLogMismatch) and (cause.cause == "went_back" or author_remakes)):
+            # A copy from before the admin's identity rotation does not put a
+            # lost log back (the server refuses the retired key, R15 #429): the
+            # member keeps its pin until an admin device does (deep run on 0daf5f2).
+            gone = getattr(cause, "cause", None) == "log_gone" and not self._server_log()
+            if not (isinstance(cause, TeamLogMismatch) and (cause.cause == "went_back" or author_remakes or gone)):
                 raise
             coverage_event("member waits for the lost team log records")
             self.log.append(f"{self.members[user_id].name}: waits, {cause}")
@@ -3379,8 +3383,14 @@ class TeamLogMachine(SyncMachine):
         "stolen admin key, second admin on the way",
     )
 
-    def _vault_of(self, user_id: str):
-        return next(v for _, v in self._log_vaults() if v.db.get_meta("user_id") == user_id)
+    def _key_the_log_names(self, state, user_id: str) -> SigningKey:
+        """The signing key a copy of the log trusts for an account: current on
+        one of its devices, or retired since by an identity rotation (a copy
+        that has not seen the rotation still names the old key)."""
+        keys = [v.keypair.to_nacl_signing_key() for _, v in self._log_vaults()
+                if v.db.get_meta("user_id") == user_id]
+        keys += [key for uid, key in self.leaked_signers if uid == user_id]
+        return next(k for k in keys if bytes(k.verify_key).hex() == state.members[user_id].signing_pk)
 
     def _local_log(self, user_id: str) -> list[dict]:
         rows = self.members[user_id].vault.db.fetchall("SELECT body, sig FROM team_log ORDER BY seq")
@@ -3424,7 +3434,7 @@ class TeamLogMachine(SyncMachine):
             # The true copy, then the admin (its real key, stolen) appoints the
             # member and the member demotes the admin: one admin at the end,
             # two between the authors, which no append takes.
-            stolen = self._vault_of(admin).keypair.to_nacl_signing_key()
+            stolen = self._key_the_log_names(state, admin)
             records = then(local, "member.role", admin, {"user_id": user_id, "role": "admin"}, stolen)
             return then(records, "member.role", user_id, {"user_id": admin, "role": "member"}, own)
         if kind == "own genesis":
@@ -5332,6 +5342,31 @@ def test_sync_state_machine_team_log_hands_the_role_over_and_back(loopback_serve
         machine.the_server_log_follows_the_rules()
         machine.an_envelope_goes_with_its_access()
         machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_log_stolen_key_the_member_copy_names(loopback_server, monkeypatch):
+    """Deep run on 0daf5f2 (R16-Z SM13, test harness): the member's copy of
+    the log predates B's identity rotation. The 'stolen admin key' forgery on
+    the lost log was signed with the admin's current key, which that copy does
+    not hold, and building it failed (bad_signature) before anything reached
+    the server. The thief signs with the key the member's copy trusts."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine._member_sync(member)
+        machine.rotate_identity(_Scripted(device="B"), None)
+        machine.pull(_Scripted(device="A"), None)  # A takes the new key too
+        machine.operator_loses_the_log(
+            _Scripted(forger=member), race="stolen admin key, second admin on the way", path="restore")
+        assert any("forges stolen admin key, second admin on the way onto the lost log -> restore refused"
+                   in line for line in machine.log), machine._trace()
+        # m6 waits (its copy cannot put the log back); B, holding the rotation, does.
+        machine._settle(lambda _obj: "server")
+        assert machine._server_log() and not machine.waiting, machine._trace()
     finally:
         machine.teardown()
 
