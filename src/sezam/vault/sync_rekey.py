@@ -879,7 +879,18 @@ class RekeyMixin:
                     return dek_id, withdrawn
                 seen.add(dek_id)
 
+        # R16-Z SM19c: a grant never sent under a key a re-key replaced. Once
+        # the folder's current key holds the member (or the re-key withdrew
+        # them), the retired copy has nothing left to give; the server takes no
+        # live envelope under a key that names no folder any more ('envelope
+        # references unknown DEK'), so sent it would wait forever.
+        def drop_unsent(env_id: str) -> None:
+            if outbox.is_pending(self._db, outbox.ENVELOPE, env_id):
+                # The outbox row goes with it (schema trigger).
+                self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (env_id,))
+
         candidates = []
+        settled = []
         for env in self._db.fetchall(
             "SELECT e.id, e.dek_id, e.user_id, e.access_level FROM access_envelopes e "
             "JOIN deks d ON d.id = e.dek_id "
@@ -890,12 +901,19 @@ class RekeyMixin:
             current, withdrawn = current_key(
                 env["dek_id"], env["user_id"], ULID.from_str(env["id"]).milliseconds
             )
-            if current is None or withdrawn or self._db.fetchone(
+            if current is None:
+                continue
+            if withdrawn or self._db.fetchone(
                 "SELECT 1 FROM access_envelopes WHERE dek_id = ? AND user_id = ?",
                 (current, env["user_id"]),
             ):
+                settled.append(env["id"])
                 continue
             candidates.append((env, current))
+        if settled:
+            with self._db.transaction():
+                for env_id in settled:
+                    drop_unsent(env_id)
         if not candidates:
             return
         try:
@@ -913,10 +931,13 @@ class RekeyMixin:
                 key_row = self._db.fetchone(
                     "SELECT encryption_pk FROM known_keys WHERE user_id = ?", (env["user_id"],)
                 )
-                if env["user_id"] in revoked | withheld or key_row is None or self._db.fetchone(
+                if key_row is None:
+                    continue
+                if env["user_id"] in revoked | withheld or self._db.fetchone(
                     "SELECT 1 FROM access_envelopes WHERE dek_id = ? AND user_id = ?",
                     (current, env["user_id"]),
                 ):
+                    drop_unsent(env["id"])
                     continue
                 self._db.execute(
                     "INSERT INTO access_envelopes "
@@ -929,6 +950,7 @@ class RekeyMixin:
                         ),
                     ),
                 )
+                drop_unsent(env["id"])
                 # Envelopes are pushed with their folder.
                 outbox.queue_writes(
                     self._db, "nodes", "id = (SELECT node_id FROM deks WHERE id = ?)", (current,)
