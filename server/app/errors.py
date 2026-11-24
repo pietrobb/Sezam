@@ -41,6 +41,9 @@ TEAM_LOG_ENVELOPE = "team_log_envelope"
 # The write's base is older than a deleted copy tombstone GC collected: the
 # server keeps only that copy's (version, hash), no payload to show.
 COLLECTED_OBJECT = "collected_object"
+# R16-Z SM16: a re-key batch's new folder key, and the folder got another key
+# after the device's checked commit (the code the team log refuses it with).
+FOLDER_KEY_MOVED = "folder_key_moved"
 # Rejoin (review 4acfdde R11, low): the account's id is back already, or
 # another account took the name after the backup (rejoin under another name).
 ACCOUNT_EXISTS = "account_exists"
@@ -60,7 +63,7 @@ ERROR_CODES = frozenset({
     IDENTITY_KEY_RETIRED, TOKEN_INVALID, TOKEN_REVOKED, REVOKED_ENVELOPE,
     COLLECTED_OBJECT, TEAM_LOG_HEAD_MOVED, TEAM_LOG_REFUSED, TEAM_LOG_REQUIRED, TEAM_LOG_UNREADABLE,
     ACCOUNT_EXISTS, USERNAME_TAKEN, ORG_RECOVERY_SUPERSEDED, INVALID_KEY_VOUCHERS,
-    KEY_VOUCHERS_INCOMPLETE, TEAM_LOG_ENVELOPE,
+    KEY_VOUCHERS_INCOMPLETE, TEAM_LOG_ENVELOPE, FOLDER_KEY_MOVED,
 })
 
 

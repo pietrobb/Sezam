@@ -36,6 +36,7 @@ from ..dependencies import get_config, get_db, get_jwt_manager, get_rotation_use
 from ..errors import (
     ATOMIC_BATCH_CONFLICT,
     COLLECTED_OBJECT,
+    FOLDER_KEY_MOVED,
     HISTORY_CHANGED,
     IDENTITY_KEY_RETIRED,
     IDENTITY_ROTATION_NEEDS_NEW_KEYS,
@@ -740,6 +741,8 @@ async def _sync_push(
                 frozenset() if is_admin
                 else await _own_batch_dek_ids(cur, user_id, objects, prechecked)
             )
+            if req.atomic_batch and req.check_token:
+                conflicts.extend(await _sibling_folder_keys(cur, objects, req.check_seq or 0))
             authority_cache: dict = {}
             written_node = None
             removed_here = {obj.id for obj in objects if obj.is_deleted}
@@ -1939,6 +1942,44 @@ async def _live_envelopes(cur, objects) -> frozenset[str]:
         if row is not None and not row[0]:
             live.add(obj.id)
     return frozenset(live)
+
+
+async def _sibling_folder_keys(cur, objects, check_seq: int) -> list[PushObjectResult]:
+    """New folder keys of a re-key batch that race one the device never saw.
+
+    Stateful test SM16 (R16-Z): two devices of one admin re-keyed a folder
+    after the same revocation. GC had collected the folder's items, so the
+    second batch built on the collected copies and landed: two live keys of
+    one folder, and the devices kept different ones. A key of the folder
+    committed after the device's checked commit makes this batch's new key a
+    sibling; the device pulls and drops its batch (superseded re-key).
+    """
+    batch_ids = {obj.id for obj in objects}
+    new_keys = [
+        obj for obj in objects
+        if obj.object_type == "dek" and not obj.is_deleted and obj.parent_ref
+        and obj.scope != "tier2"
+    ]
+    refused = []
+    for obj in new_keys:
+        await cur.execute("SELECT 1 FROM vault_objects WHERE id = %s", (obj.id,))
+        if await cur.fetchone():
+            continue  # the resend of a key this server holds
+        await cur.execute(
+            "SELECT id, commit_seq, dek_scope FROM vault_objects "
+            "WHERE parent_ref = %s AND object_type = 'dek' AND is_deleted = 0",
+            (obj.parent_ref,),
+        )
+        rivals = [
+            row[0] for row in await cur.fetchall()
+            if row[0] not in batch_ids and int(row[1]) > check_seq and row[2] != "tier2"
+        ]
+        if rivals:
+            refused.append(PushObjectResult(
+                id=obj.id, error=f"folder {obj.parent_ref} got key {rivals[0]} meanwhile",
+                code=FOLDER_KEY_MOVED,
+            ))
+    return refused
 
 
 async def _own_batch_dek_ids(cur, user_id: str, objects, prechecked) -> frozenset[str]:
