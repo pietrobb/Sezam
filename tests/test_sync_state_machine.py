@@ -3559,11 +3559,13 @@ class TeamLogMachine(SyncMachine):
             self.forged = self._forged_hashes() | {teamlog.record_hash(forged)}
         client = self._new_client(vault)
         real = client._request
+        lied = []  # R16-Z SM21: a device whose keys were rotated away is not signed in, nor lied to
 
         def lying(m, path, *args, **kwargs):
             reply = real(m, path, *args, **kwargs)
             if m != "GET" or not isinstance(reply, dict):
                 return reply
+            lied.append(path)
             reply = dict(reply)
             if path.startswith("/api/sync") and reply.get("team_log_head"):
                 reply["team_log_head"] = head(reply["team_log_head"])
@@ -3585,7 +3587,7 @@ class TeamLogMachine(SyncMachine):
             outcome = f"refused ({type(exc).__name__})"
             refusal = exc
         true_genesis = teamlog.record_hash(true[0])
-        if lie == "other genesis" and pins[0] == true_genesis and pins[1] in (None, true_genesis):
+        if lie == "other genesis" and lied and pins[0] == true_genesis and pins[1] in (None, true_genesis):
             # Goal #440: the head alone is unsigned; over the device's own log
             # it is a lie, never the log lost (no forget offered).
             from sezam.vault.team_log_local import MISMATCH_CAUSES, TeamLogMismatch
