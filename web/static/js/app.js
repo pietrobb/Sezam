@@ -5723,14 +5723,20 @@ async function retryAllWebDirtyObjects() {
     // INV-7: a refusal is what the last pull saw; the push decides from the
     // log the server serves now (as the desktop's push reads it again), so a
     // log put back sends what waited for it.
-    if (state.teamLogRefusal) await pullAndBuildTree();
-    const pending = webPushOrder(Object.values(state.outbox));
-    const oversized = oversizedQueuedObjects();
-    const waiting = [];
-    const waitingForLog = [];
-    let context = {};
-    for (const object of pending) {
-        if (!oversized.includes(object)) {
+    let pulled = !!state.teamLogRefusal;
+    if (pulled) await pullAndBuildTree();
+    let oversized = oversizedQueuedObjects();
+    let waiting = [];
+    let waitingForLog = [];
+    const sent = new Set();
+    for (;;) {  // at most twice: the second pass runs on a pull
+        waiting = [];
+        waitingForLog = [];
+        let context = {};
+        let refusedByLastPull = false;
+        const pending = webPushOrder(Object.values(state.outbox));
+        for (const object of pending) {
+            if (oversized.includes(object) || sent.has(object.id)) continue;
             const resealed = await resealUnderFolderSuccessor(object, object.version, context);
             if (['dek', 'dek_archive'].includes(object.object_type)) context = {};  // the keys may change
             if (!resealed) {
@@ -5739,12 +5745,26 @@ async function retryAllWebDirtyObjects() {
             }
             try {
                 await pushEncryptedVaultObject(resealed);
+                sent.add(object.id);
             } catch (err) {
                 // A team write waits for the log; the personal ones still go out.
-                if (!state.teamLogRefusal || err !== state.teamLogRefusal) throw err;
-                waitingForLog.push(object.id);
+                if (state.teamLogRefusal && err === state.teamLogRefusal) {
+                    waitingForLog.push(object.id);
+                    continue;
+                }
+                // R16-Z SM17: the rule refused it by the log of this page's last
+                // pull (a folder waiting for a re-key another device has made
+                // since). The server's log decides, as the desktop's push reads
+                // it again: pulled, the write is resealed under the new key.
+                if (!err.teamLogRefused || pulled) throw err;
+                refusedByLastPull = true;
+                break;
             }
         }
+        if (!refusedByLastPull) break;
+        pulled = true;
+        await pullAndBuildTree();
+        oversized = oversizedQueuedObjects();
     }
     await pullAndBuildTree();
     if (waiting.length) {

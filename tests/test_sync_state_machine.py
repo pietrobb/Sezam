@@ -4896,6 +4896,42 @@ def test_sync_state_machine_team_trash_and_history_after_a_rekey(loopback_server
         machine.teardown()
 
 
+@pytest.mark.skipif(not NODE, reason="the web tab needs Node >= 24.7")
+def test_sync_state_machine_web_retry_after_a_rekey_elsewhere(loopback_server, monkeypatch):
+    """R16-Z SM17 (deep run on 6e958f6, TeamLogMachine): a folder made on the
+    web stayed queued in a team folder; the admin's desktop then lowered a
+    member there from write to read and re-keyed the folder. Retry checked
+    the queued folder against the log of the page's last pull, where the
+    folder still waited for that re-key: it threw 'folder waits for a re-key'
+    before its own pull, so no Retry ever sent it. The desktop's push reads
+    the server's log again; the page's Retry does too."""
+    from sezam.vault.team_log_local import local_team_state
+
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        top = machine._folders("A")[0]
+        machine._grant("A", member, top, "write")
+        machine._member_sync(member)
+        machine.track_member_keys()
+        machine.open_web_tab()
+        machine.web_create_folder(_Scripted(parent=top), "before")
+        queued = set(machine.web_view["dirty"])
+        assert queued, machine._trace()
+        machine._grant("A", member, top, "read")  # write -> read: the folder waits for a re-key
+        machine.web_refresh(None)  # the page's log: the folder waits
+        machine.push(_Scripted(device="A"), None)  # 'sezam push' makes it
+        assert not teamlog.is_stale(local_team_state(machine.devices["A"].vault.db), top), machine._trace()
+        machine._web_settle()  # the banner's Retry, no pull since the re-key
+        unsent = set(machine.web_view["dirty"]) | set(machine.web_view["conflicts"])
+        assert not queued & unsent, f"{sorted(queued & unsent)} still queued\n" + machine._trace()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
 @pytest.mark.parametrize("then", ["push", "invite"])
 def test_sync_state_machine_team_log_pinned_by_the_account_keys(loopback_server, monkeypatch, then):
     """Review e443cbc R15, goal #429 (TeamLogMachine): the admin's second
