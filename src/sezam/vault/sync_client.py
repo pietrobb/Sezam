@@ -265,6 +265,25 @@ class SyncClient(
         finally:
             private[:] = b"\x00" * len(private)
 
+    def _log_named_former_private(self, held: KeyPair, taken: KeyPair) -> Optional[bytearray]:
+        """The private keys the local log names for this account, to link to
+        ``taken``: the ones held, or (R16-Z SM23d) the old ones of this
+        device's rotation the server never took. Taken over without them, a
+        log the server lost went back naming keys the account no longer signs
+        in with: refused, and every sync stopped with 'differs from the
+        confirmed genesis'. None when ``taken`` is that key (nothing to link)."""
+        if self._named_by_team_log(held):
+            return bytearray(held.serialize_private())
+        old = self._pending_old_keypair()
+        if old is None:
+            return None
+        try:
+            if bytes(old.signing_pk) == bytes(taken.signing_pk) or not self._named_by_team_log(old):
+                return None
+            return bytearray(old.serialize_private())
+        finally:
+            old.zeroize()
+
     def _report_legacy_kdf_params(self) -> None:
         """Hand the server the KDF params of an account kept without them.
 
@@ -596,6 +615,7 @@ class SyncClient(
                 self._push_cache.clear()
                 logger.warning("The server lost this device's identity rotation; it is sent again")
                 return key_epoch
+            log_named = self._log_named_former_private(vault.keypair, server_keypair)
             # SM61: the server's keypair is this device's own unconfirmed
             # identity rotation: it landed, its reply was lost.
             own_rotation_landed = bool(
@@ -619,15 +639,10 @@ class SyncClient(
             # Org recovery replaced the account keypair; it opened under the
             # account KEK, so it is the account's own.
             former_sk = bytearray(local.to_nacl_private_key().encode())
-            if self._named_by_team_log(local):
+            if log_named is not None:
                 # R15 (goal #429): the log names the keys held here, not the
                 # new ones; they link them (continue_identity_in_log).
-                former_private = local.serialize_private()
-                try:
-                    keep_identity_continuation(self._db, self._dek_mgr._kek, self._user_id, bytes(former_private))
-                finally:
-                    if isinstance(former_private, bytearray):
-                        former_private[:] = b"\x00" * len(former_private)
+                keep_identity_continuation(self._db, self._dek_mgr._kek, self._user_id, bytes(log_named))
             vault.rebind_server_identity(resp["user_id"], server_keypair)
             self._keypair = vault.keypair
             # Stateful test SM11: the ring loaded before held only the old
@@ -636,6 +651,8 @@ class SyncClient(
             self._signing_key_rings.pop(resp["user_id"], None)
         else:
             server_keypair.zeroize()
+        if log_named is not None:
+            log_named[:] = b"\x00" * len(log_named)
         # The rotation bumped token_epoch; a token issued before it is dead.
         self._token = None
         # Cached push objects hold DEK wraps under the superseded KEK at the

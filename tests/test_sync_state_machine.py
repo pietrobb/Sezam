@@ -5146,6 +5146,37 @@ def test_sync_state_machine_team_founder_takes_over_an_org_recovery_without_the_
         machine.teardown()
 
 
+def test_sync_state_machine_team_founder_takes_over_a_rotation_while_its_own_waits(
+    loopback_server, monkeypatch,
+):
+    """R16-Z SM23d (gate 20, team_log): the founder's desktop A rotated its
+    identity and the push failed before it was sent; B's rotation landed and
+    its reply was lost; the server then lost the log. A took B's keys over
+    holding the old ones only in its pending rotation, so it kept no link:
+    the log it put back named keys the account no longer signs in with
+    (refused), and every pull and full resync of A stopped with 'differs from
+    the independently confirmed genesis', which offers to forget the pin."""
+    from sezam.vault.team_log_local import local_team_state
+
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        machine.rotate_identity(_Scripted(device="A"), "before")
+        machine.rotate_identity(_Scripted(device="B"), "after")
+        machine.operator_loses_the_log()
+        machine.full_resync(_Scripted(device="A"))
+        assert not [line for line in machine.log if "TeamLogMismatch" in line], machine._trace()
+        assert machine._server_log(), machine._trace()
+        machine._settle(lambda _obj: "server")
+        vault = machine.devices["A"].vault
+        state = local_team_state(vault.db)
+        admin = vault.db.get_meta("user_id")
+        assert state.members[admin].signing_pk == vault.keypair.signing_pk.hex(), machine._trace()
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_team_grant_whose_reply_was_lost_before_a_revocation(
     loopback_server, monkeypatch,
 ):
