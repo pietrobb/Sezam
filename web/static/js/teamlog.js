@@ -557,9 +557,18 @@ const SezamTeamLog = (() => {
         return { refusal: `it holds one half of the readmit at record ${first.seq}`, missing: [] };
       }
     }
+    // R16-Z SM21 (src/sezam/teamlog.py fork_refusal): a stale device of this
+    // account put the lost log back with one link onto the keys held here;
+    // the rotations lost here in between are moot.
+    const ownKeys = theirBodies.filter((body) => body.type === 'member.keys' && userId !== null &&
+      body.author === userId && body.data.user_id === userId).map((body) => body.data);
+    const last = ownKeys[ownKeys.length - 1];
+    const onHeld = last !== undefined && heldKeys !== null &&
+      last.signing_pk === heldKeys[0] && last.encryption_pk === heldKeys[1];
     const missing = [];
     for (const body of lostBodies) {
       if (made.has(changeKey(body))) continue;
+      if (onHeld && body.type === 'member.keys' && body.author === userId && body.data.user_id === userId) continue;
       if (userId === null || body.author !== userId) {
         return { refusal: `record ${body.seq} this device saw is not on the server's side (it follows once its author makes that change again)`, missing: [] };
       }

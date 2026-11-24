@@ -241,6 +241,40 @@
    }
   },
   {
+   "name": "two_rotations_put_back_as_one_link",
+   "user_id": "01JM0000000000000000000001",
+   "held_keys": [
+    "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793",
+    "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967"
+   ],
+   "withdrawn": [],
+   "lost": [
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"e54bf40563d00d8a4c582a3ab2268eafddd46477543036983078d50452507f15\",\"new_key_sig\":\"14a4a912575c731225ff5b74510e2fdf678f956c46b635861b1aeab5017fc2ef97336df2af878cb9356bcfc6f3f690c20f9dbc69058494b2fb66e55b1ad7590f\",\"signing_pk\":\"f8df92907bf4265d877c440b656fa63b4480b52ac9776d8343eae573a9f5990e\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"member.keys\",\"v\":2}",
+     "sig": "e49b0137bbf223d990770267ed7d9fa5cc9e9289f5afa0fd378be1b3c17f020999d72405536805c555a0afc67343d7b02cdda9ef93257951989d8bd87986ca0b"
+    },
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967\",\"new_key_sig\":\"81901e399ff97816785247970a47ef5e3dddcb1d5d15ac569ac0aa97b42cd1503d68ff04018f34ce6552880a920faa2b1e403e8f35209bd19f47d8ff92ab6a07\",\"signing_pk\":\"fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"24f739a66f9c3235e291c42f2dece7d8ddda796cdcfc54359a6158e4d9ddeee6\",\"seq\":4,\"type\":\"member.keys\",\"v\":2}",
+     "sig": "38fe0daa4380ebe2da4334ff69cc1fd11f69f51f88440075d4180ec75f0df89c9967f2be931d8ba02ff9a64f306f0df2855656b8b1764dca83c014b2dcc97001"
+    }
+   ],
+   "theirs": [
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967\",\"new_key_sig\":\"312aab0a98e46dc28da4b138f74cfbe7427fb79f896d3638fc0dbcb5684b81fcac83c1fb1c80a856dc10f7429d0ce0dc0dcc9a0f530a5bfbfb47e90227bc0102\",\"signing_pk\":\"fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"member.keys\",\"v\":2}",
+     "sig": "a73206a62a8b2239d30d533057b86d82f62b2c06af9dfcfba841ed4a883184dbacff889d521f9fb7899672a54a2709ac2b4f29391122426b29d0036a81665300"
+    }
+   ],
+   "expect": {
+    "refusal": null,
+    "missing": [],
+    "remade": [],
+    "abandoned": [
+     3,
+     4
+    ]
+   }
+  },
+  {
    "name": "readmit_split_removal_kept",
    "user_id": "01JM0000000000000000000001",
    "held_keys": [

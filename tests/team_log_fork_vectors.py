@@ -58,6 +58,14 @@ def _handover(log: Log, to=B) -> Log:
         "member.role", A, {"user_id": A.uid, "role": "member"})
 
 
+def _rotate_again(log: Log, current: Actor, new: Actor) -> Log:
+    """A's account moves on from the keys of ``current`` to those of ``new``."""
+    proof = new.sk.sign(tl.new_key_message(log.state.head_hash, A.uid, new.spk, new.epk)).signature.hex()
+    return log.add("member.keys", A, {
+        "user_id": A.uid, "signing_pk": new.spk, "encryption_pk": new.epk, "new_key_sig": proof,
+    }, signer=current)
+
+
 def _hash(record: dict) -> str:
     return tl.record_hash(record)
 
@@ -109,6 +117,11 @@ def build_cases() -> list[dict]:
          remade=[("member.remove", {"user_id": B.uid})], abandoned=[3])
     case("rotation_that_was_lost", rotated, _from(_other(_base()).rotate(A, E)), held=E, abandoned=[3])
     case("handover_that_was_lost", handed, _from(_handover(_other(_base()))), abandoned=[3, 4])
+    # R16-Z SM21: this device rotated twice (A -> E -> D); the server lost
+    # the log, and a stale device of the account that took D over put it back
+    # with one link A -> D. The rotation onto E lost here is moot.
+    twice = _from(_rotate_again(_base().rotate(A, E), E, D))
+    case("two_rotations_put_back_as_one_link", twice, _from(_base().rotate(A, D)), held=D, abandoned=[3, 4])
     # A readmit (member.remove + member.add, one append) the server serves
     # half of: Bob out for good. Neither half is made again whole.
     readmit = _from(_base().remove(B).member(B2))

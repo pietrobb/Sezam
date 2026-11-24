@@ -734,9 +734,19 @@ def fork_refusal(
                 first["data"]["user_id"] == second["data"]["user_id"] and \
                 (change_key(first) in made) != (change_key(second) in made):
             return f"it holds one half of the readmit at record {first['seq']}", []
+    # R16-Z SM21: a stale device of this account put the lost log back with
+    # one link onto the keys this device holds; the rotations lost here in
+    # between are moot (the server's side ends on the same keys).
+    own_keys = [body["data"] for body in their_bodies if body["type"] == "member.keys"
+                and user_id is not None and body["author"] == user_id and body["data"]["user_id"] == user_id]
+    on_held = bool(own_keys) and held_keys is not None and (
+        own_keys[-1]["signing_pk"], own_keys[-1]["encryption_pk"]) == tuple(held_keys)
     missing = []
     for body in lost_bodies:
         if change_key(body) in made:
+            continue
+        if on_held and body["type"] == "member.keys" and body["author"] == user_id \
+                and body["data"]["user_id"] == user_id:
             continue
         if user_id is None or body["author"] != user_id:
             return f"record {body['seq']} this device saw is not on the server's side (it follows once its author makes that change again)", []
