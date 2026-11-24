@@ -581,6 +581,13 @@ class PullMixin:
             # the new row version, where trash restore looks first.
             try:
                 dek_id = parse_envelope(blob).dek_id
+                if deleted and self._successor_targets([(dek_id, folder_id)]).get((dek_id, folder_id)) is None:
+                    # R16-Z SM18 (TeamLogMachine): a tombstone moves only off a
+                    # retired key. Under any other key it stays as sealed, as a
+                    # delete leaves it: a folder's name is sealed with its
+                    # parent's key, which a new admin need not hold, and the
+                    # re-key of the collected folder failed on every push.
+                    return blob
                 dek = self._dek_mgr.unlock_dek(bytes_to_ulid(dek_id))
                 plain = open_sealed(blob, dek, object_id, version, kind, deleted=deleted)[0]
             except (KeyError, ValueError, CryptoError) as exc:
