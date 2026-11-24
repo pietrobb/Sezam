@@ -2812,6 +2812,25 @@ class SyncMachine(RuleBasedStateMachine):
 
     # ── invariants ──
 
+    def _discard_changes_for_departed_members(self, device: str) -> None:
+        """The way out 'sezam team-log queue' shows for a change set aside as
+        not_active: its member left the team (another admin device removed
+        them) before this device's change went out (deep run, R16-Z SM15).
+        'sezam team-log discard N' drops that change alone, 'sezam team-log
+        retry' sends again the folder keys made with it. Any other refusal
+        stays and keeps the settle red."""
+        client = self.devices[device].client
+        aside = client.set_aside_team_changes()
+        moot = [n for n, item in enumerate(aside, 1)
+                if item["reason"].endswith(": not_active") and not item["reason"].startswith("goes with")]
+        if not moot:
+            return
+        client.discard_set_aside_team_changes(moot)
+        self.log.append(f"{device}: team-log discard {moot} (their member left the team)")
+        if any(item["reason"].startswith("goes with") for item in client.set_aside_team_changes()):
+            client.retry_set_aside_team_changes()
+            self.log.append(f"{device}: team-log retry")
+
     def _settle(self, choose) -> None:
         self.log.append("-- settle --")
         for _ in range(SETTLE_ROUNDS):
@@ -2824,6 +2843,7 @@ class SyncMachine(RuleBasedStateMachine):
                     self._full_resync(device)
                 for conflict in self.devices[device].client.get_pull_conflicts():
                     self._resolve(device, conflict["id"], choose(conflict["id"]))
+                self._discard_changes_for_departed_members(device)
             if self.web is not None:
                 self._web_settle()
             for device in sorted(self.devices):
@@ -5374,6 +5394,31 @@ def test_sync_state_machine_team_log_stolen_key_the_member_copy_names(loopback_s
         # m6 waits (its copy cannot put the log back); B, holding the rotation, does.
         machine._settle(lambda _obj: "server")
         assert machine._server_log() and not machine.waiting, machine._trace()
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_log_lost_grant_to_a_removed_member(loopback_server, monkeypatch):
+    """Deep run on 07487c3 (R16-Z SM15, test harness): the server lost B's
+    grant to m6 (restored from a backup), A removed m6, and B sent its lost
+    grant again: the log refuses it (not_active) and B sets it aside. The
+    user's way out is 'sezam team-log discard N'; the settle takes it."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine.create_folder(_Scripted(device="B", parent="ROOT"))
+        machine.push(_Scripted(device="B"), None)
+        machine.pull(_Scripted(device="A"), None)
+        machine.pull(_Scripted(device="B"), None)
+        machine.server_backup()
+        machine._grant("B", member, machine._folders("B")[-1], "read")
+        machine.server_restore()
+        machine.pull(_Scripted(device="A"), None)
+        machine.revoke(_Scripted(device="A", member=member), None)
+        machine._settle(lambda _obj: "server")
+        assert any("team-log discard" in line for line in machine.log), machine._trace()
     finally:
         machine.teardown()
 
