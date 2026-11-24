@@ -166,6 +166,9 @@ FIELDS: dict[str, Field] = {
     "PushObjectResult.code": Field(HINT, "why a write was refused; see PushResponse.conflicts"),
     "PushObjectResult.server_version": Field(HINT, "the copy a refused write is rebased on; the next pull brings that copy checked"),
     "PushObjectResult.server_payload_hash": Field(HINT, "the copy a refused write is rebased on; the next pull brings that copy checked"),
+    # R16-Z SM22: a refused crossed folder move goes back to this copy's parent,
+    # taken only when it is the base copy of the move and its signature holds.
+    "PushObjectResult.stored_object": _signed(*_OBJECT_SIG, "vault.move_back:signed_server_parent"),
     "PullResponse.objects": Field(
         HINT, "each object is checked on its own; which ones come and in what order is the server's",
         (), ("server_withholds", "server_lies:replay", "server_lies:dek_order")),

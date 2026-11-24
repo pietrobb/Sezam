@@ -145,10 +145,13 @@ the change on the collected (version, hash) and sends it again above it.
 
 A folder move whose new parent is, on the server, the folder itself or below
 it (two devices each moved a folder below the other before pulling) is
-refused with code `folder_move_cycle` and `server_parent_ref`, where the
-server keeps the folder (R16-Z SM22; both moves landing left every device a
-parent cycle). The desktop puts the folder back there, its name and subtree
-keys as for that parent, and sends that; the page shows a conflict that says
+refused with code `folder_move_cycle` and `stored_object`, the folder as the
+server keeps it, signed as a pull serves it (R16-Z SM22; both moves landing
+left every device a parent cycle). The desktop takes that copy's parent only
+when the signature holds and the copy is the one its move was made on (base
+version and hash; INV-3), puts the folder back there, its name and subtree
+keys as for that parent, and sends that; otherwise the write stays queued
+like any refused one. The page shows a conflict that says
 why ('Use the server's version'); the phone moves no folders.
 
 ### 3. Outbox

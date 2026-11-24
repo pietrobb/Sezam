@@ -1055,7 +1055,7 @@ async def _sync_push(
                               "elsewhere); the folder stays where it is",
                         server_version=existing[0] if existing else None,
                         server_payload_hash=existing[1] if existing else None,
-                        server_parent_ref=existing[5] if existing else None,
+                        stored_object=await _stored_object(cur, obj.id) if existing else None,
                     ))
                     continue
                 # Review a159e97 H8: a member's folder tombstone buried what
@@ -1783,30 +1783,8 @@ async def sync_pull(
             max_seq = max([since_commit_seq] + [r[7] for r in rows if r[7]])
             max_token = await _commit_token(cur, max_seq)
 
-    objects = []
-    for r in rows:
-        seq = r[7]
-        objects.append(PullObject(
-            id=r[0],
-            object_type=r[1],
-            payload=base64.b64encode(r[2]).decode("ascii"),
-            owner_id=r[3],
-            signature_user_id=r[14] or r[3],
-            parent_ref=r[4],
-            target_user_id=r[5],
-            version=r[6],
-            commit_seq=seq,
-            is_deleted=r[8],
-            payload_hash=r[9],
-            client_signature=r[10].hex() if r[10] else None,
-            modified_at=r[11],
-            write_policy=r[12] if r[12] else "owner_only",
-            access_level=r[13],
-            scope=r[15],
-        ))
-
     return PullResponse(
-        objects=objects,
+        objects=[_pull_object(r) for r in rows],
         max_commit_seq=max_seq,
         key_epoch=server_key_epoch,
         key_material_hash=key_material_hash,
@@ -2115,6 +2093,43 @@ async def _has_write_authority(
             return True  # user owns the whole chain up to a top-level node
         below, current = current, parent_ref
     return False
+
+
+_PULL_COLUMNS = (
+    "id, object_type, payload, owner_id, parent_ref, target_user_id, "
+    "version, commit_seq, is_deleted, payload_hash, client_signature, modified_at, "
+    "write_policy, access_level, signature_user_id, dek_scope"
+)
+
+
+def _pull_object(r) -> PullObject:
+    """A vault_objects row selected as ``_PULL_COLUMNS``, as a pull serves it."""
+    return PullObject(
+        id=r[0],
+        object_type=r[1],
+        payload=base64.b64encode(r[2]).decode("ascii"),
+        owner_id=r[3],
+        signature_user_id=r[14] or r[3],
+        parent_ref=r[4],
+        target_user_id=r[5],
+        version=r[6],
+        commit_seq=r[7],
+        is_deleted=r[8],
+        payload_hash=r[9],
+        client_signature=r[10].hex() if r[10] else None,
+        modified_at=r[11],
+        write_policy=r[12] if r[12] else "owner_only",
+        access_level=r[13],
+        scope=r[15],
+    )
+
+
+async def _stored_object(cur, obj_id: str) -> Optional[PullObject]:
+    """The stored, signed copy of ``obj_id`` (R16-Z SM22: a refused folder move
+    goes back to its parent, which the client takes only under that signature)."""
+    await cur.execute(f"SELECT {_PULL_COLUMNS} FROM vault_objects WHERE id = %s", (obj_id,))
+    row = await cur.fetchone()
+    return _pull_object(row) if row else None
 
 
 async def _is_below(cur, node_id: str, ancestor_id: str) -> bool:

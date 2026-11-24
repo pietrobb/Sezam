@@ -474,8 +474,8 @@ class PushObjectResult(BaseModel):
     code: Optional[str] = None
     server_version: Optional[int] = None
     server_payload_hash: Optional[str] = None
-    # FOLDER_MOVE_CYCLE: the folder's parent as the server keeps it.
-    server_parent_ref: Optional[str] = None
+    # FOLDER_MOVE_CYCLE: the folder as the server keeps it, signed (its parent).
+    stored_object: Optional[PullObject] = None
 
 class PushResponse(BaseModel):
     accepted: list[PushObjectResult]
@@ -502,6 +502,9 @@ class PullObject(BaseModel):
     payload_hash: str
     client_signature: Optional[str] = None
     modified_at: int
+
+PushObjectResult.model_rebuild()
+PushResponse.model_rebuild()
 
 class PullResponse(BaseModel):
     objects: list[PullObject]

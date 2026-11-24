@@ -56,7 +56,11 @@ async def test_a_move_below_the_moved_folder_itself_is_refused(app_client, admin
     assert body["accepted"] == [], body
     conflict = body["conflicts"][0]
     assert conflict["code"] == "folder_move_cycle", body
-    assert conflict["server_parent_ref"] == ROOT and conflict["server_version"] == 1, body
+    assert conflict["server_version"] == 1, body
+    # The stored copy as a pull serves it: its parent is signed (INV-3).
+    copy = conflict["stored_object"]
+    assert (copy["id"], copy["parent_ref"], copy["version"]) == (Y, ROOT, 1), body
+    assert copy["client_signature"] and copy["payload_hash"] == conflict["server_payload_hash"], body
     assert _parent(mock_db, X) == Y and _parent(mock_db, Y) == ROOT
 
 
