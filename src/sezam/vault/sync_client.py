@@ -129,6 +129,7 @@ class SyncClient(
         # The server's key for this account that signed this device's pending
         # identity rotation (it is current there until the rotation lands).
         self._rotation_authorizer: Optional[bytes] = None
+        self._signs_in_rotated = False
         self._pulled_dek_ids: list[str] = []
         self._pulled_archive_successors: set[str] = set()
         self._new_unbound_dek_ids: set[str] = set()
@@ -218,6 +219,9 @@ class SyncClient(
             if old_keypair is not None:
                 old_keypair.zeroize()
         self._token = resp["token"]
+        # R16-Z SM19b: the server signs this account in on the keys of the
+        # pending rotation, so it took it (a restore of its lost log needs it).
+        self._signs_in_rotated = old_keypair is not None and keypair is self._keypair
         # Review e4cd15a (low): the server's name migration may have moved
         # this account off the stored name; the answer carries the current one.
         # The name is unsigned (INV-3, review e443cbc #428): it is kept only

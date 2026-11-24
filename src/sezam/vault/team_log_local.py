@@ -212,6 +212,27 @@ class TeamLogMixin:
         finally:
             old.zeroize()
 
+    def _landed_rotation_link(self, state: teamlog.TeamState) -> Optional[dict]:
+        """member.keys of this device's pending rotation the server took, or None.
+
+        R16-Z SM19b: the rotation landed, its reply was lost, and the server
+        then lost its log. Put back as this copy held it, the log gave the
+        account the keys before the rotation: refused ('keys the account does
+        not sign in with'), and every sync stopped for good.
+        """
+        if not self._signs_in_rotated:
+            return None
+        old = self._pending_old_keypair()
+        if old is None:
+            return None
+        try:
+            member = state.members.get(self._user_id)
+            if member is None or not member.active or member.signing_pk != old.signing_pk.hex():
+                return None
+            return member_keys_record(state, self._user_id, old, self._keypair)
+        finally:
+            old.zeroize()
+
     def require_trusted_team_log(self) -> None:
         if self.team_state() is None and self._db.get_meta(CONFIRMED_GENESIS_META) is not None:
             # Review e443cbc R15 (goal #429): a pin without its log (the anchor
@@ -423,7 +444,7 @@ class TeamLogMixin:
         head = server_head
         # The server takes back no log naming keys this account does not sign
         # in with: the link to the ones taken over goes with it (R15, #429).
-        link = self._identity_link(local)
+        link = self._identity_link(local) or self._landed_rotation_link(local)
         for start in range(0, len(rows), TEAM_LOG_APPEND_MAX):
             part = [{"body": r["body"], "sig": r["sig"]} for r in rows[start:start + TEAM_LOG_APPEND_MAX]]
             if link is not None and start + TEAM_LOG_APPEND_MAX >= len(rows):
