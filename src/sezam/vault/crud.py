@@ -497,6 +497,10 @@ class Vault:
                     return
             finally:
                 kept.zeroize()
+        if team is None:
+            # R16-Z SM23c: a pin without its log is not an unconfirmed founder;
+            # the way out is a pull, as the web and the push guard say (INV-7).
+            raise RuntimeError("The independently confirmed team log is not downloaded yet; pull it first.")
         raise RuntimeError(
             "The team log's founder is not confirmed on this device; "
             "compare their fingerprint out of band and use 'sezam team-log confirm-founder'."

@@ -585,7 +585,15 @@ class SyncMachine(RuleBasedStateMachine):
     def _local(self, device: str, label: str, action) -> None:
         vault = self.devices[device].vault
         before = snapshot(vault)
-        action(vault)
+        try:
+            action(vault)
+        except RuntimeError as exc:
+            # R16-Z SM23c: a team write on a device holding the log's pin but
+            # not the log yet is refused (INV-5); the way out is a pull (INV-7).
+            if "not downloaded yet; pull it first" not in str(exc) or snapshot(vault) != before:
+                raise
+            self.log.append(f"{device}: {label} -> refused until a pull")
+            return
         self.log.append(f"{device}: {label}")
         self._record_local_change(device, before, snapshot(vault))
 
@@ -4953,6 +4961,35 @@ def test_sync_state_machine_team_log_pinned_by_the_account_keys(loopback_server,
         else:
             machine._take_over_account_keys("B", abandon=False)
             machine._invite_member("B")
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_write_before_the_pinned_log_is_pulled(loopback_server, monkeypatch):
+    """R16-Z SM23c (gate 20, team_log): the founder's device holds the log's
+    pin (here 'team-log confirm-founder' before the first pull) but not the
+    log. A delete in a team folder was refused (INV-5) telling the founder's
+    own device to compare the founder's fingerprint and run 'team-log
+    confirm-founder' - done already, no way out (INV-7). It says to pull;
+    after the pull the write goes."""
+    from sezam.vault.team_log_local import local_team_state
+    from sezam.vault.team_log_state import CONFIRMED_GENESIS_META
+
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        folder = machine._folders("A")[0]
+        machine._take_over_account_keys("B", abandon=False)
+        vault = machine.devices["B"].vault
+        assert local_team_state(vault.db) is None
+        vault.db.set_meta(CONFIRMED_GENESIS_META, local_team_state(machine.devices["A"].vault.db).genesis_hash)
+        entry = vault.db.fetchone("SELECT id FROM entries WHERE node_id = ? AND is_deleted = 0", (folder,))["id"]
+        with pytest.raises(RuntimeError, match="not downloaded yet; pull it first"):
+            vault.delete_entry(entry)
+        machine._pull("B")
+        machine.delete_entry(_Scripted(device="B", entry=entry))
         machine._settle(lambda _obj: "server")
     finally:
         machine.teardown()
