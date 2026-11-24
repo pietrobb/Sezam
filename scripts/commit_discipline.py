@@ -36,6 +36,8 @@ CHECKLIST = re.compile(r"^Checklist \(docs/ROOT_CAUSE_PLAN\.md section 6\)", re.
 RED = re.compile(r"^Red on ([0-9a-f]{7,40}): (\S.*)$", re.M)
 NO_FIX = re.compile(r"^No fix: \S", re.M)
 SKIP_SUBJECT = re.compile(r"^(Merge |Revert \")")
+# pytest options whose value is the next argument.
+VALUE_OPTIONS = {"-k", "-m", "-p", "-n", "-o", "-c", "-W", "--deselect", "--timeout", "--rootdir"}
 
 
 def check_message(text: str) -> list[str]:
@@ -70,6 +72,22 @@ def command_problem(command: str) -> str:
         return f"red command does not parse ({exc}): {command}"
     if argv[:3] != ["python", "-m", "pytest"]:
         return f"red command is not 'python -m pytest ...': {command}"
+    # CI run 45294894211: a red line wrapped onto the next line left CI a
+    # bare 'python -m pytest -q' (the whole suite, timed out), a dangling
+    # '-k' or '->', or prose as test paths.
+    if "->" in argv:
+        return f"red command has '->' without the note on the same line: {command}"
+    paths, args = [], iter(argv[3:])
+    for arg in args:
+        if arg in VALUE_OPTIONS:
+            if next(args, None) is None:
+                return f"red command ends with {arg} and no value (wrapped line?): {command}"
+        elif not arg.startswith("-"):
+            paths.append(arg)
+    if not paths:
+        return f"red command names no test file (wrapped line?): {command}"
+    if bad := [p for p in paths if not p.startswith("tests/") or len(p) == len("tests/")]:
+        return f"red command argument is not a test path under tests/ ({bad[0]}): {command}"
     return ""
 
 

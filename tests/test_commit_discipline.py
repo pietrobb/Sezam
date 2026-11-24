@@ -42,6 +42,12 @@ def test_a_message_with_the_checklist_and_a_red_line_passes():
     (_message(red="Red on 1234567: none; a comment only."), "not 'python -m pytest"),
     (_message(red="Red on 1234567: SEZAM_X=1 python -m pytest tests/test_x.py"), "not 'python -m pytest"),
     (_message(red="Red on 1234567: python -m pytest \"tests/test_x.py"), "does not parse"),
+    # CI run 45294894211: red lines wrapped onto the next line (R16 commits).
+    (_message(red="Red on 1234567: python -m pytest -q\ntests/test_x.py -> 1 failed"), "names no test file"),
+    (_message(red="Red on 1234567: python -m pytest -q tests/test_x.py ->"), "'->' without the note"),
+    (_message(red="Red on 1234567: python -m pytest -q tests/test_x.py -k\nreseed"), "ends with -k"),
+    (_message(red="Red on 1234567: python -m pytest -q tests (the final gate run) -> x"), "not a test path"),
+    (_message(red="Red on 1234567: python -m pytest -q tests/"), "not a test path"),
 ])
 def test_a_message_without_them_is_refused(message, problem):
     problems = cd.check_message(message)
