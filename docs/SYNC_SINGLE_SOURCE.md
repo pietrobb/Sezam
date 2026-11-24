@@ -143,6 +143,14 @@ refused with code `collected_object` (server keeps only that copy's
 version and hash). There is no copy left to choose, so the desktop rebuilds
 the change on the collected (version, hash) and sends it again above it.
 
+A folder move whose new parent is, on the server, the folder itself or below
+it (two devices each moved a folder below the other before pulling) is
+refused with code `folder_move_cycle` and `server_parent_ref`, where the
+server keeps the folder (R16-Z SM22; both moves landing left every device a
+parent cycle). The desktop puts the folder back there, its name and subtree
+keys as for that parent, and sends that; the page shows a conflict that says
+why ('Use the server's version'); the phone moves no folders.
+
 ### 3. Outbox
 
 One table (desktop and phone SQLite, web IndexedDB store):

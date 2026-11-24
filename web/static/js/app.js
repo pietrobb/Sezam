@@ -7311,9 +7311,13 @@ async function pushEncryptedVaultObjectLocked(vaultObj) {
         };
         await saveWebDirtyState(state.outbox, state.syncConflicts, _sodium);
         renderWebSyncConflicts();
-        const err = new Error(
-            `Sync conflict: "${vaultObj.id}" was modified on the server (server version ${serverVer}). ` +
-            'Your encrypted local change remains queued for export or retry.'
+        // R16-Z SM22: another device moved the new parent into this folder
+        // first; sent again it is refused again ('Use the server's version').
+        const err = new Error(conflict.code === 'folder_move_cycle'
+            ? `Sync conflict: "${vaultObj.id}" cannot move: the new parent is inside this folder ` +
+              "(moved there on another device). Use the server's version to keep the folder where it is."
+            : `Sync conflict: "${vaultObj.id}" was modified on the server (server version ${serverVer}). ` +
+              'Your encrypted local change remains queued for export or retry.'
         );
         err.isSyncConflict = true;
         err.conflict = conflict;

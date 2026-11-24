@@ -14,7 +14,13 @@ from ..crypto.aead import BlobKind, encrypt, parse_envelope
 from ..models import EntryData, bytes_to_ulid, new_ulid, ulid_to_bytes
 from . import oplock, outbox, pending_states
 from .audit import AuditLog
-from .personal_root import in_personal_tree, personal_root_ids, personal_roots_refused
+from .personal_root import (
+    in_personal_tree,
+    moved_subtree_keys,
+    personal_root_ids,
+    personal_roots_refused,
+    reseal_moved_subtree,
+)
 from .rekey_abandon import UNPULLED, meet_server
 from .sealed import open_sealed
 from .sync_limits import (
@@ -24,7 +30,7 @@ from .sync_limits import (
     require_fits_atomic_unit,
     split_for_push,
 )
-from .team_log_local import TeamLogMismatch, local_team_state, rekey_changes
+from .team_log_local import TeamLogMismatch, local_team_state, rekey_changes, team_folder_at_or_above
 
 from .sync_common import (
     _AuditLostByRestore,
@@ -44,6 +50,7 @@ from .sync_common import (
     ATOMIC_BATCH_CONFLICT,
     COLLECTED_OBJECT,
     FOLDER_KEY_MOVED,
+    FOLDER_MOVE_CYCLE,
     HISTORY_CHANGED,
     IDENTITY_ROTATION_NEEDS_NEW_KEYS,
     KEY_CHANGE_MISSES_DEKS,
@@ -727,21 +734,30 @@ class PushMixin:
                     obj["id"]: obj for obj in objects if obj["object_type"] in ("node", "entry")
                 }
                 if pending_rekey and not password_rewrap_pending and refused and all(
-                    c.get("code") == COLLECTED_OBJECT and c.get("id") in items for c in refused
+                    c.get("id") in items and (
+                        c.get("code") == COLLECTED_OBJECT
+                        or (c.get("code") == FOLDER_MOVE_CYCLE and items[c["id"]]["object_type"] == "node")
+                    )
+                    for c in refused
                 ):
                     # Review seed 171717 after S1: another device deleted an item
                     # of the re-keyed folder and GC collected the tombstone before
                     # this device pulled it. As outside a batch, the item builds on
                     # the collected (version, hash) and comes back; resent as it
-                    # was, the whole batch was refused on every push.
+                    # was, the whole batch was refused on every push. R16-Z
+                    # SM22: so was a folder move another device's move crossed;
+                    # the folder goes back where the server keeps it.
                     rekeyed = dict(pending_rekey.get("rekeyed_versions") or {})
                     with self._db.transaction():
                         for c in refused:
                             obj = items[c["id"]]
-                            self._rebase_local(
-                                obj["id"], obj["object_type"],
-                                c["server_version"], c["server_payload_hash"],
-                            )
+                            if c.get("code") == FOLDER_MOVE_CYCLE:
+                                self._move_back_refused(obj["id"], c.get("server_parent_ref"))
+                            else:
+                                self._rebase_local(
+                                    obj["id"], obj["object_type"],
+                                    c["server_version"], c["server_payload_hash"],
+                                )
                             if rekeyed.get(obj["id"]) == obj["version"]:
                                 table = "nodes" if obj["object_type"] == "node" else "entries"
                                 rekeyed[obj["id"]] = self._db.fetchone(
@@ -812,7 +828,13 @@ class PushMixin:
             # through it).
             for conflict in resp.get("conflicts", []):
                 obj = sent.get(conflict.get("id"))
-                if (
+                if obj and obj["object_type"] == "node" and conflict.get("code") == FOLDER_MOVE_CYCLE:
+                    # R16-Z SM22: another device's move put the new parent
+                    # inside this folder first. Sent again it is refused
+                    # again: the folder goes back where the server keeps it.
+                    self._move_back_refused(obj["id"], conflict.get("server_parent_ref"))
+                    self._rebased_on_own_write = True
+                elif (
                     obj and obj["object_type"] in ("node", "entry")
                     and conflict.get("code") == COLLECTED_OBJECT
                     and conflict.get("server_version") == obj["version"]
@@ -927,6 +949,57 @@ class PushMixin:
         if landed_journal:
             self._restore_org_recovery_blob(landed_journal, key_epoch)
         return resp
+
+    def _move_back_refused(self, node_id: str, parent_id: Optional[str]) -> None:
+        """Put a folder whose move was refused (FOLDER_MOVE_CYCLE) back below
+        ``parent_id``, where the server keeps it, as ``Vault.move_node`` would:
+        its name sealed for that parent, its subtree's keys as there, one
+        version above every one sent. Inside the caller's transaction."""
+        row = self._db.fetchone(
+            "SELECT parent_id, encrypted_meta, version, is_deleted FROM nodes WHERE id = ?",
+            (node_id,),
+        )
+        if row is None or row["parent_id"] == parent_id:
+            return
+        deleted = bool(row["is_deleted"])
+        blob = bytes(row["encrypted_meta"])
+        meta_dek_id = bytes_to_ulid(parse_envelope(blob).dek_id)
+        meta_dek = self._dek_mgr.unlock_dek(meta_dek_id)
+        plain = open_sealed(blob, meta_dek, node_id, row["version"], BlobKind.NODE_META, deleted=deleted)[0]
+        here = self._dek_mgr.get_dek_for_node(row["parent_id"])[0] if row["parent_id"] else None
+        changes = {}
+        if parent_id is None or meta_dek_id != here:
+            new_dek_id, new_dek = meta_dek_id, meta_dek  # a personal root keeps its own key
+        else:
+            new_dek_id, new_dek = self._dek_mgr.get_dek_for_node(parent_id)
+            into_personal = in_personal_tree(
+                self._db, parent_id, set(personal_root_ids(self._db, self._dek_mgr))
+            )
+            team = None if into_personal else local_team_state(self._db)
+            changes = moved_subtree_keys(
+                self._db, node_id, new_dek_id, into_personal,
+                team.dek_index if team_folder_at_or_above(self._db, team, parent_id) else None,
+            )
+        sent = self._db.fetchone(
+            "SELECT MAX(version) AS v FROM object_sent_version WHERE object_id = ?", (node_id,)
+        )
+        new_version = max(row["version"], (sent["v"] or 0) if sent else 0) + 1
+        outbox.queue_write(self._db, node_id)
+        self._db.execute(
+            "UPDATE nodes SET parent_id = ?, encrypted_meta = ?, version = ? WHERE id = ?",
+            (
+                parent_id,
+                encrypt(
+                    plaintext=plain, dek=new_dek, dek_id=ulid_to_bytes(new_dek_id),
+                    object_id=ulid_to_bytes(node_id),
+                    version=new_version - 1 if deleted else new_version,
+                    blob_kind=BlobKind.NODE_META,
+                ),
+                new_version, node_id,
+            ),
+        )
+        reseal_moved_subtree(self._db, self._dek_mgr, node_id, changes)
+        self._push_cache.pop(node_id, None)
 
     def _emptied_tombstone_data(self, entry_id: str, meta_blob: bytes, version: int) -> bytes:
         """No fields, sealed like the tombstone's meta (review d150605 N5).

@@ -1822,9 +1822,11 @@ class Vault:
     def _is_descendant(self, candidate_id: str, ancestor_id: str) -> bool:
         """Check if candidate_id is a descendant of (or equal to) ancestor_id."""
         current = candidate_id
-        while current:
+        seen: set[str] = set()  # R16-Z SM22: a parent cycle ends the walk
+        while current and current not in seen:
             if current == ancestor_id:
                 return True
+            seen.add(current)
             row = self._db.fetchone(
                 "SELECT parent_id FROM nodes WHERE id = ?", (current,)
             )
@@ -3652,8 +3654,12 @@ class Vault:
         parts = []
         current = node_id
         root_id = self._db.get_meta("root_node_id")
+        # R16-Z SM22: a parent cycle (an unsent move crossed by a pulled one,
+        # until the server refuses it) made unlock walk this path forever.
+        seen: set[str] = set()
 
-        while current and current != root_id:
+        while current and current != root_id and current not in seen:
+            seen.add(current)
             row = self._db.fetchone(
                 "SELECT parent_id, encrypted_meta, dek_id, version FROM nodes WHERE id = ?",
                 (current,),

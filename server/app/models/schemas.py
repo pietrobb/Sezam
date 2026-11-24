@@ -474,6 +474,8 @@ class PushObjectResult(BaseModel):
     code: Optional[str] = None
     server_version: Optional[int] = None
     server_payload_hash: Optional[str] = None
+    # FOLDER_MOVE_CYCLE: the folder's parent as the server keeps it.
+    server_parent_ref: Optional[str] = None
 
 class PushResponse(BaseModel):
     accepted: list[PushObjectResult]

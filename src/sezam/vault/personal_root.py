@@ -157,8 +157,12 @@ def moved_subtree_keys(
     """
     changes: dict[str, tuple] = {}
     todo = [(node_id, new_parent_key)]
+    seen: set[str] = set()  # R16-Z SM22: a parent cycle ends the walk
     while todo:
         current, parent_key = todo.pop()
+        if current in seen:
+            continue
+        seen.add(current)
         row = db.fetchone(
             "SELECT n.dek_id, d.node_id AS key_owner FROM nodes n "
             "LEFT JOIN deks d ON d.id = n.dek_id WHERE n.id = ?", (current,)

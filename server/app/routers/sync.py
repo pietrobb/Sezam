@@ -36,6 +36,7 @@ from ..dependencies import get_config, get_db, get_jwt_manager, get_rotation_use
 from ..errors import (
     ATOMIC_BATCH_CONFLICT,
     COLLECTED_OBJECT,
+    FOLDER_MOVE_CYCLE,
     FOLDER_KEY_MOVED,
     HISTORY_CHANGED,
     IDENTITY_KEY_RETIRED,
@@ -1039,6 +1040,24 @@ async def _sync_push(
                                   "folder or move the item",
                         ))
                         continue
+                # R16-Z SM22: two devices each moved a folder below the other
+                # before seeing the other's move; both landed and every device
+                # held a parent cycle (unlock walked it forever). Pushes are
+                # serialized (commit_counter), so the stored chain is current.
+                if (
+                    writes and stored_type == "node" and obj.parent_ref is not None
+                    and obj.parent_ref != (existing[5] if existing else None)
+                    and await _is_below(cur, obj.parent_ref, obj.id)
+                ):
+                    conflicts.append(PushObjectResult(
+                        id=obj.id, code=FOLDER_MOVE_CYCLE,
+                        error="the new parent is inside this folder (moved there "
+                              "elsewhere); the folder stays where it is",
+                        server_version=existing[0] if existing else None,
+                        server_payload_hash=existing[1] if existing else None,
+                        server_parent_ref=existing[5] if existing else None,
+                    ))
+                    continue
                 # Review a159e97 H8: a member's folder tombstone buried what
                 # others keep in it (the folder gone, their items unreachable
                 # on every device). Refused while another account's item lives
@@ -2095,6 +2114,27 @@ async def _has_write_authority(
         if parent_ref is None:
             return True  # user owns the whole chain up to a top-level node
         below, current = current, parent_ref
+    return False
+
+
+async def _is_below(cur, node_id: str, ancestor_id: str) -> bool:
+    """Whether stored ``node_id`` is ``ancestor_id`` or lies below it.
+
+    Stops at a chain that loops without reaching it (a cycle stored before
+    R16-Z SM22): such a move does not close a new one.
+    """
+    seen = set()
+    current = node_id
+    while current is not None and current not in seen:
+        if current == ancestor_id:
+            return True
+        seen.add(current)
+        await cur.execute(
+            "SELECT parent_ref FROM vault_objects WHERE id = %s AND object_type = 'node'",
+            (current,),
+        )
+        row = await cur.fetchone()
+        current = row[0] if row else None
     return False
 
 

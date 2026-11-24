@@ -55,6 +55,9 @@ ORG_RECOVERY_SUPERSEDED = "org_recovery_superseded"
 INVALID_KEY_VOUCHERS = "invalid_key_vouchers"
 # Goal #443: an identity rotation whose lists leave out an object the old key signed.
 KEY_VOUCHERS_INCOMPLETE = "key_vouchers_incomplete"
+# R16-Z SM22: a folder move whose new parent is below the folder (crossed moves
+# of two devices). The result names where the server keeps the folder.
+FOLDER_MOVE_CYCLE = "folder_move_cycle"
 
 ERROR_CODES = frozenset({
     HISTORY_CHANGED, STALE_KEY_EPOCH, KEY_CHANGE_MISSES_DEKS, WRONG_CURRENT_PASSWORD,
@@ -63,7 +66,7 @@ ERROR_CODES = frozenset({
     IDENTITY_KEY_RETIRED, TOKEN_INVALID, TOKEN_REVOKED, REVOKED_ENVELOPE,
     COLLECTED_OBJECT, TEAM_LOG_HEAD_MOVED, TEAM_LOG_REFUSED, TEAM_LOG_REQUIRED, TEAM_LOG_UNREADABLE,
     ACCOUNT_EXISTS, USERNAME_TAKEN, ORG_RECOVERY_SUPERSEDED, INVALID_KEY_VOUCHERS,
-    KEY_VOUCHERS_INCOMPLETE, TEAM_LOG_ENVELOPE, FOLDER_KEY_MOVED,
+    KEY_VOUCHERS_INCOMPLETE, TEAM_LOG_ENVELOPE, FOLDER_KEY_MOVED, FOLDER_MOVE_CYCLE,
 })
 
 
