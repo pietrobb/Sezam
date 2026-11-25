@@ -9,7 +9,10 @@ failed to persist. disable() now takes the write lock before reading.
 
 from __future__ import annotations
 
+import sqlite3
 import threading
+import time
+import traceback
 
 import pytest
 
@@ -58,8 +61,41 @@ def test_a_second_ai_off_in_the_middle_of_the_first_does_not_fail(vaults, monkey
     assert [r["detail"]["source"] for r in ai_access._pending(first.db)] == ["phone"]
 
 
+@pytest.mark.parametrize("which", ["unlocked", "locked"])
+def test_ai_off_waits_out_a_writer_holding_the_lock_past_the_busy_timeout(vaults, which):
+    """R16-N7 (gate 28 on 590b00c): under load the second broker's 'off'
+    failed with 'database is locked'. Another process's writer holding its
+    transaction past the 5 s busy timeout failed the brake the same way."""
+    first, second = vaults
+    vault = first if which == "unlocked" else second
+    held = threading.Event()
+
+    def hold_the_write_lock() -> None:
+        conn = sqlite3.connect(str(first.db.path), isolation_level=None)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            held.set()
+            time.sleep(6.5)  # past the 5 s busy_timeout of open()
+            conn.execute("COMMIT")
+        finally:
+            conn.close()
+
+    holder = threading.Thread(target=hold_the_write_lock)
+    holder.start()
+    assert held.wait(10)
+    try:
+        state = ai_access.disable(vault, "cli")
+    finally:
+        holder.join(30)
+
+    assert not state.enabled and state.epoch == 1
+    assert ai_access.read_state(first) == state
+    # Statements other than the brake keep the ordinary wait.
+    assert first.db.conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+
+
 def _disable(vault, errors: list) -> None:
     try:
         ai_access.disable(vault, "phone")
     except Exception as exc:  # pragma: no cover - the failure being tested
-        errors.append(exc)
+        errors.append((exc, traceback.format_exc()))

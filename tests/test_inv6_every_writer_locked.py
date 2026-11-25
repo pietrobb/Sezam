@@ -385,6 +385,7 @@ RAW_CONNECTIONS = {
     ("sezam/vault/db.py", "VaultDB.open", "self._conn.execute"): "pragmas; the upgrade runs under oplock.exclusive",
     ("sezam/vault/db.py", "VaultDB.open", "self._conn.executescript"): "CREATE ... IF NOT EXISTS of tables and triggers",
     ("sezam/vault/db.py", "VaultDB._check_schema", "self._conn.execute"): "a read",
+    ("sezam/vault/db.py", "VaultDB.brake", "self._conn.execute"): "the busy_timeout pragma (R16-N7)",
     ("sezam/vault/db.py", "VaultDB._guard_writes", "self._conn.execute"): "a read",
     ("sezam/vault/db.py", "VaultDB._guard_writes", "self._conn.executescript"): "the INV-6 TEMP triggers themselves",
     ("sezam/vault/db.py", "VaultDB.create_schema", "self.conn.executescript"): "a new file's tables; their rows go through set_meta",

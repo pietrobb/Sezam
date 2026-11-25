@@ -58,6 +58,11 @@ _ORDERED_TABLES = ("outbox", "vault_meta")
 BRAKE_KEYS = frozenset({
     "ai_access_enabled", "ai_access_epoch", "ai_access_mac", "ai_access_audit_pending",
 })
+# SQLite write-lock wait of an ordinary statement, and of the kill switch: a
+# writer of another process holding its transaction past 5 s (a pull applying
+# under load) failed 'sezam ai off' with 'database is locked' (R16-N7).
+BUSY_TIMEOUT_MS = 5000
+BRAKE_BUSY_TIMEOUT_MS = 60000
 
 
 def _order_triggers_sql() -> str:
@@ -209,7 +214,7 @@ class VaultDB:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._restrict_permissions()
             self._conn.execute("PRAGMA foreign_keys=ON")
-            self._conn.execute("PRAGMA busy_timeout=5000")
+            self._conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
             self._conn.executescript(SYNC_CONFLICTS_SQL)
             if self._conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entries'"
@@ -414,13 +419,22 @@ class VaultDB:
     @contextmanager
     def brake(self) -> Iterator[None]:
         """The AI kill switch writes BRAKE_KEYS in this thread without the
-        vault lock, so 'sezam ai off' never waits for a sync; nothing else."""
-        depth = getattr(self._local, "brake", 0)
-        self._local.brake = depth + 1
-        try:
-            yield
-        finally:
-            self._local.brake = depth
+        vault lock, so 'sezam ai off' never waits for a sync; nothing else.
+
+        R16-N7: it waits for SQLite's write lock up to BRAKE_BUSY_TIMEOUT_MS,
+        not the 5 s of other statements. The guard is held throughout, so no
+        other thread's statement runs with the longer wait."""
+        with self._guard:
+            depth = getattr(self._local, "brake", 0)
+            self._local.brake = depth + 1
+            if depth == 0:
+                self._conn.execute(f"PRAGMA busy_timeout={BRAKE_BUSY_TIMEOUT_MS}")
+            try:
+                yield
+            finally:
+                self._local.brake = depth
+                if depth == 0 and self._conn is not None:
+                    self._conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
 
     def in_own_transaction(self) -> bool:
         """This thread has a transaction open (it keeps the write lock to its end)."""
