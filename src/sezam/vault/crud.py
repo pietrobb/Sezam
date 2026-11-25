@@ -2110,6 +2110,15 @@ class Vault:
             self._keypair = server_keypair
         self._user_id = server_user_id
 
+    def held_kdf(self) -> tuple[bytes, Argon2Params, bytearray]:
+        """Salt, Argon2 params and a copy of the KEK this vault unlocks with."""
+        self._require_unlocked()
+        return (
+            bytes.fromhex(self._db.get_meta("argon2_salt")),
+            Argon2Params.from_dict(self._db.get_meta_json("argon2_params")),
+            bytearray(self.dek_mgr._kek),
+        )
+
     @oplock.held
     def adopt_account_kek(
         self,
@@ -2354,6 +2363,7 @@ class Vault:
         *,
         rotate_identity: bool = False,
         rotation_from: KeyPair | None = None,
+        rotation_kdf: tuple[bytes, Argon2Params, bytearray] | None = None,
     ) -> bytes:
         """Change master password (and optionally KDF params).
 
@@ -2370,6 +2380,8 @@ class Vault:
         ``rotation_from`` (with ``rotate_identity``): the keypair the server
         still has after it lost this device's rotation (capability run 277);
         the rotation from it to the keypair held here is pushed again.
+        ``rotation_kdf`` (with it): :meth:`held_kdf` from before the server's
+        KEK was adopted; consumed (its KEK copy is zeroed).
         """
         self._require_unlocked()
         # Review e4cd15a (low): only a NEW password is checked. A KDF upgrade
@@ -2451,8 +2463,29 @@ class Vault:
         # Option B: one Argon2id run yields both the new KEK and auth proof.
         if new_params is not None:
             params = new_params
-        new_salt = generate_salt()
-        new_kek, auth_proof = derive_kek_and_proof(new_password, new_salt, params)
+        new_kek = None
+        if rotation_kdf is not None:
+            # Stateful test SM23b: the account's other devices took the lost
+            # rotation over. Under a new salt it came back as another KEK at
+            # the epoch they hold: the server took their folder keys under the
+            # lost one, which no other device opens. It is the same rotation,
+            # so it goes out under the same salt and KDF, i.e. the same KEK.
+            held_salt, held_params, held_kek = rotation_kdf
+            try:
+                new_kek, auth_proof = derive_kek_and_proof(new_password, held_salt, held_params)
+                if compare_digest(bytes(new_kek), bytes(held_kek)):
+                    new_salt, params = held_salt, held_params
+                    if held_params != old_params:
+                        new_params = held_params
+                else:  # another password: nothing to keep
+                    new_kek[:] = b"\x00" * len(new_kek)
+                    auth_proof[:] = b"\x00" * len(auth_proof)
+                    new_kek = None
+            finally:
+                held_kek[:] = b"\x00" * len(held_kek)
+        if new_kek is None:
+            new_salt = generate_salt()
+            new_kek, auth_proof = derive_kek_and_proof(new_password, new_salt, params)
         recovery_wrap = (
             SealedBox(recovery_pk).encrypt(bytes(new_kek))
             if recovery_pk is not None

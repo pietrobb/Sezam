@@ -604,11 +604,15 @@ class SyncClient(
                 # holds (member.keys). Its keypair is retired there; taking it
                 # over left the device out of the team. The rotation goes out
                 # again from the server's key material instead.
-                vault.adopt_account_kek(kek, salt, params, key_epoch=key_epoch)
-                proof = vault.change_password(
-                    account_password, account_password,
-                    rotate_identity=True, rotation_from=server_keypair,
-                )
+                held_kdf = vault.held_kdf()  # SM23b: the lost rotation's own KEK
+                try:
+                    vault.adopt_account_kek(kek, salt, params, key_epoch=key_epoch)
+                    proof = vault.change_password(
+                        account_password, account_password,
+                        rotate_identity=True, rotation_from=server_keypair, rotation_kdf=held_kdf,
+                    )
+                finally:
+                    held_kdf[2][:] = b"\x00" * len(held_kdf[2])
                 proof[:] = b"\x00" * len(proof)
                 server_keypair = None
                 self._token = None
