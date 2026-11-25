@@ -790,6 +790,12 @@ class ResyncMixin:
             raise
 
         self._push_cache.clear()
+        # R16-Z SM25b: as after a pull. Kept unsent items sealed with a key the
+        # snapshot's re-key replaced (a subfolder's name, restored from the
+        # trash here) go onto the folder's current key; until then their
+        # folder named the new key and they no longer opened.
+        self._reseal_under_successors()
+        self._grant_again_on_successors()
         return {
             "pulled": len(objects),
             "skipped": 0,

@@ -4714,6 +4714,39 @@ def test_sync_state_machine_folder_back_on_the_key_of_a_withdrawn_grant(loopback
         machine.teardown()
 
 
+def test_sync_state_machine_full_resync_keeps_a_name_the_rekey_moved_on(loopback_server, monkeypatch):
+    """R16-Z SM25b (gate 22 on 8914bac, second admin): A renames a subfolder
+    of a folder it shared, unsent; B revokes the member and re-keys the folder;
+    A's full resync keeps the unsent name, sealed with the folder's old key,
+    and takes the folder's new key. A pull seals such items again under the
+    current key; the full resync did not, and A's next rename of the
+    subfolder raised CryptoError (its name no longer opened)."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        db = machine.devices["A"].vault.db
+        sub = db.fetchone(
+            "SELECT id, parent_id FROM nodes WHERE is_deleted = 0 AND parent_id IN "
+            "(SELECT id FROM nodes WHERE parent_id IS NOT NULL)"
+        )
+        machine.invite_member(_Scripted(device="A"))
+        member = machine._active_members()[-1]
+        machine._grant("A", member, sub["parent_id"], "write")
+        machine.pull(_Scripted(device="B"), None)
+        machine.rename_folder(_Scripted(device="A", folder=sub["id"]))
+        machine.rename_folder(_Scripted(device="A", folder=sub["id"]))
+        machine.revoke(_Scripted(device="B", member=member), None)
+        assert member in machine.revoked, machine._trace()
+        machine.full_resync(_Scripted(device="A"))
+        assert machine.log[-1] == "A: full resync", machine._trace()
+        machine.rename_folder(_Scripted(device="A", folder=sub["id"]))
+        machine.track_member_keys()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_withheld_keys_after_a_revocation(loopback_server, monkeypatch):
     """Run on S4a (reproduce_failure AXicY3BkcBR11HNUZHAEQxBicFQFsZlAhA5YFABcKASH):
     A grants a folder to a member, a new device C revokes the member (re-keys
