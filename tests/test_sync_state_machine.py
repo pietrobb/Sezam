@@ -5113,6 +5113,39 @@ def test_sync_state_machine_web_retry_after_a_rekey_elsewhere(loopback_server, m
         machine.teardown()
 
 
+@pytest.mark.skipif(not NODE, reason="the web tab needs Node >= 24.7")
+def test_sync_state_machine_web_retry_of_a_lost_tombstone_after_a_rekey(loopback_server, monkeypatch):
+    """R16-N1 (nightly stateful-deep 45604036980 on d441587, SecondAdminMachine):
+    A deleted a shared folder; the page pulled the tombstones; the server was
+    restored from a backup taken before, so the page queued them again
+    (requeueWritesTheServerLost). A tombstone keeps the blob of the version
+    below it. B, which never saw the delete, removed the member and re-keyed
+    the folder. Retry opened every queued item to seal it under the new key,
+    tombstones too, at the tombstone's version: 'ciphertext cannot be
+    decrypted using that key', and nothing in the queue left. The desktop and
+    the phone send a tombstone as it is (the trash keeps the old key)."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    SecondAdminMachine.server = loopback_server
+    machine = SecondAdminMachine()
+    try:
+        folder = machine._folders("A")[0]
+        member = next(u for u in machine._active_members() if machine.write_granted[u] or machine.granted[u])
+        machine.pull(_Scripted(device="B"), None)
+        machine.server_backup()
+        machine.delete_folder(_Scripted(device="A", folder=folder))
+        machine.push(_Scripted(device="A"), None)
+        machine.open_web_tab()
+        machine.server_restore()
+        machine.web_refresh(None)  # the restore accepted: the tombstones queued again
+        assert machine.web_view["dirty"], machine._trace()
+        machine.revoke(_Scripted(device="B", member=member), None)
+        machine.web_refresh(None)  # the re-key pulled
+        machine._web_settle()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
 @pytest.mark.parametrize("then", ["push", "invite"])
 def test_sync_state_machine_team_log_pinned_by_the_account_keys(loopback_server, monkeypatch, then):
     """Review e443cbc R15, goal #429 (TeamLogMachine): the admin's second

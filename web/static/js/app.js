@@ -7415,6 +7415,10 @@ function resealContext(_sodium) {
  * current DEK, the way the desktop reseals its unsent items.
  */
 async function resealUnderFolderSuccessor(vaultObj, version = vaultObj.version, context = {}) {
+    // R16-N1: a tombstone keeps the blob of the version below it (a restore
+    // queues it again so), and goes as it is, as on the desktop and phone: the
+    // trash keeps the old key. Opened at its own version, Retry threw.
+    if (vaultObj.is_deleted) return vaultObj;
     const dekId = payloadDekId(vaultObj);
     const dekObject = dekId && state.syncObjects?.[dekId];
     const oldKey = state.deks[dekId] || state.supersededDeks?.[dekId];
