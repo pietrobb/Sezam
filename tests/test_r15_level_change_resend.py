@@ -29,8 +29,11 @@ def test_a_level_changed_grant_is_resent_at_the_logs_level(team, server):  # noq
     assert admin_client.push()["conflicts"] == []
     backup = copy.deepcopy(db._storage)
 
-    envelope = revocation.grant_member(admin, admin_client, bob_id, side, "read")
-    assert revocation.grant_member(admin, admin_client, bob_id, side, "write") == envelope
+    sealed_read = revocation.grant_member(admin, admin_client, bob_id, side, "read")
+    # R16-N5: a level change re-seals the envelope at the new level (the read one is withdrawn).
+    envelope = revocation.grant_member(admin, admin_client, bob_id, side, "write")
+    assert envelope != sealed_read
+    assert not any(o["id"] == sealed_read for o in db._storage["vault_objects"] if not o.get("is_deleted"))
 
     db._storage.clear()
     db._storage.update(copy.deepcopy(backup))  # restored from a backup from before the grant

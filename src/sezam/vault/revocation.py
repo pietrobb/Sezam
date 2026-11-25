@@ -183,8 +183,17 @@ def _grant_in_team_log(
     held = vault.db.fetchone(
         "SELECT id FROM access_envelopes WHERE dek_id = ? AND user_id = ?", (row["id"], user_id)
     )
-    relevel = held is not None and team.access.get(node_id, {}).get(user_id) not in (None, access_level)
+    current_level = team.access.get(node_id, {}).get(user_id)
+    level_change = held is not None and current_level not in (None, access_level)
+    # R16-N6: lowered from write to read, the log marks the folder stale and
+    # nothing more is sealed under its key (teamlog.may_seal; the server
+    # refuses it as 'folder waits for a re-key'); the re-key of the downgrade
+    # (rekey_after_handover) seals the member's new envelope at 'read'.
+    relevel = level_change and access_level == "write"
     client.team_log_records(client.pending_team_changes() + changes)  # refused by the rules: nothing is made
+    if level_change and not relevel:
+        client.append_team_log(changes)
+        return held["id"]
     # Only the level changes (review 8595ec1, R10-C: the way to show items a
     # founding hid): the member keeps the current key. R16-N5 (gate 26 on
     # 7429bfc): sent as the access.set alone, the envelope kept its old level;
