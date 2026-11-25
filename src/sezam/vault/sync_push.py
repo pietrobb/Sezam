@@ -790,7 +790,8 @@ class PushMixin:
                     continue
                 if obj["object_type"] in ("node", "entry"):
                     self._record_server_seq(obj_id, accepted_seqs.get(obj_id))
-                    self._set_base(obj_id, obj["version"], obj["payload_hash"], own=True)
+                    self._set_base(obj_id, obj["version"], obj["payload_hash"], own=True,
+                                   parent=obj.get("parent_ref") or "")
                 for table in ("nodes", "entries"):
                     self._db.execute(
                         "DELETE FROM outbox WHERE kind = 'write' AND object_id = ? AND EXISTS "
@@ -832,7 +833,8 @@ class PushMixin:
                     # SM51 after S1: two devices deleted the same object into
                     # one identical tombstone and GC collected it. This write is
                     # the collected one, already done - not rebased and resent.
-                    self._set_base(obj["id"], obj["version"], obj["payload_hash"], own=True)
+                    self._set_base(obj["id"], obj["version"], obj["payload_hash"], own=True,
+                                   parent=obj.get("parent_ref") or "")
                     for table in ("nodes", "entries"):
                         self._db.execute(
                             "DELETE FROM outbox WHERE kind = 'write' AND object_id = ? AND EXISTS "

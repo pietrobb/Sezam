@@ -190,9 +190,15 @@ class RekeyMixin:
             re-key moved a folder deleted here onto its key; refused here, the
             tombstone went out on its old base for good. Its blobs stay sealed
             below the row version (a delete only bumps it), as _rebase_local
-            reseals them."""
+            reseals them.
+
+            R16-N2 (nightly TeamLogMachine): the row may hold this device's own
+            edit queued before the batch (not a version the batch made). With
+            the server copy refused there is no conflict to show it against:
+            it went out on its old base for good. It goes above the refused
+            copy as well."""
             copy = refused_copies.get(row["id"]) if row["id"] in object_ids else None
-            if copy is None or rekeyed_versions.get(row["id"]) != row["version"]:
+            if copy is None:
                 return
             server_version, server_hash = copy
             if (server_version, server_hash) == (row["base_version"], row["base_hash"]):

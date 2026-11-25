@@ -108,9 +108,9 @@ CREATE TABLE IF NOT EXISTS team_log (
 BASE_VERSION_TRIGGERS_SQL = """
 CREATE TRIGGER IF NOT EXISTS outbox_base_capture AFTER INSERT ON outbox
 WHEN NEW.kind = 'write' BEGIN
-    UPDATE nodes SET base_version = version,
+    UPDATE nodes SET base_version = version, base_parent = COALESCE(parent_id, ''),
         base_hash = sezam_payload_hash(encrypted_meta, NULL) WHERE id = NEW.object_id;
-    UPDATE entries SET base_version = version,
+    UPDATE entries SET base_version = version, base_parent = node_id,
         base_hash = sezam_payload_hash(encrypted_meta, encrypted_data) WHERE id = NEW.object_id;
 END;
 CREATE TRIGGER IF NOT EXISTS nodes_base_delete AFTER DELETE ON nodes BEGIN
@@ -152,7 +152,9 @@ CREATE TABLE IF NOT EXISTS nodes (
     -- Row with a queued write (outbox): the server copy (version, payload_hash)
     -- the edit was made on; NULL = never on the server. Otherwise unused.
     base_version    INTEGER,
-    base_hash       TEXT
+    base_hash       TEXT,
+    -- R16-N2: that copy's parent ('' = none, NULL = not known: the row's own).
+    base_parent     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_dek ON nodes(dek_id);
@@ -166,7 +168,8 @@ CREATE TABLE IF NOT EXISTS entries (
     version         INTEGER NOT NULL DEFAULT 1,
     is_deleted      INTEGER NOT NULL DEFAULT 0,
     base_version    INTEGER,            -- as nodes.base_version
-    base_hash       TEXT
+    base_hash       TEXT,
+    base_parent     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_entries_node ON entries(node_id);
 

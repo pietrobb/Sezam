@@ -542,7 +542,8 @@ class PullMixin:
                 self._reattach_orphans()
             else:
                 self._rebase_local(
-                    object_id, object_type, server_version, shadow["server_payload_hash"]
+                    object_id, object_type, server_version, shadow["server_payload_hash"],
+                    server_parent=shadow["server_parent_ref"] or "",
                 )
             # Keeping the server's delete of a folder that holds unsent work
             # here left that work refused on every push (stateful test SM3).
@@ -555,7 +556,8 @@ class PullMixin:
         self._push_cache.pop(object_id, None)
 
     def _rebase_local(
-        self, object_id: str, object_type: str, server_version: int, server_hash: Optional[str]
+        self, object_id: str, object_type: str, server_version: int, server_hash: Optional[str],
+        server_parent: Optional[str] = None,
     ) -> None:
         """Re-seal this device's copy one version above the server's and build
         on the server's (version, hash), so the next push supersedes it. The
@@ -638,7 +640,7 @@ class PullMixin:
                     new_version, object_id,
                 ),
             )
-        self._set_base(object_id, server_version, server_hash)
+        self._set_base(object_id, server_version, server_hash, parent=server_parent)
         self._push_cache.pop(object_id, None)
 
     def _record_pull_conflict(

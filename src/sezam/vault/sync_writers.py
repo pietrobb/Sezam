@@ -25,6 +25,7 @@ import base64
 from typing import Optional
 
 from .. import teamlog
+from . import outbox
 from ..crypto.aead import parse_envelope
 from ..models import bytes_to_ulid
 from .sync_common import (
@@ -378,7 +379,16 @@ class WritersMixin:
                 return True, teamlog.tombstone_refusal(team, author, stored)
             # Finding 205: leaving a team folder this device holds it in is a removal from it.
             table, column = ("nodes", "parent_id") if obj["object_type"] == "node" else ("entries", "node_id")
-            row = self._db.fetchone(f"SELECT {column} FROM {table} WHERE id = ?", (obj["id"],))
+            # R16-N2 (nightly TeamLogMachine): left from the server copy the
+            # local row builds on, as web and phone do. This device's unsent
+            # move is not where the author's copy came from: by it a write
+            # the log allows was refused and the move conflicted for good.
+            row = self._db.fetchone(
+                f"SELECT CASE WHEN {outbox.queued('t')} AND t.base_parent IS NOT NULL "
+                f"THEN NULLIF(t.base_parent, '') ELSE t.{column} END AS {column} "
+                f"FROM {table} t WHERE t.id = ?",
+                (obj["id"],),
+            )
             dek_id = _sealing_dek_id(obj)
             # TL7: a personal object (sealed, before and now, with one key outside
             # the log) may leave for the personal root. Only its author holds that

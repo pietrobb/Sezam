@@ -59,6 +59,7 @@ from .team_log_state import (  # noqa: F401 - re-exported: callers import these 
     team_key_ids,
     team_folder_at_or_above,
     unlogged_folder_keys,
+    keys_below_team_folders,
     projected_team_state,
     received_envelope_sender,
     held_genesis,
@@ -488,8 +489,16 @@ class TeamLogMixin:
         self.require_trusted_team_log()
         state = self.team_state() or teamlog.TeamState()
         signing_key = self._log_signing_key(state)
+        # R16-N2: a first grant's subfolder keys as this log has them now.
+        first_keys = {d["folder"] for k, d in changes if k == "folder.key" and d.get("prev_dek_id") is None}
+        below = set().union(*(
+            keys_below_team_folders(self._db, state.dek_index, d["folder"])
+            for k, d in changes if k == "access.set" and d["folder"] in first_keys
+        ))
         records = []
         for index, (kind, data) in enumerate(changes):
+            if kind == "folder.key" and data.get("prev_dek_id") is None and data["folder"] in below:
+                continue
             resolved = resolve_change(state, kind, data)
             if resolved is None:
                 continue

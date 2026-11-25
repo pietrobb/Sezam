@@ -330,14 +330,50 @@ def unlogged_folder_keys(db, logged, node_id: str) -> list[tuple[str, str]]:
     what such a key seals (teamlog.item_refusal: 'sealed with a key the team
     log does not know'). So no folder below a team folder keeps one: a folder
     that becomes a team folder brings these into the log with it.
+
+    R16-N2 (nightly TeamLogMachine on d441587): the walk stops at a folder
+    whose own key the log knows. What is below it is that team folder's: an
+    unlogged key there takes its parent's (fold_unlogged_folder_keys). Taken
+    by a grant of a folder above, a subfolder B made in a shared folder (its
+    node refused, still queued) went into the log as a team folder of its
+    own: the admin who took the role back did not hold it to re-key, and the
+    former admin kept its current key.
     """
+    return [(folder, key) for folder, key, below in _own_unlogged_keys(db, logged, node_id) if not below]
+
+
+def keys_below_team_folders(db, logged, node_id: str) -> set[str]:
+    """Folders at or below ``node_id`` whose own unlogged key lies below a team
+    folder of ``logged``: no grant of ``node_id`` logs them. A grant made on
+    an older copy of the log collected them; built again on the server's
+    newer log (team_log_records after 409 team_log_head_moved) they are left
+    out (R16-N2)."""
+    return {folder for folder, _, below in _own_unlogged_keys(db, logged, node_id) if below}
+
+
+def _own_unlogged_keys(db, logged, node_id: str) -> list[tuple[str, str, bool]]:
+    """(folder, own key not in ``logged``, below a team folder) at or below ``node_id``."""
     rows = db.fetchall(
         "WITH RECURSIVE t(id) AS (SELECT ? UNION SELECT n.id FROM nodes n JOIN t ON n.parent_id = t.id) "
-        "SELECT n.id, n.dek_id FROM t JOIN nodes n ON n.id = t.id JOIN deks d ON d.id = n.dek_id "
-        "WHERE d.node_id = n.id AND d.scope = 'folder' ORDER BY n.id",
+        "SELECT n.id, n.parent_id, d.id AS own_dek, d.scope FROM t JOIN nodes n ON n.id = t.id "
+        "LEFT JOIN deks d ON d.id = n.dek_id AND d.node_id = n.id ORDER BY n.id",
         (node_id,),
     )
-    return [(r["id"], r["dek_id"]) for r in rows if r["dek_id"] not in logged]
+    parent = {r["id"]: r["parent_id"] for r in rows}
+    team_folders = {r["id"] for r in rows if r["own_dek"] is not None and r["own_dek"] in logged}
+
+    def below_a_team_folder(folder: str) -> bool:
+        above = parent.get(folder)
+        while above is not None and above != node_id and above in parent:
+            if above in team_folders:
+                return True
+            above = parent.get(above)
+        return False
+
+    return [
+        (r["id"], r["own_dek"], below_a_team_folder(r["id"])) for r in rows
+        if r["own_dek"] is not None and r["scope"] == "folder" and r["own_dek"] not in logged
+    ]
 
 
 def projected_team_state(db, author: str) -> Optional[teamlog.TeamState]:

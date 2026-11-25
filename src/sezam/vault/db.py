@@ -250,7 +250,7 @@ class VaultDB:
         outbox_columns = columns("outbox")
         legacy_base = has_table("object_base_version")
         if (
-            all("base_hash" in c and "is_dirty" not in c for c in tables.values())
+            all("base_parent" in c and "is_dirty" not in c for c in tables.values())
             and {"state", "body"} <= outbox_columns
             and not legacy_base
             and not has_table("object_base_hash")
@@ -278,7 +278,7 @@ class VaultDB:
             revived_meta = meta("revived_folders")
             _move_pending_meta(conn)
             for table, have in tables.items():
-                for column, kind in (("base_version", "INTEGER"), ("base_hash", "TEXT")):
+                for column, kind in (("base_version", "INTEGER"), ("base_hash", "TEXT"), ("base_parent", "TEXT")):
                     if column not in have:
                         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
                 if "is_dirty" in have:

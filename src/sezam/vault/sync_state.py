@@ -260,17 +260,19 @@ class SyncStateMixin:
             self._db.set_meta(COMMIT_ANCHOR_META, json.dumps({"seq": seq, "token": token}))
 
     def _set_base(
-        self, object_id: str, version: int, payload_hash: str, *, own: bool = False
+        self, object_id: str, version: int, payload_hash: str, *, own: bool = False,
+        parent: Optional[str] = None,
     ) -> None:
         """This device's copy of the object now builds on server copy
         (``version``, ``payload_hash``) — docs/SYNC_SINGLE_SOURCE.md point 1.
 
         ``own``: the server holds this device's own write of ``version``.
+        ``parent``: that copy's parent_ref ('' none; None not known here).
         """
         for table in ("nodes", "entries"):
             self._db.execute(
-                f"UPDATE {table} SET base_version = ?, base_hash = ? WHERE id = ?",
-                (version, payload_hash, object_id),
+                f"UPDATE {table} SET base_version = ?, base_hash = ?, base_parent = ? WHERE id = ?",
+                (version, payload_hash, parent, object_id),
             )
         # The row of ``version`` itself stays: it tells this device's write of
         # that version from another one a restored server took (SM13). On top

@@ -696,7 +696,8 @@ class ResyncMixin:
                         # Newer than a server that is behind, or an unsent
                         # change of the very copy the server holds.
                         self._set_base(
-                            obj_id, server_copy.get("version", 1), server_copy["payload_hash"]
+                            obj_id, server_copy.get("version", 1), server_copy["payload_hash"],
+                            parent=server_copy.get("parent_ref") or "",
                         )
                     else:
                         # Changed here and on the server: a conflict to settle.

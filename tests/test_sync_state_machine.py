@@ -5892,6 +5892,97 @@ def test_sync_state_machine_team_log_lost_grant_to_a_removed_member(loopback_ser
         machine.teardown()
 
 
+def test_sync_state_machine_team_handover_after_a_concurrent_move(loopback_server, monkeypatch):
+    """R16-N2 (nightly stateful-deep 45604036980 on d441587, TeamLogMachine)."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        top = machine._folders("A")[0]
+        snap = snapshot(machine.devices["A"].vault)
+        below = next(f for f in machine._folders("A") if snap[f][2] == top)
+        entry = next(e for e in machine._entries("A") if snap[e][2] == top)
+        machine.member_sync(_Scripted(member=member))  # confirms the founder
+        machine._settle(lambda _obj: "server")
+        machine._grant("A", member, top, "read")
+        machine.concurrent_change(_Scripted(devices=["A", "B"], object=entry, target=below,
+                                            **{"A op": "move", "B op": "move"}), push_first=False)
+        machine.yield_the_admin_role_and_take_it_back(
+            _Scripted(member=member, device="A", folder=below), chain=True, unsent=True)
+        machine.track_member_keys()  # an invariant: Hypothesis runs it, a script does not
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_grant_above_a_team_folder_on_a_stale_log(loopback_server, monkeypatch):
+    """R16-N2 (nightly stateful-deep 45604036980 on d441587, TeamLogMachine,
+    second failure after the first was fixed): B, whose copy of the log is
+    older than A's grant of F2, makes a folder in F2 and shares F1 above it.
+    The grant went by that copy: F2 looked unlogged and the folder B made
+    there went into the log as a team folder of its own. Its key then reached
+    m6 by a handover and the admin who took the role back did not hold the
+    folder to re-key it (an_envelope_goes_with_its_access)."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine.member_sync(_Scripted(member=member))  # confirms the founder
+        machine._settle(lambda _obj: "server")
+        snap = snapshot(machine.devices["A"].vault)
+        top = next(f for f in machine._folders("A") if snap[f][2] not in machine._folders("A"))
+        below = next(f for f in machine._folders("A") if snap[f][2] == top)
+        machine._grant("A", member, below, "read")  # B does not pull it
+        before = set(machine._folders("B"))
+        name = machine._token("F")
+        machine._local("B", f"create folder {name} under {below}", lambda v: v.create_node(name, below))
+        made = (set(machine._folders("B")) - before).pop()
+        machine._grant("B", member, top, "write")
+        logged = teamlog.replay(machine._server_log())
+        assert top in logged.folders and below in logged.folders, machine._trace()
+        assert made not in logged.folders, (
+            f"the grant of {top} logged {made}, a folder below the team folder {below}\n" + machine._trace())
+        machine.track_member_keys()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_write_on_a_copy_moved_here_unsent(loopback_server, monkeypatch):
+    """R16-N2 (nightly stateful-deep 45604036980 on d441587, TeamLogMachine,
+    third failure): B moves an entry of F1 into F3 and has not pushed it. m6,
+    who may write in F1 but only read F3, re-keys F1 as admin for a while: its
+    copy of the entry stays in F1. B judged that copy as leaving F3 (its own
+    unsent move) and refused it, so B's move conflicted on every push and the
+    sync never settled. Web and phone judge it from the server copy."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine.member_sync(_Scripted(member=member))  # confirms the founder
+        snap = snapshot(machine.devices["A"].vault)
+        top = next(f for f in machine._folders("A") if snap[f][2] not in machine._folders("A"))
+        entry = next(e for e in machine._entries("A") if snap[e][2] == top)
+        name = machine._token("F")
+        machine._local("A", f"create folder {name}", lambda v: v.create_node(name))
+        other = next(f for f in machine._folders("A") if f not in snap)
+        machine._settle(lambda _obj: "server")
+        machine._grant("A", member, top, "write")
+        machine._grant("A", member, other, "read")
+        machine.track_member_keys()
+        machine._settle(lambda _obj: "server")
+        machine._local("B", f"move entry {entry} to {other}", lambda v: v.move_entry(entry, other))
+        machine.yield_the_admin_role_and_take_it_back(
+            _Scripted(member=member, device="A", folder=top), chain=False, unsent=False)
+        machine.track_member_keys()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_team_log(loopback_server):
     TeamLogMachine.server = loopback_server
     run_state_machine_as_test(

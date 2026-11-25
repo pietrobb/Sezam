@@ -80,7 +80,7 @@ class ApplyMixin:
                     },
                 )
                 if decision in ("sent", "adopt_as_base"):
-                    self._set_base(obj_id, version, payload_hash)
+                    self._set_base(obj_id, version, payload_hash, parent=parent_ref or "")
                 if decision == "sent":
                     outbox.drop_write(self._db, obj_id)
                 if decision == "conflict":
