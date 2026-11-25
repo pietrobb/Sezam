@@ -180,6 +180,7 @@ Local changes; the push sends them and the server decides there.
 | `get_field_value` | — | — | — | test_review9_team_identity.py |
 | `get_tree` | — | — | — | test_vault.py |
 | `grant_folder_access` | an access envelope with the folder key, and the log's access.set | the team admin in the local team log; the server takes only records the log allows | `POST /api/sync`<br>`POST /api/team-log` | test_grant_folder_access.py<br>test_review9_desktop_tree_authority.py |
+| `held_kdf` | — (a copy of the unlocked KEK, for re-sending a lost rotation with its own salt) | — | — | test_lost_rotation_sent_again_sm23b.py |
 | `key_change_unpushed` | — | — | — | test_inv7_unlock_never_blocked.py |
 | `list_entries` | — | — | — | test_gui_e2e_flow.py |
 | `list_nodes` | — | — | — | test_gui_e2e_flow.py |

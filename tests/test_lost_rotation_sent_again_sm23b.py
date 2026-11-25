@@ -52,6 +52,9 @@ def test_a_lost_rotation_goes_out_again_under_the_kek_the_other_device_holds(
     desktop_client = _taken_over(desktop, url)
     lost_salt = desktop.db.get_meta("argon2_salt")
     assert lost_salt == laptop.db.get_meta("argon2_salt")
+    salt, _params, kek = laptop.held_kdf()  # what the rotation is sent again with
+    assert salt.hex() == lost_salt and bytes(kek) == bytes(laptop.dek_mgr._kek)
+    kek[:] = b"\x00" * len(kek)
 
     db._storage.clear()
     db._storage.update(copy.deepcopy(backup))

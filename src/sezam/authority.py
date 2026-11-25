@@ -80,6 +80,8 @@ VAULT: dict[str, Op] = {
         "an access envelope with the folder key, and the log's access.set", LOG_ADMIN, (PUSH, APPEND),
         tests=("tests/test_grant_folder_access.py", "tests/test_review9_desktop_tree_authority.py"),
     ),
+    "held_kdf": read("tests/test_lost_rotation_sent_again_sm23b.py",
+                     note="a copy of the unlocked KEK, for re-sending a lost rotation with its own salt"),
     "key_change_unpushed": read("tests/test_inv7_unlock_never_blocked.py"),
     "list_entries": read("tests/test_gui_e2e_flow.py"),
     "list_nodes": read("tests/test_gui_e2e_flow.py"),
