@@ -813,6 +813,41 @@ def test_the_member_with_the_lost_rotation_uploads_the_handover_itself():
     assert restore(_db(storage), upload, IDS["B"]), REFUSED[-1:]
 
 
+def test_counterexample_a_recovery_key_the_same_batch_retires():
+    """Nightly stateful-deep run 45604036980 on d441587 (R16-N3): A stored its
+    recovery blob and named it; the server lost its log. C, holding A's key,
+    put back a log in which A names another recovery key, makes B admin and
+    leaves. The restore took it: at its end A is no admin, so A's record
+    names no current recovery (teamlog.recovery_key) and voids no shares.
+    The append refused the same batch (org_recovery_superseded) though it
+    ends the same way."""
+    honest = Honest(Keys())
+    pk = honest.keys.recovery_pk()
+    honest.db._storage["org_recovery_blobs"] = [{
+        "id": 1, "created_by": IDS["A"], "recovery_signing_pk": bytes.fromhex(pk),
+    }]
+    assert honest._commit("A", [("org.recovery", "A", {"recovery_pk": pk})])
+    storage = copy.deepcopy(honest.snapshots[-1][1])
+    storage["team_log"] = []
+    forger = Forger(honest, "C", teamlog.TeamState(), stolen="A")
+    key = honest.current("A")
+    forger._try("genesis", IDS["A"], {
+        "org": "0H" + "0" * 24, "user_id": IDS["A"], "signing_pk": key.pk, "encryption_pk": key.enc,
+    }, key)
+    forger._try("org.recovery", IDS["A"], {"recovery_pk": honest.keys.recovery_pk()}, key)
+    forger._try("member.add", IDS["A"], {
+        "user_id": IDS["B"], "signing_pk": honest.current("B").pk,
+        "encryption_pk": honest.current("B").enc, "role": "admin",
+    }, key)
+    forger._try("member.remove", IDS["A"], {"user_id": IDS["A"]}, key)
+    assert forger.labels == ["genesis(A->A)", "org.recovery(A->-)", "member.add(A->B)", "member.remove(A->A)"]
+
+    REFUSED.clear()
+    assert restore(_db(storage), forger.records, IDS["C"]), REFUSED[-1:]
+    why = NormalPath(storage, "C", "A", forger.held).takes([], forger.records)
+    assert not why, why  # the append takes it as well
+
+
 @pytest.mark.parametrize("seed", property_seeds.load("test_inv2_restore_within_append.py"), ids=str)
 def test_inv2_saved_counterexample(seed):
     """Review e443cbc P2: every counterexample in property_seeds.txt passes."""

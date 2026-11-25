@@ -521,7 +521,7 @@ async def append(
     """
     prepared = await _under_lock(cur, records, user_id, prepared, restore=False)
     bodies, current, steps = prepared.bodies, prepared.current, prepared.steps
-    await _refuse_superseded_recovery(cur, bodies)
+    await _refuse_superseded_recovery(cur, bodies, restored=current)
     now_ms = int(time.time() * 1000)
     for record, body, step in zip(records, bodies, steps):
         await _check_against_users(cur, body, pending_identity, step)
@@ -553,9 +553,12 @@ async def _refuse_superseded_recovery(
     batch counts.
 
     A restore too (INV-2, review e443cbc H3: any member put back such a
-    record of the admin, signed by a stolen key, and voided its shares), with
-    ``restored`` the log it ends with: the record counts while it is still the
-    current recovery there. The uploader's own record stands: after a backup
+    record of the admin, signed by a stolen key, and voided its shares).
+    ``restored`` is the log the append or restore ends with: the record counts
+    while it is still the current recovery there (teamlog.recovery_key: an
+    active admin's). A batch that also removes or demotes its author voids no
+    shares; the append refused it while the restore took it (R16-N3, nightly
+    45604036980). The restore's uploader's own record stands: after a backup
     the blob may be older than the log, and its author stores a blob for the
     key on the main path anyway (recovery.store, then the append)."""
     if not any(b["type"] == "org.recovery" for b in bodies):
