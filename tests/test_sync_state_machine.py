@@ -3746,6 +3746,7 @@ class TeamLogMachine(SyncMachine):
         queued = dev.client.pending_team_changes() + [
             change for kept in dev.client.pending_team_grants().values() for change in kept]
         sent_for = {(c["user_id"], c["folder"]) for kind, c in queued if kind == "access.set"}
+        dirty_before = _dirty_ids(dev.vault)
         try:
             hand_over_admin(dev.vault, dev.client, user_id, lambda _fp: True)
         except (RuntimeError, ValueError, teamlog.TeamLogError) as exc:
@@ -3755,6 +3756,10 @@ class TeamLogMachine(SyncMachine):
                 f"a refused handover to {name} landed\n" + self._trace())
             return
         self.log.append(f"{device}: hands the admin role to {name}")
+        # R16-Z SM24b: the handover pushes this device's writes first; the
+        # server holds them now. Not credited, a later delete of them that
+        # aged out of the server looked like the server never had them.
+        self._note_pushed(device, dirty_before)
         if edit:
             coverage_event("handover with an unsent edit")
             assert not dev.vault.db.fetchone(
@@ -5570,6 +5575,32 @@ def test_sync_state_machine_team_log_hands_the_role_over_and_back(loopback_serve
         machine.track_member_keys()
         machine.the_server_log_follows_the_rules()
         machine.an_envelope_goes_with_its_access()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_log_handover_sends_a_delete_that_ages_out(loopback_server, monkeypatch):
+    """R16-Z SM24b (gate 21 on f963cb2, team_log): A edits an entry and
+    deletes it; the handover pushes both, tombstone GC collects the entry, and
+    B, which edited it without seeing either, brings it back. The model did
+    not credit the handover's push, so A's edit, gone with A's own delete,
+    looked lost without a conflict."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        entry = sorted(machine._entries("A"))[0]
+        machine.edit_entry(_Scripted(device="A", entry=entry))
+        machine.delete_entry(_Scripted(device="A", entry=entry))
+        machine.edit_entry(_Scripted(device="B", entry=entry))
+        machine._member_sync(member)
+        machine.yield_the_admin_role_and_take_it_back(_Scripted(member=member, device="A"), False, False)
+        assert any(line.endswith("hands the admin role back") for line in machine.log), machine._trace()
+        machine.gc_tombstones()
+        assert entry in machine.collected, machine._trace()
+        machine.track_member_keys()
         machine._settle(lambda _obj: "server")
     finally:
         machine.teardown()
