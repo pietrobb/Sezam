@@ -75,6 +75,24 @@ def test_o4_ci_runs_ruff_pytest_node_check_and_flutter():
     assert node == ["git ls-files 'web/*.js' ':!:web/static/js/vendor/*' | xargs -n1 node --check"]
 
 
+def _job(name: str) -> str:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    start = text.index(f"\n  {name}:\n")
+    following = re.search(r"\n  [a-z][a-z-]*:\n", text[start + 1:])
+    return text[start:start + 1 + following.start()] if following else text[start:]
+
+
+def test_the_commit_check_has_flutter_for_phone_red_lines():
+    """CI run 45584285599: the red line of 7bd91ce (SM22c) runs a phone test
+    through `flutter test`; the commits job had no flutter, so the test skipped,
+    pytest exited 0 and the check reported a red line that passes."""
+    commits, python = _job("commits"), _job("python")
+    version = re.search(r"flutter-version: (\S+)", python).group(1)
+    assert "uses: subosito/flutter-action@v2" in commits
+    assert f"flutter-version: {version}" in commits
+    assert "libsodium-dev libsqlite3-dev" in commits  # the phone harness loads them directly
+
+
 def test_o4_web_scripts_pass_node_check():
     node = shutil.which("node")
     if node is None:

@@ -30,6 +30,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      # CI run 45584285599: a phone fix's red line runs `flutter test` (through
+      # tests/test_cross_client_password_change.py _phone); without flutter it
+      # skipped, pytest exited 0 and the red line looked like it passes.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.38.6
+          channel: stable
+      - run: sudo apt-get update && sudo apt-get install -y libsodium-dev libsqlite3-dev
       - run: python -m pip install ./core/py
       - run: python -m pip install -e ".[dev,import]"
       - name: commit messages and red lines
