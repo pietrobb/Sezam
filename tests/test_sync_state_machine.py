@@ -360,6 +360,8 @@ class SyncMachine(RuleBasedStateMachine):
         self.names: dict[str, set[str]] = defaultdict(set)
         self.knowledge: dict[str, set[int]] = {}
         self.server_known: dict[str, set[int]] = {}
+        # Writes no send of their device took yet (_closure(sent_only=True)).
+        self.unsent: set[int] = set()
         self.traced: set[int] = set()
         # Objects tombstone GC removed from the server -> the events their
         # tombstone was written with knowledge of.
@@ -446,7 +448,17 @@ class SyncMachine(RuleBasedStateMachine):
     def _token(self, prefix: str) -> str:
         return f"{prefix}{next(self.tokens)}"
 
-    def _closure(self, obj: str, state: tuple | None) -> set[int]:
+    def _closure(self, obj: str, state: tuple | None, sent_only: bool = False) -> set[int]:
+        """What a copy of ``obj`` in ``state`` was written knowing.
+
+        ``sent_only``: the server's copy. Stateful test SM23a: A moved an
+        entry away and on into the folder C had just moved it to, kept the
+        server copy of the conflict, and C edited it on. A's unsent move had
+        C's state, so the server copy counted A's first move as kept and C's
+        edit looked like it lost that move without a conflict. A write no send
+        took is not what the server's copy was made from (unless only such
+        writes made that state: then it got there in a way not modelled).
+        """
         known: set[int] = set()
         states = [state]
         if state and state[0]:
@@ -454,9 +466,16 @@ class SyncMachine(RuleBasedStateMachine):
             # work below it): the live copy is what the deleting device wrote.
             states.append((False, *state[1:]))
         for each in states:
-            for event_id in self.producers.get((obj, each), ()):
+            producers = self.producers.get((obj, each), set())
+            if sent_only and producers - self.unsent:
+                producers = producers - self.unsent
+            for event_id in producers:
                 known |= self.events[event_id].known
         return known
+
+    def _sent(self, device: str, obj: str) -> None:
+        """A send of ``device`` took its copy of ``obj``: its writes are out."""
+        self.unsent -= {e for e in self.unsent if self.events[e].device == device and self.events[e].obj == obj}
 
     def _kept_server_copy(self, obj: str, state: tuple | None) -> set[int]:
         """What keeping the server copy of a conflict kept.
@@ -478,6 +497,8 @@ class SyncMachine(RuleBasedStateMachine):
         self.producers[(obj, state)].add(event_id)
         self.names[obj].add(state[1])
         self.knowledge[device].add(event_id)
+        if kind == "write":
+            self.unsent.add(event_id)
 
     def _record_local_change(self, device: str, before: dict, after: dict) -> None:
         for obj, state in after.items():
@@ -926,7 +947,8 @@ class SyncMachine(RuleBasedStateMachine):
         landed = {a["id"] for a in ((undo.fired.get("reply") or {}).get("accepted") or [])} if undo else set()
         for obj in (before - _dirty_ids(dev.vault)) | (landed & before):
             if obj in snap:
-                self.server_known[obj] = self._closure(obj, snap[obj])
+                self._sent(device, obj)
+                self.server_known[obj] = self._closure(obj, snap[obj], sent_only=True)
 
     def _pull(self, device: str, failure: str | None = None) -> None:
         dev = self._command(device)
@@ -960,7 +982,7 @@ class SyncMachine(RuleBasedStateMachine):
         conflicts = {c["id"] for c in dev.client.get_pull_conflicts()}
         for obj, state in snap.items():
             if obj not in dirty and obj not in conflicts:
-                self.server_known[obj] = self._closure(obj, state)
+                self.server_known[obj] = self._closure(obj, state, sent_only=True)
 
     def _resolve(self, device: str, obj: str, keep: str) -> None:
         dev = self._command(device)
@@ -1311,7 +1333,8 @@ class SyncMachine(RuleBasedStateMachine):
         # Only what it sent: a copy moved out of the share stays here as it was.
         for obj in before - _dirty_ids(member.vault):
             if obj in snap:
-                self.server_known[obj] = self._closure(obj, snap[obj])
+                self._sent(member.name, obj)
+                self.server_known[obj] = self._closure(obj, snap[obj], sent_only=True)
         for conflict in client.get_pull_conflicts():
             obj = conflict["id"]
             known_before = set(self.knowledge[member.name])
@@ -1464,7 +1487,8 @@ class SyncMachine(RuleBasedStateMachine):
         snap = self._learn(admin.name, self._member_snap(admin))
         for obj in before - _dirty_ids(admin.vault):
             if obj in snap:
-                self.server_known[obj] = self._closure(obj, snap[obj])
+                self._sent(admin.name, obj)
+                self.server_known[obj] = self._closure(obj, snap[obj], sent_only=True)
 
     # ── org recovery (Shamir): the password is forgotten ──
 
@@ -2036,7 +2060,9 @@ class SyncMachine(RuleBasedStateMachine):
                   for i in c.get("objects") or []}
         for obj, state in snap.items():
             if obj not in unsent and (pulled or obj in posted):
-                self.server_known[obj] = self._closure(obj, state)
+                if obj in posted:
+                    self._sent(WEB, obj)
+                self.server_known[obj] = self._closure(obj, state, sent_only=True)
 
     def _web_login(self) -> None:
         password = self._account_password()
@@ -2090,7 +2116,8 @@ class SyncMachine(RuleBasedStateMachine):
             reply = (result.get("failure") or {}).get("reply") or {}
             landed = obj in {a["id"] for a in reply.get("accepted") or []}
             if landed or (not self.web_ended and obj not in result["view"]["dirty"]):
-                self.server_known[obj] = self._closure(obj, state)
+                self._sent(WEB, obj)
+                self.server_known[obj] = self._closure(obj, state, sent_only=True)
         self._web_pulled(result, skip=obj)
 
     def events_objs(self) -> set[str]:
@@ -4739,6 +4766,44 @@ def test_sync_state_machine_keep_server_after_a_move_away_and_back(loopback_serv
         )
         machine.resolve_conflicts(_Scripted(device="A", keep="server"))
         machine.delete_folder(_Scripted(device="B", folder=top))
+        machine.push(_Scripted(device="B"), None)
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_keep_server_after_moving_on_into_its_folder(loopback_server, monkeypatch):
+    """R16-Z SM23a (gate 20 on c18a908): B moved an entry into a subfolder, A
+    moved it elsewhere and on into that subfolder, unsent, and C's next pull
+    credited the server copy with A's moves (the same state). A kept the server
+    copy of the conflict and B edited the entry on: nothing of A's was lost,
+    yet A's first move looked lost without a conflict."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        db = machine.devices["A"].vault.db
+        top = db.fetchone(
+            "SELECT id FROM nodes WHERE parent_id = (SELECT id FROM nodes WHERE parent_id IS NULL) "
+            "AND id IN (SELECT parent_id FROM nodes) AND is_deleted = 0"
+        )["id"]
+        sub = db.fetchone("SELECT id FROM nodes WHERE parent_id = ?", (top,))["id"]
+        entry = db.fetchone("SELECT id FROM entries WHERE node_id = ? ORDER BY id", (top,))["id"]
+        machine.connect_another_device()
+        machine.move_entry(_Scripted(device="B", entry=entry, target=sub))
+        machine.push(_Scripted(device="B"), None)
+        machine.create_folder(_Scripted(device="A", parent="ROOT"))
+        away = next(f for f in machine._folders("A") if f not in (top, sub))
+        machine.move_entry(_Scripted(device="A", entry=entry, target=away))
+        machine.move_entry(_Scripted(device="A", entry=entry, target=sub))
+        machine.pull(_Scripted(device="C"), None)  # B does not pull: it edits on its own move
+        machine.push(_Scripted(device="A"), None)
+        machine.pull(_Scripted(device="A"), None)
+        assert entry in {c["id"] for c in machine.devices["A"].client.get_pull_conflicts()}, (
+            machine._trace()
+        )
+        machine.resolve_conflicts(_Scripted(device="A", keep="server"))
+        machine.edit_entry(_Scripted(device="B", entry=entry))
         machine.push(_Scripted(device="B"), None)
         machine._settle(lambda _obj: "server")
     finally:
