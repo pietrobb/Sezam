@@ -107,6 +107,34 @@ def set_revocation_queue(db, queue: list) -> None:
     outbox.replace_items(db, outbox.REVOKE, [(user_id, None) for user_id in queue])
 
 
+# Stateful test SM24a (R16-Z): keys of this account a member held through an
+# envelope withdrawn here without a re-key, {dek_id: [user_id, ...]}.
+WITHDRAWN_HOLDERS_META = "withdrawn_holder_keys"
+
+
+def note_withdrawn_holder(db, dek_id: str, user_id: str) -> None:
+    """Remember that ``user_id`` knew ``dek_id``: their envelope went while a
+    folder here is still sealed under that key (another device of the account
+    had no folder to re-key, or the folder comes back from this device)."""
+    held = {
+        key: users for key, users in (db.get_meta_json(WITHDRAWN_HOLDERS_META) or {}).items()
+        if db.fetchone("SELECT 1 FROM deks WHERE id = ?", (key,))
+    }
+    held[dek_id] = sorted(set(held.get(dek_id, [])) | {user_id})
+    db.set_meta_json(WITHDRAWN_HOLDERS_META, held)
+
+
+def withdrawn_holder_keys(db, user_id: Optional[str] = None) -> dict[str, list[str]]:
+    """The noted keys (of ``user_id``, or all) some live folder here is still
+    sealed under: the re-key of a revoked holder must replace them too."""
+    return {
+        key: [u for u in users if user_id in (None, u)]
+        for key, users in (db.get_meta_json(WITHDRAWN_HOLDERS_META) or {}).items()
+        if (user_id is None or user_id in users)
+        and db.fetchone("SELECT 1 FROM nodes WHERE dek_id = ? AND is_deleted = 0", (key,))
+    }
+
+
 def org_recovery_registration(db) -> Optional[Any]:
     """The public /store body the server has not registered, or None
     (capability review run 91): wrapped_kek is sealed under the recovery

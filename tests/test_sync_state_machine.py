@@ -4651,6 +4651,37 @@ def test_sync_state_machine_rekey_of_a_folder_deleted_here(loopback_server, monk
         machine.teardown()
 
 
+def test_sync_state_machine_folder_back_on_the_key_of_a_withdrawn_grant(loopback_server, monkeypatch):
+    """R16-Z SM24a (gate 21 on f963cb2, second admin): B deletes a folder
+    shared with a member and tombstone GC collects it; A, not pulled, renames
+    it, so its full resync keeps the folder and sends it back on its key. A
+    new device C holds A's grant to the member but no folder: when the second
+    admin revokes the member, C withdraws the envelope with nothing to re-key.
+    A's pull applied the withdrawal and forgot the member knew the key, its
+    re-key found nothing, and the revoked member could read the folder again."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SecondAdminMachine.server = loopback_server
+    machine = SecondAdminMachine()
+    try:
+        machine.track_member_keys()
+        (admin,) = machine._second_admins()
+        member = next(u for u in machine._active_members() if u not in machine.admins and machine.granted[u])
+        folder = sorted(machine.granted[member])[0]
+        machine.delete_folder(_Scripted(device="B", folder=folder))
+        machine.push(_Scripted(device="B"), None)
+        machine.gc_tombstones()
+        assert folder in machine.collected, machine._trace()
+        machine.rename_folder(_Scripted(device="A", folder=folder))
+        machine.connect_another_device()
+        machine.track_member_keys()
+        machine.second_admin_revokes(_Scripted(admin=admin, member=member), None)
+        assert member in machine.revoked, machine._trace()
+        machine.track_member_keys()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_withheld_keys_after_a_revocation(loopback_server, monkeypatch):
     """Run on S4a (reproduce_failure AXicY3BkcBR11HNUZHAEQxBicFQFsZlAhA5YFABcKASH):
     A grants a folder to a member, a new device C revokes the member (re-keys

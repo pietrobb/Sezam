@@ -3247,6 +3247,14 @@ class Vault:
             self._db.get_meta_json(STALE_OWN_WRAPS_META) or []
         )
         rows = [r for r in rows if r["sealed_here"] or r["dek_id"] not in foreign]
+        # Stateful test SM24a: a key the member knew through a grant of this
+        # account withdrawn without a re-key, that a folder here still uses.
+        listed = {r["dek_id"] for r in rows}
+        rows += [
+            {"dek_id": dek_id, "sealed_here": 1}
+            for dek_id in sorted(pending_states.withdrawn_holder_keys(self._db, revoked_user_id))
+            if dek_id not in listed
+        ]
         withheld = queued_for_removal(self._db) | {revoked_user_id}
         team = local_team_state(self._db)
         if team is not None:

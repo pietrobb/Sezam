@@ -236,6 +236,10 @@ def queue_revoked_holders(vault: Vault, client: SyncClient) -> None:
             (me, me),
         )
     }
+    # Stateful test SM24a: and the members whose grant went without a re-key
+    # while a folder here is still on that key.
+    former = pending_states.withdrawn_holder_keys(vault.db)
+    holders |= {u for users in former.values() for u in users}
     if not holders and not lost:
         return
     # The member list is the admin's: first the server's team log, which says
@@ -308,6 +312,7 @@ def _rekey_due(vault: Vault, team, me: str, user_id: str) -> bool:
     keys = [row["dek_id"] for row in vault.db.fetchall(
         "SELECT DISTINCT dek_id FROM access_envelopes WHERE created_by = ? AND user_id = ?", (me, user_id)
     )]
+    keys += [k for k in sorted(pending_states.withdrawn_holder_keys(vault.db, user_id)) if k not in keys]
     return sync_core.call("rekey_due", team=sync_core.team_input(team, me, keys), keys=keys)
 
 

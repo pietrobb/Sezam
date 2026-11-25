@@ -431,6 +431,19 @@ class ApplyMixin:
         key the signature was verified with, not the unsigned owner_id."""
         lost = dict(outbox.items(self._db, outbox.WITHDRAWAL, outbox.HELD))
         if is_deleted:
+            # Stateful test SM24a: another device of this account withdrew a
+            # grant with no folder to re-key (tombstone GC took it there); this
+            # one brings the folder back on that key. Forgotten with the
+            # envelope, the member's re-key found nothing and they could read
+            # the folder again.
+            held = self._db.fetchone(
+                "SELECT dek_id, user_id FROM access_envelopes WHERE id = ? AND created_by = ? AND user_id != ?",
+                (obj_id, self._user_id, self._user_id),
+            )
+            if held is not None and self._db.fetchone(
+                "SELECT 1 FROM nodes WHERE dek_id = ? AND is_deleted = 0", (held["dek_id"],)
+            ):
+                pending_states.note_withdrawn_holder(self._db, held["dek_id"], held["user_id"])
             self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (obj_id,))
             self._db.execute(
                 "INSERT OR IGNORE INTO withdrawn_envelopes (envelope_id) VALUES (?)", (obj_id,)
