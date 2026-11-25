@@ -144,7 +144,7 @@ MUTANTS = (
     ),
     Mutant(
         "R10", "revert", "src/sezam/vault/oplock.py",
-        "    if path is not None and not held_here(path):\n",
+        "    if path is not None and not holds_sync(path):\n",  # held_here before ac7f4a2 (R16-M3)
         "    if False:\n",
         ("tests/test_review14_oplock_coverage.py",),
         "7500919 (INV-6): pending sync state is written only under the vault lock",
@@ -185,8 +185,9 @@ MUTANTS = (
     ),
     Mutant(
         "O6", "open", "server/app/routers/sync.py",
-        "                                regrant = await cur.fetchone() is not None\n",
-        "                                regrant = True\n",
+        # fbbede3 (R15-M): the earlier grant must still stand.
+        "                                regrant = any(\n",
+        "                                regrant = True or any(\n",
         ("tests/test_team_log_server_push.py",),
         "b5050d8: a key outside the log goes to another account as if it were a re-seal",
     ),

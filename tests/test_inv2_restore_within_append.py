@@ -24,7 +24,9 @@ below fails. The helpers drive both server versions (prepare_* came in 0e96ca2).
 
 Default run (every push) is derandomized, 2000 examples each: review e443cbc
 P2 found the per-push run catching 1 of 4 reverted restore fixes; at 2000 it
-catches each restore mutant of scripts/mutants.py (R1-R6) by itself. For a
+caught each restore mutant of scripts/mutants.py (R1-R6) by itself, until on
+d441587 it missed R1 and R5 (nightly 45604036980): each has a scripted test
+below now, so the check does not hang on where a derandomized run goes. For a
 deep random run (the nightly job uses 10000):
 
     set SEZAM_PROPERTY_EXAMPLES=10000
@@ -846,6 +848,65 @@ def test_counterexample_a_recovery_key_the_same_batch_retires():
     assert restore(_db(storage), forger.records, IDS["C"]), REFUSED[-1:]
     why = NormalPath(storage, "C", "A", forger.held).takes([], forger.records)
     assert not why, why  # the append takes it as well
+
+
+def _lost_log() -> tuple[Honest, dict, Forger]:
+    """A founds the log; the server loses it. A forges on top of the honest history."""
+    honest = Honest(Keys())
+    storage = copy.deepcopy(honest.snapshots[-1][1])
+    storage["team_log"] = []
+    return honest, storage, Forger(honest, "A", teamlog.replay(honest.records))
+
+
+def test_a_restore_holds_the_users_checks_on_its_history():
+    """Mutant R1 (4503b79, H3), which the per-push property missed on d441587
+    (nightly 45604036980, R16-N4): a restored member.add of an account still
+    waiting for approval. The append refuses it; so must the restore."""
+    honest, storage, forger = _lost_log()
+    key = honest.current("A")
+    forger._try("member.add", IDS["A"], {
+        "user_id": IDS[WAITING], "signing_pk": honest.current(WAITING).pk,
+        "encryption_pk": honest.current(WAITING).enc, "role": "member",
+    }, key)
+    assert forger.labels == [f"member.add(A->{WAITING})"]
+    upload = honest.records + forger.records
+
+    assert NormalPath(storage, "A").takes(honest.records, upload)  # the main path refuses
+    REFUSED.clear()
+    assert not restore(_db(storage), upload, IDS["A"])
+    assert "approved account" in str(REFUSED[-1:])
+
+
+def test_a_restore_holds_one_admin_between_two_rotations():
+    """Mutant R5 (200d5e8), which the per-push property missed on d441587
+    (nightly 45604036980, R16-N4): one author's records with two member.keys
+    take two appends, the first ending between them. With B a second admin
+    all the way through that span, no append could end there."""
+    honest, storage, forger = _lost_log()
+    old, first, second = honest.current("A"), honest.keys.new(), honest.keys.new()
+    forger._try("member.add", IDS["A"], {
+        "user_id": IDS["B"], "signing_pk": honest.current("B").pk,
+        "encryption_pk": honest.current("B").enc, "role": "admin",
+    }, old)
+    kind, _, data = _rotation(forger.state, "A", first)
+    forger._try(kind, IDS["A"], data, old)
+    forger._try("folder.key", IDS["A"], {"folder": FOLDERS[0], "gen": 0, "dek_id": _dek(0), "prev_dek_id": None}, first)
+    kind, _, data = _rotation(forger.state, "A", second)
+    forger._try(kind, IDS["A"], data, first)
+    forger._try("member.remove", IDS["A"], {"user_id": IDS["B"]}, second)
+    assert forger.labels == [
+        "member.add(A->B)", "member.keys(A->A)", "folder.key(A->-)", "member.keys(A->A)", "member.remove(A->B)",
+    ]
+    _set_keys_in(storage, "A", second)  # the account signs in with its last keys
+
+    REFUSED.clear()
+    assert not restore(_db(storage), honest.records + forger.records, IDS["A"])
+    assert "more than one admin" in str(REFUSED[-1:])
+
+
+def _set_keys_in(storage: dict, name: str, key: Key) -> None:
+    row = next(u for u in storage["users"] if u["id"] == IDS[name])
+    row["signing_pk"], row["encryption_pk"] = bytes.fromhex(key.pk), bytes.fromhex(key.enc)
 
 
 @pytest.mark.parametrize("seed", property_seeds.load("test_inv2_restore_within_append.py"), ids=str)
