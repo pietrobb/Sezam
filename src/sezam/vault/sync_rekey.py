@@ -27,7 +27,7 @@ from .sync_common import (
 )
 from .sync_writers import REFUSED_COPIES_META
 from .team_log_local import local_team_state, projected_team_state
-from .team_log_state import log_read_once
+from .team_log_state import log_read_once, rekey_waiting_for_log_key
 
 # Last team-log seq whose member.keys records this device sealed keys for.
 ROTATION_SEALED_META = "team_rotation_sealed_seq"
@@ -122,38 +122,16 @@ class RekeyMixin:
         self._push_cache.clear()
         logger.warning("The pending re-key had reached the server; closed as sent")
 
-    def rekey_waits_for_log_key(self) -> Optional[dict]:
-        """A folder of the pending batch that the team log moved on to a key
-        this device does not hold, or None.
-
-        R16-Z SM26c (gate 23 on 6858912): another device of this account
-        re-keyed the folder too; the server went back to a backup and lost
-        that re-key's objects, while the log got its folder.key back (INV-7).
-        The log refuses this batch (folder_key_moved) and no pull binds the
-        folder to the log's key until the device holding it sends it again:
-        the batch then counts as superseded. Until then the push waits; it
-        raised 'Atomic re-key batch conflict' on every sync and named
-        'sezam abandon-rekey', which would undo a revocation the log made.
-        """
-        from .. import teamlog
-
-        from .team_log_local import rekey_changes
-
-        state = self.team_state()
-        for _kind, data in rekey_changes(state, pending_states.rekey_batch(self._db)):
-            current = teamlog.current_key(state, data["folder"])
-            if current in (None, data["prev_dek_id"], data["dek_id"]):
-                continue
-            if self._db.fetchone("SELECT 1 FROM deks WHERE id = ?", (current,)) is None:
-                return {
-                    "folder": data["folder"], "dek_id": current,
-                    "message": (
-                        f"The re-key of folder {data['folder']} waits: the team log moved it on to "
-                        f"key {current}, which another device re-keyed and this one does not hold "
-                        "yet (the server lost it). It goes on once that device has synced."
-                    ),
-                }
-        return None
+    def _rekey_batch_conflict(self, exc: Exception) -> dict:
+        """R16-Z SM26c: wait for a folder key the log moved on to, or raise."""
+        waits = rekey_waiting_for_log_key(self._db, self.team_state(), pending_states.rekey_batch(self._db))
+        if waits is None:
+            raise RuntimeError(
+                "Atomic re-key batch conflict; it stays pending for the next sync "
+                "(if it keeps failing: 'sezam abandon-rekey')"
+            ) from exc
+        logger.warning(waits["message"])
+        return {"accepted": [], "conflicts": [], "rekey_waits": waits}
 
     def _rebase_pending_rekey(self) -> None:
         """Carry a refused member re-key over what the server holds now.

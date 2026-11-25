@@ -265,14 +265,7 @@ class PushMixin:
             try:
                 result = self._push_once()
             except _RekeyBatchConflict as exc:
-                waits = self.rekey_waits_for_log_key()
-                if waits is not None:
-                    logger.warning(waits["message"])
-                    return {"accepted": [], "conflicts": [], "rekey_waits": waits}
-                raise RuntimeError(
-                    "Atomic re-key batch conflict; it stays pending for the next sync "
-                    "(if it keeps failing: 'sezam abandon-rekey')"
-                ) from exc
+                return self._rekey_batch_conflict(exc)
         if not self.retry_org_recovery_rewrap():
             result = {**result, "org_recovery_rewrap_pending": True}
         if getattr(self, "_org_recovery_superseded", False):

@@ -615,14 +615,7 @@ class SyncClient(
                     held_kdf[2][:] = b"\x00" * len(held_kdf[2])
                 proof[:] = b"\x00" * len(proof)
                 server_keypair = None
-                self._token = None
-                self._push_cache.clear()
-                # R16-Z SM26b: the ring loaded before the server went back
-                # named this device's key as the account's: the rotation's
-                # lists came out empty (as for one that landed, SM43) and the
-                # server refused every push with key_vouchers_incomplete.
-                self._signing_key_rings.pop(self._user_id, None)
-                self._rotation_authorizer = None
+                self._forget_session_after_lost_rotation()
                 logger.warning("The server lost this device's identity rotation; it is sent again")
                 return key_epoch
             log_named = self._log_named_former_private(vault.keypair, server_keypair)

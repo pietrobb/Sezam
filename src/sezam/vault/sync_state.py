@@ -30,6 +30,19 @@ from .sync_common import (
 class SyncStateMixin:
     """SyncClient methods: sync checkpoint, rollback check, per-object base versions, revived folders."""
 
+    def _forget_session_after_lost_rotation(self) -> None:
+        """Drop what this session learned before the identity rotation is sent again.
+
+        R16-Z SM26b: the ring loaded before the server went back named this
+        device's key as the account's: the rotation's lists came out empty
+        (as for one that landed, SM43) and the server refused every push
+        with key_vouchers_incomplete.
+        """
+        self._token = None
+        self._push_cache.clear()
+        self._signing_key_rings.pop(self._user_id, None)
+        self._rotation_authorizer = None
+
     # ── Sync Checkpoint (spec 8.3) ──
 
     def _compute_state_hash(self) -> str:
