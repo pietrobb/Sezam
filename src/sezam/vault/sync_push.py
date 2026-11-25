@@ -25,7 +25,7 @@ from .sync_limits import (
     require_fits_atomic_unit,
     split_for_push,
 )
-from .team_log_local import TeamLogMismatch, local_team_state, rekey_changes
+from .team_log_local import TeamLogMismatch, local_team_state, projected_team_state, rekey_changes
 
 from .sync_common import (
     _AuditLostByRestore,
@@ -106,8 +106,10 @@ class PushMixin:
             # R15 (goal #441): the level is not signed and the log decides it;
             # a level change leaves the envelope as it was, so a resend (after
             # a restore took it from the server) goes at the log's level.
+            # R16-N5: the log the server judges it by, with this request's
+            # records (a level change re-seals in the access.set's batch).
             level = row["access_level"]
-            team = self.team_state()
+            team = projected_team_state(self._db, self._user_id) if self.team_state() is not None else None
             if team is not None:
                 folder = team.dek_index.get(row["dek_id"], (None, None))[0]
                 level = team.access.get(folder, {}).get(row["user_id"]) or level

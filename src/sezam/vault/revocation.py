@@ -183,15 +183,23 @@ def _grant_in_team_log(
     held = vault.db.fetchone(
         "SELECT id FROM access_envelopes WHERE dek_id = ? AND user_id = ?", (row["id"], user_id)
     )
-    if held is not None and team.access.get(node_id, {}).get(user_id) not in (None, access_level):
-        # Only the level changes (review 8595ec1, R10-C: the way to show items a
-        # founding hid): the log decides it, the member keeps the current key.
-        client.append_team_log(changes)
-        return held["id"]
+    relevel = held is not None and team.access.get(node_id, {}).get(user_id) not in (None, access_level)
     client.team_log_records(client.pending_team_changes() + changes)  # refused by the rules: nothing is made
+    # Only the level changes (review 8595ec1, R10-C: the way to show items a
+    # founding hid): the member keeps the current key. R16-N5 (gate 26 on
+    # 7429bfc): sent as the access.set alone, the envelope kept its old level;
+    # every client and the server judge an envelope by the log's level
+    # (envelope_valid), so the admin's other devices refused it, and a removal
+    # made there never withdrew it - the removed member kept a live envelope.
+    # The held envelope is replaced at the new level in the access.set's
+    # atomic request, as a re-grant over a dead one.
     envelope_id = vault.grant_folder_access(
-        node_id, user_id, bytes.fromhex(member.encryption_pk), access_level
+        node_id, user_id, bytes.fromhex(member.encryption_pk), access_level, relevel=relevel
     )
+    if relevel and envelope_id == held["id"]:
+        # Already at that level here and on the server (made so on this device).
+        client.append_team_log(changes)
+        return envelope_id
     # Review 1141a20 H4: the access.set (and a first folder.key) go only in
     # the atomic request of the envelope. Sent before it on their own, a
     # refused envelope left the member in the log, a recipient of every later

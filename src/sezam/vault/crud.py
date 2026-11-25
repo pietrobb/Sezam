@@ -2963,6 +2963,8 @@ class Vault:
         user_id: str,
         recipient_encryption_pk: bytes,
         access_level: str = "read",
+        *,
+        relevel: bool = False,
     ) -> str:
         """Give ``user_id`` the folder's DEK in a crypto_box access envelope.
 
@@ -2972,6 +2974,10 @@ class Vault:
         member's verified (TOFU-pinned) X25519 key. The envelope goes with the
         next push. Returns the envelope id (the existing one if the member
         already holds this access level).
+
+        ``relevel``: the team log changes the member's level here; the held
+        envelope is replaced by one at the new level in the same atomic push
+        (R16-N5: envelope and log level must agree, teamlog.envelope_valid).
         """
         self._require_unlocked()
         assert self._keypair is not None
@@ -3030,7 +3036,7 @@ class Vault:
                 current = False
             if current and existing["access_level"] == access_level:
                 return existing["id"]
-            if current:
+            if current and not relevel:
                 raise ValueError(
                     f"The member already has {existing['access_level']} access to this folder"
                 )

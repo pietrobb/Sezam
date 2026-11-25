@@ -2309,7 +2309,7 @@ class SyncMachine(RuleBasedStateMachine):
             old = copy.deepcopy(self.wire[obj_id][min(self.wire[obj_id])])
             self.log.append(f"server: serves {old.get('object_type')} {obj_id} v{old['version']} again "
                             f"over its tombstone v{tombs[obj_id]}, GC floor above it")
-            self.revived = (obj_id, "nodes" if old.get("object_type") == "node" else "entries")
+            self.revived = (obj_id, "nodes" if old.get("object_type") == "node" else "entries", tombs[obj_id])
 
             def revive(reply):
                 seq = reply.get("max_commit_seq")
@@ -2467,9 +2467,13 @@ class SyncMachine(RuleBasedStateMachine):
         if not took_over:
             assert keys() == before, f"{device}: the lie {lie} changed its keys\n" + self._trace()
         if self.revived is not None:
-            obj_id, table = self.revived
-            row = meta.fetchone(f"SELECT is_deleted FROM {table} WHERE id = ?", (obj_id,))  # noqa: S608
-            assert row is None or row["is_deleted"], (
+            # R16-N5 (gate 26 on 7429bfc): the same reply may bring a newer,
+            # honest write over the tombstone - another device's edit that
+            # built on the collected copy (sync_push COLLECTED_OBJECT). Only
+            # a copy at or below the tombstone's version is the lie's.
+            obj_id, table, tomb_version = self.revived
+            row = meta.fetchone(f"SELECT is_deleted, version FROM {table} WHERE id = ?", (obj_id,))  # noqa: S608
+            assert row is None or row["is_deleted"] or row["version"] > tomb_version, (
                 f"{device}: an old version over a GC floor lie brought deleted {obj_id} back\n" + self._trace())
         # A DEK's role is never the server's word: a key held keeps its label
         # but for what the device derives itself (tier 2 from the entry
