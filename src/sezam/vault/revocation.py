@@ -348,8 +348,10 @@ def finish_queued_revocations(vault: Vault, client: SyncClient) -> dict[str, int
             client.requeued_rekey = None
             result = client.push()
             if pending_states.rekey_batch(vault.db):
-                if result.get("rollback_warning"):
-                    break  # stateful test SM85: it waits for the full resync named
+                if result.get("rollback_warning") or result.get("rekey_waits"):
+                    # Stateful test SM85: it waits for the full resync named;
+                    # R16-Z SM26c: for the device holding the log's folder key.
+                    break
                 if result.get("rekey_too_large"):
                     # Only one batch can be pending: the rest waits for it.
                     too_large[user_id] = result["rekey_too_large"]

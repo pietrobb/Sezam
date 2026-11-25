@@ -841,6 +841,16 @@ class SyncMachine(RuleBasedStateMachine):
                             + (" ROLLBACK WARNING" if result.get("rollback_warning") else ""))
             if result.get("rollback_warning"):
                 self.resync_due.add(device)
+            if result.get("rekey_waits"):
+                # R16-Z SM26c: the log moved a folder of the batch on to a key
+                # the server lost; it waits for the device holding that key.
+                # Without one it is stuck for good.
+                key = result["rekey_waits"]["dek_id"]
+                holders = [name for name, other in self.devices.items() if name != device
+                           and other.vault.db.fetchone("SELECT 1 FROM deks WHERE id = ?", (key,))]
+                assert holders, f"{device}: the re-key waits for key {key}, which no device holds\n" + self._trace()
+                coverage_event("a re-key waits for the folder key a sibling holds")
+                self.log.append(f"{device}: the re-key waits for {holders[0]}'s folder key {key}")
         except Exception as exc:
             if not (failure and _injected(exc)):
                 if "full resync" in str(exc) or "full-resync" in str(exc):
@@ -5762,6 +5772,39 @@ def test_sync_state_machine_team_grant_not_sent_before_the_keys_are_taken_over(l
         assert folder in machine.granted[member], machine._trace()
         state = teamlog.replay(machine._server_log())
         assert state.access.get(folder, {}).get(member) == "write", machine._trace()
+    finally:
+        machine.teardown()
+
+
+def test_sync_state_machine_team_rekey_waits_for_the_key_a_restore_lost(loopback_server, monkeypatch):
+    """R16-Z SM26c (gate 23 on 6858912, team_log): B revoked a member and its
+    re-key push failed (the batch stays pending). A finished the revocation
+    and re-keyed the folder first; then the server went back to a backup and
+    lost A's re-key, while the log got its folder.key back (INV-7). B's batch
+    is refused (folder_key_moved), and no pull binds the folder to A's key
+    until A sends it again: every push of B raised 'Atomic re-key batch
+    conflict' and named 'sezam abandon-rekey'. It waits for A instead."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine._settle(lambda _obj: "server")
+        machine.track_member_keys()
+        folder = machine._folders("A")[0]
+        machine._grant("A", member, folder, "read")
+        machine._settle(lambda _obj: "server")
+        machine.revoke(_Scripted(device="B", member=member), "before")
+        assert rekey_batch(machine.devices["B"].vault.db), machine._trace()
+        machine.server_backup()
+        machine._push("A")
+        machine._pull("A")
+        machine.server_restore()
+        machine._pull("A")  # puts the lost records back
+        machine._push("B")
+        assert "B: push raised" not in machine._trace(), machine._trace()
+        machine._settle(lambda _obj: "server")
+        assert not rekey_batch(machine.devices["B"].vault.db), machine._trace()
     finally:
         machine.teardown()
 

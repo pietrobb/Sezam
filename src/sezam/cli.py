@@ -2924,6 +2924,8 @@ def push(server: Optional[str]):
             click.echo(
                 "Settle them with 'sezam conflicts resolve ID --keep local|server'.", err=True
             )
+        if result.get("rekey_waits"):
+            click.echo(f"Warning: {result['rekey_waits']['message']}", err=True)
         if result.get("rekey_too_large") and not too_large:
             click.echo(f"Warning: {result['rekey_too_large']}", err=True)
         for user_id, reason in too_large.items():
