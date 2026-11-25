@@ -867,6 +867,9 @@ class SyncMachine(RuleBasedStateMachine):
                     return self._push(device)
                 if self._waits_for_sibling_rotation(device, exc):
                     return
+                if self._waits_for_lost_log(device, exc):
+                    self._note_pushed(device, before)
+                    return
                 self.log.append(f"{device}: push raised {type(exc).__name__}: {exc}")
                 raise AssertionError(f"{device}: push raised {exc!r}\n" + self._trace()) from exc
             self.log.append(f"{device}: push failed ({failure})")
@@ -939,6 +942,10 @@ class SyncMachine(RuleBasedStateMachine):
         self.log.append(f"{device}: waits for {sibling}'s identity rotation (key retired by the log)")
         return True
 
+    def _waits_for_lost_log(self, device: str, exc: Exception) -> bool:
+        """Only a machine with a team log has one the server can lose."""
+        return False
+
     def _note_pushed(self, device: str, before: set[str], undo=None) -> None:
         """After a step that pushed: what the server holds now."""
         dev = self.devices[device]
@@ -965,7 +972,7 @@ class SyncMachine(RuleBasedStateMachine):
                     self.log.append(f"{device}: pull wants a full resync: {exc}")
                     self.resync_due.add(device)
                     return
-                if self._waits_for_sibling_rotation(device, exc):
+                if self._waits_for_sibling_rotation(device, exc) or self._waits_for_lost_log(device, exc):
                     return
                 self.log.append(f"{device}: pull raised {type(exc).__name__}: {exc}")
                 raise AssertionError(f"{device}: pull raised {exc!r}\n" + self._trace()) from exc
@@ -1059,6 +1066,8 @@ class SyncMachine(RuleBasedStateMachine):
         try:
             self._call(device, "full_resync", confirmed=True)
         except REFUSALS as exc:
+            if lie is None and self._waits_for_lost_log(device, exc):
+                return None
             if lie is None:
                 self.log.append(f"{device}: full resync raised {type(exc).__name__}: {exc}")
                 raise AssertionError(f"{device}: full resync raised {exc!r}\n" + self._trace()) from exc
@@ -3220,6 +3229,24 @@ class TeamLogMachine(SyncMachine):
         admin = self.devices["A"]
         result = found_team_log(admin.vault, admin.client, lambda _uid, _fp: True)
         self.log.append(f"A: team-log init ({len(result.members)} member(s), {len(result.folders)} folder(s))")
+
+    def _waits_for_lost_log(self, device: str, exc: Exception) -> bool:
+        """INV-8 for the admin's own devices (deep run on 8914bac): one that
+        pins the log without a copy of it (the account keys it took over carry
+        the confirmed genesis) cannot put back a log the server lost, and
+        forgets no pin on its own; it waits, fail-closed, for a device holding
+        the log (INV-7). One holding a copy puts it back and does not wait."""
+        from sezam.vault.team_log_local import TeamLogMismatch
+
+        if self._server_log() or not isinstance(exc, TeamLogMismatch):
+            return False
+        if exc.cause not in ("log_gone", "confirmed_genesis"):
+            return False
+        if self.devices[device].vault.db.fetchall("SELECT seq FROM team_log LIMIT 1"):
+            return False
+        coverage_event("an admin device without the log waits for it to come back")
+        self.log.append(f"{device}: waits for the lost team log, {exc.cause}")
+        return True
 
     def _waiting_members(self) -> set[str]:
         return self.waiting & set(self._member_desktops())
@@ -5602,6 +5629,36 @@ def test_sync_state_machine_team_log_handover_sends_a_delete_that_ages_out(loopb
         assert entry in machine.collected, machine._trace()
         machine.track_member_keys()
         machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+@pytest.mark.parametrize("step", ["push", "full_resync"])
+def test_sync_state_machine_team_log_lost_while_a_device_only_pins_it(loopback_server, monkeypatch, step):
+    """R16-Z SM25a (gate 22 on 8914bac, team_log): B has not synced since the
+    founding and holds no copy of the log. A changes the password and rotates
+    its identity; the server loses the log; B takes the account keys over, and with them the confirmed
+    genesis, so it refuses the empty log as its push or full resync. That is
+    INV-8 (no pin forgotten on its own): B waits, and once A puts the log back
+    (INV-7) B follows it. The model raised on the refusal."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        b = machine.devices["B"].vault
+        assert not b.db.fetchall("SELECT seq FROM team_log LIMIT 1"), machine._trace()
+        machine.change_password(_Scripted(device="A"), None)
+        machine.rotate_identity(_Scripted(device="A"), None)
+        machine.operator_loses_the_log()
+        machine.create_folder(_Scripted(device="B", parent="ROOT"))
+        if step == "push":
+            machine.push(_Scripted(device="B"), None)
+        else:
+            machine.full_resync(_Scripted(device="B"))
+        assert "B: waits for the lost team log, confirmed_genesis" in machine.log, machine._trace()
+        machine._settle(lambda _obj: "server")
+        assert machine._server_log(), machine._trace()
+        assert b.db.fetchall("SELECT seq FROM team_log LIMIT 1"), machine._trace()
     finally:
         machine.teardown()
 
