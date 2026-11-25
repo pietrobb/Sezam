@@ -325,11 +325,19 @@ def reseal_envelopes_for_rotation(
             ),
         )
         unsent = outbox.is_pending(db, outbox.ENVELOPE, env["id"])
+        grant = outbox.body(db, outbox.TEAM_GRANT, env["id"])
         db.execute("DELETE FROM access_envelopes WHERE id = ?", (env["id"],))
         # Envelopes are pushed with their folder.
         outbox.queue_writes(
             db, "nodes", "id = (SELECT node_id FROM deks WHERE id = ?)", (env["dek_id"],)
         )
+        if grant is not None:
+            # R16-Z SM26b: a grant still waiting with its log records stays a
+            # grant: the new envelope goes with them (_push_team_grants, after
+            # the key change). In the rotation's batch it went without its
+            # access.set and the server refused every push.
+            outbox.sent(db, outbox.TEAM_GRANT, env["id"])
+            outbox.put(db, outbox.TEAM_GRANT, grant, new_id)
         tombstones.append({
             "id": env["id"],
             "dek_id": env["dek_id"],
@@ -338,7 +346,8 @@ def reseal_envelopes_for_rotation(
             "encrypted_dek": bytes(env["encrypted_dek"]).hex(),
             "unsent": unsent,
         })
-        new_ids.append(new_id)
+        if grant is None:
+            new_ids.append(new_id)
     if tombstones or new_ids:
         pending_states.set_rekey_batch(db, {
             "object_ids": new_ids + [t["id"] for t in tombstones],

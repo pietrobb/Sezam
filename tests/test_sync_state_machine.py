@@ -5732,6 +5732,40 @@ def test_sync_state_machine_team_log_key_comes_back_after_the_folder(loopback_se
         machine.teardown()
 
 
+def test_sync_state_machine_team_grant_not_sent_before_the_keys_are_taken_over(loopback_server, monkeypatch):
+    """R16-Z SM26b (gate 23 on 6858912, team_log): B rotates the account's
+    identity; A, not yet aware, shares a folder with a member. The grant is
+    not sent (the key epoch is stale) and waits with its log records. A takes
+    the new keys over; its push is lost and the server goes back to a backup
+    from before the rotation, so A sends the rotation again and re-seals the
+    envelopes it made: the new one went in the rotation's atomic batch, while
+    the records stayed with the old one. The server refused it ('another
+    account gets a key only with an access.set') and every push of A raised."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine._settle(lambda _obj: "server")
+        machine.track_member_keys()
+        machine.server_backup()
+        machine.rotate_identity(_Scripted(device="B"), None)
+        machine._push("B")
+        folder = machine._folders("A")[0]
+        machine._grant("A", member, folder, "write")
+        assert _GRANT_DEFERRED in machine.log[-1], machine._trace()
+        machine.push(_Scripted(device="A"), "after")
+        machine.server_restore()
+        machine._push("A")
+        machine.track_member_keys()  # A sent its rotation again, onto a new key
+        machine._settle(lambda _obj: "server")
+        assert folder in machine.granted[member], machine._trace()
+        state = teamlog.replay(machine._server_log())
+        assert state.access.get(folder, {}).get(member) == "write", machine._trace()
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_team_log_stolen_key_the_member_copy_names(loopback_server, monkeypatch):
     """Deep run on 0daf5f2 (R16-Z SM13, test harness): the member's copy of
     the log predates B's identity rotation. The 'stolen admin key' forgery on
