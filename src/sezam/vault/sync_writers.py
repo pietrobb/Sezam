@@ -53,6 +53,13 @@ DEFERRED_WRITES_META = "writes_below_unknown_folders"
 # (review 8595ec1, R10-C: what a founding hid came back only by a full resync).
 LOG_REFUSED_WRITES_META = "writes_without_log_write_access"
 NO_WRITE_ACCESS = "team log gives no write access here"
+# R16-Z SM26a: id -> pulled folder or item refused as sealed with a key the
+# team log does not know (a server that lost the records naming it), judged
+# again once the log names that key; and id -> one not applied because the
+# folder above it was not, judged again with that folder.
+UNKNOWN_KEY_WRITES_META = "writes_on_keys_the_log_lacks"
+UNKNOWN_KEY = "sealed with a key the team log does not know"
+BELOW_REFUSED_WRITES_META = "writes_below_refused_folders"
 # id -> [version, payload_hash] of the server copy last refused here (not
 # applied). R16-Z SM4: a refused re-key batch builds on it when it rebases.
 REFUSED_COPIES_META = "refused_server_copies"
@@ -130,14 +137,20 @@ class WritersMixin:
 
     def _with_writes_the_log_now_allows(self, objects: list[dict]) -> list[dict]:
         """``objects`` plus the writes refused for want of write access whose
-        author the team log now lets write in the team folder above them."""
+        author the team log now lets write in the team folder above them, the
+        ones refused for a key the log now names, and what was below them."""
         self._revived_write_ids: set[str] = set()
         refused = self._db.get_meta_json(LOG_REFUSED_WRITES_META) or {}
-        team = self.team_state() if refused else None
+        unknown_key = self._db.get_meta_json(UNKNOWN_KEY_WRITES_META) or {}
+        below = self._db.get_meta_json(BELOW_REFUSED_WRITES_META) or {}
+        team = self.team_state() if refused or unknown_key or below else None
         if team is None:
             return objects
         in_batch = {obj.get("id") for obj in objects}
-        revived = []
+        revived = [
+            obj for obj_id, obj in unknown_key.items()
+            if obj_id not in in_batch and _sealing_dek_id(obj) in team.dek_index
+        ]
         for obj_id, obj in refused.items():
             current = obj_id if obj_id in team.folders else obj.get("parent_ref")
             for _ in range(64):
@@ -150,6 +163,19 @@ class WritersMixin:
                 and teamlog.may_write(team, current, self._signer_id(obj))
             ):
                 revived.append(obj)
+        ignored = self._db.get_meta_json(IGNORED_WRITES_META) or {}
+        judged = in_batch | {obj["id"] for obj in revived}
+        waiting = {obj_id: obj for obj_id, obj in below.items() if obj_id not in in_batch}
+        progress = True
+        while progress:
+            progress = False
+            for obj_id, obj in list(waiting.items()):
+                parent = obj.get("parent_ref")
+                if parent in judged or parent not in ignored:
+                    revived.append(obj)
+                    judged.add(obj_id)
+                    del waiting[obj_id]
+                    progress = True
         self._revived_write_ids = {obj["id"] for obj in revived}
         return revived + objects if revived else objects
 
@@ -246,6 +272,8 @@ class WritersMixin:
 
         deferred = stored(DEFERRED_WRITES_META)
         no_access = stored(LOG_REFUSED_WRITES_META)
+        unknown_key = stored(UNKNOWN_KEY_WRITES_META)
+        below_refused = stored(BELOW_REFUSED_WRITES_META)
         refused_copies = stored(REFUSED_COPIES_META)
         vouched = self._vouched_writers()
         # This account's top-level nodes: signed by it in this batch (a new
@@ -378,6 +406,8 @@ class WritersMixin:
             author = self._signer_id(obj)
             deferred.pop(obj_id, None)  # this copy decides now
             no_access.pop(obj_id, None)
+            unknown_key.pop(obj_id, None)
+            below_refused.pop(obj_id, None)
             if held_back(obj, author):
                 logger.warning(
                     "Pulled %s %s below folder %s, which this device does not know; "
@@ -400,6 +430,8 @@ class WritersMixin:
                 refused_copies[obj_id] = [obj.get("version"), obj.get("payload_hash")]
                 if refusal == NO_WRITE_ACCESS and not obj.get("is_deleted"):
                     no_access[obj_id] = obj
+                elif refusal == UNKNOWN_KEY and not obj.get("is_deleted"):
+                    unknown_key[obj_id] = obj
                 skipped.add(obj_id)
                 continue
             if parent not in ignored and allowed(obj, author):
@@ -411,6 +443,8 @@ class WritersMixin:
                     "Pulled %s %s below folder %s by %s, who may not write it there "
                     "or not under that key; not applied", obj["object_type"], obj_id, parent, author,
                 )
+            else:
+                below_refused[obj_id] = obj
             ignored[obj_id] = parent
             refused_copies[obj_id] = [obj.get("version"), obj.get("payload_hash")]
             skipped.add(obj_id)
@@ -422,6 +456,8 @@ class WritersMixin:
         self._db.set_meta_json(PERSONAL_TREES_META, personal)
         self._db.set_meta_json(DEFERRED_WRITES_META, deferred)
         self._db.set_meta_json(LOG_REFUSED_WRITES_META, no_access)
+        self._db.set_meta_json(UNKNOWN_KEY_WRITES_META, unknown_key)
+        self._db.set_meta_json(BELOW_REFUSED_WRITES_META, below_refused)
         if full:
             self._db.set_meta(WRITES_AUDITED_META, "1")
         return skipped

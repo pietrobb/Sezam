@@ -5696,6 +5696,42 @@ def test_sync_state_machine_team_log_lost_while_a_device_only_pins_it(loopback_s
         machine.teardown()
 
 
+def test_sync_state_machine_team_log_key_comes_back_after_the_folder(loopback_server, monkeypatch):
+    """R16-Z SM26a (gate 23 on 6858912, team_log): A revokes a member, which
+    re-keys a team folder; the server then loses the log records from the
+    revocation on (a restore) and keeps the re-sealed folder. B pulls it:
+    sealed with a key the log does not know, what is in the folder is not
+    applied (fail-closed). A puts the lost records back (INV-7), but B judged
+    it once at its pull and never again: B kept the items on the old key, and
+    the new ones never showed, for good."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine._settle(lambda _obj: "server")
+        machine.track_member_keys()
+        folder = machine._folders("A")[0]
+        machine._grant("A", member, folder, "read")
+        machine._settle(lambda _obj: "server")
+        kept = len(machine._server_log())
+        machine.revoke(_Scripted(device="A", member=member), None)
+        assert len(machine._server_log()) > kept, machine._trace()
+        machine.create_folder(_Scripted(device="A", parent=folder))
+        machine._push("A")
+        machine.db._storage["team_log"] = sorted(
+            machine.db._storage["team_log"], key=lambda r: r["seq"])[:kept]
+        machine.log.append("server: lost the team log records from the revocation on")
+        machine.pull(_Scripted(device="B"), None)
+        ignored = machine.devices["B"].vault.db.get_meta_json("ignored_unauthorized_writes") or {}
+        assert folder in ignored.values(), machine._trace()
+        machine.pull(_Scripted(device="A"), None)  # puts the lost records back
+        assert len(machine._server_log()) > kept, machine._trace()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_team_log_stolen_key_the_member_copy_names(loopback_server, monkeypatch):
     """Deep run on 0daf5f2 (R16-Z SM13, test harness): the member's copy of
     the log predates B's identity rotation. The 'stolen admin key' forgery on
