@@ -3218,6 +3218,17 @@ class Vault:
             except (KeyError, CryptoError, ValueError):
                 continue  # the handover grant has not reached this device
             rows.append({"dek_id": dek_id, "sealed_here": 1})
+        # R16-N19 (capability review run 638): a share a server without its log
+        # took alone and the log then would not take; the member may hold the
+        # key. Its folder is re-keyed unless that key is an older one, or the
+        # log gives them the folder by now.
+        listed = {row["dek_id"] for row in rows}
+        for dek_id in sorted(pending_states.leaked_grant_keys(self._db, former_admin_id)):
+            folder, gen = team.dek_index.get(dek_id, (None, None))
+            if dek_id in listed or teamlog.is_admin(team, former_admin_id) or folder is not None and (
+                    gen != len(team.folders[folder]) - 1 or team.access.get(folder, {}).get(former_admin_id)):
+                continue
+            rows.append({"dek_id": dek_id, "sealed_here": 1})
         return rows
 
     @oplock.held  # review 8bc70f7 #3: lost in 3975939 (tests/test_review14_oplock_coverage.py)

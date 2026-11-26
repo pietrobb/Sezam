@@ -472,7 +472,9 @@ def finish_handover_rekeys(vault: Vault, client: SyncClient) -> dict[str, int]:
         u for users in team.stale.values() for u in users
         if (member := team.members.get(u)) is not None and member.active
     }
-    candidates = {u for users in team.former_admins.values() for u in users} | downgraded
+    # R16-N19: and members a share the log would not take left holding a key.
+    leaked = {u for users in pending_states.leaked_grant_keys(vault.db).values() for u in users}
+    candidates = {u for users in team.former_admins.values() for u in users} | downgraded | leaked
     for former in sorted(candidates - {me}):
         if pending_states.rekey_batch(vault.db) or vault.key_change_unpushed():
             break  # one batch at a time; after a password change lands

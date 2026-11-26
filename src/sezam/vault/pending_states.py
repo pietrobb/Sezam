@@ -135,6 +135,29 @@ def withdrawn_holder_keys(db, user_id: Optional[str] = None) -> dict[str, list[s
     }
 
 
+# Capability review run 638 (R16-N19): keys of this account a member got through
+# a share a server without its log took alone and the log then would not take
+# (log_pre_log_grants, _push_team_grants), {dek_id: [user_id, ...]}. The member
+# may hold the key; the admin's handover re-key replaces it (crud._handover_rekey_rows).
+LEAKED_GRANTS_META = "leaked_grant_keys"
+
+
+def note_leaked_grant(db, dek_id: str, user_id: str) -> None:
+    held = leaked_grant_keys(db)
+    held[dek_id] = sorted(set(held.get(dek_id, [])) | {user_id})
+    db.set_meta_json(LEAKED_GRANTS_META, held)
+
+
+def leaked_grant_keys(db, user_id: Optional[str] = None) -> dict[str, list[str]]:
+    """The noted keys (of ``user_id``, or all) some live folder here still uses."""
+    return {
+        key: [u for u in users if user_id in (None, u)]
+        for key, users in (db.get_meta_json(LEAKED_GRANTS_META) or {}).items()
+        if (user_id is None or user_id in users)
+        and db.fetchone("SELECT 1 FROM nodes WHERE dek_id = ? AND is_deleted = 0", (key,))
+    }
+
+
 def org_recovery_registration(db) -> Optional[Any]:
     """The public /store body the server has not registered, or None
     (capability review run 91): wrapped_kek is sealed under the recovery

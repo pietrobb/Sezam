@@ -17,7 +17,7 @@ import logging
 from typing import Optional
 
 from .. import teamlog
-from . import oplock, outbox, team_log_fork, team_log_withdrawn
+from . import oplock, outbox, pending_states, team_log_fork, team_log_withdrawn
 from ..models import new_ulid
 from .sync_common import (
     ATOMIC_BATCH_CONFLICT,
@@ -937,10 +937,10 @@ class TeamLogMixin:
     def _push_team_grants(self) -> list[dict]:
         """Send each queued grant: its envelope and its log records, all or nothing.
 
-        A refused grant is withdrawn here (it never was shared); one that could
-        not be sent stays queued. After a lost reply the resend finds its
-        records in the log and sends the envelope alone.
-        """
+        A refused grant is withdrawn here (it never was shared); one the server
+        took alone before (R16-N19) stays, noted for its folder's re-key. One that
+        could not be sent stays queued. After a lost reply the resend finds its
+        records in the log and sends the envelope alone."""
         from .. import teamlog
 
         grants = self.pending_team_grants()
@@ -985,7 +985,10 @@ class TeamLogMixin:
                     raise  # not sent: it stays queued for the next push
                 logger.error("The server refused the grant %s: %s", envelope_id, exc)
                 with self._db.transaction():
-                    self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (envelope_id,))
+                    if row["unsent"]:
+                        self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (envelope_id,))
+                    else:
+                        pending_states.note_leaked_grant(self._db, row["dek_id"], row["user_id"])
                     self.drop_team_grant(envelope_id)
                 self._push_cache.pop(envelope_id, None)
                 refused.append({"id": envelope_id, "error": str(exc)})
@@ -1034,7 +1037,8 @@ class TeamLogMixin:
         here). When the log does not allow that (not an admin here, the member
         is not in the log or has another key now, the key is no current one)
         a queued envelope is withdrawn, as a refused grant is, and returned
-        for the push's conflicts; a sent one stays: only a re-key takes it back.
+        for the push's conflicts; so is a sent one, which stays, noted for its
+        folder's re-key (note_leaked_grant, R16-N19): only a re-key takes it back.
 
         Only envelopes grant_member sealed on its path without a log are such
         grants (PRE_LOG_GRANTS_META, written with the envelope). Taking every
@@ -1101,11 +1105,9 @@ class TeamLogMixin:
             if reason is None:
                 changes = [] if known else [
                     ("folder.key", {"folder": row["folder"], "dek_id": row["dek_id"], "prev_dek_id": None})]
-                changes.extend(
-                    ("folder.key", {"folder": folder, "dek_id": dek_id, "prev_dek_id": None})
-                    for folder, dek_id in unlogged_folder_keys(self._db, projected.dek_index, row["folder"])
-                    if folder != row["folder"]
-                )
+                changes.extend(("folder.key", {"folder": folder, "dek_id": dek_id, "prev_dek_id": None})
+                               for folder, dek_id in unlogged_folder_keys(self._db, projected.dek_index, row["folder"])
+                               if folder != row["folder"])
                 changes.append(("access.set", {"folder": row["folder"], "user_id": row["user_id"],
                                                "level": row["access_level"]}))
                 try:
@@ -1114,17 +1116,16 @@ class TeamLogMixin:
                     continue
                 except teamlog.TeamLogError as exc:
                     reason = f"the team log refuses it: {exc}"
-            if not row["unsent"]:
-                logger.warning("A share made before the team log is not in it (%s): %s", reason, row["id"])
-                continue
             logger.error("A grant made before the team log was withdrawn (%s): %s", reason, row["id"])
             with self._db.transaction():
-                self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (row["id"],))
-                outbox.sent(self._db, outbox.ENVELOPE, row["id"])
+                if row["unsent"]:
+                    self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (row["id"],))
+                    outbox.sent(self._db, outbox.ENVELOPE, row["id"])
+                else:  # the server took it (R16-N19): only the folder's re-key takes it back
+                    pending_states.note_leaked_grant(self._db, row["dek_id"], row["user_id"])
             self._push_cache.pop(row["id"], None)
-            withdrawn.append({"id": row["id"], "user_id": row["user_id"], "folder": row["folder"], "error": (
-                f"A share made before this device had the team log was withdrawn: {reason}; share the folder again"
-            )})
+            withdrawn.append({"id": row["id"], "user_id": row["user_id"], "folder": row["folder"], "error": "A share "
+                              f"made before this device had the team log was withdrawn: {reason}; share the folder again"})
         self._db.set_meta_json(PRE_LOG_GRANTS_META, [])  # each is now a team grant, the log's, or withdrawn
         return withdrawn
 
