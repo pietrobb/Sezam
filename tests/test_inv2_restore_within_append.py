@@ -477,6 +477,18 @@ RESTORE_EXCEPTIONS = {
         "blob for any key (recovery.store) and names it; a member's restore of "
         "another admin's such record is refused"
     ),
+    # server/app/team_log.py _own_rotations, the membership left (review e443cbc
+    # H3; recorded here on R16-N15, gate 32 deep run on f842e63).
+    "E6 membership left inside the upload": (
+        "an admin-signed member.add on keys the account does not sign in with, "
+        "of a membership that ends inside the upload (member.remove, then a "
+        "re-add) and is never admin. An honest one is a member's earlier keys "
+        "the server cannot link any more (re-onboarded since), so it is not told "
+        "from a made-up one. Its keys and its member's own records end with it; "
+        "the member's rights after the upload come from the re-add, checked as "
+        "every key is, and the admin signing it could remove and re-add the "
+        "member on the main path anyway"
+    ),
 }
 
 
@@ -504,6 +516,8 @@ class NormalPath:
         # signs in as its account: review c78fd19 #2)
         self.mine = {IDS[me]} | ({IDS[stolen]} if stolen else set())
         self.provisioned: set[str] = set()  # E2
+        self.left: dict[str, tuple[str, str]] = {}  # E6: the account's own keys meanwhile
+        self.upload: list = []
         self.batch: list[tuple[int, dict]] = []
 
     def _send(self) -> str:
@@ -562,8 +576,41 @@ class NormalPath:
             self.mine.add(data["user_id"])
         _set_row_keys(self.db, data["user_id"], data["signing_pk"], data["encryption_pk"])
 
+    def _left_inside(self, i: int, body: dict) -> bool:
+        """E6: the membership the member.add ``body`` starts ends inside the
+        upload, before a re-add, and is never admin (_own_rotations)."""
+        uid = body["data"]["user_id"]
+        if body["data"].get("role") == "admin":
+            return False
+        removed = False
+        for record in self.upload[i + 1:]:
+            later = teamlog.parse_body(record["body"])
+            if later["data"].get("user_id") != uid:
+                continue
+            if removed and later["type"] == "member.add":
+                return True
+            if later["type"] == "member.remove":
+                removed = True
+            elif not removed and later["type"] == "member.role" and later["data"].get("role") == "admin":
+                return False
+        return False
+
+    def _left_membership(self, i: int, body: dict) -> None:
+        """E6: the main path as if the account signed in with the record's keys
+        for that membership; its own keys again for the next one."""
+        data = body["data"]
+        row = next(u for u in self.db._storage["users"] if u["id"] == data["user_id"])
+        own = self.left.setdefault(data["user_id"], (row["signing_pk"].hex(), row["encryption_pk"].hex()))
+        if self._left_inside(i, body):
+            coverage_event("restore exception E6 membership left inside the upload")
+            _set_row_keys(self.db, data["user_id"], data["signing_pk"], data["encryption_pk"])
+        else:
+            del self.left[data["user_id"]]
+            _set_row_keys(self.db, data["user_id"], *own)
+
     def takes(self, honest: list, upload: list) -> str:
         """'' when it does, else why not."""
+        self.upload = upload
         shared = 0
         while shared < min(len(upload), len(honest)) and upload[shared] == honest[shared]:
             shared += 1
@@ -588,7 +635,9 @@ class NormalPath:
                 first = next(k for k, (_, b, _) in enumerate(self.batch) if b["type"] == "member.keys")
                 return self._cut(upload, i, first + 1)
             uid = body["data"].get("user_id")
-            if body["type"] == "member.add" and uid in self.provisioned and self._new_keys(body["data"]):
+            if body["type"] == "member.add" and (
+                uid in self.provisioned or uid in self.left or self._left_inside(i, body)
+            ) and self._new_keys(body["data"]):
                 # the admin provisions the account again with the record's keys,
                 # between appends, after the batch's last record naming its keys
                 about = [k for k, (_, b, _) in enumerate(self.batch)
@@ -606,6 +655,8 @@ class NormalPath:
         uid = body["data"].get("user_id")
         if body["type"] == "member.add" and (_no_account(self.db, uid) or uid in self.provisioned):
             self._provision(body["data"])
+        elif body["type"] == "member.add" and (uid in self.left or self._left_inside(i, body)):
+            self._left_membership(i, body)
         self.batch.append((i, body, record))
 
     def _cut(self, upload: list, i: int, earliest: int) -> str:
@@ -614,12 +665,12 @@ class NormalPath:
         checks the one-admin rule on the head each append leaves, so one cut
         can pass where another is refused (an admin added before the cut and
         the old admin removed after it)."""
-        saved = copy.deepcopy(self.db._storage), set(self.provisioned), set(self.mine), list(self.batch)
+        saved = copy.deepcopy(self.db._storage), set(self.provisioned), set(self.mine), list(self.batch), dict(self.left)
         body = teamlog.parse_body(upload[i]["body"])
         refused = ""
         for keep in range(len(saved[3]), earliest - 1, -1):
             self.db._storage = copy.deepcopy(saved[0])
-            self.provisioned, self.mine = set(saved[1]), set(saved[2])
+            self.provisioned, self.mine, self.left = set(saved[1]), set(saved[2]), dict(saved[4])
             self.batch, rest = list(saved[3][:keep]), list(saved[3][keep:])
             why = self._send()
             if not why:

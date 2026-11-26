@@ -3335,6 +3335,13 @@ class Vault:
                     # the folder; the other one's re-key withdrew only its own
                     # envelope and the member's envelope here stayed live. With
                     # no folder to re-key, the member's envelope still goes.
+                    # R16-N13 (gate 32 deep run on f842e63): tombstone GC took the
+                    # folder here and another device of the account (a full
+                    # resync) sent it back on this key; nobody knew the member
+                    # held it. Noted, it is re-keyed once it is back here
+                    # (queue_revoked_holders; withdrawn_holder_keys wants it live).
+                    if not handover:
+                        pending_states.note_withdrawn_holder(self._db, old_dek_id, revoked_user_id)
                     for env in self._db.fetchall(
                         "SELECT id, dek_id, user_id, created_by, access_level, encrypted_dek "
                         "FROM access_envelopes WHERE dek_id = ? AND user_id = ?",

@@ -3746,9 +3746,11 @@ class TeamLogMachine(SyncMachine):
         assert pinned_genesis(vault) == pins, f"{name}: a refused forget-pin changed the pins\n" + self._trace()
         # The check before the forget may catch the copy up along the true log
         # (up to the head the server announces, goal #440), never anything else.
+        # R16-N14 (gate 32 deep run): a server restored from before this
+        # device's records holds less than the copy; unchanged is right then.
         after = [tuple(r) for r in vault.db.fetchall("SELECT seq, hash FROM team_log ORDER BY seq")]
         true_rows = [(seq, teamlog.record_hash(r)) for seq, r in enumerate(self._server_log())]
-        assert after[:len(rows)] == rows and after == true_rows[:len(after)], (
+        assert after == rows or (after[:len(rows)] == rows and after == true_rows[:len(after)]), (
             f"{name}: a refused forget-pin changed the log copy\n" + self._trace())
 
     @rule(data=st.data(), race=st.sampled_from([None, *FORGERIES, *LOST_LOG_FORGERIES]),
