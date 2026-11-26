@@ -509,6 +509,21 @@ class SyncMachine(RuleBasedStateMachine):
         """After a sync step: learn what the device now holds."""
         return self._learn(device, snapshot(self.devices[device].vault))
 
+    def _log_withholds_key(self, dev, obj: str) -> bool:
+        """The account of ``dev`` is no admin in the server's log, which does
+        not let it hold the key ``obj`` is sealed with."""
+        state = teamlog.replay(self._server_log())
+        account = dev.vault.db.get_meta("user_id")
+        if state is None or teamlog.is_admin(state, account):
+            return False
+        row = dev.vault.db.fetchone(
+            "SELECT encrypted_meta FROM nodes WHERE id = ? UNION ALL "
+            "SELECT encrypted_meta FROM entries WHERE id = ?", (obj, obj))
+        if row is None:
+            return False
+        dek_id = bytes_to_ulid(parse_envelope(bytes(row["encrypted_meta"])).dek_id)
+        return dek_id in state.dek_index and not teamlog.may_hold_key(state, account, dek_id)
+
     def _learn(self, device: str, snap: dict) -> dict:
         known = self.knowledge[device]
         dev = self.devices.get(device)
@@ -518,6 +533,14 @@ class SyncMachine(RuleBasedStateMachine):
                 # Holds a key of its own in an older copy (a lying full
                 # resync): it says so and pulls stop until a full resync.
                 self.resync_due.add(device)
+                continue
+            if state[1].startswith("<unreadable: TeamKeyRefused") and dev is not None \
+                    and self._log_withholds_key(dev, obj):
+                # R16-N24 (TeamLogMachine@42/@43, gate 35): the account handed
+                # the admin role over; the log gives it no access to a folder
+                # whose current key another admin made (review 8bc70f7 M1: the
+                # role is the authority). Back as admin, it reads it again.
+                coverage_event("former admin's device refuses a key the log withholds")
                 continue
             assert not state[1].startswith("<unreadable"), (
                 f"{device}: {obj} cannot be decrypted ({state[1]})\n" + self._trace()

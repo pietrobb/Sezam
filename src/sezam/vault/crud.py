@@ -65,7 +65,7 @@ from .sync_common import (
 from .sync_writers import WRITES_AUDITED_META
 from .team_log_local import (
     CONFIRMED_GENESIS_META, identity_continuation, import_account_anchor, local_team_state, log_trusted,
-    publishable_anchor,
+    projected_team_state, publishable_anchor,
     record_account_anchor, team_folder_at_or_above,
 )
 from .sync_limits import (
@@ -483,7 +483,7 @@ class Vault:
         if team is None and self._db.get_meta(CONFIRMED_GENESIS_META) is None:
             return
         if log_trusted(self._db, self._user_id, self._keypair, team):
-            return
+            return self._require_log_write_access(node_id)
         # A founder rotating offline still owns the old identity in the sealed journal.
         journal = pending_states.key_change_journal(self._db)
         if "identity" in journal and int(journal.get("epoch", -1)) > pending_states.last_pushed_key_epoch(self._db):
@@ -493,7 +493,7 @@ class Vault:
                     old = KeyPair.from_private_only(bytes(private))
                     try:
                         if log_trusted(self._db, self._user_id, old, team):
-                            return
+                            return self._require_log_write_access(node_id)
                     finally:
                         old.zeroize()
                 finally:
@@ -503,7 +503,7 @@ class Vault:
         if kept is not None:
             try:
                 if log_trusted(self._db, self._user_id, kept, team):
-                    return
+                    return self._require_log_write_access(node_id)
             finally:
                 kept.zeroize()
         if team is None:
@@ -514,6 +514,26 @@ class Vault:
             "The team log's founder is not confirmed on this device; "
             "compare their fingerprint out of band and use 'sezam team-log confirm-founder'."
         )
+
+    def _require_log_write_access(self, node_id: str) -> None:
+        """A new write in a team folder needs the log's write access there.
+
+        R16-N24 (stateful TeamLogMachine@42, gate 35 on 1529723): a former
+        admin who handed the role back still held the folder's keys. Its new
+        entry there was saved, then every push refused it ('sealed with an old
+        key generation' after the admin's re-key, else 'team log gives no write
+        access here') and it never left the outbox. The push judges a new write
+        by teamlog.item_refusal (sealing): write access to the folder whose
+        key seals it, so the write is refused here before it is saved.
+        """
+        state = projected_team_state(self._db, self._user_id)
+        if state is None:
+            return
+        row = self._db.fetchone("SELECT dek_id FROM nodes WHERE id = ?", (node_id,))
+        found = state.dek_index.get(row["dek_id"]) if row and row["dek_id"] else None
+        folder = found[0] if found else team_folder_at_or_above(self._db, state, node_id)
+        if folder is not None and not teamlog.may_write(state, folder, self._user_id):
+            raise RuntimeError("The team log gives this account no write access to this folder")
 
     def _all_personal(self, *node_ids: str) -> bool:
         roots = set(personal_root_ids(self._db, self.dek_mgr))

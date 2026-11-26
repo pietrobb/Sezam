@@ -81,7 +81,14 @@ class ApplyMixin:
                 )
                 if decision in ("sent", "adopt_as_base"):
                     self._set_base(obj_id, version, payload_hash, parent=parent_ref or "")
-                if decision == "sent":
+                # Stateful test SecondAdminMachine@40: the server holds this
+                # very change (here a delete another device made too), but the
+                # row also rides in this device's unsent re-key batch - its
+                # folder carries the new key. Dropped, the batch was short of
+                # it on every push. It stays queued at its new base.
+                if decision == "sent" and obj_id not in (
+                    pending_states.rekey_batch(self._db).get("object_ids") or []
+                ):
                     outbox.drop_write(self._db, obj_id)
                 if decision == "conflict":
                     self._record_pull_conflict(obj, payload, local_row["version"])

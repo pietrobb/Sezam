@@ -94,7 +94,11 @@ def test_a_former_admin_still_pushes(team, server):  # noqa: F811
     ops = _ops(admin)
     revocation.grant_member(admin, admin_client, bob_id, ops, "read")
     hand_over_admin(admin, admin_client, bob_id, lambda fingerprint: True)
-    admin.create_entry(ops, "after", [{"key": "password", "value": "pw"}])
+    # R16-N24: the log gives the former admin no write access to ops; the
+    # write is refused here, not saved to be refused by every push.
+    with pytest.raises(RuntimeError, match="no write access"):
+        admin.create_entry(ops, "after", [{"key": "password", "value": "pw"}])
+    assert not admin.db.fetchone("SELECT 1 FROM outbox WHERE kind = 'write'")
     result = revocation.push_with_queued_revocations(admin, admin_client)
     assert result["rekeyed"] == {} and not result["blocked"]
 

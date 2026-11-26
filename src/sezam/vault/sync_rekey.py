@@ -741,11 +741,13 @@ class RekeyMixin:
         def due(row, blob: bytes, folder_id: str) -> Optional[tuple[str, bytes, bytearray]]:
             if not row["mine"]:
                 # R15 #441 rule (crud rekey_folder), here too: another
-                # writer's item below a deleted folder keeps the old key, as
-                # the rest of the trash does. R16-Z SM4 let a new admin open
-                # that key again, and its re-seal revived the folder, whose
-                # name is sealed with a parent key it never holds.
-                if row["folder_deleted"]:
+                # writer's item below a deleted folder is not sealed again as
+                # a live one. R16-Z SM4 let a new admin open that key again,
+                # and its re-seal revived the folder, whose name is sealed with
+                # a parent key it never holds. The caller trashes it instead
+                # when this device sent the folder's delete (its own intent
+                # took the folder's contents); otherwise it keeps the old key.
+                if row["folder_deleted"] and not trashed(row):
                     return None
                 try:
                     found = successor(blob, folder_id)
@@ -766,6 +768,20 @@ class RekeyMixin:
                 # of theirs (unbound here). Nothing of this device's is under it.
                 return None
 
+        def trashed(row) -> int:
+            # Stateful test SecondAdminMachine@41: another device's item landed
+            # in a folder before a device that never saw it deleted the folder;
+            # it stayed live below the tombstone on the removed member's key
+            # (nothing live may stay there: review d150605 #1). It goes to the
+            # trash with its folder, on the folder's current key; a restore of
+            # the folder brings it back.
+            return int(not row["mine"] and bool(row["folder_deleted_here"]))
+
+        # The folder's delete the server holds is this device's (SM28 'mine').
+        deleted_here = (
+            "EXISTS (SELECT 1 FROM nodes p JOIN object_sent_version s ON s.object_id = p.id "
+            "AND s.version = p.version WHERE p.id = {parent} AND p.is_deleted = 1) AS folder_deleted_here"
+        )
         resealed: list[str] = []
         self._db.begin()
         try:
@@ -774,14 +790,14 @@ class RekeyMixin:
                 nodes = self._db.fetchall(
                     f"SELECT id, parent_id, encrypted_meta, version, {outbox.queued('nodes')} AS queued, "
                     "EXISTS (SELECT 1 FROM nodes p WHERE p.id = nodes.parent_id AND p.is_deleted = 1) "
-                    "AS folder_deleted, "
+                    "AS folder_deleted, " + deleted_here.format(parent="nodes.parent_id") + ", "
                     + mine.format(t="nodes") + " FROM nodes WHERE is_deleted = 0"
                 )
                 entries = self._db.fetchall(
                     "SELECT id, node_id, dek_id, encrypted_meta, encrypted_data, version, "
                     f"{outbox.queued('entries')} AS queued, "
                     "EXISTS (SELECT 1 FROM nodes p WHERE p.id = entries.node_id AND p.is_deleted = 1) "
-                    "AS folder_deleted, "
+                    "AS folder_deleted, " + deleted_here.format(parent="entries.node_id") + ", "
                     + mine.format(t="entries") + " FROM entries WHERE is_deleted = 0"
                 )
                 sealed = [(bytes(r["encrypted_meta"]), r["parent_id"] or r["id"]) for r in nodes]
@@ -798,12 +814,13 @@ class RekeyMixin:
                         continue
                     old_id, new_id, new = found
                     version = row["version"] + (0 if row["queued"] else 1)
+                    trash = trashed(row)
                     outbox.queue_write(self._db, row["id"])
                     self._db.execute(
-                        "UPDATE nodes SET encrypted_meta = ?, version = ? WHERE id = ?",
-                        (reseal(blob, row["id"], row["version"], version, BlobKind.NODE_META,
+                        "UPDATE nodes SET encrypted_meta = ?, version = ?, is_deleted = ? WHERE id = ?",
+                        (reseal(blob, row["id"], row["version"], version - trash, BlobKind.NODE_META,
                                 old_id, new_id, new),
-                         version, row["id"]),
+                         version, trash, row["id"]),
                     )
                     resealed.append(row["id"])
                 for row in entries:
@@ -813,17 +830,18 @@ class RekeyMixin:
                         continue
                     old_id, new_id, new = found
                     version = row["version"] + (0 if row["queued"] else 1)
+                    trash = trashed(row)
                     outbox.queue_write(self._db, row["id"])
                     self._db.execute(
                         "UPDATE entries SET encrypted_meta = ?, encrypted_data = ?, dek_id = ?, "
-                        "version = ? WHERE id = ?",
+                        "version = ?, is_deleted = ? WHERE id = ?",
                         (
-                            reseal(meta, row["id"], row["version"], version, BlobKind.ENTRY_META,
+                            reseal(meta, row["id"], row["version"], version - trash, BlobKind.ENTRY_META,
                                    old_id, new_id, new),
-                            reseal(bytes(row["encrypted_data"]), row["id"], row["version"], version,
+                            reseal(bytes(row["encrypted_data"]), row["id"], row["version"], version - trash,
                                    BlobKind.ENTRY_DATA, old_id, new_id, new),
                             bytes_to_ulid(new_id) if row["dek_id"] == old_id else row["dek_id"],
-                            version, row["id"],
+                            version, trash, row["id"],
                         ),
                     )
                     resealed.append(row["id"])
