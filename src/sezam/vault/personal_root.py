@@ -191,9 +191,15 @@ def reseal_moved_subtree(db, dek_mgr, node_id: str, changes: dict[str, tuple]) -
 
     for folder, (old_id, new_id) in changes.items():
         reseal = _resealer(key(old_id), key(new_id), new_id)
+        # Only what the old key seals, as for the subfolders' names below.
+        # R16-N21 (TeamLogMachine@37): a full resync gave a folder back the
+        # key of its own this device had folded away; an item kept there,
+        # sealed with the team folder's retired key, does not open with it
+        # (_reseal_under_successors moves a live one onto the current key).
         for entry in db.fetchall(
             "SELECT id, encrypted_meta, encrypted_data, version, is_deleted FROM entries "
-            "WHERE node_id = ? AND dek_id IS NULL", (folder,)
+            "WHERE node_id = ? AND dek_id IS NULL AND substr(encrypted_meta, 4, 26) = ?",
+            (folder, ulid_to_bytes(old_id)),
         ):
             deleted = bool(entry["is_deleted"])
             outbox.queue_write(db, entry["id"])

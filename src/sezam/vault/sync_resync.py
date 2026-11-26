@@ -237,6 +237,41 @@ class ResyncMixin:
         )
         return keep
 
+    def _own_writes_on_retired_keys(self, objects: list[dict], refused: set[str]) -> set[str]:
+        """Refused server copies that are this device's own write as it sent
+        it, sealed with a team key the log has since replaced.
+
+        R16-N21 (stateful TeamLogMachine@37/@38): the write landed before
+        another device's re-key of its folder, which did not hold it. Every
+        client refuses such a copy ('sealed with an old key generation'), so
+        the snapshot dropped it here too and nobody ever sealed it again: lost
+        to the team and open to the removed member. Taken as it is, the re-seal
+        after the resync sends it one version up under the current key (SM28).
+        """
+        from .. import teamlog
+        from .sync_writers import _sealing_dek_id
+
+        team = self.team_state()
+        if team is None or not refused:
+            return set()
+        sent = {
+            row["object_id"]: (row["version"], row["payload_hash"])
+            for row in self._db.fetchall("SELECT object_id, version, payload_hash FROM object_sent_version")
+        }
+        taken = set()
+        for obj in objects:
+            if (
+                obj["id"] not in refused or obj.get("object_type") not in ("node", "entry")
+                or obj.get("is_deleted") or self._signer_id(obj) != self._user_id
+                or sent.get(obj["id"]) != (int(obj.get("version") or 0), obj.get("payload_hash"))
+            ):
+                continue
+            dek_id = _sealing_dek_id(obj)
+            found = team.dek_index.get(dek_id) if dek_id else None
+            if found is not None and teamlog.key_generation(team, found[0], dek_id)[0] != "current":
+                taken.add(obj["id"])
+        return taken
+
     def _rebind_nodes_of_pruned_deks(self) -> None:
         """Bind a folder whose DEK the full resync dropped to one it kept.
 
@@ -531,6 +566,7 @@ class ResyncMixin:
             self._pulled_archive_successors = set()
             self._new_unbound_dek_ids: set[str] = set()
             unauthorized = self._unauthorized_writes(objects, full=True)
+            unauthorized -= self._own_writes_on_retired_keys(objects, unauthorized)
             # Capability run 174: a copy applied before this check (an older
             # client) goes as well, not only the server's.
             for obj_id in unauthorized:
@@ -806,6 +842,13 @@ class ResyncMixin:
         # snapshot's re-key replaced (a subfolder's name, restored from the
         # trash here) go onto the folder's current key; until then their
         # folder named the new key and they no longer opened.
+        # R16-N21 (stateful TeamLogMachine@37): the snapshot gave back a
+        # subfolder of a team folder the key of its own this device had folded
+        # away (the server never got the fold), so a kept item there, sealed
+        # with the team folder's retired key, was to go onto that unlogged key:
+        # the log refused it and the resync stopped. The fold comes first, as
+        # in a push.
+        self.fold_unlogged_folder_keys()
         self._reseal_under_successors()
         self._grant_again_on_successors()
         return {

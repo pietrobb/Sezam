@@ -421,6 +421,9 @@ class PullMixin:
             self._db.rollback()
             raise
         if pulled and rollback_warning is None:
+            # A pulled subfolder of a team folder can name a key of its own the
+            # log does not know; it is folded before items go onto it (R16-N21).
+            self.fold_unlogged_folder_keys()
             self._reseal_under_successors()
             self._grant_again_on_successors()
         if rollback_warning is None:
