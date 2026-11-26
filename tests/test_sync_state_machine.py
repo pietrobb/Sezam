@@ -2029,7 +2029,12 @@ class SyncMachine(RuleBasedStateMachine):
         is still tolerated here (a copy the page held without its commit_seq)."""
         if not any("rollback_confirm" in c for c in result.get("confirms") or []):
             return
-        unsent = set(result["view"]["dirty"]) | set(result["view"]["conflicts"])
+        lost = self._only_the_page_had(set(result["view"]["dirty"]) | set(result["view"]["conflicts"]))
+        self.traced |= lost
+        self.log.append(f"W: accepted the restored server (lost what only the page had: {sorted(lost)})")
+
+    def _only_the_page_had(self, unsent: set) -> set[int]:
+        """What the page knew that neither the server nor a device holds."""
         # Per object (SM89): a later write of the page that reached the
         # server carries this one in its history, not its content.
         held = [snapshot(dev.vault) for dev in self.devices.values()] + [
@@ -2040,9 +2045,7 @@ class SyncMachine(RuleBasedStateMachine):
             return event_id in self.server_known.get(obj, ()) or any(
                 event_id in self._closure(obj, snap.get(obj)) for snap in held)
 
-        lost = {e for e in self.knowledge[WEB] if self.events[e].obj not in unsent and not kept(e)}
-        self.traced |= lost
-        self.log.append(f"W: accepted the restored server (lost what only the page had: {sorted(lost)})")
+        return {e for e in self.knowledge[WEB] if self.events[e].obj not in unsent and not kept(e)}
 
     def _web_do(self, action: str, label: str, **step) -> dict:
         step.setdefault("confirm", True)  # the user answers yes to the page's questions
@@ -2175,7 +2178,18 @@ class SyncMachine(RuleBasedStateMachine):
         """The user signs in from another browser: an empty IndexedDB, so none
         of the old page's own records (capability review run 134). Only with
         nothing unsent, which would stay in the old profile (and with the
-        session alive: an ended one's view does not list its queue)."""
+        session alive: an ended one's view does not list its queue).
+
+        R16-N18 (default run on b70d6d3): a write the page sent after the
+        last backup, taken by a restore before the page pulled again, is
+        held by the old profile only (it queues it again, S4a, if the user
+        goes back there). Left for good, it is lost as on a restore the
+        user accepted (_web_accepted_restore)."""
+        lost = {e for e in self._only_the_page_had(set()) if e <= getattr(self, "last_event_before_restore", 0)}
+        if lost:
+            coverage_event("a write only the abandoned browser held")
+            self.traced |= lost
+            self.log.append(f"W: the old browser alone held {sorted(lost)} (the server was restored)")
         self.web.close()
         self.web_idb = None
         self.knowledge[WEB] = set()
@@ -2774,6 +2788,7 @@ class SyncMachine(RuleBasedStateMachine):
         self.db._storage.clear()
         self.db._storage.update(storage)
         self.server_known = server_known
+        self.last_event_before_restore = len(self.events)
         # What GC took stays taken from the devices that dropped it (a full
         # resync leaves out what the server no longer had), even if the
         # backup still holds the tombstone.
@@ -3303,7 +3318,7 @@ class TeamLogMachine(SyncMachine):
         except AssertionError as exc:
             cause = exc.__cause__
             sibling = self._rotation_the_log_waits_for()
-            if sibling is not None and "invalid signature" in str(cause):
+            if sibling is not None and ("invalid signature" in str(cause) or "unverifiable signature" in str(cause)):
                 # The server signs the admin in with a key the log retired and
                 # serves it without its bound: nothing signed with it checks.
                 coverage_event("member waits for an admin rotation the log names")
