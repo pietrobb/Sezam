@@ -4018,19 +4018,10 @@ class TeamLogMachine(SyncMachine):
         for _name, vault in self._log_vaults():
             if len(vault.db.fetchall("SELECT seq FROM team_log")) < len(records):
                 pre_log |= set(vault.db.get_meta_json(PRE_LOG_GRANTS_META) or [])
-        # Capability review run 642 (@36): the log has no folder.delete, so a
-        # folder deleted everywhere keeps its key "current" there. An envelope
-        # of it opens nothing once the folder and all under it are deleted.
-        objects = self.db._storage.get("vault_objects", [])
-        live_nodes = {o["id"] for o in objects if o["object_type"] == "node" and not o.get("is_deleted")}
-        live_keys = set()
-        for o in objects:
-            if o["object_type"] in ("node", "entry") and not o.get("is_deleted") and o.get("parent_ref"):
-                payload = bytes(o["payload"])
-                if o["object_type"] == "entry":
-                    payload = payload[4:4 + int.from_bytes(payload[:4], "big")]
-                live_keys.add(bytes_to_ulid(parse_envelope(payload).dek_id))
-        for obj in objects:
+        # Capability review run 652 (@36): no exception for a deleted folder's
+        # key; another device may restore the folder, so the share's withdrawal
+        # re-keys it at once (pending_states.leaked_grant_keys).
+        for obj in self.db._storage.get("vault_objects", []):
             target = obj.get("target_user_id")
             if obj["object_type"] != "envelope" or obj.get("is_deleted") or target not in self.members:
                 continue
@@ -4043,9 +4034,6 @@ class TeamLogMachine(SyncMachine):
             folder, gen = state.dek_index.get(obj.get("parent_ref"), (None, None))
             if folder is None or gen != len(state.folders[folder]) - 1:
                 continue  # not a log key, or an older generation (kept for history)
-            if folder not in live_nodes and obj.get("parent_ref") not in live_keys:
-                coverage_event("an envelope of a deleted folder's key opens nothing live")
-                continue
             if not state.access.get(folder, {}).get(target) and any(
                     copy.access.get(folder, {}).get(target) for copy in ahead):
                 coverage_event("a grant waits in a device's copy the restored server lost")

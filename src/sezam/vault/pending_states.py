@@ -143,8 +143,8 @@ LEAKED_GRANTS_META = "leaked_grant_keys"
 
 
 def note_leaked_grant(db, dek_id: str, user_id: str) -> None:
-    # Kept while the key is known here, not only while a live folder uses it
-    # (run 642): a folder deleted now and brought back later still needs its re-key.
+    # Kept while the key is known here (run 642). A deleted folder on the key is
+    # re-keyed too (run 652): another device of the account may restore it.
     held = {
         key: users for key, users in (db.get_meta_json(LEAKED_GRANTS_META) or {}).items()
         if db.fetchone("SELECT 1 FROM deks WHERE id = ?", (key,))
@@ -154,12 +154,12 @@ def note_leaked_grant(db, dek_id: str, user_id: str) -> None:
 
 
 def leaked_grant_keys(db, user_id: Optional[str] = None) -> dict[str, list[str]]:
-    """The noted keys (of ``user_id``, or all) some live folder here still uses."""
+    """The noted keys (of ``user_id``, or all) some folder here still uses."""
     return {
         key: [u for u in users if user_id in (None, u)]
         for key, users in (db.get_meta_json(LEAKED_GRANTS_META) or {}).items()
         if (user_id is None or user_id in users)
-        and db.fetchone("SELECT 1 FROM nodes WHERE dek_id = ? AND is_deleted = 0", (key,))
+        and db.fetchone("SELECT 1 FROM nodes WHERE dek_id = ?", (key,))
     }
 
 
