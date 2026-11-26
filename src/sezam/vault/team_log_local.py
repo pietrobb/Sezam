@@ -142,6 +142,41 @@ class TeamLogMixin:
             and all(state.seen_keys.get(pk) == self._user_id for pk in server_pks)
         )
 
+    def _current_key_prover(self):
+        """Signs the proof of the log's current key for a login with a retired one.
+
+        The keys held here, or (R16-N12) the kept ones the log names while the
+        rotation from the server's keys to the held ones waits.
+        """
+        try:
+            state = self.team_state()
+        except TeamLogMismatch:
+            state = None
+        member = state.members.get(self._user_id) if state is not None else None
+        if member is not None and member.signing_pk != self._keypair.signing_pk.hex():
+            kept = self._continuation_old_keypair()
+            if kept is not None:
+                try:
+                    if kept.signing_pk.hex() == member.signing_pk:
+                        return kept.to_nacl_signing_key()
+                finally:
+                    kept.zeroize()
+        return self._keypair.to_nacl_signing_key()
+
+    def _server_lost_rotation_before_pending(self, server_keypair):
+        """The pending rotation's old keypair, when the server lost the rotation to it.
+
+        R16-N12: a committed rotation, then a pending one; the server went back
+        to a backup from before both. The log names the pending rotation's old
+        keys, so the check against the keys held here never matched and every
+        sync ended in 401. None unless that is the case.
+        """
+        old = self._pending_old_keypair()
+        if old is not None and not self._server_lost_own_rotation(server_keypair, old):
+            old.zeroize()
+            return None
+        return old
+
     def team_log_trusted(self, state: Optional[teamlog.TeamState] = None) -> bool:
         """Is the pinned genesis anchored (own, or the founder's key confirmed)?"""
         state = state or self.team_state()
@@ -195,6 +230,10 @@ class TeamLogMixin:
     def _identity_link(self, state: Optional[teamlog.TeamState]) -> Optional[dict]:
         """member.keys from the kept keys onto ``state``, or None (dropped once moot)."""
         if self._db.get_meta(IDENTITY_CONTINUATION_META) is None:
+            return None
+        if self._pending_identity() is not None:
+            # R16-N12: the server takes the link only with the rotation to the
+            # held keys; it goes in that push (add_identity_team_record).
             return None
         old = self._continuation_old_keypair()
         if old is None:
@@ -550,6 +589,15 @@ class TeamLogMixin:
         old = self._pending_old_keypair()
         if old is None:
             raise RuntimeError("The team identity rotation has no old signing key")
+        if old.signing_pk.hex() != member.signing_pk:
+            # R16-N12: the rotation goes from the keys the server has, the log
+            # names the kept ones (_server_lost_rotation_before_pending).
+            kept = self._continuation_old_keypair()
+            if kept is not None and kept.signing_pk.hex() == member.signing_pk:
+                old.zeroize()
+                old = kept
+            elif kept is not None:
+                kept.zeroize()
         if teamlog.signing_key_retired(state, self._user_id, bytes(old.signing_pk).hex()):
             # Review 8595ec1 (R10-F): rotating away from a key the log already
             # retired (a restore, the device with the log's key lost) on an

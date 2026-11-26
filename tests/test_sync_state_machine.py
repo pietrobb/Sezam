@@ -2564,6 +2564,14 @@ class SyncMachine(RuleBasedStateMachine):
             row["id"]: row["version"] for row in db.fetchall("SELECT id, encrypted_dek, version FROM deks")
             if dev.vault.dek_mgr.can_unwrap(row["id"], bytes(row["encrypted_dek"]), row["version"])
         }
+        if client.has_pending_key_change():
+            # R16-N11 (manual CI 45767729679): a waiting key change re-wraps the
+            # server's copy into itself at the server's version + 1. Two
+            # unsent password changes had taken the DEK to v3 here, a version
+            # no server or device ever saw; v2 over the acknowledged v1 is that
+            # same change. Never below or at what the server acknowledged.
+            acked = db.get_meta_json("pushed_dek_versions") or {}
+            own = {dek_id: min(version, int(acked.get(dek_id) or 0) + 1) for dek_id, version in own.items()}
         replaced = []
 
         def old(reply):
