@@ -516,6 +516,37 @@ def blocked_message(user_id: str, object_ids: list[str]) -> str:
     )
 
 
+def _handover_rekey_before_removal(vault: Vault, client: SyncClient, team, user_id: str) -> None:
+    """Make the handover re-key of a former admin before removing them.
+
+    R16-N10 (TeamLogMachine deep run on 9ce3f9e): a folder key the former
+    admin made reaches the admins only through their envelope, valid while
+    they are active (teamlog.envelope_valid). Removed before the new admin's
+    push re-keyed it (finish_handover_rekeys), no admin device could open the
+    folder any more, nor re-key it for the removal. Not landed, the batch
+    waits and the removal's re-key is queued behind it; the removal itself
+    still goes now. The local log may predate the handover (another device
+    of this account took it), so the log is read again first, and only for
+    a former admin are the folders pulled.
+    """
+    if pending_states.rekey_batch(vault.db) or vault.key_change_unpushed():
+        return
+    try:
+        client._refresh_team_log()
+        team = local_team_state(vault.db) or team
+        if not any(user_id in users for users in team.former_admins.values()):
+            return
+        client.pull()
+        team = local_team_state(vault.db)
+        if pending_states.rekey_batch(vault.db) or team is None \
+                or not teamlog.is_admin(team, vault.db.get_meta("user_id")):
+            return
+        if vault.rekey_after_handover(user_id, removing=True):
+            client.push()
+    except (RekeyBlockedByConflicts, SyncUnitTooLarge, RuntimeError, OSError) as exc:
+        logger.warning("The re-key after the handover of %s did not land before the removal: %s", user_id, exc)
+
+
 @oplock.held  # INV-6: writes the revocation queue (oplock.require)
 def revoke_member(vault: Vault, client: Optional[SyncClient], user_id: str) -> int:
     """Revoke ``user_id`` on the server, then re-key the folders they could open.
@@ -542,6 +573,7 @@ def revoke_member(vault: Vault, client: Optional[SyncClient], user_id: str) -> i
                     f"This account is not an admin in the team log, so it cannot remove {user_id}. "
                     "Pull first; if it still is not, an admin the team log names has to revoke."
                 )
+            _handover_rekey_before_removal(vault, client, team, user_id)
             # A signed member.remove (the server revokes the account with
             # it); kept for the next push if it cannot be sent now.
             client.queue_team_changes([("member.remove", {"user_id": user_id})])

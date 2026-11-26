@@ -1272,7 +1272,20 @@ class SyncMachine(RuleBasedStateMachine):
             # Review a159e97 H1: her envelope must not be granted again.
             coverage_event("abandon re-key with a made-up member's envelope")
         try:
-            result = abandon_pending_rekey(self.devices[device].client)
+            try:
+                result = abandon_pending_rekey(self.devices[device].client)
+            except KeyEpochStale:
+                # R16-N9: another device rotated the account keys; as for
+                # 'sezam abandon-rekey', the user takes them over, then drops.
+                self.log.append(f"{device}: abandon re-key says the account keys changed")
+                self._take_over_account_keys(device, abandon=False)
+                if device not in self._member_rekey_pending():
+                    self.log.append(f"{device}: the take-over closed the re-key")
+                    self._observe(device)
+                    return
+                result = abandon_pending_rekey(self.devices[device].client)
+        except AssertionError:
+            raise
         except Exception as exc:
             self.log.append(f"{device}: abandon re-key raised {type(exc).__name__}: {exc}")
             raise AssertionError(f"{device}: abandon re-key raised {exc!r}\n" + self._trace()) from exc

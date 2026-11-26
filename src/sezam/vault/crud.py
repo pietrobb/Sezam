@@ -3172,7 +3172,7 @@ class Vault:
         return pending_states.key_change_pending(self._db)
 
     @oplock.held
-    def rekey_after_handover(self, former_admin_id: str) -> int:
+    def rekey_after_handover(self, former_admin_id: str, removing: bool = False) -> int:
         """New admin: re-key the team folders a former admin held only as admin.
 
         Review c78fd19 (R13-8): after ``member.role`` admin -> member the
@@ -3182,10 +3182,15 @@ class Vault:
         gets a new key, sealed to the log's recipients (the former admin only
         with an ``access.set`` of their own). A folder they may write anyway is
         left alone. Returns the folders re-keyed (the batch is pending).
-        """
-        return self.rekey_after_revocation(former_admin_id, handover=True)
 
-    def _handover_rekey_rows(self, team, former_admin_id: str) -> list[dict]:
+        ``removing`` (R16-N10): the former admin is about to be removed, which
+        ends their envelopes (teamlog.envelope_valid); a folder whose current
+        key they made is re-keyed even where they may write, or the admins,
+        holding it only through their envelope, lose it with the removal.
+        """
+        return self.rekey_after_revocation(former_admin_id, handover=True, removing=removing)
+
+    def _handover_rekey_rows(self, team, former_admin_id: str, removing: bool = False) -> list[dict]:
         from nacl.exceptions import CryptoError
 
         rows = []
@@ -3199,7 +3204,9 @@ class Vault:
             )
             if not downgraded and former_admin_id not in team.former_admins.get(folder, ()):
                 continue
-            if not downgraded and teamlog.may_write(team, folder, former_admin_id):
+            made_by_them = team.folders[folder][-1][1] == former_admin_id
+            if not downgraded and teamlog.may_write(team, folder, former_admin_id) \
+                    and not (removing and made_by_them):
                 continue
             dek_id = teamlog.current_key(team, folder)
             if not self._db.fetchone(
@@ -3214,7 +3221,7 @@ class Vault:
         return rows
 
     @oplock.held  # review 8bc70f7 #3: lost in 3975939 (tests/test_review14_oplock_coverage.py)
-    def rekey_after_revocation(self, revoked_user_id: str, handover: bool = False) -> int:
+    def rekey_after_revocation(self, revoked_user_id: str, handover: bool = False, removing: bool = False) -> int:
         """Re-key all folders where a revoked user had access.
 
         After revoking a user's access, this method:
@@ -3239,7 +3246,7 @@ class Vault:
 
         if handover:
             team = local_team_state(self._db)
-            rows = self._handover_rekey_rows(team, revoked_user_id) if team is not None else []
+            rows = self._handover_rekey_rows(team, revoked_user_id, removing) if team is not None else []
             # The former admin stays a member: only the members queued for
             # removal are withheld, and the archive names nobody as removed.
             withheld = queued_for_removal(self._db)

@@ -2774,7 +2774,7 @@ def abandon_rekey(yes: bool, queued: bool):
     """
     from .vault.rekey_abandon import abandon_pending_rekey
     from .vault import oplock, pending_states
-    from .vault.sync_client import SyncClient
+    from .vault.sync_client import KeyEpochStale, SyncClient
 
     vault = _open_vault()
     _unlock_vault_fresh(vault)
@@ -2816,7 +2816,16 @@ def abandon_rekey(yes: bool, queued: bool):
                 client.pull()  # newer server copies win over the dropped batch
             except (RuntimeError, OSError) as exc:
                 click.echo(f"Warning: could not pull first ({exc}).", err=True)
-        result = abandon_pending_rekey(client)
+        try:
+            result = abandon_pending_rekey(client)
+        except KeyEpochStale:
+            # R16-N9: only the server can say whether the batch landed, and it
+            # refuses this device's old keys; take the new ones over first.
+            _adopt_rotation_prompt(client, vault)
+            if not pending_states.rekey_batch(vault.db):
+                click.echo("The re-key is no longer pending.")
+                return
+            result = abandon_pending_rekey(client)
     finally:
         vault.lock()
     click.echo("Dropped the unsent re-key.")
