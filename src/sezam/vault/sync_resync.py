@@ -534,8 +534,19 @@ class ResyncMixin:
             # Capability run 174: a copy applied before this check (an older
             # client) goes as well, not only the server's.
             for obj_id in unauthorized:
-                keep_local["node"].pop(obj_id, None)
-                keep_local["entry"].pop(obj_id, None)
+                for kind in ("node", "entry"):
+                    # R16-N8 (manual CI 45709981956 on 8a0548a): this device's
+                    # own write the server confirmed and lost in a restore
+                    # stays; only the server's older copy is refused (a re-key
+                    # the log keeps: that copy is on the replaced key). Dropped,
+                    # the folder's items were gone on every device and the
+                    # server kept them under the key of the revoked member.
+                    if obj_id in keep_local[kind] and self._db.fetchone(
+                        "SELECT 1 FROM object_sent_version WHERE object_id = ? AND version = ?",
+                        (obj_id, keep_local[kind][obj_id]),
+                    ):
+                        continue
+                    keep_local[kind].pop(obj_id, None)
             for obj in self._order_pulled_objects(objects):
                 if obj["id"] in keep_local.get(obj["object_type"], {}):
                     continue  # The server's copy is older than this device's.

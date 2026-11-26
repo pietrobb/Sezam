@@ -466,6 +466,24 @@ class ApplyMixin:
                 team, created_by, user_id, dek_id, obj.get("access_level"), target.encryption_pk,
             ):
                 logger.warning("Envelope %s refused by the team log", obj_id)
+                if (
+                    created_by == self._user_id and target is not None and not target.active
+                    and obj_id not in lost
+                    and not self._db.fetchone("SELECT 1 FROM access_envelopes WHERE id = ?", (obj_id,))
+                ):
+                    # R16-N8 (manual CI 45709981956 on 8a0548a): this account's
+                    # envelope to a member the log removed, which no device here
+                    # holds any more (restores, full resyncs). Refused and
+                    # forgotten, the dropped re-key was not requeued and the
+                    # member kept it live on the server. Held like a withdrawn
+                    # one sent again: queue_revoked_holders revives it for the
+                    # re-key, which withdraws it.
+                    level = obj.get("access_level")
+                    outbox.put(self._db, outbox.WITHDRAWAL, {
+                        "dek_id": dek_id, "user_id": user_id,
+                        "access_level": level if level in ("read", "write") else "read",
+                        "encrypted_dek": payload.hex(),
+                    }, obj_id, outbox.HELD)
                 return
         elif team is not None and created_by != self._user_id:
             # Review 1141a20 H6: with a log, another account's key reaches
