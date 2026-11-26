@@ -443,6 +443,22 @@ def closed_shared_before_team_log(vault: "Vault") -> set[str]:
     return shared
 
 
+def _sent_pre_log_grants(db) -> int:
+    """Shares a server without its log took alone; with the log here the next
+    push puts them in it (log_pre_log_grants, R16-N16)."""
+    from . import outbox
+    from .team_log_local import PRE_LOG_GRANTS_META
+
+    marked = db.get_meta_json(PRE_LOG_GRANTS_META) or []
+    if not marked or db.fetchone("SELECT 1 FROM team_log LIMIT 1") is None:
+        return 0
+    return sum(
+        1 for envelope_id in marked
+        if not outbox.is_pending(db, outbox.ENVELOPE, envelope_id)
+        and db.fetchone("SELECT 1 FROM access_envelopes WHERE id = ?", (envelope_id,))
+    )
+
+
 def pending_states(vault: "Vault") -> list[PendingState]:
     """What waits, in the order the ways out have to be taken. Local only."""
     from .sync_client import unsent_envelope_count
@@ -659,7 +675,7 @@ def pending_states(vault: "Vault") -> list[PendingState]:
     if connected:
         dirty = db.fetchone(
             "SELECT COUNT(*) AS n FROM outbox WHERE kind = 'write'"
-        )["n"] + unsent_envelope_count(db)
+        )["n"] + unsent_envelope_count(db) + _sent_pre_log_grants(db)
         if dirty:
             states.append(PendingState(
                 "unpushed",

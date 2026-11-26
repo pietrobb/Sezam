@@ -1029,10 +1029,12 @@ class TeamLogMixin:
         access.set, so the queued envelope was refused on every push of B
         for good. It now becomes a team grant, as founding the log would have
         made it on this device: the folder's key (and those below) and the
-        access.set, sent with it in one atomic request. When the log does not
-        allow that (not an admin here, the member is not in the log or has
-        another key now, the key is no current one) the envelope is
-        withdrawn, as a refused grant is; returned for the push's conflicts.
+        access.set, sent with it in one atomic request; so does one a server
+        without its log already took alone (R16-N16, marked until the log is
+        here). When the log does not allow that (not an admin here, the member
+        is not in the log or has another key now, the key is no current one)
+        a queued envelope is withdrawn, as a refused grant is, and returned
+        for the push's conflicts; a sent one stays: only a re-key takes it back.
 
         Only envelopes grant_member sealed on its path without a log are such
         grants (PRE_LOG_GRANTS_META, written with the envelope). Taking every
@@ -1053,17 +1055,17 @@ class TeamLogMixin:
         me = self._db.get_meta("user_id")
         queued = [
             row for row in self._db.fetchall(
-                "SELECT ae.id, ae.dek_id, ae.user_id, ae.access_level, ae.encrypted_dek, n.id AS folder "
-                "FROM access_envelopes ae JOIN outbox o ON o.kind = 'envelope' AND o.object_id = ae.id "
-                "AND o.state = 'queued' LEFT JOIN nodes n ON n.dek_id = ae.dek_id AND n.is_deleted = 0 "
+                "SELECT ae.id, ae.dek_id, ae.user_id, ae.access_level, ae.encrypted_dek, n.id AS folder, "
+                f"{outbox.pending(outbox.ENVELOPE, 'ae.id')} AS unsent "
+                "FROM access_envelopes ae LEFT JOIN nodes n ON n.dek_id = ae.dek_id AND n.is_deleted = 0 "
                 "AND EXISTS (SELECT 1 FROM deks d WHERE d.id = ae.dek_id AND d.node_id = n.id) "
-                "WHERE ae.user_id <> ? AND ae.created_by = ? ORDER BY o.seq",
+                "WHERE ae.user_id <> ? AND ae.created_by = ? ORDER BY ae.id",
                 (me, me),
             )
             if row["id"] in marked
         ]
         if len(queued) != len(marked):
-            self._db.set_meta_json(PRE_LOG_GRANTS_META, [row["id"] for row in queued])  # sent or gone
+            self._db.set_meta_json(PRE_LOG_GRANTS_META, [row["id"] for row in queued])  # gone
         try:
             state = self.team_state()
         except Exception:  # noqa: BLE001 - a failed log check holds back team changes only (#436 rule 1)
@@ -1075,7 +1077,8 @@ class TeamLogMixin:
         projected = projected_team_state(self._db, me) if rows else None
         withdrawn = []
         for row in rows:
-            if row["dek_id"] in projected.dek_index:
+            known = row["dek_id"] in projected.dek_index
+            if known and (row["unsent"] or projected.access.get(row["folder"], {}).get(row["user_id"])):
                 continue  # a key the log knows: the log's rules decide it as any envelope
             member = projected.members.get(row["user_id"])
             reason = None
@@ -1085,42 +1088,43 @@ class TeamLogMixin:
                 reason = "only a trusted team log's admin shares a folder"
             elif member is None or not member.active:
                 reason = "the member is not in the team log"
+            elif known and projected.dek_index[row["dek_id"]] != (
+                    row["folder"], len(projected.folders.get(row["folder"], [])) - 1):
+                reason = "its key is no longer the folder's current key in the team log"
             else:
                 try:
-                    opened = open_envelope(
-                        bytes(row["encrypted_dek"]),
-                        self._keypair.to_nacl_private_key().encode(),
-                        bytes.fromhex(member.encryption_pk),
-                    )
+                    opened = open_envelope(bytes(row["encrypted_dek"]), self._keypair.to_nacl_private_key().encode(),
+                                           bytes.fromhex(member.encryption_pk))
                     opened[:] = b"\x00" * len(opened)
                 except CryptoError:
                     reason = "it is sealed for a key the team log no longer names for the member"
             if reason is None:
-                changes = [("folder.key", {"folder": row["folder"], "dek_id": row["dek_id"], "prev_dek_id": None})]
+                changes = [] if known else [
+                    ("folder.key", {"folder": row["folder"], "dek_id": row["dek_id"], "prev_dek_id": None})]
                 changes.extend(
                     ("folder.key", {"folder": folder, "dek_id": dek_id, "prev_dek_id": None})
                     for folder, dek_id in unlogged_folder_keys(self._db, projected.dek_index, row["folder"])
                     if folder != row["folder"]
                 )
-                changes.append(("access.set", {
-                    "folder": row["folder"], "user_id": row["user_id"], "level": row["access_level"],
-                }))
+                changes.append(("access.set", {"folder": row["folder"], "user_id": row["user_id"],
+                                               "level": row["access_level"]}))
                 try:
                     self.queue_team_grant(row["id"], changes)
                     projected = projected_team_state(self._db, me)
                     continue
                 except teamlog.TeamLogError as exc:
                     reason = f"the team log refuses it: {exc}"
+            if not row["unsent"]:
+                logger.warning("A share made before the team log is not in it (%s): %s", reason, row["id"])
+                continue
             logger.error("A grant made before the team log was withdrawn (%s): %s", reason, row["id"])
             with self._db.transaction():
                 self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (row["id"],))
                 outbox.sent(self._db, outbox.ENVELOPE, row["id"])
             self._push_cache.pop(row["id"], None)
-            withdrawn.append({
-                "id": row["id"], "user_id": row["user_id"], "folder": row["folder"],
-                "error": f"A share made before this device had the team log was withdrawn: {reason}; "
-                         "share the folder again",
-            })
+            withdrawn.append({"id": row["id"], "user_id": row["user_id"], "folder": row["folder"], "error": (
+                f"A share made before this device had the team log was withdrawn: {reason}; share the folder again"
+            )})
         self._db.set_meta_json(PRE_LOG_GRANTS_META, [])  # each is now a team grant, the log's, or withdrawn
         return withdrawn
 

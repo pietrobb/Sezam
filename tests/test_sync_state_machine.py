@@ -3369,6 +3369,12 @@ class TeamLogMachine(SyncMachine):
             return
         self._confirm_founder(next(reversed(self.members)))
 
+    def _settle(self, choose) -> None:
+        super()._settle(choose)
+        # R16-N16: invariants are not run after teardown's settle; a share the
+        # log never took stayed unnoticed there.
+        self.an_envelope_goes_with_its_access()
+
     def teardown(self):
         # Every example ends under attack, whatever its steps drew (capability
         # run 430 probe on cd6d473: no example of the derandomized run reached
@@ -3988,6 +3994,15 @@ class TeamLogMachine(SyncMachine):
             fork = next((i for i in range(min(len(hashes), len(server))) if hashes[i] != server[i]), None)
             if fork and set(hashes[fork:]) <= getattr(self, "lost_by_restore", set()):
                 ahead.append(teamlog.replay(rows))
+        # R16-N16 (gate 33 deep run): a share sealed on a device that held no
+        # log, taken alone by a server that had lost it; the device logs it
+        # once it has the log (log_pre_log_grants).
+        from sezam.vault.team_log_local import PRE_LOG_GRANTS_META
+
+        pre_log = set()
+        for _name, vault in self._log_vaults():
+            if len(vault.db.fetchall("SELECT seq FROM team_log")) < len(records):
+                pre_log |= set(vault.db.get_meta_json(PRE_LOG_GRANTS_META) or [])
         for obj in self.db._storage.get("vault_objects", []):
             target = obj.get("target_user_id")
             if obj["object_type"] != "envelope" or obj.get("is_deleted") or target not in self.members:
@@ -4004,6 +4019,9 @@ class TeamLogMachine(SyncMachine):
             if not state.access.get(folder, {}).get(target) and any(
                     copy.access.get(folder, {}).get(target) for copy in ahead):
                 coverage_event("a grant waits in a device's copy the restored server lost")
+                continue
+            if obj["id"] in pre_log:
+                coverage_event("a share made without the log waits for its device to have it")
                 continue
             assert state.access.get(folder, {}).get(target), (
                 f"{self.members[target].name} has an envelope of {folder}'s current key "
