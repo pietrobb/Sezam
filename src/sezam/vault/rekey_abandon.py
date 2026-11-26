@@ -241,6 +241,16 @@ def abandon_pending_rekey(client: "SyncClient") -> dict:
         base = client._base_version(object_id)
         return -1 if base is None else base
 
+    def carries_change(object_id: str, row_version: int, shadow) -> bool:
+        """R16-N23 (stateful SecondAdminMachine@35): a delete here over an
+        unsent change of its own (a rename, then the delete), while the server
+        copy is another device's delete of the older content. Held as a bare
+        delete, it went back to the server's tombstone and the change was lost
+        without a conflict; it is held with what it carries (as the full
+        resync's SM53 rule: more than one version above its base)."""
+        floor = max(base_version(object_id), rekeyed_versions.get(object_id) or 0)
+        return bool(shadow["server_is_deleted"]) and row_version > floor + 1
+
     def entry_meta(payload: bytes) -> bytes:
         size = int.from_bytes(payload[:4], "big") if len(payload) >= 4 else 0
         return payload[4:4 + size]
@@ -318,6 +328,14 @@ def abandon_pending_rekey(client: "SyncClient") -> dict:
             elif shadow is not None:
                 if own_edit and deleted and node_id not in held:
                     held[node_id] = {"kind": "node", "deleted": True, "parent": row["parent_id"]}
+                    if carries_change(node_id, row["version"], shadow):
+                        held[node_id].update({
+                            "version": row["version"], "server_deleted": True,
+                            "meta": (reseal(
+                                blob, node_id, row["version"], BlobKind.NODE_META,
+                                target_for(blob, node_dek(row["parent_id"]) or node_dek(node_id)), True,
+                            ) if batch_dek(blob) else blob).hex(),
+                        })
                 elif own_edit and node_id not in held:
                     # Stateful test SM49: an edit not sealed with the batch's
                     # key (a rename made before a re-key another device's
@@ -415,6 +433,12 @@ def abandon_pending_rekey(client: "SyncClient") -> dict:
                 if own_edit and entry_id not in held:
                     if row["is_deleted"]:
                         held[entry_id] = {"kind": "entry", "deleted": True, "parent": row["node_id"]}
+                        if carries_change(entry_id, row["version"], shadow):
+                            new_meta, new_data = resealed() if sealed_new else (meta, data)
+                            held[entry_id].update({
+                                "version": row["version"], "server_deleted": True,
+                                "meta": new_meta.hex(), "data": new_data.hex(),
+                            })
                     else:
                         new_meta, new_data = resealed() if sealed_new else (meta, data)
                         # Stateful test SM63: the server copy is another

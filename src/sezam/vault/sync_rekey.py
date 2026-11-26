@@ -1255,7 +1255,7 @@ class RekeyMixin:
                     int(time.time() * 1000),
                 ),
             )
-            if edit.get("deleted"):
+            if edit.get("deleted") and "meta" not in edit:
                 # The local copy is the delete; the server copy's blobs stay
                 # (a tombstone's blobs are read at or below its version).
                 outbox.queue_write(self._db, object_id)
@@ -1266,10 +1266,10 @@ class RekeyMixin:
                 blob = bytes.fromhex(blob_hex)
                 dek_id = parse_envelope(blob).dek_id
                 dek = self._dek_mgr.unlock_dek(bytes_to_ulid(dek_id))
-                plain = decrypt(
-                    blob, dek, ulid_to_bytes(object_id), int(edit["version"]),
-                    expected_blob_kind=kind,
-                )
+                # A held delete's blobs are sealed at or below its version (R16-N23).
+                plain = open_sealed(
+                    blob, dek, object_id, int(edit["version"]), kind, deleted=bool(edit.get("deleted")),
+                )[0]
                 dek_id, dek = self._successor_dek(
                     dek_id, dek, (edit["parent"] or object_id) if is_node else edit["parent"]
                 )
@@ -1278,20 +1278,22 @@ class RekeyMixin:
                     object_id=ulid_to_bytes(object_id), version=version, blob_kind=kind,
                 )
 
+            # A held delete that carries its own change stays a delete, with it.
+            deleted = int(bool(edit.get("deleted")))
             outbox.queue_write(self._db, object_id)
             if is_node:
                 self._db.execute(
                     "UPDATE nodes SET parent_id = ?, encrypted_meta = ?, "
-                    "is_deleted = 0 WHERE id = ?",
-                    (edit["parent"], reseal(edit["meta"], BlobKind.NODE_META), object_id),
+                    "is_deleted = ? WHERE id = ?",
+                    (edit["parent"], reseal(edit["meta"], BlobKind.NODE_META), deleted, object_id),
                 )
             else:
                 self._db.execute(
                     "UPDATE entries SET node_id = ?, encrypted_meta = ?, encrypted_data = ?, "
-                    "is_deleted = 0 WHERE id = ?",
+                    "is_deleted = ? WHERE id = ?",
                     (
                         edit["parent"], reseal(edit["meta"], BlobKind.ENTRY_META),
-                        reseal(edit["data"], BlobKind.ENTRY_DATA), object_id,
+                        reseal(edit["data"], BlobKind.ENTRY_DATA), deleted, object_id,
                     ),
                 )
         if held:
