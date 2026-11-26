@@ -92,3 +92,35 @@ def test_a_sent_pre_log_share_the_log_will_not_take_is_rekeyed(loopback_server, 
         TeamLogMachine, seed,
         settings(stateful_step_count=25, deadline=None, database=None, suppress_health_check=list(HealthCheck)),
     )
+
+
+class _Db:
+    """The calls pending_states makes: meta, and whether a key or a live node on it exists."""
+
+    def __init__(self):
+        self.meta, self.deks, self.live = {}, set(), set()
+
+    def get_meta_json(self, key):
+        return self.meta.get(key)
+
+    def set_meta_json(self, key, value):
+        self.meta[key] = value
+
+    def fetchone(self, sql, args):
+        return 1 if args[0] in (self.deks if "FROM deks" in sql else self.live) else None
+
+
+def test_a_leak_note_of_a_deleted_folder_survives_until_the_folder_is_back():
+    """Capability review run 642 (seed TeamLogMachine@36): the share is withdrawn
+    because its folder is gone; the note of the key m6 may hold is not lost with
+    the next note, so the re-key runs if the folder comes back."""
+    db = _Db()
+    db.deks |= {"k1", "k2"}
+    pending_states.note_leaked_grant(db, "k1", "m6")  # k1's folder is deleted here
+    pending_states.note_leaked_grant(db, "k2", "m7")
+    assert pending_states.leaked_grant_keys(db) == {}
+    db.live.add("k1")  # e.g. a server restore brings the folder back
+    assert pending_states.leaked_grant_keys(db) == {"k1": ["m6"]}
+    db.deks.discard("k2")
+    pending_states.note_leaked_grant(db, "k1", "m8")
+    assert db.meta[pending_states.LEAKED_GRANTS_META] == {"k1": ["m6", "m8"]}

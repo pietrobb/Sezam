@@ -143,7 +143,12 @@ LEAKED_GRANTS_META = "leaked_grant_keys"
 
 
 def note_leaked_grant(db, dek_id: str, user_id: str) -> None:
-    held = leaked_grant_keys(db)
+    # Kept while the key is known here, not only while a live folder uses it
+    # (run 642): a folder deleted now and brought back later still needs its re-key.
+    held = {
+        key: users for key, users in (db.get_meta_json(LEAKED_GRANTS_META) or {}).items()
+        if db.fetchone("SELECT 1 FROM deks WHERE id = ?", (key,))
+    }
     held[dek_id] = sorted(set(held.get(dek_id, [])) | {user_id})
     db.set_meta_json(LEAKED_GRANTS_META, held)
 
