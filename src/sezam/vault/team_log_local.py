@@ -23,7 +23,6 @@ from .sync_common import (
     ATOMIC_BATCH_CONFLICT,
     TEAM_LOG_HEAD_MOVED,
     TEAM_LOG_REFUSED,
-    ServerError,
     _RevokedEnvelopesRefused,
     server_error,
 )
@@ -68,6 +67,8 @@ from .team_log_state import (  # noqa: F401 - re-exported: callers import these 
     keep_identity_continuation,
     identity_continuation,
     drop_identity_continuation,
+    kept_keypair_named,
+    settle_lost_rotation_keys,
     member_keys_record,
     import_account_anchor,
     log_admins,
@@ -143,34 +144,26 @@ class TeamLogMixin:
         )
 
     def _current_key_prover(self):
-        """Signs the proof of the log's current key for a login with a retired one.
-
-        The keys held here, or (R16-N12) the kept ones the log names while the
-        rotation from the server's keys to the held ones waits.
-        """
+        """Signs the proof of the log's current key at a login with a retired one:
+        the keys held here, or the kept ones the log names (kept_keypair_named)."""
         try:
             state = self.team_state()
         except TeamLogMismatch:
             state = None
         member = state.members.get(self._user_id) if state is not None else None
         if member is not None and member.signing_pk != self._keypair.signing_pk.hex():
-            kept = self._continuation_old_keypair()
+            kept = kept_keypair_named(member.signing_pk, self._continuation_old_keypair())
             if kept is not None:
                 try:
-                    if kept.signing_pk.hex() == member.signing_pk:
-                        return kept.to_nacl_signing_key()
+                    return kept.to_nacl_signing_key()
                 finally:
                     kept.zeroize()
         return self._keypair.to_nacl_signing_key()
 
     def _server_lost_rotation_before_pending(self, server_keypair):
-        """The pending rotation's old keypair, when the server lost the rotation to it.
-
-        R16-N12: a committed rotation, then a pending one; the server went back
-        to a backup from before both. The log names the pending rotation's old
-        keys, so the check against the keys held here never matched and every
-        sync ended in 401. None unless that is the case.
-        """
+        """R16-N12: the pending rotation's old keypair when the server went back to
+        a backup from before the committed rotation to it (the log names those
+        keys, so the check against the held ones never matched: 401); else None."""
         old = self._pending_old_keypair()
         if old is not None and not self._server_lost_own_rotation(server_keypair, old):
             old.zeroize()
@@ -590,14 +583,11 @@ class TeamLogMixin:
         if old is None:
             raise RuntimeError("The team identity rotation has no old signing key")
         if old.signing_pk.hex() != member.signing_pk:
-            # R16-N12: the rotation goes from the keys the server has, the log
-            # names the kept ones (_server_lost_rotation_before_pending).
-            kept = self._continuation_old_keypair()
-            if kept is not None and kept.signing_pk.hex() == member.signing_pk:
+            # R16-N12: the rotation goes from the server's keys, the log names the kept ones.
+            kept = kept_keypair_named(member.signing_pk, self._continuation_old_keypair())
+            if kept is not None:
                 old.zeroize()
                 old = kept
-            elif kept is not None:
-                kept.zeroize()
         if teamlog.signing_key_retired(state, self._user_id, bytes(old.signing_pk).hex()):
             # Review 8595ec1 (R10-F): rotating away from a key the log already
             # retired (a restore, the device with the log's key lost) on an
@@ -1165,7 +1155,7 @@ class TeamLogMixin:
             try:
                 result = send(records)
             except BaseException as exc:
-                self._note_not_taken(records, exc)
+                team_log_withdrawn.note_not_taken(self._db, records, exc)  # R16-H1
                 if not isinstance(exc, RuntimeError):
                     raise
                 if attempt == 0 and server_error(exc, 409, TEAM_LOG_HEAD_MOVED):
@@ -1183,24 +1173,6 @@ class TeamLogMixin:
                 _drop_sent_changes(self._db, pending)
             return result
         raise AssertionError("unreachable")
-
-    def _note_not_taken(self, records: list[dict], exc: BaseException) -> None:
-        """R16-H1: ``records`` went out and the server did not take them. An
-        answer 4xx applied none of them: they are withdrawn, whatever the
-        server keeps. Any other failure leaves it open (a lost reply): the
-        next pull shows whether they landed.
-
-        A 409 (the log moved on, a conflict) refuses the request, not the
-        records: the same record may be in the log already - another device
-        of this account made the same change on the same head (R16-Z deep run
-        on b20ece6: B withdrew A's identical grant and refused the log for
-        good). It stays open; the log shows whether it was taken."""
-        seen = set()
-        while exc is not None and id(exc) not in seen and not isinstance(exc, ServerError):
-            seen.add(id(exc))
-            exc = exc.__cause__
-        refused = isinstance(exc, ServerError) and 400 <= exc.status < 500 and exc.status != 409
-        team_log_withdrawn.note_sent(self._db, records, refused)
 
     def _send_queue_overflow(self, extra: int) -> None:
         """Append the queue's head on its own while it exceeds one append.
@@ -1224,7 +1196,7 @@ class TeamLogMixin:
             try:
                 self._request("POST", "/api/team-log", {"records": records}, auth=True)
             except BaseException as exc:
-                self._note_not_taken(records, exc)
+                team_log_withdrawn.note_not_taken(self._db, records, exc)  # R16-H1
                 if not isinstance(exc, RuntimeError):
                     raise
                 if moved < 2 and server_error(exc, 409, TEAM_LOG_HEAD_MOVED):

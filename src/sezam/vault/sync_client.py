@@ -76,7 +76,7 @@ from .sync_resync import ResyncMixin
 from .sync_state import SyncStateMixin
 from .sync_vouchers import VoucherMixin, voucher_entry
 from .sync_writers import WritersMixin
-from .team_log_local import TeamLogMixin, keep_identity_continuation
+from .team_log_local import TeamLogMixin, keep_identity_continuation, settle_lost_rotation_keys
 
 # Re-exported: callers import these from sync_client.
 __all__ = [
@@ -598,37 +598,22 @@ class SyncClient(
                 raise RuntimeError("Server holds no account keypair")
             self._carry_own_anchor(vault, server_keypair, kek)
             key_epoch = int(resp.get("key_epoch") or 0)
-            # R16-N12: the log's keys are the pending rotation's old ones; read
-            # now, the journal sealing them goes with the KEK adopted below.
-            log_keys = self._server_lost_rotation_before_pending(server_keypair)
+            log_keys = self._server_lost_rotation_before_pending(server_keypair)  # before the KEK below
             if log_keys is not None or self._server_lost_own_rotation(server_keypair, vault.keypair):
-                # Capability run 277: the server went back to a backup from
-                # before this device's identity rotation, which its team log
-                # holds (member.keys). Its keypair is retired there; taking it
-                # over left the device out of the team. The rotation goes out
-                # again from the server's key material instead.
-                held_kdf = vault.held_kdf()  # SM23b: the lost rotation's own KEK
+                # Capability run 277: the server went back to a backup from before this
+                # device's identity rotation, which its team log holds (member.keys); taking
+                # its retired keypair over left the device out of the team. The rotation goes
+                # out again from the server's keys (R16-N12: the log's keys sign member.keys).
+                held_kdf, proof = vault.held_kdf(), None  # SM23b: the lost rotation's own KEK
                 try:
-                    # The pending rotation's journal goes here: it proves a
-                    # password state the server no longer has.
                     vault.adopt_account_kek(kek, salt, params, key_epoch=key_epoch)
                     proof = vault.change_password(
                         account_password, account_password,
                         rotate_identity=True, rotation_from=server_keypair, rotation_kdf=held_kdf,
                     )
-                    if log_keys is not None:
-                        # R16-N12: one rotation from the server's keys to the
-                        # ones held here; the log's keys (the pending rotation's
-                        # old ones) sign its member.keys (add_identity_team_record).
-                        private = bytearray(log_keys.serialize_private())
-                        try:
-                            keep_identity_continuation(self._db, self._dek_mgr._kek, self._user_id, bytes(private))
-                        finally:
-                            private[:] = b"\x00" * len(private)
                 finally:
                     held_kdf[2][:] = b"\x00" * len(held_kdf[2])
-                    if log_keys is not None:
-                        log_keys.zeroize()
+                    settle_lost_rotation_keys(self._db, self._dek_mgr._kek, self._user_id, log_keys, proof is not None)
                 proof[:] = b"\x00" * len(proof)
                 server_keypair = None
                 self._forget_session_after_lost_rotation()

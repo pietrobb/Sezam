@@ -505,6 +505,33 @@ def drop_identity_continuation(db) -> None:
     db.execute("DELETE FROM vault_meta WHERE key = ?", (IDENTITY_CONTINUATION_META,))
 
 
+def kept_keypair_named(signing_pk: str, kept):
+    """``kept`` (identity_continuation) when the log names its key ``signing_pk``, else None (zeroized).
+
+    R16-N12: a lost committed rotation under a pending one goes out again from
+    the server's keys; the kept keys the log names sign its member.keys and
+    prove the log's key at a login with a retired one.
+    """
+    if kept is not None and kept.signing_pk.hex() != signing_pk:
+        kept.zeroize()
+        return None
+    return kept
+
+
+def settle_lost_rotation_keys(db, kek, user_id: str, log_keys, keep: bool) -> None:
+    """R16-N12: ``log_keys`` (the pending rotation's old keys, the log's) are kept
+    to sign the re-sent rotation's member.keys when ``keep``; zeroized either way."""
+    if log_keys is None:
+        return
+    private = bytearray(log_keys.serialize_private())
+    try:
+        if keep:
+            keep_identity_continuation(db, kek, user_id, bytes(private))
+    finally:
+        private[:] = b"\x00" * len(private)
+        log_keys.zeroize()
+
+
 def member_keys_record(state: teamlog.TeamState, user_id: str, old, new) -> dict:
     """member.keys moving ``user_id`` from ``old`` to ``new``: signed by the
     key the log names, with the new key's signature over the head."""

@@ -50,6 +50,26 @@ def _follow_prev(sent: dict, gone: set) -> None:
                 moved = True
 
 
+def note_not_taken(db, records: list[dict], exc: BaseException) -> None:
+    """``records`` went out and the server did not take them. An answer 4xx
+    applied none of them: they are withdrawn, whatever the server keeps. Any
+    other failure leaves it open (a lost reply): the next pull shows whether
+    they landed.
+
+    A 409 (the log moved on, a conflict) refuses the request, not the
+    records: the same record may be in the log already - another device of
+    this account made the same change on the same head (R16-Z deep run on
+    b20ece6: B withdrew A's identical grant and refused the log for good).
+    It stays open; the log shows whether it was taken."""
+    from .sync_common import ServerError
+
+    seen = set()
+    while exc is not None and id(exc) not in seen and not isinstance(exc, ServerError):
+        seen.add(id(exc))
+        exc = exc.__cause__
+    note_sent(db, records, isinstance(exc, ServerError) and 400 <= exc.status < 500 and exc.status != 409)
+
+
 def note_sent(db, records: list[dict], refused: bool) -> None:
     """``records`` went to the server and it did not answer that it took
     them: refused (an answer 4xx) or not known."""
