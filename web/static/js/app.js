@@ -4861,9 +4861,11 @@ function folderAccessLevelForObject(obj) {
  * pinned and not held yet, makes nobody admin here.
  */
 function webIsAdmin() {
+    // Review c02cc47 R17-L: a refused log is checked first; it is still held.
+    if (state.teamLogRefusal) return false;
     const team = state.teamLog?.team;
     if (team) return !!state.userId && globalThis.SezamTeamLog.isAdmin(team, state.userId);
-    if (state.teamLogRefusal || webPinnedTeamGenesis().length) return false;
+    if (webPinnedTeamGenesis().length) return false;
     return state.isAdmin === true;
 }
 
@@ -9994,8 +9996,12 @@ function trashedNode(nodeId) {
         try {
             const meta = decryptEnvelope(payloadBytes, obj.id, version, state.deks, state.sodium,
                 BLOB_KIND.NODE_META);
-            return { id: obj.id, parent_ref: obj.parent_ref, dekId,
-                     personal: !!(meta && meta.personal) && (state.kekDekIds || []).includes(dekId) };
+            // Review c02cc47 R17-L: a personal folder is signed by its author
+            // only (TL7), so a tombstone another account signed is never ours.
+            const signer = obj.signature_user_id || obj.owner_id || null;
+            return { id: obj.id, parent_ref: obj.parent_ref, dekId, signer,
+                     personal: !!(meta && meta.personal) && signer === state.userId
+                         && (state.kekDekIds || []).includes(dekId) };
         } catch {
             // the other version
         }
