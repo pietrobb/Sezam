@@ -77,7 +77,7 @@ from .sync_state import SyncStateMixin
 from .. import key_vouchers
 from .sync_vouchers import VoucherMixin
 from .sync_writers import WritersMixin
-from .team_log_local import TeamLogMixin, keep_identity_continuation, settle_lost_rotation_keys
+from .team_log_local import TeamLogMixin, settle_lost_rotation_keys
 
 # Re-exported: callers import these from sync_client.
 __all__ = [
@@ -583,7 +583,7 @@ class SyncClient(
             if server_error(exc, 401) or server_error(exc, 403):
                 raise RuntimeError("Wrong current account password") from exc
             raise
-        server_keypair = None
+        server_keypair = former_sk = None
         try:
             if resp.get("user_id") != self._db.get_meta("user_id"):
                 raise RuntimeError("Server returned a different account")
@@ -623,27 +623,27 @@ class SyncClient(
             ) and (server_keypair.signing_pk, server_keypair.encryption_pk) == (
                 vault.keypair.signing_pk, vault.keypair.encryption_pk
             )
-            vault.adopt_account_kek(
-                kek, salt, params, key_epoch=key_epoch, own_rotation_landed=own_rotation_landed
-            )
-            self._db.set_meta(SERVER_KEY_MATERIAL_META, hashlib.sha256(
-                bytes.fromhex(resp["encrypted_keypair"])
-            ).hexdigest())
-        finally:
-            kek[:] = b"\x00" * len(kek)
-        local = vault.keypair
-        former_sk = None
-        if (server_keypair.signing_pk, server_keypair.encryption_pk) != (
-            local.signing_pk, local.encryption_pk
-        ):
             # Org recovery replaced the account keypair; it opened under the
             # account KEK, so it is the account's own.
-            former_sk = bytearray(local.to_nacl_private_key().encode())
-            if log_named is not None:
-                # R15 (goal #429): the log names the keys held here, not the
-                # new ones; they link them (continue_identity_in_log).
-                keep_identity_continuation(self._db, self._dek_mgr._kek, self._user_id, bytes(log_named))
-            vault.rebind_server_identity(resp["user_id"], server_keypair)
+            rebind = (server_keypair.signing_pk, server_keypair.encryption_pk) != (
+                vault.keypair.signing_pk, vault.keypair.encryption_pk)
+            former_sk = bytearray(vault.keypair.to_nacl_private_key().encode()) if rebind else None
+
+            def bind() -> None:  # Review c02cc47 R17-N5: one transaction with the takeover
+                self._db.set_meta(SERVER_KEY_MATERIAL_META, hashlib.sha256(
+                    bytes.fromhex(resp["encrypted_keypair"])).hexdigest())
+                if rebind:
+                    vault.bind_taken_over_identity(resp["user_id"], server_keypair, log_named)
+
+            vault.adopt_account_kek(kek, salt, params, key_epoch=key_epoch,
+                                    own_rotation_landed=own_rotation_landed, before_commit=bind)
+        except BaseException:
+            if former_sk is not None:
+                former_sk[:] = b"\x00" * len(former_sk)
+            raise
+        finally:
+            kek[:] = b"\x00" * len(kek)
+        if rebind:
             self._keypair = vault.keypair
             # Stateful test SM11: the ring loaded before held only the old
             # key, so the records just re-signed with the new one were

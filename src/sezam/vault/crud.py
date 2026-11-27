@@ -65,7 +65,7 @@ from .sync_common import (
 from .sync_writers import WRITES_AUDITED_META
 from .team_log_local import (
     CONFIRMED_GENESIS_META, identity_continuation, import_account_anchor, local_team_state, log_trusted,
-    projected_team_state, publishable_anchor,
+    keep_identity_continuation, projected_team_state, publishable_anchor,
     record_account_anchor, team_folder_at_or_above,
 )
 from .sync_limits import (
@@ -2139,6 +2139,24 @@ class Vault:
             self._keypair = server_keypair
         self._user_id = server_user_id
 
+    def bind_taken_over_identity(
+        self, server_user_id: str, server_keypair: KeyPair, log_named: Optional[bytearray]
+    ) -> None:
+        """The account keypair the server holds (org recovery, another device's
+        rotation) replaces this device's, as the end of a takeover of rotated
+        key material: run as adopt_account_kek's ``before_commit``.
+
+        Review c02cc47 R17-N5: run after the takeover had committed, a refusal
+        here (an anchor naming another team log, a keypair without this
+        device's anchor) left the server's epoch and KEK taken and this
+        device's unsent rotation ended, without the server's keys: neither
+        logged in (401)."""
+        if log_named is not None:
+            # R15 (goal #429): the log names the keys held here, not the
+            # new ones; they link them (continue_identity_in_log).
+            keep_identity_continuation(self._db, self.dek_mgr._kek, server_user_id, bytes(log_named))
+        self.rebind_server_identity(server_user_id, server_keypair)
+
     def held_kdf(self) -> tuple[bytes, Argon2Params, bytearray]:
         """Salt, Argon2 params and a copy of the KEK this vault unlocks with."""
         self._require_unlocked()
@@ -2157,6 +2175,7 @@ class Vault:
         key_epoch: int | None = None,
         own_rotation_landed: bool = False,
         connect_snapshot: Optional[Path] = None,
+        before_commit: Optional[Callable[[], None]] = None,
     ) -> None:
         """Switch this device to the account KEK after Path B recovery.
 
@@ -2172,6 +2191,10 @@ class Vault:
         identity rotation, so the envelopes it re-sealed are on the server.
         ``connect_snapshot``: the 'server-connect' snapshot of this connect;
         it stays as the way back from the connect (review 7c10379).
+        ``before_commit``: the rest of the takeover, in the same transaction
+        (review c02cc47 R17-N5: the binding to the server's keypair refused
+        after the epoch, the KEK and the end of an unsent rotation were
+        committed, and the device had neither); it raising undoes it all.
         """
         self._require_unlocked()
         # Review 7c10379: an outdated KEK equal to the account's took the
@@ -2182,9 +2205,12 @@ class Vault:
         old_kek = self.dek_mgr._kek
         old_kek_dek_id = self.dek_mgr.kek_dek_id
         if compare_digest(bytes(old_kek), bytes(account_kek)):
-            if key_epoch is not None:
-                with self._db.transaction():
-                    self._adopt_key_epoch(key_epoch, own_rotation_landed)
+            if key_epoch is not None or before_commit is not None:
+                with self._db.transaction(immediate=True):
+                    if key_epoch is not None:
+                        self._adopt_key_epoch(key_epoch, own_rotation_landed)
+                    if before_commit is not None:
+                        before_commit()
             return
         new_kek = bytearray(account_kek)
         recovery_wrap = self._org_recovery_wrap(new_kek)
@@ -2230,6 +2256,8 @@ class Vault:
             elif self._db.get_meta("org_recovery_pk"):
                 self._db.set_meta("org_recovery_stale", "1")
             self._drop_pending_org_recovery_registration()
+            if before_commit is not None:
+                before_commit()
             self._db.commit()
         except Exception:
             self._db.rollback()
