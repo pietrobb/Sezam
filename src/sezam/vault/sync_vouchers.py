@@ -184,7 +184,11 @@ class VoucherMixin:
             return cached
         out = set(self._lists_of(user_id, self._voucher_keys.get(user_id)))
         out |= self._lists_of(self._user_id, bytes(self._keypair.signing_pk))
+        # Review c02cc47 R17-L: admins only of a log this device trusts (§7):
+        # an unconfirmed founder's log names whatever admins the server chose.
         state = self.team_state()
+        if state is not None and not self.team_log_trusted(state):
+            state = None
         for admin_id, member in (state.members.items() if state is not None else ()):
             if member.active and member.signing_pk and teamlog.is_admin(state, admin_id):
                 out |= self._lists_of(admin_id, bytes.fromhex(member.signing_pk))

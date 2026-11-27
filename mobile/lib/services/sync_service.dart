@@ -2194,6 +2194,7 @@ class SyncService {
     final vouchedBySigner = <String, Set<String>>{};
     final listsByPoster = <String, Set<String>>{};
     List<Map<String, dynamic>>? heldRows;
+    bool? voucherLogTrusted;
     final verified = <Map<String, dynamic>>[];
     final stateReplacements = <Map<String, dynamic>>[];
     // Review 8595ec1 (R10-C): what the log refused for want of write access
@@ -2273,7 +2274,21 @@ class SyncService {
             ...await listsOf(signerId, authorPks.first),
             ...await listsOf(currentUserId, signingPk),
           };
-          final team = teamLog?.team;
+          // Review c02cc47 R17-L: admins only of a log this phone trusts
+          // (§7), as the desktop's; an unconfirmed founder's log names
+          // whatever admins the server chose.
+          voucherLogTrusted ??=
+              teamLog != null &&
+              localTeamLogTrusted(
+                teamLog,
+                await readConfirmedTeamGenesis(currentUserId),
+                currentUserId,
+                bytesToHex(signingPk),
+                _vault.encryptionPublicKey == null
+                    ? null
+                    : bytesToHex(_vault.encryptionPublicKey!),
+              );
+          final team = voucherLogTrusted ? teamLog?.team : null;
           for (final MapEntry(key: adminId, value: member)
               in team?.members.entries ?? <MapEntry<String, TeamMember>>[]) {
             if (TeamLog.isAdmin(team!, adminId) &&

@@ -3167,6 +3167,10 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     }
     state.teamLogRefusal = teamLogRefusal;
     const teamUsable = teamLogRefusal ? null : teamLog;
+    // Review c02cc47 R17-L: an admin's voucher list counts only by a log this
+    // browser trusts (§7), as the desktop's admins_by_log; a served or refused
+    // log's admins were any keys the server named.
+    const voucherTeam = webTeamLogTrusted(_sodium, teamLog, teamLogRefusal) ? teamLog.team : null;
 
     // Verify every object before applying any of the response; abort on any invalid object
     const verifiedObjects = [];
@@ -3212,7 +3216,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
             // that rotated before #443 and never syncs again is still read
             // (capability review run 480).
             if (!vouchedBySigner.has(signerId)) {
-                const team = teamLog?.team;
+                const team = voucherTeam;
                 const posters = [[signerId, state.voucherKeys[signerId]]];
                 if (state.keypair?.signingPk) posters.push([state.userId, bytesToHex(state.keypair.signingPk)]);
                 for (const [uid, member] of Object.entries(team?.members || {})) {
