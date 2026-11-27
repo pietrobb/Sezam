@@ -4378,6 +4378,29 @@ def test_sync_state_machine_rotation_reply_lost_then_pushed_again(loopback_serve
         machine.teardown()
 
 
+def test_sync_state_machine_rotation_after_a_sent_delete_restored_here(loopback_server, monkeypatch):
+    """Review c02cc47 R17-P1 (derandomized default run on ecd31cb): B deletes a
+    folder and pushes, restores it from the trash and rotates its identity
+    before the restore goes out. An unsent change counted for no held copy, so
+    the deletion the server took from B, signed by the key the rotation
+    retires, was left out of its lists: every push of B was refused as
+    key_vouchers_incomplete."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        folder = sorted(machine._folders("B"))[0]
+        machine.delete_folder(_Scripted(device="B", folder=folder))
+        machine._push("B")
+        (item,) = [i for i in trash.list_trash(machine.devices["B"].vault) if i["id"] == folder]
+        machine.restore_from_trash(_Scripted(device="B", **{"trash item": item}))
+        machine.rotate_identity(_Scripted(device="B"), None)
+        assert "key_vouchers_incomplete" not in machine._trace(), machine._trace()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
 @pytest.mark.parametrize("how", ["new_device", "full_resync", "web"])
 def test_sync_state_machine_server_holds_a_leaked_retired_key(loopback_server, monkeypatch, how):
     """Goal #443 (review e443cbc R15, INV-3): after A's identity rotation the

@@ -67,7 +67,10 @@ class SyncStateMixin:
 
         A queued row is its server copy only when a conflict keeps one; a
         version this device made and has not sent is none (R16-Z: a voucher of
-        an unsent tombstone let a retired key sign that version live)."""
+        an unsent tombstone let a retired key sign that version live), but
+        the server copy that version builds on stays held (R17-P1: a folder
+        restored here after its sent deletion left the deletion out of the
+        identity rotation's lists, and the server refused every push)."""
         unsent = {
             row["object_id"] for row in self._db.fetchall(
                 "SELECT object_id FROM outbox WHERE kind = 'write' AND object_id NOT IN "
@@ -79,11 +82,17 @@ class SyncStateMixin:
             signed.setdefault(row["object_id"], []).append(
                 (row["version"], row["payload_hash"], row["digest"])
             )
+        bases = self._all_bases() if unsent else {}
         out = set()
         for obj_id, version, payload, *_signed in self._local_objects():
-            if obj_id in unsent or obj_id not in signed:
+            if obj_id not in signed:
                 continue
-            payload_hash = hashlib.sha256(payload).hexdigest()
+            if obj_id in unsent:
+                if obj_id not in bases:
+                    continue
+                version, payload_hash = bases[obj_id][0], str(bases[obj_id][1]).lower()
+            else:
+                payload_hash = hashlib.sha256(payload).hexdigest()
             out.update(
                 (obj_id, version, digest) for held_version, held_hash, digest in signed[obj_id]
                 if held_version == version and held_hash == payload_hash
