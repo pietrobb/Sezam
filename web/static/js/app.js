@@ -9428,8 +9428,11 @@ function keyVoucherObjectEntry(obj, signerId, signingPk, _sodium) {
     }
 }
 
+// R17-L: one parse in all three clients (src/sezam/key_vouchers.py): at most
+// MAX_ENTRIES as posted, a version up to Number.MAX_SAFE_INTEGER, plain hex.
 function canonicalKeyVoucherEntries(entries) {
     if (!Array.isArray(entries)) throw new Error('Voucher entries must be a list');
+    if (entries.length > 200000) throw new Error('Too many voucher entries');
     const byKey = new Map();
     for (const entry of entries) {
         if (!Array.isArray(entry) || entry.length !== 3) {
@@ -9478,12 +9481,14 @@ function vouchedEntries(userId, currentSigningPk, lists, _sodium) {
     const vouched = new Set();
     for (const list of Array.isArray(lists) ? lists : []) {
         try {
-            if (!list || String(list.signing_pk || '').toLowerCase() !== currentHex) continue;
-            const signature = hexToBytes(String(list.signature || ''));
-            const message = keyVoucherMessage(userId, currentSigningPk, list.entries || []);
+            if (!list || typeof list.signing_pk !== 'string' || !/^[0-9a-fA-F]{64}$/.test(list.signing_pk)
+                || list.signing_pk.toLowerCase() !== currentHex) continue;
+            if (typeof list.signature !== 'string' || !/^[0-9a-fA-F]{128}$/.test(list.signature)) continue;
+            const signature = hexToBytes(list.signature);
+            const message = keyVoucherMessage(userId, currentSigningPk, list.entries ?? []);
             if (signature.length !== 64
                 || !_sodium.crypto_sign_verify_detached(signature, message, currentSigningPk)) continue;
-            for (const [id, version, payloadHash] of canonicalKeyVoucherEntries(list.entries || [])) {
+            for (const [id, version, payloadHash] of canonicalKeyVoucherEntries(list.entries ?? [])) {
                 vouched.add(keyVoucherKey(id, version, payloadHash));
             }
         } catch {

@@ -45,6 +45,14 @@ MAX_LISTS_PER_KEY = 64
 MAX_PAGES = MAX_LISTS_PER_KEY
 _ID = re.compile(r"^[0-9A-Za-z]{26}$")  # OBJECT_ID in server/app/models/schemas.py
 _HASH = re.compile(r"^[0-9a-f]{64}$")
+# R17-L (review c02cc47): one parse in all three clients. A version is an
+# integral JSON number up to the largest integer every client reads exactly
+# (JavaScript's Number.MAX_SAFE_INTEGER; 3.0 is 3, which JSON.parse cannot
+# tell apart), and keys and signatures are plain hex (bytes.fromhex took
+# spaces, the web and the phone did not).
+MAX_VERSION = 2 ** 53 - 1
+_PK_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
+_SIG_HEX = re.compile(r"^[0-9a-fA-F]{128}$")
 
 Entry = tuple[str, int, str]
 # R17-N1 (S4 style): every field a sync object's signature covers, in
@@ -111,19 +119,21 @@ def object_entry(obj: Mapping, signer_id: str, signing_pk: bytes) -> Optional[En
 def canonical_entries(entries: Iterable) -> list[Entry]:
     """Sorted, de-duplicated (id, version, digest); ValueError on any malformed one."""
     out: set[Entry] = set()
-    for entry in entries:
+    for count, entry in enumerate(entries, 1):
+        if count > MAX_ENTRIES:  # as posted, duplicates too (the server's KeyVoucherList)
+            raise ValueError("Too many voucher entries")
         if not isinstance(entry, (list, tuple)) or len(entry) != 3:
             raise ValueError("A voucher entry is [id, version, digest]")
         obj_id, version, payload_hash = entry
         if not isinstance(obj_id, str) or not _ID.match(obj_id):
             raise ValueError("A voucher entry needs a 26-character object id")
-        if isinstance(version, bool) or not isinstance(version, int) or not 0 <= version < 2 ** 64:
-            raise ValueError("A voucher entry needs an unsigned 64-bit version")
+        if isinstance(version, float) and version.is_integer():
+            version = int(version)
+        if isinstance(version, bool) or not isinstance(version, int) or not 0 <= version <= MAX_VERSION:
+            raise ValueError("A voucher entry needs an unsigned version of at most 2^53 - 1")
         if not isinstance(payload_hash, str) or not _HASH.match(payload_hash):
             raise ValueError("A voucher entry needs a lowercase hex SHA-256 digest")
         out.add((obj_id, version, payload_hash))
-    if len(out) > MAX_ENTRIES:
-        raise ValueError("Too many voucher entries")
     return sorted(out)
 
 
@@ -159,11 +169,16 @@ def list_valid(user_id: str, signing_pk: bytes, voucher_list) -> bool:
     """Is ``voucher_list`` signed by ``signing_pk`` for ``user_id``?"""
     if not isinstance(voucher_list, dict):
         return False
+    pk, signature = voucher_list.get("signing_pk"), voucher_list.get("signature")
+    entries = voucher_list.get("entries")
+    if not isinstance(pk, str) or not _PK_HEX.match(pk) or not isinstance(signature, str) \
+            or not _SIG_HEX.match(signature) or not isinstance(entries, (list, type(None))):
+        return False
     try:
-        if bytes.fromhex(voucher_list.get("signing_pk") or "") != bytes(signing_pk):
+        if bytes.fromhex(pk) != bytes(signing_pk):
             return False
-        message = voucher_message(user_id, signing_pk, voucher_list.get("entries") or [])
-        VerifyKey(bytes(signing_pk)).verify(message, bytes.fromhex(voucher_list.get("signature") or ""))
+        message = voucher_message(user_id, signing_pk, entries or [])
+        VerifyKey(bytes(signing_pk)).verify(message, bytes.fromhex(signature))
     except (BadSignatureError, ValueError, TypeError, AttributeError):
         return False
     return True
@@ -178,5 +193,5 @@ def vouched(user_id: str, current_signing_pk: bytes, lists) -> frozenset[Entry]:
     out: set[Entry] = set()
     for voucher_list in lists if isinstance(lists, list) else []:
         if list_valid(user_id, current_signing_pk, voucher_list):
-            out.update(canonical_entries(voucher_list["entries"]))
+            out.update(canonical_entries(voucher_list.get("entries") or []))
     return frozenset(out)

@@ -16,6 +16,15 @@ import 'crypto_service.dart';
 final _id = RegExp(r'^[0-9A-Za-z]{26}$');
 final _hash = RegExp(r'^[0-9a-f]{64}$');
 
+// R17-L (review c02cc47): one parse in all three clients
+// (src/sezam/key_vouchers.py): at most this many entries as posted, a version
+// an integral number up to JavaScript's Number.MAX_SAFE_INTEGER (3.0 is 3),
+// keys and signatures plain hex.
+const keyVoucherMaxEntries = 200000;
+const keyVoucherMaxVersion = 9007199254740991; // 2^53 - 1
+final _pkHex = RegExp(r'^[0-9a-fA-F]{64}$');
+final _sigHex = RegExp(r'^[0-9a-fA-F]{128}$');
+
 String keyVoucherKey(String id, int version, String digest) =>
     '$id:$version:${digest.toLowerCase()}';
 
@@ -62,21 +71,29 @@ List<(String, int, String)> canonicalKeyVoucherEntries(Object? entries) {
   if (entries is! List) {
     throw const FormatException('voucher entries must be a list');
   }
+  if (entries.length > keyVoucherMaxEntries) {
+    throw const FormatException('too many voucher entries');
+  }
   final byKey = <String, (String, int, String)>{};
   for (final entry in entries) {
     if (entry is! List || entry.length != 3) {
       throw const FormatException('a voucher entry is [id, version, digest]');
     }
     final id = entry[0];
-    final version = entry[1];
+    final raw = entry[1];
     final payloadHash = entry[2];
     if (id is! String || !_id.hasMatch(id)) {
       throw const FormatException(
         'a voucher entry needs a 26-character object id',
       );
     }
-    if (version is! int || version < 0) {
-      throw const FormatException('a voucher entry needs an unsigned version');
+    final version = raw is double && raw.isFinite && raw == raw.truncate()
+        ? raw.toInt()
+        : raw;
+    if (version is! int || version < 0 || version > keyVoucherMaxVersion) {
+      throw const FormatException(
+        'a voucher entry needs an unsigned version of at most 2^53 - 1',
+      );
     }
     if (payloadHash is! String || !_hash.hasMatch(payloadHash)) {
       throw const FormatException(
@@ -131,12 +148,18 @@ Set<String> vouchedEntries(
   final vouched = <String>{};
   for (final list in lists is List ? lists : const []) {
     try {
-      if (list is! Map ||
-          '${list['signing_pk'] ?? ''}'.toLowerCase() != currentHex) {
+      if (list is! Map) continue;
+      final pk = list['signing_pk'];
+      final signatureHex = list['signature'];
+      if (pk is! String ||
+          !_pkHex.hasMatch(pk) ||
+          pk.toLowerCase() != currentHex ||
+          signatureHex is! String ||
+          !_sigHex.hasMatch(signatureHex)) {
         continue;
       }
       final entries = list['entries'] ?? const [];
-      final signature = hexToBytes('${list['signature'] ?? ''}');
+      final signature = hexToBytes(signatureHex);
       final message = keyVoucherMessage(userId, currentSigningPk, entries);
       if (signature.length != 64 ||
           !CryptoService().verifyDetached(

@@ -37,7 +37,7 @@ def check(user_id: str, signing_pk: bytes, voucher_list: dict) -> tuple[dict, li
     ``user_id``; 400 otherwise. CPU-bound: run it off the event loop."""
     if not core.list_valid(user_id, signing_pk, voucher_list):
         raise ApiError(400, INVALID_KEY_VOUCHERS, "The key voucher list is not signed by the account's key")
-    return voucher_list, core.canonical_entries(voucher_list["entries"])
+    return voucher_list, core.canonical_entries(voucher_list.get("entries") or [])
 
 
 async def checked(user_id: str, signing_pk: bytes, voucher_lists: list[dict]) -> list[tuple[dict, list]]:
