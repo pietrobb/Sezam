@@ -304,9 +304,16 @@ class DEKManager:
             if item.get("dek_id") == dek_id and item.get("user_id") == user_id
             and item.get("created_by") in team.members and item["id"] not in withdrawn
         ]
+        # _team_key_state let a key the log replaced through only by
+        # may_open_superseded; its envelope is judged as that key's.
+        superseded = not teamlog.may_hold_key(team, user_id, dek_id)
+        own_pk = bytes(keys.encryption_pk).hex()
         for env in envelopes:
-            if not teamlog.envelope_valid(team, env["created_by"], user_id, dek_id,
-                                          env["access_level"], bytes(keys.encryption_pk).hex()):
+            if superseded:
+                valid = teamlog.superseded_envelope_valid(team, env["created_by"], user_id, dek_id, own_pk)
+            else:
+                valid = teamlog.envelope_valid(team, env["created_by"], user_id, dek_id, env["access_level"], own_pk)
+            if not valid:
                 continue
             sender_pk = team.members[env["created_by"]].encryption_pk
             try:
@@ -349,9 +356,11 @@ class DEKManager:
                 finally:
                     opened[:] = bytes(len(opened))
         except Exception:
-            for raw in self._dek_cache.values():
+            # R17-L: only this key; every unlock checks its own key's authority.
+            raw = self._dek_cache.pop(dek_id, None)
+            if raw is not None:
                 raw[:] = bytes(len(raw))
-            self._dek_cache.clear()
+            self._box_keys.discard(dek_id)
             raise
         if dek_id in self._dek_cache:
             return self._dek_cache[dek_id]

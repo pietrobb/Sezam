@@ -845,3 +845,29 @@ def envelope_valid(
         return False
     by_role = "write" if is_admin(state, target_id) else None
     return state.access.get(folder, {}).get(target_id, by_role) == level
+
+
+def superseded_envelope_valid(
+    state: TeamState, signer_id: str, target_id: str, dek_id: str, target_encryption_pk: str,
+) -> bool:
+    """An envelope giving ``target_id`` the key ``dek_id`` the log replaced,
+    which the caller found ``target_id`` may still open (sync core
+    may_open_superseded: it may hold the folder's current key). Review c02cc47
+    R17-L: envelope_valid starts with may_hold_key, false for every replaced
+    key, so one held only through its envelope never opened.
+
+    Sealed to the member's current key by the generation's author, the admin
+    or a former admin of the folder. The level is the one of the key's day:
+    the key only reads history, write access is the log's.
+    """
+    found = state.dek_index.get(dek_id)
+    target = state.members.get(target_id)
+    signer = state.members.get(signer_id)
+    if found is None or target is None or not target.active or signer is None or not signer.active:
+        return False
+    folder, gen = found
+    gens = state.folders[folder]
+    if gen == len(gens) - 1 or target.encryption_pk != target_encryption_pk:
+        return False
+    return signer_id == gens[gen][1] or is_admin(state, signer_id) \
+        or signer_id in state.former_admins.get(folder, ())
