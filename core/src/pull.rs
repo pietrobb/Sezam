@@ -103,7 +103,10 @@ pub fn decide(unsent: Option<&Unsent>, pulled: &Pulled) -> Decision {
 #[serde(deny_unknown_fields)]
 pub struct Held {
     pub version: i64,
-    /// The hash of the content held (empty: not known).
+    /// What identifies the copy held, compared with the pulled one's (empty:
+    /// not known). R17-N1: the whole signed message (type, parent, target,
+    /// tombstone flag, payload hash), not the payload alone, so the version
+    /// held served with other signed fields is an equivocation.
     pub hash: String,
     pub is_deleted: bool,
     /// The row has a queued write.

@@ -39,6 +39,20 @@ CREATE TABLE IF NOT EXISTS sync_conflicts (
     server_commit_seq  INTEGER,
     detected_at        INTEGER NOT NULL
 );
+-- R17-N1: the key voucher entries (src/sezam/key_vouchers.py object_entry) of
+-- the server copy this device verified or pushed (one per key that signed
+-- it). They count only while the held copy is that (version, payload_hash):
+-- a stale row names nothing.
+CREATE TABLE IF NOT EXISTS held_signed (
+    object_id          TEXT NOT NULL,
+    version            INTEGER NOT NULL,
+    payload_hash       TEXT NOT NULL,
+    digest             TEXT NOT NULL,
+    -- 1: the key was a retired one when this device verified the copy
+    -- (fold_unlogged_folder_keys never folds a folder that came so).
+    retired            INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (object_id, digest)
+);
 -- What waits for the server, in send order (docs/SYNC_SINGLE_SOURCE.md
 -- point 3; vault/outbox.py). kind 'write': the folder or entry object_id;
 -- 'envelope': an access envelope; 'audit': an audit record; account-level

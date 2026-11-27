@@ -45,12 +45,35 @@ def _old_object(mock_db, sk) -> list:
     """A live object the account's key signed that the rotation does not replace."""
     obj_id, payload_hash = "ROTOLD00000000000000000001", hashlib.sha256(b"old").hexdigest()
     signature = _sign_sync_object(sk, obj_id, "node", None, None, 0, 1, payload_hash)
-    mock_db._storage["vault_objects"].append({
+    row = {
         "id": obj_id, "object_type": "node", "parent_ref": None, "target_user_id": None, "is_deleted": 0,
         "version": 1, "payload_hash": payload_hash, "client_signature": bytes.fromhex(signature),
         "signature_user_id": USER_ID, "owner_id": USER_ID, "commit_seq": 1, "payload": b"old",
-    })
-    return [obj_id, 1, payload_hash]
+    }
+    mock_db._storage["vault_objects"].append(row)
+    return list(kv.object_entry(row, USER_ID, bytes(sk.verify_key)))
+
+
+@pytest.mark.asyncio
+async def test_a_rotation_list_naming_other_signed_fields_is_incomplete(app_client, mock_db):
+    """R17-N1: the entry of the old key's version with another parent, or
+    deleted, does not stand for the version it signed."""
+    sk, token = await _seeded(app_client, mock_db)
+    new_sk = SigningKey.generate()
+    old_entry = _old_object(mock_db, sk)
+    row = mock_db._storage["vault_objects"][-1]
+    for changed in ({"is_deleted": 1}, {"parent_ref": DEK_ID}):
+        other = list(kv.object_entry({**row, **changed}, USER_ID, bytes(sk.verify_key)))
+        assert other[:2] == old_entry[:2] and other != old_entry
+        rotation = await _identity_rotation(
+            app_client, mock_db, sk, new_sk, [kv.sign_vouchers(USER_ID, new_sk, [other])]
+        )
+        resp = await app_client.post("/api/sync", json={
+            "objects": [_dek(new_sk, 2, b"dek under new KEK")], "atomic_batch": True, "key_epoch": 1,
+            "key_rotation": rotation,
+        }, headers=_auth(token))
+        assert resp.status_code == 409, resp.text
+        assert resp.json()["code"] == "key_vouchers_incomplete"
 
 
 async def _identity_rotation(app_client, mock_db, sk, new_sk, vouchers) -> dict:

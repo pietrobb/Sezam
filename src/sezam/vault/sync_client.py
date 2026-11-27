@@ -74,7 +74,8 @@ from .sync_push import PushMixin
 from .sync_rekey import RekeyMixin
 from .sync_resync import ResyncMixin
 from .sync_state import SyncStateMixin
-from .sync_vouchers import VoucherMixin, voucher_entry
+from .. import key_vouchers
+from .sync_vouchers import VoucherMixin
 from .sync_writers import WritersMixin
 from .team_log_local import TeamLogMixin, keep_identity_continuation, settle_lost_rotation_keys
 
@@ -124,8 +125,14 @@ class SyncClient(
         self._vouched_cache: dict[str, frozenset] = {}
         self._lists_cache: dict[tuple[str, bytes], frozenset] = {}
         self._held_cache: Optional[frozenset] = None
+        self._held_index: dict[tuple[str, int], frozenset] = {}
         # Objects a retired key signed that no list names: id -> signer.
         self._unvouched: dict[str, str] = {}
+        # R17-N1: of those, the ones whose held copy has other signed fields.
+        self._equivocated: set[str] = set()
+        # What verified since the last pull or resync, kept in held_signed
+        # once applied: id -> (object, signer, key).
+        self._verified_entries: dict[str, tuple[dict, str, bytes]] = {}
         # The server's key for this account that signed this device's pending
         # identity rotation (it is current there until the rotation lands).
         self._rotation_authorizer: Optional[bytes] = None
@@ -1024,23 +1031,28 @@ class SyncClient(
                 payload_hash=payload_hash,
             )
             signature_bytes = bytes.fromhex(signature_hex)
-            entry = voucher_entry(obj)
             for signing_pk in signing_pks:
                 if not self._is_retired(signer_id, signing_pk):
                     if self._log_retired_key(signer_id, signing_pk):
                         continue
-                elif entry is None or entry not in self._vouched(signer_id):
+                else:
                     # Goal #443: a retired key vouches only for what a voucher
                     # list or this device's copy names, not for whatever the
                     # server dates before its rotation (retired_seq, commit_seq).
-                    if self._signed_by(obj, signing_pk):
-                        self._unvouched[obj["id"]] = signer_id
-                    continue
+                    # R17-N1: names the whole message, signer and key.
+                    entry = key_vouchers.object_entry(obj, signer_id, signing_pk)
+                    if entry is None or entry not in self._vouched(signer_id):
+                        if self._signed_by(obj, signing_pk):
+                            self._unvouched[obj["id"]] = signer_id
+                            if self._held_digests(obj["id"], obj.get("version", 1)):
+                                self._equivocated.add(obj["id"])
+                        continue
                 try:
                     VerifyKey(signing_pk).verify(canonical, signature_bytes)
-                    return True
                 except (BadSignatureError, ValueError):
                     continue
+                self._verified_entries[obj["id"]] = (obj, signer_id, bytes(signing_pk))
+                return True
             return False
         except (ValueError, KeyError) as exc:
             logger.warning("Signature verification failed for %s: %s", obj.get("id"), exc)

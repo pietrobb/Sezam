@@ -367,6 +367,7 @@ class PullMixin:
                     self._record_server_seq(obj["id"], obj.get("commit_seq"), obj.get("modified_at"))
                 pulled += 1
                 served += obj["id"] not in self._revived_write_ids
+            self._hold_verified()
             self._refuse_archives_without_their_key()
             self._bind_pulled_deks()
             self._resolve_entry_deks()

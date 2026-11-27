@@ -183,10 +183,14 @@ def test_a_delta_pull_never_takes_an_object_back():
         webPulledIsStale(tomb, pulled(5, 'other'), 50),  // its tombstone was collected (SM8)
         webPulledIsStale(tomb, pulled(5, 'other'), 10),
         webPulledIsStale(tomb, pulled(3, 'h3'), 50),  // INV-3: older, whatever the floor
+        // R17-N1: the version held with other signed fields is another copy.
+        webPulledIsStale(held, { ...pulled(5, 'h5'), parent_ref: 'P' }, 10),
+        webPulledIsStale(held, { ...pulled(5, 'h5'), is_deleted: 1 }, 10),
+        webPulledIsStale(held, { ...pulled(5, 'h5'), object_type: 'node' }, 10),
       ];
     """
     assert _run(["webPulledIsStale"], f"(async () => {{ {script} }})()") == [
-        True, True, False, False, False, False, True, True,
+        True, True, False, False, False, False, True, True, True, True, True,
     ]
     pull = _function("pullAndBuildTreeLocked")
     guard = pull.index("webPulledIsStale(held, obj, gcFloorSeq)")

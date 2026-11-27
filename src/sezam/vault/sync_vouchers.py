@@ -6,8 +6,8 @@ server's ``retired_seq`` and each object's ``commit_seq``: a server holding a
 leaked retired key signed any object with it and served both numbers to a
 device that had not pinned a bound (a new device, a full resync).
 
-Now a retired key's signature counts only for an (id, version, payload_hash)
-named by a voucher list (src/sezam/key_vouchers.py) signed by the current key
+Now a retired key's signature counts only for an (id, version, digest of the
+signed message, its signer and key: R17-N1) named by a voucher list (src/sezam/key_vouchers.py) signed by the current key
 of the signer's account, of this device's own account, or of a current admin
 of the verified team log, or held by this device itself. The identity rotation
 of this device carries the lists, signed by the new key, of every live object
@@ -73,18 +73,51 @@ def legacy_entries(held, own_listed) -> list:
     return sorted(set(held) - set(own_listed))
 
 
-def voucher_entry(obj: dict) -> Optional[key_vouchers.Entry]:
-    """(id, version, payload_hash) of a served object, or None when malformed."""
-    obj_id, version, payload_hash = obj.get("id"), obj.get("version", 1), obj.get("payload_hash")
-    if not isinstance(obj_id, str) or not isinstance(payload_hash, str):
-        return None
-    if isinstance(version, bool) or not isinstance(version, int):
-        return None
-    return (obj_id, version, payload_hash.lower())
+def _local_key(obj: dict) -> tuple:
+    """What VoucherMixin._held_locally keeps of a served copy."""
+    parent = obj.get("parent_ref") if obj.get("object_type") in ("node", "entry") else None
+    return (obj.get("version", 1), str(obj.get("payload_hash", "")).lower(), parent)
 
 
 class VoucherMixin:
     """Mixed into SyncClient."""
+
+    def _hold_signed(self, obj: dict, signer_id: str, signing_pk: bytes) -> None:
+        """R17-N1: the voucher entry of a server copy this device verified
+        (pull) or the server took from it (push). In the caller's transaction."""
+        entry = key_vouchers.object_entry(obj, signer_id, signing_pk)
+        if entry is None:
+            return
+        payload_hash = str(obj["payload_hash"]).lower()
+        self._db.execute(
+            "DELETE FROM held_signed WHERE object_id = ? AND (version <> ? OR payload_hash <> ?)",
+            (entry[0], entry[1], payload_hash),
+        )
+        self._db.execute(
+            "INSERT OR IGNORE INTO held_signed (object_id, version, payload_hash, digest, retired) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (entry[0], entry[1], payload_hash, entry[2], int(self._is_retired(signer_id, signing_pk))),
+        )
+
+    def _hold_verified(self) -> None:
+        """Keep the entries of what the last verification passed took."""
+        verified, self._verified_entries = self._verified_entries, {}
+        for obj, signer_id, signing_pk in verified.values():
+            self._hold_signed(obj, signer_id, signing_pk)
+
+    def _held_digests(self, obj_id: str, version: int) -> frozenset:
+        """The entry digests of the held server copy at ``version`` (none if not held)."""
+        self._held()
+        return self._held_index.get((obj_id, version), frozenset())
+
+    def _held(self) -> frozenset:
+        if self._held_cache is None:
+            self._held_cache = frozenset(self._held_entries())
+            index: dict = {}
+            for obj_id, version, digest in self._held_cache:
+                index.setdefault((obj_id, version), set()).add(digest)
+            self._held_index = {key: frozenset(value) for key, value in index.items()}
+        return self._held_cache
 
     def _remember_retired_keys(self, user_id: str, response: dict) -> None:
         """The account's retired keys, and its current key whose lists count.
@@ -138,9 +171,7 @@ class VoucherMixin:
         for admin_id, member in (state.members.items() if state is not None else ()):
             if member.active and member.signing_pk and teamlog.is_admin(state, admin_id):
                 out |= self._lists_of(admin_id, bytes.fromhex(member.signing_pk))
-        if self._held_cache is None:
-            self._held_cache = frozenset(self._held_entries())
-        out |= self._held_cache
+        out |= self._held()
         cached = frozenset(out)
         self._vouched_cache[user_id] = cached
         return cached
@@ -151,9 +182,17 @@ class VoucherMixin:
         self._vouched_cache.clear()
         self._held_cache = None
         self._unvouched.clear()
+        self._equivocated.clear()
+        self._verified_entries = {}
 
     def _rejected(self, obj: dict, generic: str = "invalid or unverifiable signature") -> str:
         """Why a pulled object did not verify, for the error."""
+        if obj.get("id") in self._equivocated:
+            return (
+                f"{generic}: equivocation - the server serves version {obj.get('version')} "
+                "signed by a retired key with other signed fields than the copy this "
+                "device holds"
+            )
         signer = self._unvouched.get(obj.get("id"))
         if signer is None:
             return generic
@@ -212,16 +251,39 @@ class VoucherMixin:
             raise RuntimeError("The key this device's identity rotation retires is not known yet")
         vouched = self._vouched(self._user_id)
         retired = self._retired_keys.get(self._user_id, frozenset())
+        local = self._held_locally()
         entries = []
         for obj in self._signed_objects():
-            entry = voucher_entry(obj)
-            if entry is None:
-                continue
-            if self._signed_by(obj, old) or (
-                entry in vouched and any(self._signed_by(obj, pk) for pk in retired)
-            ):
-                entries.append(entry)
+            # R17-N1: an entry names the message the key signed, and only a
+            # version this device holds is carried forward: not what the
+            # server lists (a version forged before the rotation went on
+            # under the new key), nor one the held copy contradicts.
+            for pk in (old, *retired):
+                entry = key_vouchers.object_entry(obj, self._user_id, pk)
+                if entry is None or not self._signed_by(obj, pk):
+                    continue
+                held = self._held_digests(entry[0], entry[1])
+                if held and entry[2] not in held:
+                    continue
+                if entry in vouched or (pk == old and not held and local.get(obj["id"]) == _local_key(obj)):
+                    entries.append(entry)
+                    break
         return self._signed_lists(entries)
+
+    def _held_locally(self) -> dict[str, tuple]:
+        """A copy held from before held_signed, as its signed fields read here
+        (live folders and entries: version, payload hash, parent; other rows:
+        version, payload hash)."""
+        parents = {
+            row["id"]: row["parent"] for row in self._db.fetchall(
+                "SELECT id, parent_id AS parent FROM nodes WHERE is_deleted = 0 "
+                "UNION ALL SELECT id, node_id FROM entries WHERE is_deleted = 0"
+            )
+        }
+        return {
+            obj_id: (version, hashlib.sha256(payload).hexdigest(), parents.get(obj_id))
+            for obj_id, version, payload in self._local_objects()
+        }
 
     def _voucher_fingerprint(self) -> str:
         """This account's key, every member's key in the verified team log and
@@ -229,6 +291,8 @@ class VoucherMixin:
         state = self.team_state()
         keys = sorted(f"{uid}:{m.signing_pk}" for uid, m in state.members.items()) if state else []
         keys += self._db.get_meta_json(RETIRED_SEEN_META) or []
+        # The list format is part of it: a v1 list (payload hashes) counts for nothing.
+        keys.append(key_vouchers.DOMAIN.hex())
         return hashlib.sha256("\n".join([self._keypair.signing_pk.hex(), *keys]).encode()).hexdigest()
 
     def _post_legacy_vouchers(self) -> None:
@@ -243,17 +307,16 @@ class VoucherMixin:
         if checked == fingerprint or pending:
             return
         self._get_signing_pks(self._user_id)
-        if self._held_cache is None:
-            self._held_cache = frozenset(self._held_entries())
+        held = self._held()
         server_own = self._voucher_keys.get(self._user_id)
         if not legacy_post_allowed(
             fingerprint=fingerprint, checked=checked, pending_identity=pending,
             own_key=own_key.hex(), server_own_key=server_own.hex() if server_own else None,
-            held_count=len(self._held_cache),
+            held_count=len(held),
         ):
             return  # a new device: what it would vouch for, it has not seen yet
         try:
-            new = legacy_entries(self._held_cache, self._lists_of(self._user_id, own_key))
+            new = legacy_entries(held, self._lists_of(self._user_id, own_key))
             for voucher_list in self._signed_lists(new):
                 self._request("POST", "/api/users/me/key-vouchers", voucher_list, auth=True)
         except RuntimeError as exc:

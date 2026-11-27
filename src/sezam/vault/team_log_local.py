@@ -753,7 +753,27 @@ class TeamLogMixin:
                 row = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (row["parent_id"],))
             return True
 
+        # R17-N1: a folder whose copy held came signed by a retired key (its
+        # parent included) is not folded: a leaked key that "moved" a private
+        # folder under a team folder would have had its content resealed to
+        # the team. What its key seals stays refused there, and named.
+        tainted: set[str] = set()  # those folders and every folder above them
+        for row in self._db.fetchall(
+            "SELECT h.object_id FROM held_signed h JOIN nodes n "
+            "ON n.id = h.object_id AND n.version = h.version WHERE h.retired = 1"
+        ):
+            node = row["object_id"]
+            while node is not None and node not in tainted:
+                tainted.add(node)
+                up = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (node,))
+                node = up["parent_id"] if up is not None else None
         for folder in sorted(f for f in missing if outermost(f)):
+            if folder in tainted:
+                logger.warning(
+                    "Folder %s below a team folder came signed by a retired key: "
+                    "not resealed to its parent's key", folder,
+                )
+                continue
             logger.warning("Folder %s below a team folder takes its parent's key", folder)
             with self._db.transaction(immediate=True):
                 parent = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (folder,))["parent_id"]

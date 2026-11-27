@@ -2595,6 +2595,15 @@ function syncCoreVersion(obj) {
     };
 }
 
+// R17-N1: a copy is the whole message its signer signed, not its payload
+// alone: the version held served with another parent or as deleted is an
+// equivocation, never the copy held. As the phone (pulledIsStale).
+function heldCopyKey(obj) {
+    if (!obj.payload_hash) return '';
+    return [obj.object_type, obj.parent_ref || '', obj.target_user_id || '',
+        obj.is_deleted ? 1 : 0, String(obj.payload_hash).toLowerCase()].join('|');
+}
+
 // Review c78fd19 (web): a delta pull took a folder or entry back to an older
 // version than this browser held (or another copy of the version it held), so
 // a server could serve an old, validly signed password again. The held copy
@@ -2608,12 +2617,12 @@ function webPulledIsStale(held, pulled, gcFloorSeq) {
         items: [{
             held: {
                 version: Number(held.version),
-                hash: held.payload_hash || '',
+                hash: heldCopyKey(held),
                 is_deleted: !!held.is_deleted,
                 queued: false,  // a queued write meets the copy in decide_pulled_batch
                 commit_seq: Number.isSafeInteger(seq) ? seq : null,
             },
-            pulled: { version: Number(pulled.version), hash: pulled.payload_hash || '' },
+            pulled: { version: Number(pulled.version), hash: heldCopyKey(pulled) },
         }],
         gc_floor_seq: gcFloorSeq,
     });
@@ -3141,7 +3150,9 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
                 }
                 vouchedBySigner.set(signerId, out);
             }
-            return vouchedBySigner.get(signerId).has(keyVoucherKey(obj.id, obj.version ?? 1, obj.payload_hash));
+            // R17-N1: the entry names the whole signed message, signer and key.
+            const entry = keyVoucherObjectEntry(obj, signerId, sigPk, _sodium);
+            return !!entry && vouchedBySigner.get(signerId).has(keyVoucherKey(...entry));
         };
         let verified = false;
         for (const sigPk of sigPks) {
@@ -7749,45 +7760,43 @@ function verifyObjectSignature(obj, signingPk, _sodium) {
         if (!sigHex || !signingPk) return false;
 
         const signatureBytes = hexToBytes(sigHex);
-        const payloadHashBytes = hexToBytes(obj.payload_hash || '');
-
-        const idBytes = idBytes26(obj.id);
-        const otBytes = new TextEncoder().encode(obj.object_type || '');
-        const prBytes = obj.parent_ref ? idBytes26(obj.parent_ref) : new Uint8Array(26);
-        const tuBytes = obj.target_user_id ? idBytes26(obj.target_user_id) : new Uint8Array(26);
-
-        // R15 #428 (INV-3): exactly the values kept, never a truncated one.
-        const isDeleted = obj.is_deleted ?? 0;
-        const version = obj.version ?? 1;
-        if (![0, 1, false, true].includes(isDeleted)) return false;
-        if (!Number.isInteger(version) || version < 0 || version > 0xFFFFFFFF) return false;
-        const versionBuf = new ArrayBuffer(4);
-        new DataView(versionBuf).setUint32(0, version, false);
-
-        const parts = [
-            idBytes,
-            new Uint8Array([otBytes.length]),
-            otBytes,
-            prBytes,
-            tuBytes,
-            new Uint8Array([isDeleted ? 1 : 0]),
-            new Uint8Array(versionBuf),
-            payloadHashBytes,
-        ];
-
-        const totalLen = parts.reduce((acc, p) => acc + p.length, 0);
-        const canonical = new Uint8Array(totalLen);
-        let offset = 0;
-        for (const p of parts) {
-            canonical.set(p, offset);
-            offset += p.length;
-        }
-
+        const canonical = signedObjectMessage(obj);
+        if (!canonical) return false;
         return _sodium.crypto_sign_verify_detached(signatureBytes, canonical, signingPk);
     } catch (err) {
         console.warn('Signature verification error:', err.message);
         return false;
     }
+}
+
+/**
+ * The bytes a sync object's signature covers (spec 8.2; key_vouchers.signed_message),
+ * or null when a field cannot be held exactly (R15 #428, INV-3).
+ */
+function signedObjectMessage(obj) {
+    const payloadHashBytes = hexToBytes(obj.payload_hash || '');
+    if (payloadHashBytes.length !== 32) return null;
+    const idBytes = idBytes26(obj.id);
+    const otBytes = new TextEncoder().encode(obj.object_type || '');
+    const prBytes = obj.parent_ref ? idBytes26(obj.parent_ref) : new Uint8Array(26);
+    const tuBytes = obj.target_user_id ? idBytes26(obj.target_user_id) : new Uint8Array(26);
+    const isDeleted = obj.is_deleted ?? 0;
+    const version = obj.version ?? 1;
+    if (![0, 1, false, true].includes(isDeleted)) return null;
+    if (!Number.isInteger(version) || version < 0 || version > 0xFFFFFFFF) return null;
+    const versionBuf = new ArrayBuffer(4);
+    new DataView(versionBuf).setUint32(0, version, false);
+    const parts = [
+        idBytes, new Uint8Array([otBytes.length]), otBytes, prBytes, tuBytes,
+        new Uint8Array([isDeleted ? 1 : 0]), new Uint8Array(versionBuf), payloadHashBytes,
+    ];
+    const canonical = new Uint8Array(parts.reduce((acc, p) => acc + p.length, 0));
+    let offset = 0;
+    for (const p of parts) {
+        canonical.set(p, offset);
+        offset += p.length;
+    }
+    return canonical;
 }
 
 /**
@@ -9243,8 +9252,29 @@ function keyRotationMessage(userId, oldSigningPk, oldEncryptionPk, newSigningPk,
 // signed by their successor, so the server cannot inject historical keys.
 // ── Key vouchers (goal #443, src/sezam/key_vouchers.py, tests/vectors/key_vouchers.json) ──
 
-function keyVoucherKey(id, version, payloadHash) {
-    return `${id}:${version}:${String(payloadHash || '').toLowerCase()}`;
+function keyVoucherKey(id, version, digest) {
+    return `${id}:${version}:${String(digest || '').toLowerCase()}`;
+}
+
+/**
+ * R17-N1: the entry a voucher names for a served object as `signingPk` of
+ * `signerId` signed it: the digest of the whole signed message, the signer's
+ * account and key (key_vouchers.object_entry). Null when malformed.
+ */
+function keyVoucherObjectEntry(obj, signerId, signingPk, _sodium) {
+    try {
+        const message = signedObjectMessage({ ...obj, payload_hash: String(obj.payload_hash || '').toLowerCase() });
+        if (!message || signingPk.length !== 32) return null;
+        const domain = new TextEncoder().encode('sezam-key-voucher-entry-v2\0');
+        const input = new Uint8Array(domain.length + 26 + 32 + message.length);
+        input.set(domain, 0);
+        input.set(idBytes26(signerId), domain.length);
+        input.set(signingPk, domain.length + 26);
+        input.set(message, domain.length + 58);
+        return [obj.id, obj.version ?? 1, bytesToHex(_sodium.crypto_hash_sha256(input))];
+    } catch {
+        return null;
+    }
 }
 
 function canonicalKeyVoucherEntries(entries) {
@@ -9252,7 +9282,7 @@ function canonicalKeyVoucherEntries(entries) {
     const byKey = new Map();
     for (const entry of entries) {
         if (!Array.isArray(entry) || entry.length !== 3) {
-            throw new Error('A voucher entry is [id, version, payload_hash]');
+            throw new Error('A voucher entry is [id, version, digest]');
         }
         const [id, version, payloadHash] = entry;
         if (typeof id !== 'string' || !/^[0-9A-Za-z]{26}$/.test(id)) {
@@ -9262,7 +9292,7 @@ function canonicalKeyVoucherEntries(entries) {
             throw new Error('A voucher entry needs an unsigned version');
         }
         if (typeof payloadHash !== 'string' || !/^[0-9a-f]{64}$/.test(payloadHash)) {
-            throw new Error('A voucher entry needs a lowercase hex SHA-256 payload hash');
+            throw new Error('A voucher entry needs a lowercase hex SHA-256 digest');
         }
         byKey.set(keyVoucherKey(id, version, payloadHash), [id, version, payloadHash]);
     }
@@ -9275,7 +9305,7 @@ function keyVoucherMessage(userId, signingPk, entries) {
     if (signingPk.length !== 32) throw new Error('A voucher signing key is 32 bytes');
     const items = canonicalKeyVoucherEntries(entries);
     const encoder = new TextEncoder();
-    const domain = encoder.encode('sezam-key-vouchers-v1\0');
+    const domain = encoder.encode('sezam-key-vouchers-v2\0');
     const user = idBytes26(userId);
     const out = new Uint8Array(domain.length + 26 + 32 + 4 + items.length * 66);
     const view = new DataView(out.buffer);

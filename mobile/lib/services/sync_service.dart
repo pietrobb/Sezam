@@ -668,28 +668,76 @@ class SyncService {
   }
 
   /// keyVoucherKey of every version this phone holds as the server copy (it
-  /// verified them): a queued row's base, and the row itself only when
-  /// nothing is queued for it. A version this phone made and has not sent is
-  /// no server copy (R16-Z, desktop: _held_entries): a voucher of an unsent
-  /// tombstone let a retired key sign that version live.
-  static Set<String> heldVoucherKeys(List<Map<String, dynamic>> rows) => {
-    for (final row in rows) ...[
+  /// verified them): a row only when nothing is queued for it. A version this
+  /// phone made and has not sent is no server copy (R16-Z, desktop:
+  /// _held_entries): a voucher of an unsent tombstone let a retired key sign
+  /// that version live.
+  ///
+  /// R17-N1: an entry names the whole signed message and its signer, under
+  /// each key of the signer's ring ([ringOf]); a queued row's base is left
+  /// out, the phone does not keep that copy's other signed fields.
+  static Set<String> heldVoucherKeys(
+    List<Map<String, dynamic>> rows,
+    List<Uint8List> Function(String signerId) ringOf,
+  ) => {
+    for (final row in rows)
       if (row['queued'] != 1 &&
           row['payload_hash'] is String &&
-          row['version'] is int)
-        keyVoucherKey(
-          row['id'] as String,
-          row['version'] as int,
-          row['payload_hash'] as String,
-        ),
-      if (row['base_hash'] is String && row['base_version'] is int)
-        keyVoucherKey(
-          row['id'] as String,
-          row['base_version'] as int,
-          row['base_hash'] as String,
-        ),
-    ],
+          row['version'] is int &&
+          _signerOf(row) != null)
+        for (final key in ringOf(_signerOf(row)!))
+          if (keyVoucherObjectEntry(
+                id: row['id'] as String,
+                objectType: '${row['object_type']}',
+                parentRef: row['parent_ref'] as String?,
+                targetUserId: row['target_user_id'] as String?,
+                isDeleted: (row['is_deleted'] as int?) ?? 0,
+                version: row['version'] as int,
+                payloadHash: row['payload_hash'] as String,
+                signerId: _signerOf(row)!,
+                signingPk: key,
+              )
+              case final entry?)
+            keyVoucherKey(entry.$1, entry.$2, entry.$3),
   };
+
+  /// The account whose signature a held row carried (write_authority.dart).
+  static String? _signerOf(Map<String, dynamic> row) =>
+      (row['signer_id'] ?? row['owner_id']) as String?;
+
+  /// [heldVoucherKeys] with the key ring of every signer the rows name, and
+  /// the key this phone pinned for it (what verified the rows it holds, also
+  /// while a rotation of that signer waits to be confirmed here).
+  Future<Set<String>> _heldVoucherKeysOfAll(
+    List<Map<String, dynamic>> rows,
+    String currentUserId,
+    Uint8List signingPk,
+  ) async {
+    final rings = <String, List<Uint8List>>{};
+    for (final signer in {for (final row in rows) _signerOf(row)}) {
+      if (signer == null) continue;
+      final ring = rings[signer] = <Uint8List>[
+        if (signer == currentUserId) signingPk,
+      ];
+      final pinned = await _db.getKnownKey(signer);
+      if (pinned?['signing_pk'] case final Uint8List key) ring.add(key);
+      try {
+        ring.addAll(
+          await resolveAuthorSigningKeys(
+            ownerId: signer,
+            currentUserId: currentUserId,
+            currentUserSigningPk: signingPk,
+            loadKnownKey: _db.getKnownKey,
+            fetchPublicKeys: _fetchPublicKeys,
+            saveKnownKey: _db.upsertKnownKey,
+          ),
+        );
+      } on Exception {
+        continue; // the pinned key only
+      }
+    }
+    return heldVoucherKeys(rows, (signer) => rings[signer] ?? const []);
+  }
 
   /// R16-M4: the desktop's legacy_post_allowed (sync_vouchers.py), checked
   /// against tests/vectors/key_voucher_post.json on both.
@@ -798,7 +846,11 @@ class SyncService {
     );
     final checked = await _db.getSetting(keyVouchersCheckedSetting);
     if (checked == fingerprint) return;
-    final held = heldVoucherKeys(await _db.getAllObjects());
+    final held = await _heldVoucherKeysOfAll(
+      await _db.getAllObjects(),
+      userId,
+      signingPk,
+    );
     final serverOwn = held.isEmpty
         ? null
         : (await _fetchPublicKeys(userId))['signing_pk'];
@@ -2088,7 +2140,7 @@ class SyncService {
     final authorKeys = <String, List<Uint8List>>{};
     final vouchedBySigner = <String, Set<String>>{};
     final listsByPoster = <String, Set<String>>{};
-    Set<String>? held;
+    List<Map<String, dynamic>>? heldRows;
     final verified = <Map<String, dynamic>>[];
     final stateReplacements = <Map<String, dynamic>>[];
     // Review 8595ec1 (R10-C): what the log refused for want of write access
@@ -2176,14 +2228,32 @@ class SyncService {
               out.addAll(await listsOf(adminId, hexToBytes(member.signingPk)));
             }
           }
-          held ??= heldVoucherKeys(await _db.getAllObjects());
-          vouchedBySigner[signerId] = out..addAll(held);
+          heldRows ??= await _db.getAllObjects();
+          vouchedBySigner[signerId] = out
+            ..addAll(
+              heldVoucherKeys([
+                for (final row in heldRows)
+                  if (_signerOf(row) == signerId) row,
+              ], (_) => authorPks),
+            );
         }
-        final entryKey = keyVoucherKey(
-          pullObj.id,
-          pullObj.version,
-          pullObj.payloadHash,
-        );
+        // R17-N1: the entry names the whole signed message, signer and key.
+        String entryKey(Uint8List key) {
+          final entry = keyVoucherObjectEntry(
+            id: pullObj.id,
+            objectType: pullObj.objectType,
+            parentRef: pullObj.parentRef,
+            targetUserId: pullObj.targetUserId,
+            isDeleted: pullObj.isDeleted,
+            version: pullObj.version,
+            payloadHash: pullObj.payloadHash,
+            signerId: signerId,
+            signingPk: key,
+          );
+          return entry == null
+              ? ''
+              : keyVoucherKey(entry.$1, entry.$2, entry.$3);
+        }
 
         bool sigValid;
         try {
@@ -2203,7 +2273,7 @@ class SyncService {
                   authorPk,
                   authorPks,
                   () => vouchedBySigner[signerId] ?? const <String>{},
-                  entryKey,
+                  entryKey(authorPk),
                 ) &&
                 (!_sameBytes(authorPks.first, authorPk) ||
                     !TeamLog.signingKeyRetired(
@@ -2422,6 +2492,9 @@ class SyncService {
             version: (item['object'] as PullObject).version,
             hash: (item['object'] as PullObject).payloadHash,
             gcFloor: floor is int ? floor : 0,
+            parentRef: (item['object'] as PullObject).parentRef,
+            targetUserId: (item['object'] as PullObject).targetUserId,
+            isDeleted: (item['object'] as PullObject).isDeleted == 1,
           ))
             (item['object'] as PullObject).id,
       };

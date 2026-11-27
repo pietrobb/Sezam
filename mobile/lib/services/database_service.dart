@@ -93,12 +93,35 @@ List<({int version, String hash})> decodeSentVersions(String? body) {
   try {
     return [
       for (final item in jsonDecode(body) as List)
-        if (item is List && item.length == 2 && item[0] is int && item[1] is String)
+        if (item is List &&
+            item.length == 2 &&
+            item[0] is int &&
+            item[1] is String)
           (version: item[0] as int, hash: item[1] as String),
     ];
   } on FormatException {
     return const [];
   }
+}
+
+/// R17-N1: a copy is the whole message its signer signed, not its payload
+/// alone: the version held served with another parent or as deleted is an
+/// equivocation, never the copy held. As the web (heldCopyKey).
+String heldCopyKey(
+  String objectType,
+  String? parentRef,
+  String? targetUserId,
+  bool isDeleted,
+  String? payloadHash,
+) {
+  if (payloadHash == null || payloadHash.isEmpty) return '';
+  return [
+    objectType,
+    parentRef ?? '',
+    targetUserId ?? '',
+    isDeleted ? 1 : 0,
+    payloadHash.toLowerCase(),
+  ].join('|');
 }
 
 /// Review c78fd19 (as the web): a delta pull never takes a folder or entry
@@ -113,6 +136,9 @@ bool pulledIsStale(
   required int version,
   required String? hash,
   required int gcFloor,
+  String? parentRef,
+  String? targetUserId,
+  bool isDeleted = false,
 }) {
   if (held == null || held['queued'] == 1) return false;
   if (objectType != 'node' && objectType != 'entry') return false;
@@ -123,12 +149,27 @@ bool pulledIsStale(
                   {
                     'held': {
                       'version': held['version'] as int,
-                      'hash': held['payload_hash'] as String? ?? '',
+                      'hash': heldCopyKey(
+                        held['object_type'] as String? ?? objectType,
+                        held['parent_ref'] as String?,
+                        held['target_user_id'] as String?,
+                        held['is_deleted'] == 1,
+                        held['payload_hash'] as String?,
+                      ),
                       'is_deleted': held['is_deleted'] == 1,
                       'queued': false,
                       'commit_seq': seq is int ? seq : null,
                     },
-                    'pulled': {'version': version, 'hash': hash ?? ''},
+                    'pulled': {
+                      'version': version,
+                      'hash': heldCopyKey(
+                        objectType,
+                        parentRef,
+                        targetUserId,
+                        isDeleted,
+                        hash,
+                      ),
+                    },
                   },
                 ],
                 'gc_floor_seq': gcFloor,
@@ -851,7 +892,9 @@ class DatabaseService {
           where: 'id = ?',
           whereArgs: [id],
         );
-        Map<String, Object?> local = localRows.isEmpty ? const {} : localRows.first;
+        Map<String, Object?> local = localRows.isEmpty
+            ? const {}
+            : localRows.first;
         final queued = local['queued'] == 1;
         if (queued &&
             local['base_version'] == null &&
@@ -1075,7 +1118,8 @@ class DatabaseService {
     final db = await database;
     await db.transaction((txn) async {
       for (final object in objects) {
-        if (object['object_type'] != 'node' && object['object_type'] != 'entry') {
+        if (object['object_type'] != 'node' &&
+            object['object_type'] != 'entry') {
           continue;
         }
         final where = "kind = 'write' AND object_id = ?";
@@ -1189,17 +1233,25 @@ class DatabaseService {
   }) async {
     final db = await database;
     await db.transaction((txn) async {
-      await txn.delete('settings', where: 'key = ?', whereArgs: [recordsSetting]);
+      await txn.delete(
+        'settings',
+        where: 'key = ?',
+        whereArgs: [recordsSetting],
+      );
       for (final id in dropWrites) {
         await _dropWrite(txn, id);
       }
       if (dropWrites.isNotEmpty) {
-        await txn.insert('settings', {'key': resyncSetting, 'value': '1'},
-            conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert('settings', {
+          'key': resyncSetting,
+          'value': '1',
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
       if (encryptedCheckpoint != null) {
-        await txn.insert('sync_state', {'key': checkpointKey, 'value': encryptedCheckpoint},
-            conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert('sync_state', {
+          'key': checkpointKey,
+          'value': encryptedCheckpoint,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
   }
@@ -1221,5 +1273,6 @@ class StaleRowException implements Exception {
   const StaleRowException(this.id, this.expected, this.current);
 
   @override
-  String toString() => 'Object $id changed meanwhile (edited v$expected, now v$current)';
+  String toString() =>
+      'Object $id changed meanwhile (edited v$expected, now v$current)';
 }

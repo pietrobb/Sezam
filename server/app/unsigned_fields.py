@@ -140,9 +140,12 @@ FIELDS: dict[str, Field] = {
     "GET /api/users/{user_id}/key-vouchers .lists": _signed("key_vouchers:vouched"),
     "POST /api/users/me/key-vouchers .status": Field(UNREAD),
     "GET /api/users/me/signed-objects .objects": Field(
-        HINT, "a voucher list names only entries whose signature this device verifies: under the current "
-        "key, or under a retired one where a list of the current key already names them; a lie only leaves "
-        "an object out", ("key_vouchers:vouched",)),
+        HINT, "only which ids to look at: a voucher list names an entry (the digest of the whole signed "
+        "message, its signer and key, R17-N1) only for a version this device holds (held_signed, or its own "
+        "copy with the same version, payload and parent) whose signature it verifies, under the retiring "
+        "key, or a retired one where a list or the held copy already names it; a lie leaves an object out, "
+        "and the server then refuses the rotation naming it",
+        ("key_vouchers:object_entry", "vault.sync_vouchers:VoucherMixin._rotation_vouchers")),
     "GET /api/users/me/signed-objects .more": Field(HINT, "a lie only ends the paging early or asks for an empty page"),
     "POST /api/users/{user_id}/unlock-recovery .expires_at": Field(UNREAD, _SHOWN),
     "POST /api/users/{user_id}/unlock-recovery .status": Field(UNREAD),

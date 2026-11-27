@@ -817,6 +817,7 @@ class ResyncMixin:
                 pending_states.clear_rekey_batch(self._db)
                 reseal_envelopes_for_rotation(self._db, self._dek_mgr, self._user_id, self._keypair)
 
+            self._hold_verified()
             state_hash = self._compute_state_hash()
             self._save_sync_checkpoint(max_seq, state_hash)
             # Review a159e97 (state machine): a snapshot whose newest commits

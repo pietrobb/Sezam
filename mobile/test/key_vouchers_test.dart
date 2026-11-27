@@ -36,6 +36,36 @@ void main() {
     }
   });
 
+  // R17-N1: an entry names the whole signed message, its signer and key.
+  test('object entries match the shared vectors', () {
+    for (final e
+        in (v['object_entries'] as List).cast<Map<String, dynamic>>()) {
+      final o = e['object'] as Map<String, dynamic>;
+      final message = CryptoService().buildSyncSignatureData(
+        id: o['id'] as String,
+        objectType: o['object_type'] as String,
+        parentRef: o['parent_ref'] as String?,
+        targetUserId: o['target_user_id'] as String?,
+        isDeleted: o['is_deleted'] as int,
+        version: o['version'] as int,
+        payloadHashHex: o['payload_hash'] as String,
+      );
+      expect(bytesToHex(message), e['signed_message_hex']);
+      final entry = keyVoucherObjectEntry(
+        id: o['id'] as String,
+        objectType: o['object_type'] as String,
+        parentRef: o['parent_ref'] as String?,
+        targetUserId: o['target_user_id'] as String?,
+        isDeleted: o['is_deleted'] as int,
+        version: o['version'] as int,
+        payloadHash: o['payload_hash'] as String,
+        signerId: e['signer_id'] as String,
+        signingPk: hexToBytes(e['signing_pk'] as String),
+      )!;
+      expect([entry.$1, entry.$2, entry.$3], e['entry']);
+    }
+  });
+
   test('malformed entries are refused', () {
     for (final e in v['malformed_entries'] as List) {
       expect(

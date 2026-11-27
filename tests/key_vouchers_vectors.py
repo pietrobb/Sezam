@@ -34,6 +34,10 @@ def _hash(text: str) -> str:
 
 CURRENT, RETIRED, OLDER = _key("current"), _key("retired"), _key("older")
 E1, E2, E3 = [OBJ[0], 3, _hash("a")], [OBJ[1], 1, _hash("b")], [OBJ[2], 2 ** 40, _hash("c")]
+OBJECT = {
+    "id": OBJ[3], "object_type": "node", "parent_ref": OBJ[2], "target_user_id": None,
+    "is_deleted": 0, "version": 7, "payload_hash": _hash("folder"),
+}
 
 
 def _pk(key: SigningKey) -> str:
@@ -77,6 +81,26 @@ def build() -> dict:
             }
             for user, key, entries in (
                 (USER, CURRENT, [E2, E1, E1]), (USER, CURRENT, []), (OTHER_USER, OLDER, [E3, E1]),
+            )
+        ],
+        # R17-N1: an entry names the whole signed message, its signer and key.
+        "object_entries": [
+            {
+                "object": obj, "signer_id": signer, "signing_pk": _pk(key),
+                "signed_message_hex": kv.signed_message(
+                    obj["id"], obj["object_type"], obj.get("parent_ref"), obj.get("target_user_id"),
+                    obj.get("is_deleted", 0), obj.get("version", 1), obj["payload_hash"],
+                ).hex(),
+                "entry": list(kv.object_entry(obj, signer, bytes(key.verify_key))),
+            }
+            for obj, signer, key in (
+                (OBJECT, USER, RETIRED),
+                ({**OBJECT, "parent_ref": OBJ[4]}, USER, RETIRED),
+                ({**OBJECT, "is_deleted": 1}, USER, RETIRED),
+                ({**OBJECT, "object_type": "entry"}, USER, RETIRED),
+                (OBJECT, OTHER_USER, RETIRED),
+                (OBJECT, USER, OLDER),
+                ({**OBJECT, "object_type": "envelope", "target_user_id": OTHER_USER, "version": 2}, USER, RETIRED),
             )
         ],
         "malformed_entries": [

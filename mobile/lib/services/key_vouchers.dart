@@ -2,9 +2,11 @@
 // retired identity key still vouches for. Mirrors src/sezam/key_vouchers.py
 // and must pass tests/vectors/key_vouchers.json.
 //
-// A retired key's signature counts only for an (id, version, payload_hash)
-// named by a list signed by the account's CURRENT signing key, not for
-// whatever the server dates before the rotation (retired_seq, commit_seq).
+// A retired key's signature counts only for an (id, version, digest) named by
+// a list signed by the account's CURRENT signing key, not for whatever the
+// server dates before the rotation (retired_seq, commit_seq). R17-N1: the
+// digest is that of the whole signed message, its signer and key
+// (keyVoucherObjectEntry), not the payload hash alone.
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -14,8 +16,46 @@ import 'crypto_service.dart';
 final _id = RegExp(r'^[0-9A-Za-z]{26}$');
 final _hash = RegExp(r'^[0-9a-f]{64}$');
 
-String keyVoucherKey(String id, int version, String payloadHash) =>
-    '$id:$version:${payloadHash.toLowerCase()}';
+String keyVoucherKey(String id, int version, String digest) =>
+    '$id:$version:${digest.toLowerCase()}';
+
+/// R17-N1 (key_vouchers.object_entry): the entry a voucher names for an
+/// object as [signingPk] of [signerId] signed it; null when malformed.
+(String, int, String)? keyVoucherObjectEntry({
+  required String id,
+  required String objectType,
+  required String? parentRef,
+  required String? targetUserId,
+  required int isDeleted,
+  required int version,
+  required String payloadHash,
+  required String signerId,
+  required Uint8List signingPk,
+}) {
+  try {
+    if (signingPk.length != 32) return null;
+    final crypto = CryptoService();
+    final message = crypto.buildSyncSignatureData(
+      id: id,
+      objectType: objectType,
+      parentRef: parentRef == null || parentRef.isEmpty ? null : parentRef,
+      targetUserId: targetUserId == null || targetUserId.isEmpty
+          ? null
+          : targetUserId,
+      isDeleted: isDeleted,
+      version: version,
+      payloadHashHex: payloadHash.toLowerCase(),
+    );
+    final input = BytesBuilder()
+      ..add(utf8.encode('sezam-key-voucher-entry-v2\x00'))
+      ..add(CryptoService.idBytes26(signerId))
+      ..add(signingPk)
+      ..add(message);
+    return (id, version, crypto.sha256Hex(input.toBytes()));
+  } catch (_) {
+    return null;
+  }
+}
 
 /// Sorted, de-duplicated entries; FormatException on any malformed one.
 List<(String, int, String)> canonicalKeyVoucherEntries(Object? entries) {
@@ -25,9 +65,7 @@ List<(String, int, String)> canonicalKeyVoucherEntries(Object? entries) {
   final byKey = <String, (String, int, String)>{};
   for (final entry in entries) {
     if (entry is! List || entry.length != 3) {
-      throw const FormatException(
-        'a voucher entry is [id, version, payload_hash]',
-      );
+      throw const FormatException('a voucher entry is [id, version, digest]');
     }
     final id = entry[0];
     final version = entry[1];
@@ -42,7 +80,7 @@ List<(String, int, String)> canonicalKeyVoucherEntries(Object? entries) {
     }
     if (payloadHash is! String || !_hash.hasMatch(payloadHash)) {
       throw const FormatException(
-        'a voucher entry needs a lowercase hex SHA-256 payload hash',
+        'a voucher entry needs a lowercase hex SHA-256 digest',
       );
     }
     byKey[keyVoucherKey(id, version, payloadHash)] = (id, version, payloadHash);
@@ -65,7 +103,7 @@ Uint8List keyVoucherMessage(
     throw const FormatException('a voucher signing key is 32 bytes');
   }
   final items = canonicalKeyVoucherEntries(entries);
-  final out = BytesBuilder()..add(utf8.encode('sezam-key-vouchers-v1\x00'));
+  final out = BytesBuilder()..add(utf8.encode('sezam-key-vouchers-v2\x00'));
   final user = CryptoService.idBytes26(userId);
   out
     ..add(user)

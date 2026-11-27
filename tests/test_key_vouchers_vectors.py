@@ -24,6 +24,20 @@ def test_the_message_is_the_stored_bytes(item):
     assert message.hex() == item["message_hex"]
 
 
+def test_an_entry_names_the_whole_signed_message_its_signer_and_key():
+    """R17-N1: every signed field, the signer and the key change the entry."""
+    entries = [item["entry"] for item in VECTORS["object_entries"]]
+    assert len({e[2] for e in entries}) == len(entries)
+    for item in VECTORS["object_entries"]:
+        obj = item["object"]
+        assert kv.signed_message(
+            obj["id"], obj["object_type"], obj.get("parent_ref"), obj.get("target_user_id"),
+            obj.get("is_deleted", 0), obj.get("version", 1), obj["payload_hash"],
+        ).hex() == item["signed_message_hex"]
+        entry = kv.object_entry(obj, item["signer_id"], bytes.fromhex(item["signing_pk"]))
+        assert list(entry) == item["entry"]
+
+
 @pytest.mark.parametrize("entry", VECTORS["malformed_entries"], ids=str)
 def test_a_malformed_entry_is_refused(entry):
     with pytest.raises(ValueError):

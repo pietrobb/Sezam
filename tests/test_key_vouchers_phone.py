@@ -64,6 +64,21 @@ def test_a_new_phone_refuses_what_a_leaked_retired_key_signs_under_any_bound(
     assert "All tests passed!" in out, out
 
 
+def test_a_new_phone_refuses_a_vouched_version_signed_again_with_other_fields(
+    team, monkeypatch, tmp_path  # noqa: F811
+):
+    """R17-N1: the server signs the version the rotation vouched for again
+    with the leaked retired key, as deleted."""
+    from tests.test_r17_n1_voucher_binds_signed_fields import _re_sign
+
+    url, db, admin_id, bob_id, ops_dek_id, old_signer, _ = _rotated_team(team, monkeypatch)
+    forged = _re_sign(db, team[5]["Ops"], old_signer, is_deleted=1)
+    out = _phone(url, tmp_path / "forged", {
+        "username": "bob", "password": PASSWORD, "forged": [forged["id"]], "vouched": [],
+    }, {}, PHONE_TEST)
+    assert "All tests passed!" in out, out
+
+
 def test_a_member_with_only_a_phone_keeps_what_the_sole_inactive_admin_s_retired_key_signed(
     team, monkeypatch, tmp_path  # noqa: F811
 ):

@@ -59,8 +59,13 @@ class SyncStateMixin:
         return compute_state_hash(self._local_objects())
 
     def _held_entries(self) -> set[tuple[str, int, str]]:
-        """(id, version, payload_hash) of every server copy this device holds
+        """(id, version, digest) of every server copy this device holds
         (goal #443: what it may vouch for under the account's current key).
+
+        R17-N1: the digest of the message its signer signed (held_signed,
+        written when the copy verified or the server took it), and only while
+        the copy held is that version and payload: what the server serves
+        again with other signed fields matches none.
 
         A queued row is its server copy only when a conflict keeps one; a
         version this device made and has not sent is none (R16-Z: a voucher of
@@ -71,11 +76,21 @@ class SyncStateMixin:
                 "(SELECT object_id FROM sync_conflicts)"
             )
         }
-        return {
-            (obj_id, version, hashlib.sha256(payload).hexdigest())
-            for obj_id, version, payload in self._local_objects()
-            if obj_id not in unsent
-        }
+        signed: dict[str, list] = {}
+        for row in self._db.fetchall("SELECT object_id, version, payload_hash, digest FROM held_signed"):
+            signed.setdefault(row["object_id"], []).append(
+                (row["version"], row["payload_hash"], row["digest"])
+            )
+        out = set()
+        for obj_id, version, payload in self._local_objects():
+            if obj_id in unsent or obj_id not in signed:
+                continue
+            payload_hash = hashlib.sha256(payload).hexdigest()
+            out.update(
+                (obj_id, version, digest) for held_version, held_hash, digest in signed[obj_id]
+                if held_version == version and held_hash == payload_hash
+            )
+        return out
 
     def _local_objects(self) -> list[tuple[str, int, bytes]]:
         """(id, version, payload) of every locally represented sync object, as

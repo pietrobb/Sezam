@@ -11,7 +11,7 @@ import struct
 import time
 from typing import Optional
 
-from .. import teamlog
+from .. import key_vouchers, teamlog
 from ..crypto.aead import parse_envelope
 from ..models import bytes_to_ulid
 from . import outbox, pending_states, sync_core
@@ -121,6 +121,8 @@ class ApplyMixin:
         seq = self._db.fetchone(
             "SELECT commit_seq FROM object_server_seq WHERE object_id = ?", (obj_id,)
         )
+        local_hash, payload_hash = self._copy_hashes(
+            obj_id, existing["version"], version, local_hash, payload_hash)
         decision = sync_core.call(
             "against_held",
             gc_floor_seq=self._gc_floor,
@@ -142,7 +144,34 @@ class ApplyMixin:
                 "id": obj_id, "type": kind, "version": version,
                 "local_hash": local_hash[:16], "server_hash": payload_hash[:16],
             })
+        if decision in ("keep_held", "equivocation"):
+            # The copy held stays: what the pulled one's signer signed is not
+            # held here, so no voucher names it.
+            self._verified_entries.pop(obj_id, None)
         return decision != "apply"
+
+    def _copy_hashes(
+        self, obj_id: str, held_version: int, version: int, local_hash: str,
+        payload_hash: Optional[str],
+    ) -> tuple[str, Optional[str]]:
+        """What against_held compares (R17-N1): at the version held, the
+        whole signed message with its signer and key (held_signed, and the
+        entry of the pulled copy that verified), so the same version with
+        another parent, tombstone flag or signer is an equivocation, never
+        the copy held. A copy held from before held_signed has its payload."""
+        verified = self._verified_entries.get(obj_id)
+        if verified is None or version != held_version:
+            return local_hash, payload_hash
+        held = {
+            row["digest"] for row in self._db.fetchall(
+                "SELECT digest FROM held_signed WHERE object_id = ? AND version = ?",
+                (obj_id, held_version),
+            )
+        }
+        entry = key_vouchers.object_entry(*verified)
+        if not held or entry is None:
+            return local_hash, payload_hash
+        return (entry[2] if entry[2] in held else min(held)), entry[2]
 
     def _apply_node(
         self, obj_id: str, parent_ref: Optional[str],

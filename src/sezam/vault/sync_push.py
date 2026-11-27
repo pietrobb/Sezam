@@ -10,6 +10,7 @@ import hashlib
 import struct
 from typing import Optional
 
+from .. import key_vouchers
 from ..crypto.aead import BlobKind, encrypt, parse_envelope
 from ..models import EntryData, bytes_to_ulid, new_ulid, ulid_to_bytes
 from . import oplock, outbox, pending_states
@@ -790,6 +791,7 @@ class PushMixin:
                 obj = sent.get(obj_id)
                 if obj is None:
                     continue
+                self._hold_signed(obj, self._user_id, bytes(self._keypair.signing_pk))
                 if obj["object_type"] in ("node", "entry"):
                     self._record_server_seq(obj_id, accepted_seqs.get(obj_id))
                     self._set_base(obj_id, obj["version"], obj["payload_hash"], own=True,
@@ -1278,23 +1280,8 @@ class PushMixin:
 
         R15 #428 (INV-3): a value the u8/u32 fields cannot hold exactly is a
         ValueError, so a pulled object carrying one is unverified, not a crash.
+        One builder with the key vouchers' entry digest (R17-N1).
         """
-        if type(is_deleted) not in (int, bool) or is_deleted not in (0, 1):
-            raise ValueError(f"is_deleted must be 0 or 1, not {is_deleted!r}")
-        if type(version) is not int or not 0 <= version <= 0xFFFFFFFF:
-            raise ValueError(f"version must fit a u32, not {version!r}")
-        id_bytes = PushMixin._id_to_bytes(id)
-        ot = object_type.encode("utf-8")
-        pr = PushMixin._id_to_bytes(parent_ref) if parent_ref else b"\x00" * 26
-        tu = PushMixin._id_to_bytes(target_user_id) if target_user_id else b"\x00" * 26
-        ph = bytes.fromhex(payload_hash)
-
-        return (
-            id_bytes
-            + struct.pack("B", len(ot)) + ot
-            + pr
-            + tu
-            + struct.pack("B", is_deleted)
-            + struct.pack(">I", version)
-            + ph
+        return key_vouchers.signed_message(
+            id, object_type, parent_ref, target_user_id, is_deleted, version, payload_hash
         )

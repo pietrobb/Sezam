@@ -1487,13 +1487,15 @@ async def _require_vouched(cur, user_id: str, old_signing_pk: bytes, vouched: se
     for obj_id, object_type, parent_ref, target_user_id, is_deleted, version, payload_hash, signature in (
         await cur.fetchall()
     ):
-        if not signature or (obj_id, version, str(payload_hash).lower()) in vouched:
+        fields = {
+            "id": obj_id, "object_type": object_type, "parent_ref": parent_ref,
+            "target_user_id": target_user_id, "is_deleted": int(is_deleted or 0),
+            "version": version, "payload_hash": payload_hash,
+        }
+        # R17-N1: the entry names the whole message the old key signed.
+        if not signature or key_vouchers.core.object_entry(fields, user_id, old_signing_pk) in vouched:
             continue
-        obj = SimpleNamespace(
-            id=obj_id, object_type=object_type, parent_ref=parent_ref, target_user_id=target_user_id,
-            is_deleted=int(is_deleted or 0), version=version, payload_hash=payload_hash,
-        )
-        if _verify_sync_signature(obj, bytes(signature), old_signing_pk):
+        if _verify_sync_signature(SimpleNamespace(**fields), bytes(signature), old_signing_pk):
             raise ApiError(
                 409, KEY_VOUCHERS_INCOMPLETE,
                 f"The identity rotation's key vouchers leave out {obj_id} version {version}, "
