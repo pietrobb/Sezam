@@ -33,7 +33,7 @@ DIGEST_MARK = "// source-sha256: "
 def source_files() -> list[Path]:
     files = [CORE / "rust-toolchain.toml", CORE / "Cargo.toml", CORE / "Cargo.lock",
              CORE / "wasm" / "Cargo.toml", CORE / "wasm" / "Cargo.lock"]
-    files += sorted((CORE / "src").glob("*.rs")) + sorted((CORE / "wasm" / "src").glob("*.rs"))
+    files += sorted((CORE / "src").rglob("*.rs")) + sorted((CORE / "wasm" / "src").rglob("*.rs"))
     return files
 
 

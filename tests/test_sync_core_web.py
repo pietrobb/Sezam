@@ -96,6 +96,14 @@ def test_the_built_file_is_from_the_current_core_sources():
     )
 
 
+def test_the_digest_covers_every_rust_file_of_the_core():
+    # Capability review run 696: core/src/teamlog/ was outside the digest, so a
+    # changed team log rule left the web on an old module with this check green.
+    rust = {p for d in ("src", "wasm/src") for p in (ROOT / "core" / d).rglob("*.rs")}
+    assert any(p.parent.name == "teamlog" for p in rust)
+    assert rust <= set(build_web.source_files())
+
+
 def test_the_page_pins_the_core_before_the_app():
     index = (ROOT / "web" / "templates" / "index.html").read_text(encoding="utf-8")
     pinned = re.search(r'src="/static/js/vendor/sezam-sync-core\.js"\s+integrity="([^"]+)"', index)
