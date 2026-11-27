@@ -36,7 +36,7 @@ from nacl.signing import VerifyKey
 
 from .. import key_vouchers, teamlog
 from .personal_root import dek_parent_ref, personal_root_ids
-from .sync_common import DETACHED_DEKS_META, server_error
+from .sync_common import DETACHED_DEKS_META, KEY_VOUCHERS_FULL, server_error
 
 logger = logging.getLogger(__name__)
 
@@ -156,12 +156,22 @@ class VoucherMixin:
         cached = self._lists_cache.get((poster_id, key))
         if cached is not None:
             return cached
+        lists, after = [], ""
         try:
-            response = self._request("GET", f"/api/users/{poster_id}/key-vouchers", auth=True) or {}
+            # R17-N10: the server pages the lists; "next" is "" after the last page.
+            for _ in range(key_vouchers.MAX_PAGES):
+                query = f"?after={after}" if after else ""
+                response = self._request(
+                    "GET", f"/api/users/{poster_id}/key-vouchers{query}", auth=True
+                ) or {}
+                lists.extend(response.get("lists") or [])
+                after = response.get("next") or ""
+                if not after:
+                    break
         except RuntimeError as exc:  # a server from before #443: no list
             logger.warning("No key vouchers of %s: %s", poster_id, exc)
-            response = {}
-        cached = key_vouchers.vouched(poster_id, key, response.get("lists"))
+            lists = []
+        cached = key_vouchers.vouched(poster_id, key, lists)
         self._lists_cache[(poster_id, key)] = cached
         return cached
 
@@ -372,6 +382,11 @@ class VoucherMixin:
             for voucher_list in self._signed_lists(new):
                 self._request("POST", "/api/users/me/key-vouchers", voucher_list, auth=True)
         except RuntimeError as exc:
+            if server_error(exc, 413, KEY_VOUCHERS_FULL):
+                # R17-N10: the key holds as many lists as the server keeps; what
+                # this device holds it vouches for itself (_held).
+                logger.warning("Key vouchers not posted: %s", exc)
+                return
             if not server_error(exc, 404):
                 raise
             logger.warning("Key vouchers not posted: a server from before #443")

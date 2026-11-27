@@ -9396,16 +9396,27 @@ function vouchedEntries(userId, currentSigningPk, lists, _sodium) {
     return vouched;
 }
 
+const KEY_VOUCHER_MAX_PAGES = 64;
+
 async function fetchVouchedEntries(userId, currentHex, _sodium) {
     if (!currentHex) return new Set();
-    let data;
+    // R17-N10: the server pages the lists; "next" is '' after the last page
+    // (at most KEY_VOUCHER_MAX_PAGES, src/sezam/key_vouchers.py MAX_PAGES).
+    const lists = [];
     try {
-        data = await apiFetch(`/api/users/${userId}/key-vouchers`);
+        let after = '';
+        for (let page = 0; page < KEY_VOUCHER_MAX_PAGES; page++) {
+            const query = after ? `?after=${encodeURIComponent(after)}` : '';
+            const data = await apiFetch(`/api/users/${userId}/key-vouchers${query}`);
+            lists.push(...(data?.lists || []));
+            after = data?.next || '';
+            if (!after) break;
+        }
     } catch (err) {
         console.warn('No key vouchers for', userId, err.message);
         return new Set();
     }
-    return vouchedEntries(userId, hexToBytes(currentHex), data?.lists, _sodium);
+    return vouchedEntries(userId, hexToBytes(currentHex), lists, _sodium);
 }
 
 function verifyArchivedKeyChain(userId, currentSigningPk, currentEncryptionPk, candidates, _sodium) {

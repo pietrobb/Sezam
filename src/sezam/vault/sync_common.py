@@ -183,6 +183,7 @@ USERNAME_TAKEN = "username_taken"
 ORG_RECOVERY_SUPERSEDED = "org_recovery_superseded"
 INVALID_KEY_VOUCHERS = "invalid_key_vouchers"
 KEY_VOUCHERS_INCOMPLETE = "key_vouchers_incomplete"
+KEY_VOUCHERS_FULL = "key_vouchers_full"
 # SHA-256 of the server's encrypted keypair at the key epoch this device holds:
 # what its key-change push sent, or what it took over (stateful test SM30).
 SERVER_KEY_MATERIAL_META = "server_key_material_hash"

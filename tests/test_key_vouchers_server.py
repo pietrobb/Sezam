@@ -136,7 +136,7 @@ async def test_only_a_list_signed_by_the_current_key_is_kept(app_client, mock_db
     resp = await app_client.post("/api/users/me/key-vouchers", json=good, headers=_auth(token))
     assert resp.status_code == 200, resp.text
     served = await _vouchers(app_client, token)
-    assert served == {"signing_pk": bytes(sk.verify_key).hex(), "lists": [good]}
+    assert served == {"signing_pk": bytes(sk.verify_key).hex(), "lists": [good], "next": ""}
     assert kv.vouched(USER_ID, bytes(sk.verify_key), served["lists"]) == {tuple(_entry(mock_db))}
 
 
@@ -179,7 +179,7 @@ async def test_identity_rotation_stores_lists_of_the_new_key_and_serves_only_tho
     assert _user(mock_db)["signing_pk"] == bytes(new_sk.verify_key)
     new_token = resp.json()["token"]
     served = await _vouchers(app_client, new_token)
-    assert served == {"signing_pk": bytes(new_sk.verify_key).hex(), "lists": [after]}
+    assert served == {"signing_pk": bytes(new_sk.verify_key).hex(), "lists": [after], "next": ""}
     # The old key may no longer add lists.
     resp = await app_client.post("/api/users/me/key-vouchers", json=before, headers=_auth(new_token))
     assert resp.status_code == 400

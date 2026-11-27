@@ -577,6 +577,13 @@ async def _sync_push(
         staged + list(req.objects),
         tuple(candidate_pks),
     )
+    # R17-N10: a rotation's voucher lists are checked here too, not under the lock.
+    # An unreadable key leaves them to the locked pass, which refuses it.
+    vouchers_pre = None
+    if identity_pre is not None and candidate_pks and candidate_pks[-1].hex() == identity_pre.new_signing_pk:
+        vouchers_pre = await key_vouchers.checked(
+            user_id, candidate_pks[-1], [vl.model_dump() for vl in identity_pre.key_vouchers]
+        )
 
     # Lock order for every push: commit_counter → sync_state → vault_objects.
     # Taking the single commit_counter row first serializes pushes, so two of
@@ -1044,10 +1051,11 @@ async def _sync_push(
                 # before seeing the other's move; both landed and every device
                 # held a parent cycle (unlock walked it forever). Pushes are
                 # serialized (commit_counter), so the stored chain is current.
+                # R17-N11: a new folder has nothing below it.
                 if (
-                    writes and stored_type == "node" and obj.parent_ref is not None
-                    and obj.parent_ref != (existing[5] if existing else None)
-                    and await _is_below(cur, obj.parent_ref, obj.id)
+                    writes and stored_type == "node" and obj.parent_ref is not None and existing
+                    and obj.parent_ref != existing[5]
+                    and await _is_below(cur, obj.parent_ref, obj.id, authority_cache)
                 ):
                     conflicts.append(PushObjectResult(
                         id=obj.id, code=FOLDER_MOVE_CYCLE,
@@ -1311,6 +1319,7 @@ async def _sync_push(
                     advances_epoch=req.key_epoch > server_key_epoch,
                     old_key_epoch=server_key_epoch,
                     retired_seq=seq_before_push,
+                    checked_vouchers=vouchers_pre,
                 )
 
             await cur.execute(
@@ -1398,7 +1407,8 @@ async def _archive_key_material(cur, user_id: str, key_epoch: int, now_ms: int) 
 
 
 async def _rotate_identity(
-    cur, user_id: str, identity, now_ms: int, retired_seq: int
+    cur, user_id: str, identity, now_ms: int, retired_seq: int,
+    checked_vouchers: Optional[list] = None,
 ) -> None:
     """Replace the account's public identity keys and archive the old ones.
 
@@ -1465,10 +1475,14 @@ async def _rotate_identity(
         ),
     )
     # Goal #443: what the old key signed, vouched for by the new one.
+    if checked_vouchers is None:
+        checked_vouchers = await key_vouchers.checked(
+            user_id, new_signing_pk, [vl.model_dump() for vl in identity.key_vouchers]
+        )
     vouched: set = set()
-    for voucher_list in identity.key_vouchers:
-        await key_vouchers.store(cur, user_id, new_signing_pk, voucher_list.model_dump(), now_ms)
-        vouched.update(key_vouchers.core.canonical_entries(voucher_list.entries))
+    for checked_list in checked_vouchers:
+        await key_vouchers.store(cur, user_id, new_signing_pk, checked_list, now_ms)
+        vouched.update(checked_list[1])
     await _require_vouched(cur, user_id, old_signing_pk, vouched)
 
 
@@ -1606,6 +1620,7 @@ async def _authorize_key_material_change(
 async def _apply_key_rotation(
     cur, config: ServerConfig, user_id: str, username: str, signing_pk: bytes,
     rotation, *, advances_epoch: bool, old_key_epoch: int, retired_seq: int,
+    checked_vouchers: Optional[list] = None,
 ) -> Optional[int]:
     """Replace the account key material inside the push transaction.
 
@@ -1643,7 +1658,7 @@ async def _apply_key_rotation(
     kdf_json = require_kdf_params_json(rotation.argon2_params)
     new_token_epoch = int((row[1] if row else 0) or 0) + 1
     if identity is not None:
-        await _rotate_identity(cur, user_id, identity, now_ms, retired_seq)
+        await _rotate_identity(cur, user_id, identity, now_ms, retired_seq, checked_vouchers)
     await _archive_key_material(cur, user_id, old_key_epoch, now_ms)
     await cur.execute(
         "UPDATE users SET "
@@ -2134,24 +2149,27 @@ async def _stored_object(cur, obj_id: str) -> Optional[PullObject]:
     return _pull_object(row) if row else None
 
 
-async def _is_below(cur, node_id: str, ancestor_id: str) -> bool:
+_MAX_MOVE_CHECK_DEPTH = 1024
+
+
+async def _is_below(cur, node_id: str, ancestor_id: str, cache: dict) -> bool:
     """Whether stored ``node_id`` is ``ancestor_id`` or lies below it.
 
     Stops at a chain that loops without reaching it (a cycle stored before
-    R16-Z SM22): such a move does not close a new one.
+    R16-Z SM22): such a move does not close a new one. R17-N11: it ran under
+    the global push lock with one SELECT per level for every moved folder;
+    the rows come from the push's authority cache now (shared with the
+    personal-tree walk, read again after the push writes a node), and a chain
+    deeper than _MAX_MOVE_CHECK_DEPTH counts as below (the move is refused).
     """
     seen = set()
     current = node_id
     while current is not None and current not in seen:
-        if current == ancestor_id:
+        if current == ancestor_id or len(seen) >= _MAX_MOVE_CHECK_DEPTH:
             return True
         seen.add(current)
-        await cur.execute(
-            "SELECT parent_ref FROM vault_objects WHERE id = %s AND object_type = 'node'",
-            (current,),
-        )
-        row = await cur.fetchone()
-        current = row[0] if row else None
+        row = await personal_tree.node_row(cur, current, cache)
+        current = row[1] if row else None
     return False
 
 

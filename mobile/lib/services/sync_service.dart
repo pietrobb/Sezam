@@ -822,17 +822,33 @@ class SyncService {
 
   /// The voucher lists of [userId]'s current key (goal #443); a server from
   /// before them has none, which vouches for nothing.
-  Future<Object?> _fetchKeyVoucherLists(String userId) async {
-    final response = await _http.get(
-      Uri.parse(
-        '$_serverUrl/api/users/${Uri.encodeComponent(userId)}/key-vouchers',
-      ),
-      headers: _authHeaders(),
-    );
-    if (response.statusCode == 404) return const [];
-    _checkResponse(response, 'fetchKeyVouchers');
-    return (jsonDecode(response.body) as Map<String, dynamic>)['lists'];
+  /// R17-N10: the server pages them; `next` is '' after the last page (at
+  /// most [keyVoucherMaxPages], src/sezam/key_vouchers.py MAX_PAGES).
+  @visibleForTesting
+  Future<Object?> fetchKeyVoucherLists(String userId) async {
+    final lists = <Object?>[];
+    var after = '';
+    for (var page = 0; page < keyVoucherMaxPages; page++) {
+      final query = after.isEmpty ? '' : '?after=${Uri.encodeComponent(after)}';
+      final response = await _http.get(
+        Uri.parse(
+          '$_serverUrl/api/users/${Uri.encodeComponent(userId)}/key-vouchers$query',
+        ),
+        headers: _authHeaders(),
+      );
+      if (response.statusCode == 404) return const [];
+      _checkResponse(response, 'fetchKeyVouchers');
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final served = body['lists'];
+      if (served is! List) return served;
+      lists.addAll(served);
+      after = body['next'] is String ? body['next'] as String : '';
+      if (after.isEmpty) break;
+    }
+    return lists;
   }
+
+  static const keyVoucherMaxPages = 64;
 
   /// The keys of this account and its team the phone last posted its list
   /// under, and every retired key it has seen (as the desktop's
@@ -896,7 +912,7 @@ class SyncService {
     final own = vouchedEntries(
       userId,
       signingPk,
-      await _fetchKeyVoucherLists(userId),
+      await fetchKeyVoucherLists(userId),
     );
     final entries = <List<Object>>[];
     for (final key in legacyVoucherEntries(held, own)) {
@@ -932,6 +948,12 @@ class SyncService {
         }),
       );
       if (response.statusCode == 404) return; // a server from before #443
+      // R17-N10: the key holds as many lists as the server keeps; what this
+      // phone holds it vouches for itself.
+      if (response.statusCode == 413 &&
+          _errorCode(response) == 'key_vouchers_full') {
+        return;
+      }
       _checkResponse(response, 'postKeyVouchers');
     }
     await _db.setSetting(keyVouchersCheckedSetting, fingerprint);
@@ -2245,7 +2267,7 @@ class SyncService {
               listsByPoster['$poster:${bytesToHex(key)}'] ??= vouchedEntries(
                 poster,
                 key,
-                await _fetchKeyVoucherLists(poster),
+                await fetchKeyVoucherLists(poster),
               );
           final out = {
             ...await listsOf(signerId, authorPks.first),

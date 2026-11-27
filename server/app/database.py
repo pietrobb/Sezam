@@ -91,7 +91,8 @@ CREATE TABLE IF NOT EXISTS key_vouchers (
     signature       BINARY(64) NOT NULL,
     created_at      BIGINT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_kv_user_key (user_id, signing_pk)
+    INDEX idx_kv_user_key (user_id, signing_pk),
+    UNIQUE KEY uq_kv_list (user_id, signing_pk, signature)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
 CREATE TABLE IF NOT EXISTS vault_objects (
@@ -432,6 +433,11 @@ INSERT IGNORE INTO commit_counter (id, next_seq, gc_floor_seq) VALUES (1, 1, 0);
 """
 
 # Migrations for existing databases
+_KV_UNIQUE_CHECK = (
+    "SELECT COUNT(*) FROM information_schema.STATISTICS "
+    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'key_vouchers' AND INDEX_NAME = 'uq_kv_list'"
+)
+
 MIGRATIONS_SQL = [
     # Add client_ip column to server_audit if not present
     (
@@ -627,6 +633,17 @@ MIGRATIONS_SQL = [
         "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'team_log' "
         "AND INDEX_NAME = 'idx_team_log_author'",
         "ALTER TABLE team_log ADD INDEX idx_team_log_author (author)",
+    ),
+    # R17-N10: a voucher list is kept once. Copies stored before the key are
+    # dropped first (the oldest stays), while the key does not exist yet.
+    (
+        _KV_UNIQUE_CHECK,
+        "DELETE k1 FROM key_vouchers k1 JOIN key_vouchers k2 ON k1.user_id = k2.user_id "
+        "AND k1.signing_pk = k2.signing_pk AND k1.signature = k2.signature AND k1.id > k2.id",
+    ),
+    (
+        _KV_UNIQUE_CHECK,
+        "ALTER TABLE key_vouchers ADD UNIQUE KEY uq_kv_list (user_id, signing_pk, signature)",
     ),
 ]
 

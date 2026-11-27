@@ -343,16 +343,18 @@ async def _current_signing_pk(cur, user_id: str) -> bytes:
 @router.get("/{user_id}/key-vouchers")
 async def get_key_vouchers(
     user_id: str,
+    after: str = Query(default="", pattern=r"^(?:[0-9A-Za-z]{26})?$"),
     db: Database = Depends(get_db),
     user: dict = Depends(get_team_log_reader),
 ):
     """Goal #443: the voucher lists of the account's current key, the only
-    ones under which clients take a retired key's signature."""
+    ones under which clients take a retired key's signature. R17-N10: paged;
+    ``next`` is the ``after`` of the next page ("" at the end)."""
     async with db.acquire() as conn:
         async with conn.cursor() as cur:
             signing_pk = await _current_signing_pk(cur, user_id)
-            lists = await key_vouchers.lists_of(cur, user_id, signing_pk)
-    return {"signing_pk": signing_pk.hex(), "lists": lists}
+            lists, next_after = await key_vouchers.lists_of(cur, user_id, signing_pk, after)
+    return {"signing_pk": signing_pk.hex(), "lists": lists, "next": next_after}
 
 
 @router.post("/me/key-vouchers")
@@ -363,12 +365,18 @@ async def post_key_vouchers(
 ):
     """Goal #443: add a voucher list signed by the account's current key (a
     rotation from before #443 gets its list on the next sync)."""
-    async with db.transaction() as conn:
+    async with db.acquire() as conn:
         async with conn.cursor() as cur:
             signing_pk = await _current_signing_pk(cur, user["sub"])
-            await key_vouchers.store(
-                cur, user["sub"], signing_pk, body.model_dump(), int(time.time() * 1000)
-            )
+    (checked_list,) = await key_vouchers.checked(user["sub"], signing_pk, [body.model_dump()])
+    async with db.transaction() as conn:
+        async with conn.cursor() as cur:
+            # The key may have rotated meanwhile: keep the list only under the key that signed it.
+            await cur.execute("SELECT signing_pk FROM users WHERE id = %s FOR UPDATE", (user["sub"],))
+            row = await cur.fetchone()
+            if not row or bytes(row[0] or b"") != signing_pk:
+                raise HTTPException(status_code=409, detail="The account's key changed; send the list again")
+            await key_vouchers.store(cur, user["sub"], signing_pk, checked_list, int(time.time() * 1000))
     return {"status": "ok"}
 
 

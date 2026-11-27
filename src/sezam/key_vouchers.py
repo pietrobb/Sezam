@@ -39,6 +39,10 @@ from nacl.signing import SigningKey, VerifyKey
 DOMAIN = b"sezam-key-vouchers-v2\x00"
 ENTRY_DOMAIN = b"sezam-key-voucher-entry-v2\x00"
 MAX_ENTRIES = 200_000
+# R17-N10: the server keeps at most this many lists per key and serves at
+# least one per page, so a client reads at most this many pages.
+MAX_LISTS_PER_KEY = 64
+MAX_PAGES = MAX_LISTS_PER_KEY
 _ID = re.compile(r"^[0-9A-Za-z]{26}$")  # OBJECT_ID in server/app/models/schemas.py
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 

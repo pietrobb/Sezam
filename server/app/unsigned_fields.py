@@ -41,6 +41,8 @@ class Field:
     lies: tuple[str, ...] = ()
 
 
+_VOUCHER_NEXT = ("paging (R17-N10): a lie ends the lists early (what a left-out list names is not "
+                 "vouched for) or repeats a page; at most MAX_PAGES pages")
 _OBJECT_SIG = ("vault.sync_client:SyncClient._verify_object_signature",)
 _TOFU = ("vault.sync_client:SyncClient._get_signing_pk",)
 _KDF = ("vault.crud:server_account_kdf",)
@@ -138,6 +140,8 @@ FIELDS: dict[str, Field] = {
     "GET /api/users/{user_id}/key-vouchers .signing_pk": Field(
         UNREAD, "the lists are checked against the signer's pinned current key, not this one"),
     "GET /api/users/{user_id}/key-vouchers .lists": _signed("key_vouchers:vouched"),
+    "GET /api/users/{user_id}/key-vouchers .next": Field(
+        HINT, _VOUCHER_NEXT, ("vault.sync_vouchers:VoucherMixin._lists_of",)),
     "POST /api/users/me/key-vouchers .status": Field(UNREAD),
     "GET /api/users/me/signed-objects .objects": Field(
         HINT, "only which ids to look at: a voucher list names an entry (the digest of the whole signed "
@@ -567,6 +571,7 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         "GET /api/users/{user_id}/key-vouchers .signing_pk": Field(
             UNREAD, "the lists are checked against the signer's pinned current key, not this one"),
         "GET /api/users/{user_id}/key-vouchers .lists": _signed("vouchedEntries", "fetchVouchedEntries"),
+        "GET /api/users/{user_id}/key-vouchers .next": Field(HINT, _VOUCHER_NEXT, ("fetchVouchedEntries",)),
         **_not_called("/api/users/me/key-vouchers and signed-objects (only the desktop rotates identities)",
                       *_VOUCHER_FIELDS[2:]),
         # ── Shares, audit, AI ──
@@ -709,7 +714,8 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             ("resolveAuthorSigningKeys", "keyMayVouch", "vouchedEntries")),
         "GET /api/users/{user_id}/key-vouchers .signing_pk": Field(
             UNREAD, "the lists are checked against the signer's pinned current key, not this one"),
-        "GET /api/users/{user_id}/key-vouchers .lists": _signed("vouchedEntries", "_fetchKeyVoucherLists"),
+        "GET /api/users/{user_id}/key-vouchers .lists": _signed("vouchedEntries", "fetchKeyVoucherLists"),
+        "GET /api/users/{user_id}/key-vouchers .next": Field(HINT, _VOUCHER_NEXT, ("fetchKeyVoucherLists",)),
         # Capability review run 482: the phone posts what it holds, as the desktop.
         "POST /api/users/me/key-vouchers .status": Field(UNREAD),
         **_not_called("/api/users/me/signed-objects (only the desktop rotates identities)",
