@@ -21,13 +21,13 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       # CI run 45584285599: a phone fix's red line runs `flutter test` (through
@@ -75,15 +75,15 @@ jobs:
       # a missing flutter fails instead of skipping.
       SEZAM_REQUIRE_FLUTTER: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       # The web tests run app.js in node; its Argon2id is crypto.argon2Sync
       # (node >= 24.7), the runner's preinstalled node is older.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - uses: subosito/flutter-action@v2
@@ -118,7 +118,7 @@ jobs:
       SEZAM_TEST_HOST_SETUP: "1"
       SEZAM_REQUIRE_HOST_SETUP: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server openssh-client procps sudo
       # The checkout belongs to the runner user, the container runs as root:
       # without this git refuses the repo and setuptools-scm cannot read the version.
@@ -143,7 +143,7 @@ jobs:
       SEZAM_DB_CONTAINER_NAME: sezam-ci-db
       SEZAM_API_CONTAINER_NAME: sezam-ci-api
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker compose up -d --build --wait --wait-timeout 300
       - run: curl -fsS http://127.0.0.1:8000/api/meta
       - if: failure()
@@ -160,11 +160,11 @@ jobs:
       # Review e443cbc P2: the @given property tests with 10 000 examples each.
       SEZAM_PROPERTY_EXAMPLES: "10000"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - run: python -m pip install ./core/py
@@ -177,7 +177,7 @@ jobs:
           tests/test_sync_state_machine.py tests/test_inv2_restore_within_append.py
           tests/test_r15_rotation_cycle.py 2>&1 | tee property-deep.log
         shell: bash
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: property-deep-log
@@ -192,11 +192,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - run: python -m pip install ./core/py
@@ -211,7 +211,7 @@ jobs:
       run:
         working-directory: core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
@@ -237,8 +237,8 @@ jobs:
       run:
         working-directory: mobile
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - uses: subosito/flutter-action@v2
