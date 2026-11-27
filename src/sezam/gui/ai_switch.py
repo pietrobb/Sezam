@@ -135,12 +135,9 @@ class AIAccessSwitch(QObject):
         def job():
             vault = Vault(self._vault_path)
             try:
-                if kek is not None:
-                    try:
-                        vault.unlock_with_kek(kek)  # audit at once, not at the next unlock
-                    except ValueError:
-                        pass
-                return control.pull_brake(vault, "gui")
+                # R17-N3: brake first; the unlock (audit at once, anchor) after it.
+                unlock = None if kek is None else (lambda: vault.unlock_with_kek(kek))
+                return control.brake_then_unlock(vault, "gui", unlock)
             finally:
                 vault.lock()
                 if kek is not None:

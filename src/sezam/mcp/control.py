@@ -27,6 +27,7 @@ a shared run directory (e.g. ``/run/sezam-broker``).
 
 from __future__ import annotations
 
+import dataclasses
 import errno
 import json
 import logging
@@ -891,6 +892,36 @@ def pull_brake(vault, source: str) -> BrakeResult:
         elif not stopped:  # a broker that saved it anchors it from its unlocked vault
             unanchored = "the vault is locked"
     return BrakeResult(state, stopped, len(replies) - stopped, unanchored)
+
+
+def brake_then_unlock(vault, source: str, unlock: Optional[Callable[[], None]]) -> BrakeResult:
+    """R17-N3: the brake over the still locked vault, the unlock only after it.
+
+    An unlock writes, so it waits for the vault's write lock; with another
+    program holding it the unlock raised VaultBusy and the brake was never
+    pulled. Here the unlock (for the audit record, written by the unlock, and
+    the server anchor) comes after the switch is off, and whatever it raises
+    only leaves the 'off' unanchored.
+    """
+    from .remote_policy import ServerAnchor
+
+    result = pull_brake(vault, source)
+    if unlock is None or vault.is_unlocked:
+        return result
+    try:
+        unlock()
+    except Exception as exc:
+        logger.warning("Unlocking after the AI brake failed; the switch is off", exc_info=True)
+        why = f"the vault could not be unlocked after the brake: {exc or type(exc).__name__}"
+        return dataclasses.replace(result, unanchored=result.unanchored and why)
+    if result.unanchored is None:
+        return result
+    try:
+        ServerAnchor(vault, {}).anchor_off(result.state.epoch)
+    except Exception as exc:
+        logger.warning("The AI 'off' was not anchored on the sync server", exc_info=True)
+        return dataclasses.replace(result, unanchored=str(exc) or type(exc).__name__)
+    return dataclasses.replace(result, unanchored=None)
 
 
 def broker_handlers(broker, lock: Callable[[], None]) -> Handlers:

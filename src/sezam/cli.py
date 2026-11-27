@@ -4089,23 +4089,27 @@ def ai_off(terminate_remote: bool):
             click.echo(f"{len(replies) - stopped} broker(s) did not confirm.", err=True)
         return
     vault = _open_vault()
-    # With a live CLI session an audit record written here goes in now;
-    # otherwise it is queued for the next unlock. The brake never prompts.
+    # The brake never prompts and never waits for the vault's write lock
+    # (R17-N3); with a live CLI session the vault is unlocked only after it,
+    # for the audit record and the server anchor.
     kek = _load_session()
-    if kek is not None:
-        try:
-            vault.unlock_with_kek(kek)
-        except ValueError:
-            pass
-        finally:
-            kek[:] = b"\x00" * len(kek)
+
+    def unlock() -> None:
+        vault.unlock_with_kek(kek)
+
+    remote, remote_error = None, None
     try:
-        result = control.pull_brake(vault, "cli")
-        if terminate_remote and not vault.is_unlocked:
-            _unlock_vault(vault)  # only after the brake: it never waits on a prompt
-        remote = _ai_off_remote_logins(vault, terminate_remote) if vault.is_unlocked else None
+        result = control.brake_then_unlock(vault, "cli", None if kek is None else unlock)
+        try:
+            if terminate_remote and not vault.is_unlocked:
+                _unlock_vault(vault)  # only after the brake: it never waits on a prompt
+            remote = _ai_off_remote_logins(vault, terminate_remote) if vault.is_unlocked else None
+        except (oplock.VaultBusy, click.ClickException) as exc:
+            remote_error = exc  # the switch is off; say so before the error
     finally:
         vault.lock()
+        if kek is not None:
+            kek[:] = b"\x00" * len(kek)
     message = f"AI access is OFF (epoch {result.state.epoch})."
     if result.stopped:
         message += f" {result.stopped} running MCP server(s) stopped."
@@ -4123,6 +4127,10 @@ def ai_off(terminate_remote: bool):
             "session open (sezam unlock) or a running 'sezam mcp-serve' it is anchored; "
             "run 'sezam ai off' again then.",
             err=True,
+        )
+    if remote_error is not None:
+        raise click.ClickException(
+            f"AI access is off, but its SSH logins were not checked: {remote_error}"
         )
     if remote is None:
         click.echo(
