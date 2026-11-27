@@ -676,8 +676,12 @@ def resolve_change(state: teamlog.TeamState, kind: str, data: dict) -> Optional[
             data["signing_pk"], data["encryption_pk"])
         return None if done else data
     if kind == "access.set":
+        # R17-N8 (state machine seed 20261127): a member's removal takes every
+        # access they had, also one still queued for them; sent after it, the
+        # access.set was refused (not_active) on every push for good.
+        removed = member is not None and not member.active and data["level"] is not None
         current = state.access.get(data["folder"], {}).get(data["user_id"])
-        return None if current == data["level"] else data
+        return None if removed or current == data["level"] else data
     if kind == "folder.key":
         if data["dek_id"] in state.dek_index:
             return None

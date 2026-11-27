@@ -555,6 +555,45 @@ class RekeyMixin:
         for obj_id in settled | tombstoned:
             self._push_cache.pop(obj_id, None)
 
+    def _withdraw_batch_envelopes_of_removed(self, state) -> None:
+        """A removed member's unsent envelope leaves the pending batch.
+
+        R17-N8 (state machine seed 20261127): the admin raised a member to
+        write (the new envelope and its access.set wait in an atomic batch,
+        the old envelope withdrawn in it) and removed the member before the
+        batch landed. The removal takes the queued access (resolve_change);
+        the new envelope went on in the batch, so the server refused the batch
+        on every push and the member's folders were never re-keyed. It is
+        dropped (never sent); the old envelope's withdrawal still goes.
+        """
+        pending = pending_states.rekey_batch(self._db)
+        object_ids = list(pending.get("object_ids") or [])
+        if not object_ids or pending.get("identity_rotation"):
+            return  # a rotation's envelopes are judged by its own rules (key vouchers)
+        removed = queued_for_removal(self._db) | {
+            user_id for user_id, member in (state.members.items() if state is not None else ())
+            if not member.active
+        }
+        withdrawn = {t["id"] for t in pending.get("envelope_tombstones") or []}
+        with self._db.transaction(immediate=True):
+            dropped = [
+                row["id"] for row in self._db.fetchall(
+                    f"SELECT id, user_id FROM access_envelopes WHERE created_by = ? "
+                    f"AND id IN ({','.join('?' * len(object_ids))})",
+                    (self._user_id, *object_ids),
+                )
+                if row["user_id"] in removed and row["id"] not in withdrawn
+            ]
+            if not dropped:
+                return
+            for envelope_id in dropped:
+                logger.warning("The removed member's unsent envelope %s leaves the re-key batch", envelope_id)
+                self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (envelope_id,))
+                outbox.sent(self._db, outbox.ENVELOPE, envelope_id)
+                self._push_cache.pop(envelope_id, None)
+            pending_states.set_rekey_batch(
+                self._db, {**pending, "object_ids": [i for i in object_ids if i not in dropped]})
+
     def _reseal_team_rekey(self, state) -> bool:
         """Seal a pending re-key's new team keys to the recipients of ``state``.
 

@@ -6166,6 +6166,45 @@ def test_sync_state_machine_team_log_lost_grant_to_a_removed_member(loopback_ser
         machine.teardown()
 
 
+@pytest.mark.parametrize("remover", ["A", "B"])
+def test_sync_state_machine_team_log_raised_to_write_then_removed(loopback_server, monkeypatch, remover):
+    """R17-N8 (review c02cc47, state machine seed 20261127): B raised m6 to
+    write; the new envelope and its access.set waited in B's atomic batch
+    (the push failed). Then m6 was removed (on B, or on A and B pulled it).
+    The batch still carried the access.set and the envelope: the log refused
+    the record (not_active) on every push, reported as "another device
+    re-keyed the folder first", and m6's folders were never re-keyed."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        machine.member_sync(_Scripted(member=member))  # confirms the founder
+        machine._settle(lambda _obj: "server")
+        machine.track_member_keys()  # an invariant: Hypothesis runs it, a script does not
+        top = machine._folders("B")[0]
+        machine._grant("B", member, top, "read")
+        machine._settle(lambda _obj: "server")
+        machine.track_member_keys()
+        undo = _fail_once(machine.devices["B"].client, "POST", "/api/sync", "before")
+        try:
+            machine._grant("B", member, top, "write")
+        finally:
+            undo()
+        batch = pending_store.rekey_batch(machine.devices["B"].vault.db)
+        assert batch.get("team_changes"), machine._trace()
+        if remover == "A":
+            machine.pull(_Scripted(device="A"), None)
+        machine.revoke(_Scripted(device=remover, member=member), None)
+        machine._settle(lambda _obj: "server")
+        assert not pending_store.rekey_batch(machine.devices["B"].vault.db), machine._trace()
+        logged = teamlog.replay(machine._server_log())
+        assert not logged.members[member].active, machine._trace()
+        assert all(member not in access for access in logged.access.values()), machine._trace()
+    finally:
+        machine.teardown()
+
+
 def test_sync_state_machine_team_handover_after_a_concurrent_move(loopback_server, monkeypatch):
     """R16-N2 (nightly stateful-deep 45604036980 on d441587, TeamLogMachine)."""
     monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)

@@ -311,7 +311,9 @@ class PushMixin:
         self.continue_identity_in_log()
         self.fold_unlogged_folder_keys()
         self.flush_team_log()
-        # A re-key's new key goes to the log's recipients as the log is now.
+        # A re-key's new key goes to the log's recipients as the log is now;
+        # a member removed meanwhile gets nothing the batch holds (R17-N8).
+        self._withdraw_batch_envelopes_of_removed(self.team_state())
         self._reseal_team_rekey(self.team_state())
         self._rotation_envelopes_on_successors()
         pending_rekey = pending_states.rekey_batch(self._db)
@@ -527,9 +529,14 @@ class PushMixin:
         try:
             return self._send_team_records(send, team_extra)
         except teamlog.TeamLogError as exc:
+            # R17-N8: the record's own code; only a folder key that moved on
+            # means another device re-keyed the folder first.
+            if exc.code in ("folder_key_moved", "bad_generation", "dek_reused"):
+                why = "another device re-keyed the folder first. Pull, then 'sezam abandon-rekey' and re-key again."
+            else:
+                why = "the log's rules refuse it; 'sezam team-log status' shows what waits."
             raise RuntimeError(
-                f"The re-key cannot go in the team log ({exc}): another device re-keyed "
-                "the folder first. Pull, then 'sezam abandon-rekey' and re-key again."
+                f"The re-key cannot go in the team log ({exc}, code {exc.code}): {why}"
             ) from exc
 
     def _send_push(

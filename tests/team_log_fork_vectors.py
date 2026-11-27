@@ -138,6 +138,11 @@ def build_cases() -> list[dict]:
          abandoned=[3, 4])
     case("own_fork_partly_again", own, _from(_other(_base()).key(F1, 0, K[1], None)), missing=[4],
          remade=[access_b], abandoned=[3, 4])
+    # R17-N8 (state machine seed 20261127): the access lost here went to a
+    # member another device removed since; the removal took it, so nothing
+    # is made again (made again, the log refused it as not_active for good).
+    case("own_fork_access_of_a_member_removed_since", own,
+         _from(_other(_base()).key(F1, 0, K[1], None).remove(B)), missing=[4], abandoned=[3, 4])
     # Capability finding 505: the device followed the shorter copy, withdrew
     # its records 3 and 4, and set their changes aside (the server refused
     # them made again); a server that serves the originals again is refused.

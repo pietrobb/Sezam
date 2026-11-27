@@ -843,6 +843,8 @@ class TeamLog {
       case 'member.remove':
         return member == null || !member.active ? null : data;
       case 'access.set':
+        // R17-N8: a member's removal takes every access they had, also a queued one.
+        if (member != null && !member.active && data['level'] != null) return null;
         return s.access[data['folder']]?[data['user_id']] == data['level'] ? null : data;
       case 'folder.key':
         if (s.dekIndex.containsKey(data['dek_id'])) return null;

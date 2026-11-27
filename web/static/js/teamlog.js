@@ -607,6 +607,8 @@ const SezamTeamLog = (() => {
       case 'member.remove':
         return member === null || !member.active ? null : data;
       case 'access.set': {
+        // R17-N8: a member's removal takes every access they had, also a queued one.
+        if (member !== null && !member.active && data.level !== null) return null;
         const access = own(state.access, data.folder) ? state.access[data.folder] : {};
         return (own(access, data.user_id) ? access[data.user_id] : null) === data.level ? null : data;
       }
