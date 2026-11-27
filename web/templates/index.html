@@ -330,6 +330,12 @@
                             </div>
                         </form>
                     </details>
+                    <details>
+                        <summary data-i18n="sync.import_unsent_title">Importovať neodoslané zmeny</summary>
+                        <p data-i18n="sync.import_unsent_help">Súbor sezam_dirty_*.json, ktorý tento prehliadač uložil pri zabudnutí denníka alebo úplnom resyncu. Vrátia sa len priečinky a záznamy podpísané týmto účtom; mazania, zdieľanie a kľúče nie.</p>
+                        <input id="import-unsent-file" type="file" accept="application/json,.json">
+                        <div id="import-unsent-result" class="hidden" role="status"></div>
+                    </details>
                 </div>
             </div>
         </div>

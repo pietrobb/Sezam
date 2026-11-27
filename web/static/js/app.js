@@ -1254,6 +1254,7 @@ function setupEventListeners() {
     document.getElementById('team-trust-form')?.addEventListener('submit', handleConfirmTeamFounder);
     document.getElementById('team-trust-cancel')?.addEventListener('click', closeTeamTrustModal);
     document.getElementById('team-forget-form')?.addEventListener('submit', handleForgetTeamPin);
+    document.getElementById('import-unsent-file')?.addEventListener('change', handleImportUnsentFile);
     document.getElementById('org-recovery-btn')?.addEventListener('click', openOrgRecoveryModal);
     document.getElementById('audit-btn')?.addEventListener('click', openAuditPanel);
     document.getElementById('audit-back-btn')?.addEventListener('click', closeAuditPanel);
@@ -2730,6 +2731,81 @@ function exportWebDirtyObjects(outbox) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
+}
+
+// The phone's limit for the same kind of file (unsent_changes.dart).
+const MAX_UNSENT_IMPORT_CHARS = 64 * 1024 * 1024;
+const UNSENT_SIGNED_FIELDS = ['id', 'object_type', 'parent_ref', 'target_user_id', 'is_deleted', 'version',
+    'payload', 'payload_hash', 'signature'];
+
+/**
+ * Review c02cc47 R17-L: queue again what exportWebDirtyObjects saved (a forget
+ * or a full resync). The file is not trusted: only a folder or item whose
+ * signature is this account's current key and whose payload matches its hash
+ * comes back (a delete, a share or a key never), and none queued or in a
+ * conflict here. Its base is not signed: it counts only when it is the copy
+ * this browser holds now; else the held copy and the import are a conflict
+ * the user settles. The push then sends it under today's rules (the log, the
+ * folder's key, the server's copy). Call with the sync lock held.
+ */
+async function importWebUnsentChangesLocked(text, _sodium) {
+    if (text.length > MAX_UNSENT_IMPORT_CHARS) throw new Error(t('sync.import_unsent_too_large'));
+    let backup = null;
+    try { backup = JSON.parse(text); } catch { /* named below */ }
+    if (!Array.isArray(backup?.objects)) throw new Error(t('sync.import_unsent_not_export'));
+    const outbox = { ...state.outbox }, conflicts = { ...state.syncConflicts };
+    let queued = 0, conflicted = 0, skipped = 0;
+    for (const raw of backup.objects) {
+        const object = raw && typeof raw === 'object' && typeof raw.id === 'string'
+            ? Object.fromEntries(UNSENT_SIGNED_FIELDS.filter(k => Object.hasOwn(raw, k)).map(k => [k, raw[k]]))
+            : null;
+        const held = object && state.syncObjects?.[object.id];
+        if (!object || !['node', 'entry'].includes(object.object_type) || object.is_deleted ||
+                typeof object.payload !== 'string' || outbox[object.id] || conflicts[object.id] ||
+                held?.payload_hash === object.payload_hash ||
+                await sha256hexBytes(base64ToBytes(object.payload)) !== object.payload_hash ||
+                !state.keypair?.signingPk || !verifyObjectSignature(object, state.keypair.signingPk, _sodium)) {
+            skipped++;
+            continue;
+        }
+        const base = held && !held.is_deleted ? { version: Number(held.version), payload_hash: held.payload_hash } : null;
+        if (!base || (Number(raw.base_version) === base.version && raw.base_payload_hash === base.payload_hash)) {
+            outbox[object.id] = base ? { ...object, base_version: base.version, base_payload_hash: base.payload_hash }
+                : object;
+            queued++;
+        } else {
+            conflicts[object.id] = {
+                local_object: object,
+                server_object: { id: object.id, version: base.version, payload_hash: base.payload_hash },
+                detected_at: Date.now(),
+            };
+            conflicted++;
+        }
+    }
+    if (queued || conflicted) {
+        await saveWebDirtyState(outbox, conflicts, _sodium);
+        state.outbox = outbox;
+        state.syncConflicts = conflicts;
+    }
+    return { queued, conflicted, skipped };
+}
+
+async function handleImportUnsentFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const result = document.getElementById('import-unsent-result');
+    if (!file || !result) return;
+    result.classList.remove('hidden');
+    try {
+        if (file.size > MAX_UNSENT_IMPORT_CHARS) throw new Error(t('sync.import_unsent_too_large'));
+        const _sodium = await ensureSodium();
+        const text = await file.text();
+        const counts = await withWebSyncLock(() => importWebUnsentChangesLocked(text, _sodium));
+        result.textContent = t('sync.import_unsent_done', counts);
+        renderWebSyncConflicts();
+    } catch (err) {
+        result.textContent = err.message;
+    }
 }
 
 async function confirmWebFullResync() {
@@ -8115,13 +8191,21 @@ async function forgetWebTeamLogPinLocked(typed, password, session, _sodium) {
     // forget exports it and drops it once asked, whichever screen forgets.
     // Before, only the sign-in screen did; since INV-7 that sign-in opens the
     // vault, whose Team trust forget then refused for good with anything queued.
-    const objects = [...Object.values(state.outbox || {}),
-        ...Object.values(state.syncConflicts || {}).map(conflict => conflict.local_object)];
+    // Review c02cc47 R17-L: only the team's. A write in the personal tree is
+    // one rule 1 sends under the refused log; it stays queued, and so does a
+    // conflict over one.
+    const outbox = {}, conflicts = {}, ops = [];
+    const objects = [];
+    for (const [id, object] of Object.entries(state.outbox || {})) {
+        if (webPersonalWrite(object)) outbox[id] = object; else objects.push(object);
+    }
+    for (const [id, conflict] of Object.entries(state.syncConflicts || {})) {
+        if (webPersonalWrite(conflict.local_object)) conflicts[id] = conflict; else objects.push(conflict.local_object);
+    }
     const count = objects.length + (state.outboxOps || []).length;
     if (count) {
         if (!window.confirm(t('team.forget_discard_unsent', { count }))) throw new Error(t('team.forget_unsent'));
         if (objects.length) exportWebDirtyObjects(objects);
-        const outbox = {}, conflicts = {}, ops = [];
         await saveWebDirtyState(outbox, conflicts, _sodium, ops);
         state.outbox = outbox;
         state.syncConflicts = conflicts;
@@ -8972,20 +9056,24 @@ function teamLogRefusedError(reason) {
  * (SezamTeamLog.itemRefusal, sealing=true; tombstone and move-out rules).
  * Refused here, it is not queued at all: the server would refuse it for good.
  */
+/** INV-7 rule 1: a write a refused log still lets out — one in the personal
+ * tree (from and to), sealed with a key it holds: while refused this browser
+ * holds no team key. A personal folder's own key goes too. */
+function webPersonalWrite(vaultObj) {
+    const objects = state.syncObjects || {};
+    const held = objects[vaultObj.id] && !objects[vaultObj.id].is_deleted ? objects[vaultObj.id] : null;
+    const personal = parent => parent ? webInPersonalTree(state.nodes || {}, objects, parent)
+        : vaultObj.object_type === 'node' && !!(state.nodes?.[vaultObj.id]?.personal ?? !held);
+    if (vaultObj.object_type === 'dek' && !vaultObj.parent_ref && !held) return true;
+    const dekId = vaultObj.is_deleted ? held && sealingDekId(held) : payloadDekId(vaultObj);
+    return ['node', 'entry'].includes(vaultObj.object_type) && !!dekId && !!state.deks[dekId] &&
+        personal(vaultObj.parent_ref) && (!held || personal(held.parent_ref));
+}
+
 function assertTeamLogAllowsWrite(vaultObj) {
     const refused = state.teamLogRefusal;
     if (refused) {
-        // INV-7: a refused log refuses the team, never a write in the personal
-        // tree (from and to), sealed with a key it holds: while refused this
-        // browser holds no team key. A personal folder's own key goes too.
-        const objects = state.syncObjects || {};
-        const held = objects[vaultObj.id] && !objects[vaultObj.id].is_deleted ? objects[vaultObj.id] : null;
-        const personal = parent => parent ? webInPersonalTree(state.nodes || {}, objects, parent)
-            : vaultObj.object_type === 'node' && !!(state.nodes?.[vaultObj.id]?.personal ?? !held);
-        if (vaultObj.object_type === 'dek' && !vaultObj.parent_ref && !held) return;
-        const dekId = vaultObj.is_deleted ? held && sealingDekId(held) : payloadDekId(vaultObj);
-        if (['node', 'entry'].includes(vaultObj.object_type) && dekId && state.deks[dekId] &&
-                personal(vaultObj.parent_ref) && (!held || personal(held.parent_ref))) return;
+        if (webPersonalWrite(vaultObj)) return;
         throw refused;
     }
     const team = state.teamLog?.team || null;
