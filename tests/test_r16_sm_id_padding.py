@@ -92,7 +92,8 @@ def test_the_web_refuses_an_id_longer_than_its_signature():
       }
       return out;
     })()""" % (ID, FOLDER, USER, PAYLOAD_HASH)
-    source = "".join(_function(name) for name in ("hexToBytes", "idBytes26", "verifyObjectSignature"))
+    source = "".join(_function(name) for name in ("hexToBytes", "idBytes26", "signedObjectMessage",
+                                                "verifyObjectSignature"))
     result = _run_source(source, script)
     assert result.pop("honest") is True
     assert result == dict.fromkeys(result, False), result

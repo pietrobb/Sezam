@@ -92,10 +92,14 @@ class VoucherMixin:
         if entry is None:
             return
         payload_hash = str(obj["payload_hash"]).lower()
-        self._db.execute(
-            "DELETE FROM held_signed WHERE object_id = ? AND (version <> ? OR payload_hash <> ?)",
-            (entry[0], entry[1], payload_hash),
-        )
+        # An envelope's withdrawal keeps the live version it withdrew: a server
+        # restored from before it serves that version again, and this device's
+        # identity rotation has to vouch for it (_held_entries names both).
+        if not (obj.get("object_type") == "envelope" and obj.get("is_deleted")):
+            self._db.execute(
+                "DELETE FROM held_signed WHERE object_id = ? AND (version <> ? OR payload_hash <> ?)",
+                (entry[0], entry[1], payload_hash),
+            )
         self._db.execute(
             "INSERT OR IGNORE INTO held_signed (object_id, version, payload_hash, digest, retired) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -284,6 +288,9 @@ class VoucherMixin:
             raise RuntimeError("The key this device's identity rotation retires is not known yet")
         vouched = self._vouched(self._user_id)
         retired = self._retired_keys.get(self._user_id, frozenset())
+        # What this device holds now: the push since the last pull changed it
+        # (an envelope withdrawn, a copy the server took).
+        self._held_cache = None
         local = self._held_locally()
         entries = []
         for obj in self._signed_objects():

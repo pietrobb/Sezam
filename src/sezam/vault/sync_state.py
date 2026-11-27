@@ -90,7 +90,8 @@ class SyncStateMixin:
             )
         # An envelope withdrawn here has no row left; its held copy is the
         # withdrawal the server took (or a pull verified), whose digest names
-        # the deleted flag: no live version matches it.
+        # the deleted flag: no live version matches it. It keeps the live
+        # version it withdrew (_hold_signed).
         for row in self._db.fetchall("SELECT envelope_id FROM withdrawn_envelopes"):
             obj_id = row["envelope_id"]
             if obj_id not in unsent:
