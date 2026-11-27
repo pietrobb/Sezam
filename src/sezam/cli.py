@@ -4100,9 +4100,13 @@ def ai_off(terminate_remote: bool):
     remote, remote_error = None, None
     try:
         result = control.brake_then_unlock(vault, "cli", None if kek is None else unlock)
+        if result.unanchored and not vault.is_unlocked and not terminate_remote and _interactive():
+            # Review c02cc47 A1: only the unlocked vault signs the anchor; asked after the brake.
+            result = control.anchor_after_brake(vault, result, lambda: _unlock_to_anchor(vault))
         try:
             if terminate_remote and not vault.is_unlocked:
                 _unlock_vault(vault)  # only after the brake: it never waits on a prompt
+                result = control.anchor_after_brake(vault, result, None)
             remote = _ai_off_remote_logins(vault, terminate_remote) if vault.is_unlocked else None
         except (oplock.VaultBusy, click.ClickException) as exc:
             remote_error = exc  # the switch is off; say so before the error
@@ -4143,6 +4147,20 @@ def ai_off(terminate_remote: bool):
         click.echo("SSH logins through 'sezam ssh-agent' since AI access was turned on:", err=True)
         for target, outcome in remote:
             click.echo(f"  {target}: {outcome}", err=True)
+
+
+def _interactive() -> bool:
+    return sys.stdin.isatty()
+
+
+def _unlock_to_anchor(vault: Vault) -> None:
+    password = click.prompt(
+        "AI access is off. Master password to anchor it on the sync server (Enter skips)",
+        hide_input=True, default="", show_default=False,
+    )
+    if not password:
+        raise RuntimeError("no master password given")
+    vault.unlock(password)
 
 
 def _ai_off_remote_logins(vault: Vault, terminate: bool) -> list[tuple[str, str]]:

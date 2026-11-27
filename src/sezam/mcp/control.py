@@ -903,18 +903,21 @@ def brake_then_unlock(vault, source: str, unlock: Optional[Callable[[], None]]) 
     the server anchor) comes after the switch is off, and whatever it raises
     only leaves the 'off' unanchored.
     """
+    return anchor_after_brake(vault, pull_brake(vault, source), unlock)
+
+
+def anchor_after_brake(vault, result: BrakeResult, unlock: Optional[Callable[[], None]]) -> BrakeResult:
+    """Unlock (if asked) and anchor an 'off' the brake left unanchored."""
     from .remote_policy import ServerAnchor
 
-    result = pull_brake(vault, source)
-    if unlock is None or vault.is_unlocked:
-        return result
-    try:
-        unlock()
-    except Exception as exc:
-        logger.warning("Unlocking after the AI brake failed; the switch is off", exc_info=True)
-        why = f"the vault could not be unlocked after the brake: {exc or type(exc).__name__}"
-        return dataclasses.replace(result, unanchored=result.unanchored and why)
-    if result.unanchored is None:
+    if unlock is not None and not vault.is_unlocked:
+        try:
+            unlock()
+        except Exception as exc:
+            logger.warning("Unlocking after the AI brake failed; the switch is off", exc_info=True)
+            why = f"the vault could not be unlocked after the brake: {exc or type(exc).__name__}"
+            return dataclasses.replace(result, unanchored=result.unanchored and why)
+    if result.unanchored is None or not vault.is_unlocked:
         return result
     try:
         ServerAnchor(vault, {}).anchor_off(result.state.epoch)
