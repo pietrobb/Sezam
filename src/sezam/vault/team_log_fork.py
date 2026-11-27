@@ -100,6 +100,12 @@ def follow_fork(client, local: teamlog.TeamState, server_head: dict):
         client._store_team_log(records[fork:], state)
         if requeued:
             _set_queued_changes(db, requeued + queued_changes(db))
+        # R17-N8, capability finding 691: a removal on the server's side
+        # takes what waits here for the member (the lost changes made again
+        # too), as on a plain pull; one this device lost it knew of already.
+        known = {teamlog.change_key(body) for body in lost}
+        client._drop_access_removed_since([
+            r for r in records[fork:] if teamlog.change_key(teamlog.parse_body(r["body"])) not in known])
     logger.warning("Followed the server's team log from record %s, which forks from this device's copy; "
                    "%s own change(s) queued again", fork, len(requeued))
     return state, None
