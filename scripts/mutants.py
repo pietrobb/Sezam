@@ -43,8 +43,11 @@ class Mutant:
 
 
 SERVER = "server/app/team_log.py"
-CORE = "src/sezam/teamlog.py"
-WEB_CORE = "web/static/js/teamlog.js"
+# The team log's rules are the Rust core's, once for every side
+# (docs/CORE_UNIFICATION.md); its mutants are killed by its cargo tests.
+REPLAY = "core/src/teamlog/replay.rs"
+RULES = "core/src/teamlog/rules.rs"
+CORE_VECTORS = ("team_log_vectors",)
 # The restore reverts are checked by the INV-2 property test alone: at the
 # per-push setting it has to find each of them (the review: 1 of 4); R6 only
 # with its scripted tests.
@@ -109,14 +112,14 @@ MUTANTS = (
         CYCLE, "5ef3ac1 (H1): the server's rotation walk visits each key once",
     ),
     Mutant(
-        "R8", "revert", CORE,
-        'if kind != "member.keys" and signer.role != "admin":',
-        'if False and kind != "member.keys" and signer.role != "admin":',
-        TEAM_LOG_SM, "not_admin: only the admin signs records other than its own member.keys",
+        "R8", "revert", REPLAY,
+        'if kind != "member.keys" && signer.role != "admin" {',
+        'if false && kind != "member.keys" && signer.role != "admin" {',
+        CORE_VECTORS, "not_admin: only the admin signs records other than its own member.keys",
     ),
     Mutant(
         "R9", "revert", SERVER,
-        "    if bytes(row[1]).hex() != pk:\n",
+        "    if blob_pk != pk:\n",
         "    if False:\n",
         ("tests/test_review13_org_recovery_queued_record.py",),
         "215a6ce: an org.recovery naming another key than the admin's stored blob is refused",
@@ -216,24 +219,39 @@ MUTANTS = (
     ),
     # Similar faults: the same rule broken in another branch -----------------
     Mutant(
-        "B1", "branch", CORE,
-        '    if sum(1 for uid in state.members if is_admin(state, uid)) > 1:\n        return "more than one admin"\n',
-        '    if sum(1 for uid in state.members if is_admin(state, uid)) > 2:\n        return "more than one admin"\n',
-        # The INV-2 property asks the same core on both paths: it cannot see this.
-        INV2 + TEAM_LOG_SM + ("tests/test_team_log_server.py", "tests/test_team_log_vectors.py"),
-        "the one-admin rule (TL7) of the shared core: server append and every client",
+        "B1", "branch", RULES,
+        '    (admins > 1).then_some("more than one admin")\n',
+        '    (admins > 2).then_some("more than one admin")\n',
+        CORE_VECTORS, "the one-admin rule (TL7) of the shared core: server append and every client",
+    ),
+    # The web's and the phone's copies of these rules are gone; the same rule
+    # in another branch of the core instead: the last admin in a role change
+    # and in a removal.
+    Mutant(
+        "B2", "branch", REPLAY,
+        '            if member.role == "admin" && active_admins(new) == 1 {\n'
+        '                return err("last_admin");\n'
+        '            }\n'
+        '            if member.role == "admin" {\n',
+        '            if false {\n'
+        '                return err("last_admin");\n'
+        '            }\n'
+        '            if member.role == "admin" {\n',
+        CORE_VECTORS, "last_admin: the last admin does not hand the role away",
     ),
     Mutant(
-        "B2", "branch", WEB_CORE,
-        "if (kind !== 'member.keys' && signer.role !== 'admin') throw new TeamLogError('not_admin', seq);",
-        "if (false && kind !== 'member.keys' && signer.role !== 'admin') throw new TeamLogError('not_admin', seq);",
-        WEB, "not_admin in the web core",
-    ),
-    Mutant(
-        "B3", "branch", WEB_CORE,
-        "    return admins.length > 1 ? 'more than one admin' : null;\n",
-        "    return admins.length > 2 ? 'more than one admin' : null;\n",
-        WEB, "the one-admin rule in the web core",
+        "B3", "branch", REPLAY,
+        '            if member.role == "admin" && active_admins(new) == 1 {\n'
+        '                return err("last_admin");\n'
+        '            }\n'
+        '            if let Some(m) = new.members.get_mut(user_id) {\n'
+        '                m.active = false;\n',
+        '            if false {\n'
+        '                return err("last_admin");\n'
+        '            }\n'
+        '            if let Some(m) = new.members.get_mut(user_id) {\n'
+        '                m.active = false;\n',
+        CORE_VECTORS, "last_admin: the last admin is not removed",
     ),
     Mutant(
         "B4", "branch", SERVER,
@@ -255,28 +273,48 @@ def _apply(work: Path, mutant: Mutant) -> str:
     return text
 
 
+def _in_core(path: str) -> bool:
+    return path.startswith("core/")
+
+
+def _run_tests(work: Path, tests, rust: bool, timeout=None, first_failure=True):
+    """pytest on ``tests``, or cargo test on the core's test targets ``tests``."""
+    if rust:
+        command = ["cargo", "test", "-q", "--manifest-path", str(work / "core" / "Cargo.toml")]
+        command += [arg for name in tests for arg in ("--test", name)]
+    else:
+        command = [sys.executable, "-m", "pytest", "-q", *(["-x"] if first_failure else []),
+                   "-p", "no:cacheprovider", *tests]
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(work / "src"), str(work)]))
+    return subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=timeout)
+
+
+def _killed(done, rust: bool) -> bool:
+    """A test failed (not a build error or a crash)."""
+    if rust:
+        return done.returncode == 101 and "test result: FAILED" in done.stdout + done.stderr
+    return done.returncode == 1
+
+
 def check(work: Path, mutant: Mutant, timeout: int) -> str:
     """'' when the mutant is killed, else why not."""
     original = _apply(work, mutant)
     if not original:
         return f"{mutant.path}: the code to mutate does not occur exactly once (update the mutant)"
-    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(work / "src"), str(work)]))
+    rust = _in_core(mutant.path)
     try:
-        done = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", *mutant.tests],
-            cwd=work, env=env, capture_output=True, text=True, timeout=timeout,
-        )
+        done = _run_tests(work, mutant.tests, rust, timeout)
     except subprocess.TimeoutExpired:
         # Slow is not red: only a failing test proves the mutant is caught.
         return f"timed out after {timeout} s, not proven killed (no test failed)"
     finally:
         (work / mutant.path).write_text(original, encoding="utf-8")
-    if done.returncode == 1:
+    if _killed(done, rust):
         return ""
     tail = "\n".join((done.stdout + done.stderr).strip().splitlines()[-3:])
     if done.returncode == 0:
         return f"survived: {' '.join(mutant.tests)} passed\n{tail}"
-    return f"pytest exit {done.returncode} (no test failure)\n{tail}"
+    return f"{'cargo' if rust else 'pytest'} exit {done.returncode} (no test failure)\n{tail}"
 
 
 def main(argv=None) -> int:
@@ -309,13 +347,12 @@ def main(argv=None) -> int:
         return 2
     try:
         # Red without a mutant would count every mutant as killed.
-        tests = sorted({t for m in chosen for t in m.tests})
-        env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(work / "src"), str(work)]))
-        base = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *tests],
-                              cwd=work, env=env, capture_output=True, text=True)
-        if base.returncode != 0:
-            print("the tests fail without a mutant:\n" + (base.stdout + base.stderr)[-3000:], file=sys.stderr)
-            return 2
+        for rust in (False, True):
+            tests = sorted({t for m in chosen if _in_core(m.path) == rust for t in m.tests})
+            base = _run_tests(work, tests, rust, first_failure=False) if tests else None
+            if base is not None and base.returncode != 0:
+                print("the tests fail without a mutant:\n" + (base.stdout + base.stderr)[-3000:], file=sys.stderr)
+                return 2
         for mutant in chosen:
             started = time.monotonic()
             why = check(work, mutant, args.timeout)

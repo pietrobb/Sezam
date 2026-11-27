@@ -16,7 +16,7 @@ import pytest
 
 from tests.node_support import node_cmd, requires_node
 from tests.team_log_differential import scenarios
-from tests.test_team_log_web import HARNESS, JS, JS_NAMES, ROOT
+from tests.test_team_log_web import HARNESS, JS_NAMES, ROOT, web_scripts
 
 COUNT = 2000
 VECTORS = scenarios(COUNT)
@@ -36,10 +36,8 @@ def _mismatches(results: list[dict]) -> list[str]:
 
 @requires_node
 def test_web_core_matches_python_on_random_logs():
-    vendor = JS / "vendor"
     result = subprocess.run(
-        [node_cmd(), "-e", HARNESS, str(vendor / "libsodium-sumo.min.js"),
-         str(vendor / "libsodium-wrappers.min.js"), str(JS / "teamlog.js")],
+        [node_cmd(), "-e", HARNESS, *web_scripts()],
         input=json.dumps({"vectors": VECTORS, "names": JS_NAMES}),
         capture_output=True, text=True, encoding="utf-8", timeout=600,
     )

@@ -19,6 +19,13 @@ ROOT = Path(__file__).resolve().parents[1]
 JS = ROOT / "web" / "static" / "js"
 VECTORS = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
 
+
+def web_scripts() -> list[str]:
+    """libsodium, the core (vendor/sezam-sync-core.js) and teamlog.js, as the page loads them."""
+    vendor = JS / "vendor"
+    return [str(vendor / "libsodium-sumo.min.js"), str(vendor / "libsodium-wrappers.min.js"),
+            str(vendor / "sezam-sync-core.js"), str(JS / "teamlog.js")]
+
 JS_NAMES = {
     "may_write": "mayWrite", "key_recipients": "keyRecipients", "current_key": "currentKey",
     "key_generation": "keyGeneration", "is_team_folder": "isTeamFolder", "is_stale": "isStale",
@@ -37,10 +44,11 @@ const context = { console, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, Da
   atob: (v) => Buffer.from(v, 'base64').toString('binary') };
 context.window = context; context.self = context; context.globalThis = context;
 vm.createContext(context);
-for (const path of process.argv.slice(1, 4)) vm.runInContext(fs.readFileSync(path, 'utf8'), context);
+for (const path of process.argv.slice(1, 5)) vm.runInContext(fs.readFileSync(path, 'utf8'), context);
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 vm.runInContext(`(async () => {
   await sodium.ready;
+  await SezamSyncCore.ready;
   const T = SezamTeamLog;
   const out = [];
   for (const s of __input.vectors.scenarios) {
@@ -61,10 +69,8 @@ vm.runInContext(`(async () => {
 
 @pytest.fixture(scope="module")
 def web_results():
-    vendor = JS / "vendor"
     result = subprocess.run(
-        [node_cmd(), "-e", HARNESS, str(vendor / "libsodium-sumo.min.js"),
-         str(vendor / "libsodium-wrappers.min.js"), str(JS / "teamlog.js")],
+        [node_cmd(), "-e", HARNESS, *web_scripts()],
         input=json.dumps({"vectors": VECTORS, "names": JS_NAMES}),
         capture_output=True, text=True, encoding="utf-8", timeout=120,
     )
@@ -99,6 +105,7 @@ def test_web_signs_records_the_python_reference_accepts():
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 vm.runInContext(`(async () => {
   await sodium.ready;
+  await SezamSyncCore.ready;
   const T = SezamTeamLog;
   const kp = sodium.crypto_sign_seed_keypair(Uint8Array.from(__input.seed.match(/../g), (b) => parseInt(b, 16)));
   const body = T.nextBody(T.emptyState(), 'genesis', __input.uid, {
@@ -110,10 +117,8 @@ return;
 """)
     seed = A.sk.encode().hex()
     assert SigningKey(bytes.fromhex(seed)).verify_key.encode().hex() == A.spk
-    vendor = JS / "vendor"
     result = subprocess.run(
-        [node_cmd(), "-e", "(function(){" + script + "})()", str(vendor / "libsodium-sumo.min.js"),
-         str(vendor / "libsodium-wrappers.min.js"), str(JS / "teamlog.js")],
+        [node_cmd(), "-e", "(function(){" + script + "})()", *web_scripts()],
         input=json.dumps({"seed": seed, "uid": A.uid, "org": ORG, "spk": A.spk, "epk": A.epk}),
         capture_output=True, text=True, encoding="utf-8", timeout=60,
     )

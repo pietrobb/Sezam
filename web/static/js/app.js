@@ -1170,6 +1170,7 @@ function initTreePanelSplitter() {
 async function init() {
     if (typeof sodium !== 'undefined' && sodium.ready) {
         await sodium.ready;
+        await globalThis.SezamSyncCore.ready;  // the team log's rules (teamlog.js)
         state.sodium = sodium;
         console.log('libsodium ready');
     } else {
@@ -1343,6 +1344,8 @@ async function ensureSodium() {
     if (state.sodium) return state.sodium;
     if (typeof sodium !== 'undefined' && sodium.ready) {
         await sodium.ready;
+        // The team log (teamlog.js) answers from the core (docs/CORE_UNIFICATION.md U3).
+        await globalThis.SezamSyncCore.ready;
         state.sodium = sodium;
         return state.sodium;
     }
