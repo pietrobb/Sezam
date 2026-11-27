@@ -197,11 +197,10 @@ def _replay_batch(state: TeamState, records: list, bodies: list[dict]) -> tuple[
             "admin_policy": core.admin_policy_refusal(current),
             "todays_rules": todays_rules,
             # Review 4acfdde R11 #4: a readmit (member.remove + member.add in
-            # one append) is no removal for the member's share links.
-            "readded": body["type"] == "member.remove" and any(
-                later["type"] == "member.add" and later["data"].get("user_id") == user
-                for later in bodies[index + 1:]
-            ),
+            # one append) is no removal for the member's share links. R17-L: in
+            # a restore, the same author's run only (a later author's re-add
+            # was another append); its clients do not split one (restore_part_end).
+            "readded": core.readmitted(bodies, index) is not None,
         })
     return current, steps
 
@@ -543,6 +542,7 @@ async def append(
 
 async def _refuse_superseded_recovery(
     cur, bodies: list[dict], *, restored: Optional[TeamState] = None, uploader: Optional[str] = None,
+    before: Optional[TeamState] = None,
 ) -> None:
     """Review c78fd19 R13-10 (operator 2026-11-20): an org.recovery record
     naming a key other than the one its admin's stored blob holds is older
@@ -558,9 +558,12 @@ async def _refuse_superseded_recovery(
     while it is still the current recovery there (teamlog.recovery_key: an
     active admin's). A batch that also removes or demotes its author voids no
     shares; the append refused it while the restore took it (R16-N3, nightly
-    45604036980). The restore's uploader's own record stands: after a backup
-    the blob may be older than the log, and its author stores a blob for the
-    key on the main path anyway (recovery.store, then the append)."""
+    45604036980). The restore's uploader's own record stands where the blob
+    is older (E5): after a backup, the log ``before`` the restore or an
+    earlier record of the upload names the blob's key (every client stores,
+    then names). Review c02cc47 R17-L: it stood for any blob, so a desktop's
+    older setup, put back, voided the shares of a web setup the log never
+    heard of."""
     if not any(b["type"] == "org.recovery" for b in bodies):
         return
     await cur.execute("SELECT 1 FROM org_recovery_blobs WHERE id = 1")
@@ -577,11 +580,17 @@ async def _refuse_superseded_recovery(
     user_id = row[0]
     named = [b for b in bodies if b["type"] == "org.recovery" and b["author"] == user_id]
     pk = named[-1]["data"].get("recovery_pk") if named else None
-    if pk is None or user_id == uploader:
+    if pk is None:
         return
     if restored is not None and core.recovery_key(restored, user_id) != pk:
         return
-    if bytes(row[1]).hex() != pk:
+    blob_pk = bytes(row[1]).hex()
+    if user_id == uploader and (
+        (before is not None and core.recovery_key(before, user_id) == blob_pk)
+        or any(b["data"].get("recovery_pk") == blob_pk for b in named[:-1])
+    ):
+        return
+    if blob_pk != pk:
         raise ApiError(400, TEAM_LOG_REFUSED, {
             "message": "a newer org recovery was set up after this one (on the web or another "
                        "device); it is kept",
@@ -810,7 +819,7 @@ async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepar
     uploader = await _user_row(cur, user_id)
     uploader_team_admin = _uploader_team_admin(uploader, prepared.before, current, user_id)
     await _refuse_restored_founder(cur, bodies, prepared.before, current, uploader, user_id, lock=True)
-    await _refuse_superseded_recovery(cur, bodies, restored=current, uploader=user_id)
+    await _refuse_superseded_recovery(cur, bodies, restored=current, uploader=user_id, before=prepared.before)
     now_ms = int(time.time() * 1000)
     for index, (record, body, step) in enumerate(zip(records, bodies, steps)):
         await _check_against_users(cur, body, None, step, history=True)

@@ -92,6 +92,24 @@ def test_the_uploaders_own_org_recovery_after_a_backup_stands():
     assert T.restore(T._db(backup), h.records[kept:], IDS["A"]), T.REFUSED
 
 
+def test_the_uploaders_own_org_recovery_does_not_void_a_setup_the_log_never_heard_of():
+    """Review c02cc47 R17-L: the admin set up org recovery on the web (stored,
+    never named in the log) while a desktop's older setup sat in its log;
+    put back through the restore, the older record voided the web setup's
+    shares. The append refuses it (R13-10), so the restore does too."""
+    h = _honest_with_b()
+    kept, server = h.snapshots[-1]
+    server = copy.deepcopy(server)
+    old = h.keys.recovery_pk()
+    h.db._storage["org_recovery_blobs"] = [{"id": 1, "created_by": IDS["A"], "recovery_signing_pk": bytes.fromhex(old)}]
+    assert h._commit("A", [("org.recovery", "A", {"recovery_pk": old})])
+    web = h.keys.recovery_pk()
+    server["org_recovery_blobs"] = [{"id": 1, "created_by": IDS["A"], "recovery_signing_pk": bytes.fromhex(web)}]
+    T.REFUSED.clear()
+    assert not T.restore(T._db(server), h.records[kept:], IDS["A"])
+    assert "a newer org recovery was set up" in T.REFUSED[-1]["message"]
+
+
 def test_a_revoked_account_without_key_material_re_added():
     h = _honest_with_b()
     assert h._commit("A", [("member.add", "A", {

@@ -511,6 +511,33 @@ const SezamTeamLog = (() => {
     return admins.length > 1 ? 'more than one admin' : null;
   }
 
+  // src/sezam/teamlog.py readmitted: where the member.remove bodies[index] is
+  // undone by its author's member.add of the same account in the same run of
+  // that author's records (one append: a readmit); null otherwise.
+  function readmitted(bodies, index) {
+    const body = bodies[index];
+    if (body.type !== 'member.remove') return null;
+    for (let later = index + 1; later < bodies.length; later++) {
+      const other = bodies[later];
+      if (other.author !== body.author) return null;
+      if (other.type === 'member.add' && other.data.user_id === body.data.user_id) return later;
+    }
+    return null;
+  }
+
+  // Review c02cc47 R17-L (src/sezam/teamlog.py restore_part_end,
+  // tests/vectors/team_log_restore_parts.json): the end (exclusive) of a
+  // restore upload part from start, at most limit records, not inside a readmit.
+  function restorePartEnd(bodies, start, limit) {
+    const end = Math.min(start + limit, bodies.length);
+    if (end === bodies.length) return end;
+    for (let index = start; index < end; index++) {
+      const undone = readmitted(bodies, index);
+      if (undone !== null && undone >= end) return index > start ? index : end;
+    }
+    return end;
+  }
+
   // The change a record made, as a device makes it again on another head:
   // a folder.key's generation and a member.keys' proof are bound to the head.
   function changeKey(body) {
@@ -652,7 +679,7 @@ const SezamTeamLog = (() => {
     emptyState, stateToJson, applyRecord, replay, nextBody,
     isTeamFolder, currentKey, keyGeneration, isStale, maySeal, isAdmin, mayWrite, keyRecipients,
     mayHoldKey, envelopeValid, itemRefusal, tombstoneRefusal, moveRefusal, adminPolicyRefusal,
-    signingKeyRetired, changeKey, forkRefusal, forkAbandoned, REMADE_KINDS, resolveChange,
+    signingKeyRetired, changeKey, readmitted, restorePartEnd, forkRefusal, forkAbandoned, REMADE_KINDS, resolveChange,
   };
 })();
 

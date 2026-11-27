@@ -162,13 +162,27 @@ def test_an_anchor_kept_under_the_old_id_still_counts(laptop):  # noqa: F811
 
 
 def test_ai_on_moves_the_anchor_to_the_new_server(laptop):  # noqa: F811
-    """A server move is the owner's: 'sezam ai on' (password) re-homes it."""
+    """A server move is the owner's: connected with the password, 'sezam ai
+    on' re-homes it. Review c02cc47 R17-L: under a new id, so the old
+    server's anchor records verify for it no more."""
+    home = ai_access.anchor_home(laptop)
+    ai_access.name_server(laptop, "http://127.0.0.1:9")
+    ai_access.enable(laptop, "cli")
+    moved = ai_access.anchor_home(laptop)
+    assert moved.server_url == "http://127.0.0.1:9" and moved.anchor != home.anchor
+
+
+def test_ai_on_does_not_move_the_anchor_to_a_server_written_into_the_file(laptop):  # noqa: F811
+    """Review c02cc47 R17-L: an agent under the owner's OS user wrote its own
+    server_url; 'sezam ai on' anchored the switch there."""
     home = ai_access.anchor_home(laptop)
     _write_rows(laptop, {"server_url": "http://127.0.0.1:9"})
     _reopen(laptop)
-    ai_access.enable(laptop, "cli")
-    moved = ai_access.anchor_home(laptop)
-    assert moved.server_url == "http://127.0.0.1:9" and moved.anchor == home.anchor
+    with pytest.raises(ai_access.UnsealedServer):
+        ai_access.enable(laptop, "cli")
+    assert ai_access.anchor_home(laptop) == home
+    ai_access.enable(laptop, "cli", confirmed_server="http://127.0.0.1:9")  # the owner says so
+    assert ai_access.anchor_home(laptop).server_url == "http://127.0.0.1:9"
 
 
 def test_an_account_token_alone_cannot_push_the_anchor_out(laptop):  # noqa: F811

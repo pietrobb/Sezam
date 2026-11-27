@@ -1,0 +1,12 @@
+{
+  "about": "Review c02cc47 R17-L: where a restore upload part may end (teamlog restore_part_end, every client). records: [type, author, user_id]; end is exclusive.",
+  "cases": [
+    {"name": "no_readmit", "records": [["member.add", "A", "u1"], ["member.add", "A", "u2"], ["member.add", "A", "u3"]], "start": 0, "limit": 2, "end": 2},
+    {"name": "readmit_across_the_limit", "records": [["access.set", "A", "u2"], ["member.remove", "A", "u1"], ["member.add", "A", "u1"]], "start": 0, "limit": 2, "end": 1},
+    {"name": "readmit_longer_than_the_limit", "records": [["member.remove", "A", "u1"], ["access.set", "A", "u2"], ["member.add", "A", "u1"]], "start": 0, "limit": 2, "end": 2},
+    {"name": "another_authors_re_add_is_another_append", "records": [["access.set", "A", "u2"], ["member.remove", "A", "u1"], ["member.add", "B", "u1"]], "start": 0, "limit": 2, "end": 2},
+    {"name": "another_account_added", "records": [["access.set", "A", "u2"], ["member.remove", "A", "u1"], ["member.add", "A", "u2"]], "start": 0, "limit": 2, "end": 2},
+    {"name": "the_last_part", "records": [["member.remove", "A", "u1"], ["member.add", "A", "u1"]], "start": 0, "limit": 5, "end": 2},
+    {"name": "from_the_middle", "records": [["member.add", "A", "u0"], ["access.set", "A", "u2"], ["member.remove", "A", "u1"], ["member.add", "A", "u1"]], "start": 1, "limit": 2, "end": 2}
+  ]
+}

@@ -721,6 +721,37 @@ class TeamLog {
     return admins > 1 ? 'more than one admin' : null;
   }
 
+  /// src/sezam/teamlog.py readmitted: where the member.remove [bodies][index]
+  /// is undone by its author's member.add of the same account in the same
+  /// run of that author's records (one append: a readmit); null otherwise.
+  static int? readmitted(List<Map<String, dynamic>> bodies, int index) {
+    final body = bodies[index];
+    if (body['type'] != 'member.remove') return null;
+    for (var later = index + 1; later < bodies.length; later++) {
+      final other = bodies[later];
+      if (other['author'] != body['author']) return null;
+      if (other['type'] == 'member.add' &&
+          (other['data'] as Map)['user_id'] == (body['data'] as Map)['user_id']) {
+        return later;
+      }
+    }
+    return null;
+  }
+
+  /// Review c02cc47 R17-L (src/sezam/teamlog.py restore_part_end,
+  /// tests/vectors/team_log_restore_parts.json): the end (exclusive) of a
+  /// restore upload part from [start], at most [limit] records, not inside
+  /// a readmit.
+  static int restorePartEnd(List<Map<String, dynamic>> bodies, int start, int limit) {
+    final end = start + limit < bodies.length ? start + limit : bodies.length;
+    if (end == bodies.length) return end;
+    for (var index = start; index < end; index++) {
+      final undone = readmitted(bodies, index);
+      if (undone != null && undone >= end) return index > start ? index : end;
+    }
+    return end;
+  }
+
   /// The change a record made, as a device makes it again on another head:
   /// a folder.key's generation and a member.keys' proof are bound to the head.
   static String changeKey(Map<String, dynamic> body) {

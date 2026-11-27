@@ -478,10 +478,15 @@ class TeamLogMixin:
         # The server takes back no log naming keys this account does not sign
         # in with: the link to the ones taken over goes with it (R15, #429).
         link = self._identity_link(local) or self._landed_rotation_link(local)
-        for start in range(0, len(rows), TEAM_LOG_APPEND_MAX):
-            part = [{"body": r["body"], "sig": r["sig"]} for r in rows[start:start + TEAM_LOG_APPEND_MAX]]
-            if link is not None and start + TEAM_LOG_APPEND_MAX >= len(rows):
+        bodies = [teamlog.parse_body(r["body"]) for r in rows]
+        start = 0
+        while start < len(rows):
+            # R17-L: a part ends nowhere inside a readmit (its share links).
+            end = teamlog.restore_part_end(bodies, start, TEAM_LOG_APPEND_MAX)
+            part = [{"body": r["body"], "sig": r["sig"]} for r in rows[start:end]]
+            if link is not None and end >= len(rows):
                 part.append(link)
+            start = end
             try:
                 head = self._request("POST", "/api/team-log/restore", {"records": part}, auth=True).get("head")
             except RuntimeError as exc:

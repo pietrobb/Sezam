@@ -472,10 +472,12 @@ RESTORE_EXCEPTIONS = {
     # server/app/team_log.py _refuse_superseded_recovery, uploader (review e443cbc H3).
     "E5 own org recovery": (
         "the uploader's own org.recovery naming a key its stored blob does not "
-        "hold: after a backup the blob is older than the log, and refusing it "
-        "locked the team out of its log. On the main path its author stores a "
-        "blob for any key (recovery.store) and names it; a member's restore of "
-        "another admin's such record is refused"
+        "hold, where the blob is older: the server's log or an earlier record "
+        "of the upload names the blob's key (after a backup; refusing it locked "
+        "the team out of its log). On the main path its author stores a blob "
+        "for any key (recovery.store) and names it. A blob the log never named "
+        "is newer than the record and stands (review c02cc47 R17-L); a "
+        "member's restore of another admin's such record is refused"
     ),
     # server/app/team_log.py _own_rotations, the membership left (review e443cbc
     # H3; recorded here on R16-N15, gate 32 deep run on f842e63).

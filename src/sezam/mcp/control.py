@@ -906,10 +906,8 @@ def brake_then_unlock(vault, source: str, unlock: Optional[Callable[[], None]]) 
     return anchor_after_brake(vault, pull_brake(vault, source), unlock)
 
 
-def anchor_after_brake(vault, result: BrakeResult, unlock: Optional[Callable[[], None]]) -> BrakeResult:
-    """Unlock (if asked) and anchor an 'off' the brake left unanchored."""
-    from .remote_policy import ServerAnchor
-
+def unlock_after_brake(vault, result: BrakeResult, unlock: Optional[Callable[[], None]]) -> BrakeResult:
+    """Unlock (if asked) after the brake; a failure only leaves it unanchored."""
     if unlock is not None and not vault.is_unlocked:
         try:
             unlock()
@@ -917,6 +915,14 @@ def anchor_after_brake(vault, result: BrakeResult, unlock: Optional[Callable[[],
             logger.warning("Unlocking after the AI brake failed; the switch is off", exc_info=True)
             why = f"the vault could not be unlocked after the brake: {exc or type(exc).__name__}"
             return dataclasses.replace(result, unanchored=result.unanchored and why)
+    return result
+
+
+def anchor_after_brake(vault, result: BrakeResult, unlock: Optional[Callable[[], None]]) -> BrakeResult:
+    """Unlock (if asked) and anchor an 'off' the brake left unanchored."""
+    from .remote_policy import ServerAnchor
+
+    result = unlock_after_brake(vault, result, unlock)
     if result.unanchored is None or not vault.is_unlocked:
         return result
     try:

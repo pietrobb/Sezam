@@ -8840,8 +8840,11 @@ async function restoreWebTeamLog(head, local, pin, _sodium) {
     if (head && (head.genesis_hash !== local.team.genesisHash ||
             TL.recordHash(local.records[serverSeq], _sodium) !== head.hash)) return false;
     let current = head;
-    for (let start = serverSeq + 1; start < local.records.length; start += TEAM_LOG_PAGES) {
-        const part = local.records.slice(start, start + TEAM_LOG_PAGES).map(r => ({ body: r.body, sig: r.sig }));
+    const bodies = local.records.map((r, seq) => TL.parseBody(r.body, seq));
+    // R17-L: a part ends nowhere inside a readmit (its share links).
+    for (let start = serverSeq + 1, end; start < local.records.length; start = end) {
+        end = TL.restorePartEnd(bodies, start, TEAM_LOG_PAGES);
+        const part = local.records.slice(start, end).map(r => ({ body: r.body, sig: r.sig }));
         try {
             current = (await apiFetch('/api/team-log/restore', { method: 'POST', body: { records: part } }))?.head || null;
         } catch (err) {

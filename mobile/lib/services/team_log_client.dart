@@ -358,8 +358,12 @@ Future<Map<String, dynamic>?> _restoreTeamLog(
   }
   try {
     var current = head;
-    for (var start = serverSeq + 1; start < local.records.length; start += teamLogPages) {
-      final end = start + teamLogPages < local.records.length ? start + teamLogPages : local.records.length;
+    final bodies = [
+      for (var seq = 0; seq < local.records.length; seq++) TeamLog.parseBody(local.records[seq]['body'], seq),
+    ];
+    // R17-L: a part ends nowhere inside a readmit (its share links).
+    for (var start = serverSeq + 1, end = 0; start < local.records.length; start = end) {
+      end = TeamLog.restorePartEnd(bodies, start, teamLogPages);
       current = await restore([
         for (final r in local.records.sublist(start, end)) {'body': r['body'], 'sig': r['sig']},
       ]);

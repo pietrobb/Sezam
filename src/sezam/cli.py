@@ -4093,17 +4093,21 @@ def ai_off(terminate_remote: bool):
 
     remote, remote_error = None, None
     try:
-        result = control.brake_then_unlock(vault, "cli", None if kek is None else unlock)
+        result = control.unlock_after_brake(
+            vault, control.pull_brake(vault, "cli"), None if kek is None else unlock
+        )
         if result.unanchored and not vault.is_unlocked and not terminate_remote and _interactive():
             # Review c02cc47 A1: only the unlocked vault signs the anchor; asked after the brake.
-            result = control.anchor_after_brake(vault, result, lambda: _unlock_to_anchor(vault))
+            result = control.unlock_after_brake(vault, result, lambda: _unlock_to_anchor(vault))
         try:
             if terminate_remote and not vault.is_unlocked:
                 _unlock_vault(vault)  # only after the brake: it never waits on a prompt
-                result = control.anchor_after_brake(vault, result, None)
+            # Review c02cc47 R17-L: the AI's logins are ended before the anchor,
+            # whose requests wait up to 30 s each on a slow sync server.
             remote = _ai_off_remote_logins(vault, terminate_remote) if vault.is_unlocked else None
         except (oplock.VaultBusy, click.ClickException) as exc:
             remote_error = exc  # the switch is off; say so before the error
+        result = control.anchor_after_brake(vault, result, None)
     finally:
         vault.lock()
         if kek is not None:
@@ -4187,7 +4191,17 @@ def ai_on(server_gone: bool):
     _unlock_vault_fresh(vault, "Master password (required to turn AI access on): ")
     try:
         server = vault.db.get_meta("server_url")
-        state = ai_access.enable(vault, "cli", server_gone=server_gone)
+        try:
+            state = ai_access.enable(vault, "cli", server_gone=server_gone)
+        except ai_access.UnsealedServer as exc:
+            # Review c02cc47 R17-L: the owner, who just typed the password, names the server.
+            if not _interactive() or not click.confirm(
+                f"This vault syncs with {exc.server_url}, which no master password confirmed "
+                "yet (a vault from an earlier version, or a program changed it). Anchor the "
+                "AI switch on that server?", default=False,
+            ):
+                raise
+            state = ai_access.enable(vault, "cli", confirmed_server=exc.server_url)
         home = ai_access.anchor_home(vault)
     except RuntimeError as exc:
         raise click.ClickException(str(exc)) from exc

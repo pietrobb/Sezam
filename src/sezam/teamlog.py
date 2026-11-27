@@ -683,6 +683,38 @@ def admin_policy_refusal(state: TeamState) -> Optional[str]:
     return None
 
 
+def readmitted(bodies: list[dict], index: int) -> Optional[int]:
+    """Where the member.remove ``bodies[index]`` is undone by its author's
+    member.add of the same account in the same run of that author's records
+    (one append on the main path: a readmit, no removal for share links)."""
+    body = bodies[index]
+    if body["type"] != "member.remove":
+        return None
+    for later in range(index + 1, len(bodies)):
+        other = bodies[later]
+        if other["author"] != body["author"]:
+            return None
+        if other["type"] == "member.add" and other["data"].get("user_id") == body["data"].get("user_id"):
+            return later
+    return None
+
+
+def restore_part_end(bodies: list[dict], start: int, limit: int) -> int:
+    """Review c02cc47 R17-L (tests/vectors/team_log_restore_parts.json): the
+    end (exclusive) of a restore upload part from ``start``, at most
+    ``limit`` records. Not inside a readmit: split, the server took the
+    removal alone and deleted the member's share links. A readmit longer
+    than ``limit`` is split anyway."""
+    end = min(start + limit, len(bodies))
+    if end == len(bodies):
+        return end
+    for index in range(start, end):
+        undone = readmitted(bodies, index)
+        if undone is not None and undone >= end:
+            return index if index > start else end
+    return end
+
+
 def change_key(body: dict) -> str:
     """The change a record made, as a device makes it again on another head:
     a folder.key's generation and a member.keys' proof are bound to the head."""
