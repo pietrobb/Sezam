@@ -40,6 +40,7 @@ from sezam.mcp import remote_policy
 from sezam.models import ulid_to_bytes
 from sezam.vault.audit import AuditLog
 from sezam.vault.sync_client import SyncClient, compute_state_hash, key_rotation_message
+from sezam.vault.sync_common import legacy_state_hash
 from tests.node_support import node_cmd, requires_node
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -211,7 +212,25 @@ def desktop_vectors() -> dict:
             {"id": i, "version": v, "payload": base64.b64encode(p).decode("ascii")}
             for i, v, p in objects
         ],
-        "state_hash": compute_state_hash(objects),
+        "state_hash": legacy_state_hash(objects),
+    }
+    # R17-N1: the state hash a checkpoint with state_v 2 holds (parent and
+    # deleted flag count); "moved" / "deleted": the first object served again
+    # with one of them changed.
+    signed = [
+        ("01JZZZ0000000000000000000A", 4, b"zeta", "01JMMM0000000000000000000C", 0),
+        ("01JAAA0000000000000000000B", 0xFFFFFFFF, b"", None, 1),
+        ("01JMMM0000000000000000000C", 1, bytes(range(200)), None, 0),
+    ]
+    vectors["state_hash_v2"] = {
+        "objects": [
+            {"id": i, "version": v, "payload": base64.b64encode(p).decode("ascii"),
+             "parent_ref": parent, "is_deleted": deleted}
+            for i, v, p, parent, deleted in signed
+        ],
+        "state_hash": compute_state_hash(signed),
+        "moved": compute_state_hash([(*signed[0][:3], None, 0), *signed[1:]]),
+        "deleted": compute_state_hash([(*signed[0][:4], 1), *signed[1:]]),
     }
 
     # Remote AI kill switch (AI broker S1e), signed by the account key.
@@ -297,8 +316,15 @@ def test_desktop_decrypts_and_verifies_the_shared_vectors(vectors):
 
     sh = vectors["state_hash"]
     objects = [(o["id"], o["version"], base64.b64decode(o["payload"])) for o in sh["objects"]]
-    assert compute_state_hash(objects) == sh["state_hash"]
-    assert compute_state_hash(list(reversed(objects))) == sh["state_hash"]
+    assert legacy_state_hash(objects) == sh["state_hash"]
+    assert legacy_state_hash(list(reversed(objects))) == sh["state_hash"]
+    v2 = vectors["state_hash_v2"]
+    signed = [
+        (o["id"], o["version"], base64.b64decode(o["payload"]), o["parent_ref"], o["is_deleted"])
+        for o in v2["objects"]
+    ]
+    assert compute_state_hash(list(reversed(signed))) == v2["state_hash"]
+    assert len({v2["state_hash"], v2["moved"], v2["deleted"], sh["state_hash"]}) == 4
 
     policy = vectors["ai_policy"]
     signing_pk = bytes.fromhex(vectors["ed25519"]["public_key_hex"])
@@ -421,7 +447,16 @@ globalThis.__runVectors = async (V) => {
   check(toHex(derived.subarray(32, 64)) === a.auth_proof_hex, 'argon2 auth proof half');
   const shuffled = {};
   for (const o of V.state_hash.objects) shuffled[o.id] = { id: o.id, version: o.version, payload: o.payload };
-  check(await computeWebStateHash(shuffled, s) === V.state_hash.state_hash, 'state hash');
+  check(await computeWebStateHash(shuffled, s, true) === V.state_hash.state_hash, 'legacy state hash');
+  const v2 = V.state_hash_v2;
+  const served = {};
+  for (const o of [...v2.objects].reverse()) served[o.id] = { ...o };
+  check(await computeWebStateHash(served, s) === v2.state_hash, 'state hash');
+  const first = v2.objects[0].id;
+  check(await computeWebStateHash({ ...served, [first]: { ...served[first], parent_ref: null } }, s) === v2.moved,
+    'state hash of a moved copy');
+  check(await computeWebStateHash({ ...served, [first]: { ...served[first], is_deleted: 1 } }, s) === v2.deleted,
+    'state hash of a deleted copy');
   const b = V.crypto_box;
   state = {
     keypair: { encryptionSk: hex(b.recipient_sk_hex) },

@@ -971,11 +971,12 @@ Klient udržiava **sync checkpoint** (lokálne, v `vault_meta`, šifrovaný):
 {
   "last_sync_seq": 42,
   "state_hash": "<see below>",
+  "state_v": 2,
   "timestamp": 1710764400000
 }
 ```
-`state_hash = SHA-256( concat( sort_by_object_id( object_id(26B) || u32be(version) || SHA-256(payload)(32B) ) ) )`
-Sort: lexikograficky podľa `object_id` bytes (ULID je naturally sortable). Každý element je 62B fixed.
+`state_hash = SHA-256( "sezam-state-v2" || concat( sort_by_object_id( object_id(26B) || u32be(version) || SHA-256(payload)(32B) || u8(is_deleted) || SHA-256(parent_ref)(32B, nuly bez rodiča) ) ) )`
+Sort: lexikograficky podľa `object_id` bytes (ULID je naturally sortable). Každý element je 95B fixed. Rodič a príznak zmazania sú podpísané, takže držaná verzia, ktorú server pošle znova presunutú alebo zmazanú, je iný stav (R17-N1). Checkpoint bez `state_v` (starší) sa porovná podľa vzorca, ktorým vznikol: bez prefixu, element 62B `object_id || u32be(version) || SHA-256(payload)`.
 
 - Checkpoint je **klientský** — server ho neudržiava (content-blind). Klient po pull prepočíta `state_hash` a porovná s uloženým
 - **Detekuje:** rollback (nižší commit_seq), tiché payload zmeny (payload_hash mismatch), equivocation (rovnaká version, iný payload)

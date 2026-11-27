@@ -120,8 +120,41 @@ void main() {
           'payload': Uint8List.fromList(base64Decode(o['payload'] as String)),
         },
     ];
-    expect(computeStateHash(objects, crypto), v['state_hash']);
+    expect(computeStateHash(objects, crypto, legacy: true), v['state_hash']);
+    expect(
+      computeStateHash(objects.reversed, crypto, legacy: true),
+      v['state_hash'],
+    );
+  });
+
+  test('R17-N1: the state hash covers the parent and the deleted flag', () {
+    final v = vectors['state_hash_v2'] as Map<String, dynamic>;
+    final objects = [
+      for (final o in (v['objects'] as List).cast<Map<String, dynamic>>())
+        <String, dynamic>{
+          'id': o['id'] as String,
+          'version': o['version'] as int,
+          'payload': Uint8List.fromList(base64Decode(o['payload'] as String)),
+          'parent_ref': o['parent_ref'],
+          'is_deleted': o['is_deleted'],
+        },
+    ];
     expect(computeStateHash(objects.reversed, crypto), v['state_hash']);
+    final first = objects.first;
+    expect(
+      computeStateHash([
+        {...first, 'parent_ref': null},
+        ...objects.skip(1),
+      ], crypto),
+      v['moved'],
+    );
+    expect(
+      computeStateHash([
+        {...first, 'is_deleted': 1},
+        ...objects.skip(1),
+      ], crypto),
+      v['deleted'],
+    );
   });
 
   test('desktop keypair payload expands to the 96-byte account layout', () {

@@ -306,13 +306,23 @@ List<Map<String, dynamic>> rowsTheServerLost(
 String verifiedOwnerId(PullObject obj) =>
     obj.objectType == 'dek' ? obj.signatureUserId : obj.ownerId;
 
-/// Spec 8.3 state_hash over raw sync objects ({id, version, payload}):
-/// SHA-256(concat(sorted by id: id(26) || u32be(version) || SHA-256(payload))).
-/// Desktop and web compute the same (tests/vectors/cross_client.json).
+/// The formula of a checkpoint's state_hash ('state_v'; none: [legacy]).
+const stateHashVersion = 2;
+
+/// Spec 8.3 state_hash over raw sync objects ({id, version, payload,
+/// parent_ref, is_deleted}), as src/sezam/vault/sync_common.py
+/// compute_state_hash. R17-N1: the signed parent and deleted flag count:
+/// SHA-256("sezam-state-v2" || concat(sorted by id: id(26) || u32be(version)
+/// || SHA-256(payload) || u8(is_deleted) || (SHA-256(parent_ref) or 32 zero
+/// bytes))). [legacy]: a checkpoint without state_v (no prefix, the first
+/// three fields only). Desktop and web compute the same
+/// (tests/vectors/cross_client.json).
 String computeStateHash(
   Iterable<Map<String, dynamic>> objects,
-  CryptoService crypto,
-) {
+  CryptoService crypto, {
+  bool legacy = false,
+}) {
+  final size = legacy ? 62 : 95;
   final elements = <Uint8List>[];
   for (final object in objects) {
     final id = object['id'] as String;
@@ -320,10 +330,18 @@ String computeStateHash(
     final versionBytes = ByteData(4)
       ..setUint32(0, object['version'] as int, Endian.big);
     final payloadHash = crypto.sha256Bytes(object['payload'] as Uint8List);
-    final element = Uint8List(62)
+    final element = Uint8List(size)
       ..setRange(0, 26, idBytes)
       ..setRange(26, 30, versionBytes.buffer.asUint8List())
       ..setRange(30, 62, payloadHash);
+    if (!legacy) {
+      final deleted = object['is_deleted'];
+      element[62] = deleted == true || (deleted is int && deleted != 0) ? 1 : 0;
+      final parent = object['parent_ref'];
+      if (parent is String && parent.isNotEmpty) {
+        element.setRange(63, 95, crypto.sha256Bytes(utf8.encode(parent)));
+      }
+    }
     elements.add(element);
   }
   elements.sort((left, right) {
@@ -334,11 +352,21 @@ String computeStateHash(
     return 0;
   });
   final canonical = BytesBuilder(copy: false);
+  if (!legacy) canonical.add(utf8.encode('sezam-state-v2'));
   for (final element in elements) {
     canonical.add(element);
   }
   return crypto.sha256Hex(canonical.toBytes());
 }
+
+/// The state hash fields of a vault_objects row or a server copy.
+Map<String, dynamic> stateObject(Map<String, Object?> row) => {
+  'id': row['id'] as String,
+  'version': row['version'] as int,
+  'payload': Uint8List.fromList(row['payload'] as List<int>),
+  'parent_ref': row['parent_ref'],
+  'is_deleted': row['is_deleted'],
+};
 
 class SyncService {
   static final SyncService _instance = SyncService._();
@@ -1459,6 +1487,8 @@ class SyncService {
     Object? teamLog,
     Uint8List? kek,
     String? userId,
+    // R17-N1: the formula [stateHash] was made with (null: legacy).
+    int? stateV = stateHashVersion,
   }) {
     kek ??= _vault.currentKek;
     if (kek == null) throw StateError('Vault must be unlocked');
@@ -1467,6 +1497,7 @@ class SyncService {
         jsonEncode({
           'last_sync_seq': seq,
           'state_hash': stateHash,
+          'state_v': ?stateV,
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'commit_token': ?commitToken,
           if (commitTokenSeq != null && commitTokenSeq != seq)
@@ -1730,12 +1761,7 @@ class SyncService {
         final stateHash = await _computeStateHash(
           replacements: [
             for (final row in changed)
-              if (isServerConfirmedRow(row))
-                {
-                  'id': row['id'],
-                  'version': row['version'],
-                  'payload': row['payload'],
-                },
+              if (isServerConfirmedRow(row)) stateObject(row),
           ],
         );
         checkpointKey = _checkpointKey(checkpointUserId);
@@ -1762,31 +1788,35 @@ class SyncService {
   Future<String> _computeStateHash({
     List<Map<String, dynamic>> replacements = const [],
     bool replaceAll = false,
+    bool legacy = false,
   }) async {
     final objects = <String, Map<String, dynamic>>{};
     if (!replaceAll) {
       for (final row in await _db.getAllObjects()) {
         if (!isServerConfirmedRow(row)) continue;
-        objects[row['id'] as String] = {
-          'id': row['id'] as String,
-          'version': row['version'] as int,
-          'payload': Uint8List.fromList(row['payload'] as List<int>),
-        };
+        objects[row['id'] as String] = stateObject(row);
       }
       for (final conflict in await _db.getSyncConflicts()) {
+        // The server copy's signed fields (server_row; none kept before it).
+        final raw = conflict['server_row'];
+        final server = raw is String
+            ? jsonDecode(raw) as Map<String, dynamic>
+            : const <String, dynamic>{};
         objects[conflict['object_id'] as String] = {
           'id': conflict['object_id'] as String,
           'version': conflict['server_version'] as int,
           'payload': Uint8List.fromList(
             conflict['server_payload'] as List<int>,
           ),
+          'parent_ref': server['parent_ref'],
+          'is_deleted': server['is_deleted'],
         };
       }
     }
     for (final replacement in replacements) {
       objects[replacement['id'] as String] = replacement;
     }
-    return computeStateHash(objects.values, _crypto);
+    return computeStateHash(objects.values, _crypto, legacy: legacy);
   }
 
   /// The keypair this phone stores is the one the server holds now
@@ -2301,6 +2331,8 @@ class SyncService {
           'id': pullObj.id,
           'version': pullObj.version,
           'payload': payloadBytes,
+          'parent_ref': pullObj.parentRef,
+          'is_deleted': pullObj.isDeleted,
         });
       } on SyncIntegrityException {
         // A kept copy that no longer verifies (its key retired since) is
@@ -2466,13 +2498,8 @@ class SyncService {
           for (final id in refused)
             if (held[id] != null) held[id]!,
         ]) {
-          final id = row['id'] as String;
           heldBack.add(Map<String, dynamic>.from(row));
-          stateReplacements.add({
-            'id': id,
-            'version': row['version'],
-            'payload': row['payload'],
-          });
+          stateReplacements.add(stateObject(row));
         }
       }
     }
@@ -2522,7 +2549,14 @@ class SyncService {
                 'stored': {'seq': previousSeq, 'state_hash': previousHash},
                 'candidate': {
                   'max_commit_seq': maxSeq,
-                  'state_hash': candidateStateHash,
+                  // R17-N1: a checkpoint from before is compared by its
+                  // own formula.
+                  'state_hash': checkpoint['state_v'] == stateHashVersion
+                      ? candidateStateHash
+                      : await _computeStateHash(
+                          replacements: stateReplacements,
+                          legacy: true,
+                        ),
                   'served': servedNow || revivedIds.isEmpty,
                 },
               })
@@ -3035,6 +3069,7 @@ class SyncService {
               checkpoint['state_hash'] as String,
               commitToken: checkpoint['commit_token'] as String?,
               commitTokenSeq: _commitTokenSeq(checkpoint),
+              stateV: checkpoint['state_v'] as int?,
             ),
       dropWrites: dropped,
       resyncSetting: forgottenLogResyncSetting,

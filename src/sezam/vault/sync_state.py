@@ -22,7 +22,9 @@ from .sync_common import (
     _CHECKPOINT_META_KEY,
     COMMIT_ANCHOR_META,
     compute_state_hash,
+    legacy_state_hash,
     logger,
+    STATE_HASH_VERSION,
     SyncRollbackWarning,
 )
 
@@ -46,13 +48,9 @@ class SyncStateMixin:
     # ── Sync Checkpoint (spec 8.3) ──
 
     def _compute_state_hash(self) -> str:
-        """Compute state_hash over all local vault objects.
+        """Compute state_hash (sync_common.compute_state_hash) over all local
+        vault objects with their parent and deleted flag (R17-N1).
 
-        state_hash = SHA-256( concat( sort_by_object_id(
-            object_id(26B) || u32be(version) || SHA-256(payload)(32B)
-        )))
-
-        Each element is 62 bytes fixed. Sort lexicographically by object_id bytes.
         Includes every locally represented sync object, including tombstones,
         access envelopes, DEK archives, and audit records.
         """
@@ -82,7 +80,7 @@ class SyncStateMixin:
                 (row["version"], row["payload_hash"], row["digest"])
             )
         out = set()
-        for obj_id, version, payload in self._local_objects():
+        for obj_id, version, payload, *_signed in self._local_objects():
             if obj_id in unsent or obj_id not in signed:
                 continue
             payload_hash = hashlib.sha256(payload).hexdigest()
@@ -92,55 +90,65 @@ class SyncStateMixin:
             )
         return out
 
-    def _local_objects(self) -> list[tuple[str, int, bytes]]:
-        """(id, version, payload) of every locally represented sync object, as
-        the server holds it (a queued row's server copy)."""
-        objects: list[tuple[str, int, bytes]] = []
+    def _local_objects(self) -> list[tuple[str, int, bytes, Optional[str], int]]:
+        """(id, version, payload, parent_ref, is_deleted) of every locally
+        represented sync object, as the server holds it (a queued row's server
+        copy)."""
+        objects: list[tuple[str, int, bytes, Optional[str], int]] = []
         server_shadows = {
             row["object_id"]: row
             for row in self._db.fetchall(
-                "SELECT object_id, server_version, server_payload FROM sync_conflicts"
+                "SELECT object_id, server_version, server_payload, server_parent_ref, "
+                "server_is_deleted FROM sync_conflicts"
             )
         }
 
-        # Nodes: payload = encrypted_meta
-        for row in self._db.fetchall(
-            f"SELECT id, version, encrypted_meta, {outbox.queued('nodes')} AS queued FROM nodes"
-        ):
+        def shadowed(row) -> bool:
             shadow = server_shadows.get(row["id"]) if row["queued"] else None
             if shadow:
-                objects.append((row["id"], shadow["server_version"], bytes(shadow["server_payload"])))
-            else:
-                objects.append((row["id"], row["version"], bytes(row["encrypted_meta"])))
+                objects.append((
+                    row["id"], shadow["server_version"], bytes(shadow["server_payload"]),
+                    shadow["server_parent_ref"], shadow["server_is_deleted"],
+                ))
+            return bool(shadow)
+
+        # Nodes: payload = encrypted_meta
+        for row in self._db.fetchall(
+            "SELECT id, parent_id, version, is_deleted, encrypted_meta, "
+            f"{outbox.queued('nodes')} AS queued FROM nodes"
+        ):
+            if not shadowed(row):
+                objects.append((
+                    row["id"], row["version"], bytes(row["encrypted_meta"]),
+                    row["parent_id"], row["is_deleted"],
+                ))
 
         # Entries: payload = u32be(len(encrypted_meta)) + encrypted_meta + encrypted_data
         for row in self._db.fetchall(
-            "SELECT id, version, encrypted_meta, encrypted_data, "
+            "SELECT id, node_id, version, is_deleted, encrypted_meta, encrypted_data, "
             f"{outbox.queued('entries')} AS queued FROM entries"
         ):
-            shadow = server_shadows.get(row["id"]) if row["queued"] else None
-            if shadow:
-                objects.append((row["id"], shadow["server_version"], bytes(shadow["server_payload"])))
-            else:
+            if not shadowed(row):
                 meta_bytes = bytes(row["encrypted_meta"])
                 payload = struct.pack(">I", len(meta_bytes)) + meta_bytes + bytes(row["encrypted_data"])
-                objects.append((row["id"], row["version"], payload))
+                objects.append((row["id"], row["version"], payload, row["node_id"], row["is_deleted"]))
 
-        # DEKs and archived DEKs: payload = encrypted_dek
-        for table in ("deks", "dek_archive"):
-            for row in self._db.fetchall(f"SELECT id, version, encrypted_dek FROM {table}"):
-                objects.append((row["id"], row["version"], bytes(row["encrypted_dek"])))
+        # DEKs (parent: the folder) and archived DEKs (parent: the successor):
+        # payload = encrypted_dek
+        for table, parent in (("deks", "node_id"), ("dek_archive", "replaced_by")):
+            for row in self._db.fetchall(f"SELECT id, version, encrypted_dek, {parent} AS parent FROM {table}"):
+                objects.append((row["id"], row["version"], bytes(row["encrypted_dek"]), row["parent"], 0))
 
-        # Access envelopes: payload = encrypted_dek, protocol version = 1
-        for row in self._db.fetchall("SELECT id, encrypted_dek FROM access_envelopes"):
-            objects.append((row["id"], 1, bytes(row["encrypted_dek"])))
+        # Access envelopes: payload = encrypted_dek, parent: the key, protocol version = 1
+        for row in self._db.fetchall("SELECT id, dek_id, encrypted_dek FROM access_envelopes"):
+            objects.append((row["id"], 1, bytes(row["encrypted_dek"]), row["dek_id"], 0))
 
         # Audit objects hash the complete canonical signed record, not only details.
         for row in self._db.fetchall(
             "SELECT id, parent_ids, actor_id, action, encrypted_details, timestamp, "
             "signature FROM audit_log"
         ):
-            objects.append((row["id"], 2, self._serialize_audit_row(row)))
+            objects.append((row["id"], 2, self._serialize_audit_row(row), None, 0))
         return objects
 
     def _get_checkpoint_dek(self) -> tuple[Optional[str], Optional[bytearray]]:
@@ -156,6 +164,15 @@ class SyncStateMixin:
             logger.warning("Audit DEK not available for checkpoint encryption")
             return None, None
 
+    @staticmethod
+    def _checkpoint_record(commit_seq: int, state_hash: str) -> dict:
+        return {
+            "last_sync_seq": commit_seq,
+            "state_hash": state_hash,
+            "state_v": STATE_HASH_VERSION,
+            "timestamp": int(time.time() * 1000),
+        }
+
     def _save_sync_checkpoint(self, commit_seq: int, state_hash: str) -> None:
         """Encrypt and store sync checkpoint in vault_meta.
 
@@ -168,11 +185,7 @@ class SyncStateMixin:
 
         Encrypted with audit DEK, base64-encoded for TEXT storage.
         """
-        checkpoint = {
-            "last_sync_seq": commit_seq,
-            "state_hash": state_hash,
-            "timestamp": int(time.time() * 1000),
-        }
+        checkpoint = self._checkpoint_record(commit_seq, state_hash)
         checkpoint_json = json.dumps(checkpoint, separators=(",", ":")).encode("utf-8")
 
         dek_id, dek = self._get_checkpoint_dek()
@@ -244,6 +257,9 @@ class SyncStateMixin:
         old_checkpoint = self._load_sync_checkpoint()
         old_seq = (old_checkpoint or {}).get("last_sync_seq", 0)
         old_hash = (old_checkpoint or {}).get("state_hash", "")
+        if old_checkpoint is not None and old_checkpoint.get("state_v") != STATE_HASH_VERSION:
+            # R17-N1: a checkpoint from before is compared by its own formula.
+            new_state_hash = legacy_state_hash(self._local_objects())
         verdict = sync_core.call(
             "check_state",
             stored=None if old_checkpoint is None else {"seq": old_seq, "state_hash": old_hash},

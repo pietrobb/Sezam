@@ -233,7 +233,7 @@ crypto_box(message, nonce, recipient_pk, sender_sk)
 |---------|-------|--------|
 | Key fingerprint | `signing_pk \|\| encryption_pk` (64 B) | 256-bit hash (64 hex znakov) |
 | `payload_hash` | `payload` blob (celý šifrovaný objekt) | Bitwise integrity, nie semantic dedup |
-| `state_hash` | Sorted concat všetkých `object_id \|\| version \|\| SHA-256(payload)` | Rollback detection |
+| `state_hash` | Sorted concat všetkých `object_id \|\| version \|\| SHA-256(payload) \|\| is_deleted \|\| SHA-256(parent_ref)` (sekcia 8.2) | Rollback detection |
 | Audit `encrypted_details` hash | `SHA-256(encrypted_details)` | Vstup do signed_data kanonizácie |
 | Challenge hash | `SHA-256(challenge \|\| username)` | `spent_challenges` identifikátor |
 | Token hash | `SHA-256(token)` | Uloženie invitation/provisioning tokenov |
@@ -1209,33 +1209,31 @@ Klient lokálne udržuje šifrovaný checkpoint v `vault_meta`:
 {
     "last_sync_seq": 42,
     "state_hash": "a3b7c2d9e4f1...",
+    "state_v": 2,
     "timestamp": 1710764400000
 }
 ```
 
 ### 8.2 state_hash computation
 
+`src/sezam/vault/sync_common.py` `compute_state_hash` (web `computeWebStateHash`, mobil `computeStateHash`, vektor `tests/vectors/cross_client.json` `state_hash_v2`):
+
 ```python
-def compute_state_hash(objects: list) -> str:
-    """
-    SHA-256 over sorted concatenation of all objects.
-    Každý element je 62B fixed:
+def compute_state_hash(objects) -> str:
+    """Každý element je 95B fixed:
       object_id(26B) + u32be(version)(4B) + SHA-256(payload)(32B)
+      + u8(is_deleted)(1B) + SHA-256(parent_ref)(32B, nuly bez rodiča)
     """
-    elements = []
-    for obj in objects:
-        element = (
-            obj.id_bytes          # 26B ULID raw
-            + struct.pack('>I', obj.version)  # 4B u32be
-            + sha256(obj.payload)  # 32B SHA-256
-        )  # 62B fixed per element
-        elements.append(element)
-
-    # Sort lexikograficky podľa object_id bytes (ULID je naturally sortable)
-    elements.sort()
-
-    return sha256(b''.join(elements)).hex()
+    elements = sorted(  # lexikograficky podľa object_id (ULID je naturally sortable)
+        ulid_to_bytes(object_id) + struct.pack(">I", version) + sha256(payload)
+        + (b"\x01" if is_deleted else b"\x00")
+        + (sha256(parent_ref.encode()) if parent_ref else bytes(32))
+        for object_id, version, payload, parent_ref, is_deleted in objects
+    )
+    return sha256(b"sezam-state-v2" + b"".join(elements)).hex()
 ```
+
+Rodič a príznak zmazania sú podpísané polia: držaná verzia, ktorú server pri tom istom `commit_seq` pošle presunutú alebo zmazanú, je iný stav (review c02cc47 R17-N1). Checkpoint bez `state_v` (zo staršej verzie) sa porovná podľa vzorca, ktorým vznikol (`legacy_state_hash`: bez prefixu, element 62B), takže prvý pull po aktualizácii neskončí falošným `STATE MISMATCH` a porovnanie sa nevynechá; nový checkpoint už nesie `state_v: 2`.
 
 ### 8.3 Detekcie
 

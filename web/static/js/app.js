@@ -3220,12 +3220,18 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     await verifyAuditGraph(candidateSyncObjects, _sodium);
     const stateHash = await computeWebStateHash(candidateSyncObjects, _sodium);
     const liveStateHash = await computeWebStateHash(liveSyncObjects(candidateSyncObjects), _sodium);
+    // R17-N1: a checkpoint from before state_v 2 is compared by its formula.
+    const legacy = state.syncCheckpoint && state.syncCheckpoint.state_v !== 2 ? {
+        stateHash: await computeWebStateHash(candidateSyncObjects, _sodium, true),
+        liveStateHash: await computeWebStateHash(liveSyncObjects(candidateSyncObjects), _sodium, true),
+    } : null;
     const pulledSeqs = {
         responseSeq,
         headSeq: Number(data.head_commit_seq),
         gcFloor: Number(data.gc_floor_seq),
         stateHash,
         liveStateHash,
+        legacy,
         // Capability run 465: objects held back for a signer whose keys did
         // not come make this state differ from the server's without the
         // server changing anything; a lower seq is still a rollback.
@@ -3483,6 +3489,7 @@ async function pullAndBuildTreeLocked(session = state.sessionSerial) {
     const nextCheckpoint = {
         last_sync_seq: syncPosition,
         state_hash: stateHash,
+        state_v: 2,  // computeWebStateHash formula (sync_common.STATE_HASH_VERSION)
         live_state_hash: liveStateHash,
         commit_token: syncPosition === responseSeq && typeof data.max_token === 'string'
             ? data.max_token : null,
@@ -7825,7 +7832,9 @@ function liveSyncObjects(syncObjects) {
  */
 function checkPulledStateAgainstCheckpoint(checkpoint, pulled) {
     if (!checkpoint) return;
-    const { responseSeq, stateHash, liveStateHash } = pulled;
+    const { responseSeq } = pulled;
+    const { stateHash, liveStateHash } = checkpoint.state_v === 2 || !pulled.legacy
+        ? pulled : pulled.legacy;
     const verdict = globalThis.SezamSyncCore.call('check_state', {
         stored: {
             seq: checkpoint.last_sync_seq,
@@ -9204,18 +9213,25 @@ function writesNotToSeal(syncObjects, ownUserId) {
 }
 
 /**
- * W3: Compute state_hash for rollback protection.
- * state_hash = SHA-256(concat(sorted by id: id_bytes(26) || u32be(version) || SHA-256(payload)))
+ * W3: Compute state_hash for rollback protection (src/sezam/vault/sync_common.py
+ * compute_state_hash). R17-N1: the signed parent and deleted flag count:
+ * SHA-256("sezam-state-v2" || concat(sorted by id: id_bytes(26) || u32be(version) ||
+ * SHA-256(payload) || u8(is_deleted) || (SHA-256(parent_ref) or 32 zero bytes))).
+ * ``legacy``: the formula of a checkpoint without state_v (no prefix, the
+ * first three fields only).
  * Covers every raw sync object, including tombstones and non-content objects.
  */
-async function computeWebStateHash(syncObjects, _sodium) {
+async function computeWebStateHash(syncObjects, _sodium, legacy = false) {
     const encoder = new TextEncoder();
     const objects = Object.values(syncObjects).sort((a, b) => {
         const aId = String(a.id);
         const bId = String(b.id);
         return aId < bId ? -1 : (aId > bId ? 1 : 0);
     });
-    const concat = new Uint8Array(objects.length * 62);
+    const prefix = legacy ? new Uint8Array(0) : encoder.encode('sezam-state-v2');
+    const size = legacy ? 62 : 95;
+    const concat = new Uint8Array(prefix.length + objects.length * size);
+    concat.set(prefix, 0);
 
     objects.forEach((obj, index) => {
         const idBytes = encoder.encode(String(obj.id || ''));
@@ -9226,10 +9242,15 @@ async function computeWebStateHash(syncObjects, _sodium) {
         if (!Number.isSafeInteger(version) || version < 0 || version > 0xffffffff) {
             throw new Error(`Invalid sync object version for state hash: ${obj.id}`);
         }
-        const offset = index * 62;
+        const offset = prefix.length + index * size;
         concat.set(idBytes, offset);
         new DataView(concat.buffer).setUint32(offset + 26, version, false);
         concat.set(_sodium.crypto_hash_sha256(base64ToBytes(obj.payload || '')), offset + 30);
+        if (legacy) return;
+        concat[offset + 62] = obj.is_deleted ? 1 : 0;
+        if (obj.parent_ref) {
+            concat.set(_sodium.crypto_hash_sha256(encoder.encode(String(obj.parent_ref))), offset + 63);
+        }
     });
 
     return bytesToHex(_sodium.crypto_hash_sha256(concat));

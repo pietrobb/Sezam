@@ -323,15 +323,38 @@ def key_rotation_message(
     )
 
 
-def compute_state_hash(objects) -> str:
-    """Spec 8.3 state_hash over (object_id, version, payload) triples.
+# A checkpoint's "state_v": the formula its state_hash was made with.
+STATE_HASH_VERSION = 2
+_STATE_HASH_V2 = b"sezam-state-v2"
 
-    SHA-256(concat(sorted by object_id: id(26) || u32be(version) || SHA-256(payload))).
-    Web and mobile compute the same over the raw server objects.
+
+def compute_state_hash(objects) -> str:
+    """Spec 8.3 state_hash over (object_id, version, payload, parent_ref,
+    is_deleted) of every sync object.
+
+    R17-N1: the parent and the deleted flag are signed and count, so a held
+    version served again moved or deleted is another state.
+    SHA-256("sezam-state-v2" || concat(sorted by object_id: id(26) ||
+    u32be(version) || SHA-256(payload) || u8(is_deleted) ||
+    (SHA-256(parent_ref) or 32 zero bytes when it has none))).
+    Web and mobile compute the same over the raw server objects
+    (tests/vectors/cross_client.json state_hash_v2).
     """
     elements = sorted(
         ulid_to_bytes(object_id) + struct.pack(">I", version) + hashlib.sha256(payload).digest()
-        for object_id, version, payload in objects
+        + (b"\x01" if is_deleted else b"\x00")
+        + (hashlib.sha256(parent_ref.encode()).digest() if parent_ref else bytes(32))
+        for object_id, version, payload, parent_ref, is_deleted in objects
+    )
+    return hashlib.sha256(_STATE_HASH_V2 + b"".join(elements)).hexdigest()
+
+
+def legacy_state_hash(objects) -> str:
+    """The state_hash of a checkpoint without "state_v" (before R17-N1):
+    SHA-256(concat(sorted by object_id: id(26) || u32be(version) || SHA-256(payload)))."""
+    elements = sorted(
+        ulid_to_bytes(object_id) + struct.pack(">I", version) + hashlib.sha256(payload).digest()
+        for object_id, version, payload, *_signed in objects
     )
     return hashlib.sha256(b"".join(elements)).hexdigest()
 

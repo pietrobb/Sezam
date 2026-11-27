@@ -178,12 +178,42 @@ class VoucherMixin:
 
     def _reset_vouchers(self) -> None:
         """Before a pull or full resync: lists and held versions are read again."""
-        self._lists_cache.clear()
-        self._vouched_cache.clear()
-        self._held_cache = None
-        self._unvouched.clear()
-        self._equivocated.clear()
-        self._verified_entries = {}
+        self._lists_cache: dict[tuple[str, bytes], frozenset] = {}
+        self._vouched_cache: dict[str, frozenset] = {}
+        self._held_cache: Optional[frozenset] = None
+        # Objects a retired key signed that no list names: id -> signer.
+        self._unvouched: dict[str, str] = {}
+        # R17-N1: of those, the ones whose held copy has other signed fields.
+        self._equivocated: set[str] = set()
+        # What verified since the last pull or resync, kept in held_signed
+        # once applied: id -> (object, signer, key).
+        self._verified_entries: dict[str, tuple[dict, str, bytes]] = {}
+
+    def _unless_retired_signed(self, folders: list[str]) -> list[str]:
+        """R17-N1: the folders to fold (fold_unlogged_folder_keys), without any
+        whose held copy, or a held copy below it, came signed by a retired key.
+
+        A leaked key that "moved" a private folder under a team folder would
+        otherwise have had its content resealed to the team. What its key seals
+        stays refused there, and named.
+        """
+        tainted: set[str] = set()  # those folders and every folder above them
+        for row in self._db.fetchall(
+            "SELECT h.object_id FROM held_signed h JOIN nodes n "
+            "ON n.id = h.object_id AND n.version = h.version WHERE h.retired = 1"
+        ):
+            node = row["object_id"]
+            while node is not None and node not in tainted:
+                tainted.add(node)
+                up = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (node,))
+                node = up["parent_id"] if up is not None else None
+        for folder in folders:
+            if folder in tainted:
+                logger.warning(
+                    "Folder %s below a team folder came signed by a retired key: "
+                    "not resealed to its parent's key", folder,
+                )
+        return [folder for folder in folders if folder not in tainted]
 
     def _rejected(self, obj: dict, generic: str = "invalid or unverifiable signature") -> str:
         """Why a pulled object did not verify, for the error."""
@@ -282,7 +312,7 @@ class VoucherMixin:
         }
         return {
             obj_id: (version, hashlib.sha256(payload).hexdigest(), parents.get(obj_id))
-            for obj_id, version, payload in self._local_objects()
+            for obj_id, version, payload, *_signed in self._local_objects()
         }
 
     def _voucher_fingerprint(self) -> str:

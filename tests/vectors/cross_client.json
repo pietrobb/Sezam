@@ -156,6 +156,34 @@
     ],
     "state_hash": "c91e884d425e8dc812a0f7c141afb622b0e5907e09954f8d18e7403002be37a8"
   },
+  "state_hash_v2": {
+    "objects": [
+      {
+        "id": "01JZZZ0000000000000000000A",
+        "version": 4,
+        "payload": "emV0YQ==",
+        "parent_ref": "01JMMM0000000000000000000C",
+        "is_deleted": 0
+      },
+      {
+        "id": "01JAAA0000000000000000000B",
+        "version": 4294967295,
+        "payload": "",
+        "parent_ref": null,
+        "is_deleted": 1
+      },
+      {
+        "id": "01JMMM0000000000000000000C",
+        "version": 1,
+        "payload": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsc=",
+        "parent_ref": null,
+        "is_deleted": 0
+      }
+    ],
+    "state_hash": "cab5dbf38018f31187f48eaa57c35040294351d3239733d7423ee99d2dfbd9a3",
+    "moved": "9ce956289ebbc5d8b71b1322ab8df85844f7f64792ae3de8b0324fb018b77e04",
+    "deleted": "c9233ce2a4e98590d94d9c85fd6c20e576100ce0e32d62f8627bad5cad5b75a8"
+  },
   "ai_policy": {
     "user_id": "01JACC0000000000000000000F",
     "enabled": false,

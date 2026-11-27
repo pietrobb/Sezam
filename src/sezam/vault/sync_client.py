@@ -118,23 +118,12 @@ class SyncClient(
         self._tofu_checked_user_ids: set[str] = set()
         self._tofu_warnings: list[dict] = []
         self._signing_key_rings: dict[str, tuple[bytes, ...]] = {}
-        # Goal #443: each signer's retired keys, the key whose voucher lists
-        # count (its current one) and what those lists name.
+        # Goal #443: each signer's retired keys and the key whose voucher lists count.
         self._retired_keys: dict[str, frozenset[bytes]] = {}
         self._voucher_keys: dict[str, bytes] = {}
-        self._vouched_cache: dict[str, frozenset] = {}
-        self._lists_cache: dict[tuple[str, bytes], frozenset] = {}
-        self._held_cache: Optional[frozenset] = None
         self._held_index: dict[tuple[str, int], frozenset] = {}
-        # Objects a retired key signed that no list names: id -> signer.
-        self._unvouched: dict[str, str] = {}
-        # R17-N1: of those, the ones whose held copy has other signed fields.
-        self._equivocated: set[str] = set()
-        # What verified since the last pull or resync, kept in held_signed
-        # once applied: id -> (object, signer, key).
-        self._verified_entries: dict[str, tuple[dict, str, bytes]] = {}
-        # The server's key for this account that signed this device's pending
-        # identity rotation (it is current there until the rotation lands).
+        self._reset_vouchers()  # the per-pull voucher state (sync_vouchers)
+        # The server's key for this account that signed the pending identity rotation.
         self._rotation_authorizer: Optional[bytes] = None
         self._signs_in_rotated = False
         self._pulled_dek_ids: list[str] = []
@@ -1036,10 +1025,9 @@ class SyncClient(
                     if self._log_retired_key(signer_id, signing_pk):
                         continue
                 else:
-                    # Goal #443: a retired key vouches only for what a voucher
-                    # list or this device's copy names, not for whatever the
-                    # server dates before its rotation (retired_seq, commit_seq).
-                    # R17-N1: names the whole message, signer and key.
+                    # Goal #443: a retired key vouches only for what a voucher list
+                    # or this device's copy names (R17-N1: the whole signed message,
+                    # signer and key), not what the server dates before the rotation.
                     entry = key_vouchers.object_entry(obj, signer_id, signing_pk)
                     if entry is None or entry not in self._vouched(signer_id):
                         if self._signed_by(obj, signing_pk):

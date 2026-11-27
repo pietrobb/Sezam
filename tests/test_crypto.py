@@ -984,7 +984,7 @@ class TestPullSignatureFailClosed:
         vouched = signed_object(old_keypair)
         lists.append(key_vouchers.sign_vouchers(
             owner_id, current_keypair.to_nacl_signing_key(),
-            [(vouched["id"], vouched["version"], vouched["payload_hash"])],
+            [key_vouchers.object_entry(vouched, owner_id, old_keypair.signing_pk)],
         ))
         assert client._verify_object_signature(vouched) is True
         # Goal #443: the archived key counts only for a version a list of the
@@ -2517,7 +2517,9 @@ class TestWebRollbackCheckpoint:
         )[0]
         assert "Object.values(syncObjects)" in body
         assert "base64ToBytes(obj.payload" in body
-        assert "objects.length * 62" in body
+        # R17-N1: 95 bytes per object (+ is_deleted, sha256(parent_ref)); 62 legacy.
+        assert "objects.length * size" in body
+        assert "legacy ? 62 : 95" in body
         assert "state.allNodes" not in body
         assert "state.allEntries" not in body
         assert "candidateSyncObjects[obj.id]" in src
@@ -2623,13 +2625,13 @@ class TestMobileRollbackCheckpoint:
         )[0]
         assert "_db.getAllObjects()" in state_hash
         assert "replacements" in state_hash
-        assert "return computeStateHash(objects.values, _crypto);" in state_hash
+        assert "return computeStateHash(objects.values, _crypto, legacy: legacy);" in state_hash
         # The hashing itself is pinned byte for byte by the state_hash vector
         # (mobile/test/cross_client_vectors_test.dart).
         hashing = src.split("String computeStateHash(", 1)[1].split("\nclass ", 1)[0]
         assert "object['payload'] as Uint8List" in hashing
         assert "crypto.sha256Bytes" in hashing
-        assert "Uint8List(62)" in hashing
+        assert "legacy ? 62 : 95" in hashing
 
     def test_checkpoint_is_user_bound_aead_and_committed_atomically(self):
         sync_src = self._source("sync_service.dart")
