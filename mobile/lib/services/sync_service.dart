@@ -2745,10 +2745,14 @@ class SyncService {
 
   /// The organisation's log at the pull's [head] (TL5, §6); a log that does
   /// not continue what this phone saw ([checkpoint]'s pin) aborts the pull.
+  /// [judgeOnly] (review c02cc47 R17-L): the judgment without a write, as if
+  /// the server refused a restore and a re-send of lost changes; nothing is
+  /// posted to the log and nothing withdrawn here.
   Future<LocalTeamLog?> _syncTeamLog(
     Object? head,
-    Map<String, dynamic>? checkpoint,
-  ) async {
+    Map<String, dynamic>? checkpoint, {
+    bool judgeOnly = false,
+  }) async {
     // INV-7: conflicting pins are forgotten together, never followed; a
     // damaged copy (local_damaged) is fetched again below under its pins.
     final refused = _vault.teamLogRefusal;
@@ -2788,6 +2792,7 @@ class SyncService {
         },
         // R9-E: put back what a server restored from a backup lost.
         restore: (records) async {
+          if (judgeOnly) throw StateError('judged: no restore'); // as refused
           final response = await _http.post(
             Uri.parse('$_serverUrl/api/team-log/restore'),
             headers: _authHeaders(),
@@ -2799,10 +2804,11 @@ class SyncService {
           return (jsonDecode(response.body) as Map<String, dynamic>)['head']
               as Map<String, dynamic>?;
         },
-        remake: _teamLogRemake(),
+        // Judged: a fork with lost changes stays a mismatch (never a forget).
+        remake: judgeOnly ? null : _teamLogRemake(),
         withdrawn: await _teamLogWithdrawn(),
         // Capability finding 505: what a fork it follows left behind.
-        withdraw: _withdrawTeamRecords,
+        withdraw: judgeOnly ? (_) async {} : _withdrawTeamRecords,
       );
     } on TeamLogMismatch catch (e) {
       throw SyncIntegrityException('$e', teamLog: e);
@@ -2925,9 +2931,11 @@ class SyncService {
   /// Why this phone refuses the server's team log now (the pull's own
   /// judgment), or null: it follows it. INV-8: forgetting the pin asks this;
   /// INV-7: settings offer the forget only where [TeamLogMismatch.offersForget].
-  Future<TeamLogMismatch?> teamLogRefusal() => _exclusive(_teamLogRefusal);
+  /// Review c02cc47 R17-L: opening Settings only asks; it writes nothing.
+  Future<TeamLogMismatch?> teamLogRefusal() =>
+      _exclusive(() => _teamLogRefusal(judgeOnly: true));
 
-  Future<TeamLogMismatch?> _teamLogRefusal() async {
+  Future<TeamLogMismatch?> _teamLogRefusal({bool judgeOnly = false}) async {
     final response = await _http.get(
       Uri.parse(
         '$_serverUrl/api/team-log?since=${_vault.teamLog?.team.headSeq ?? -1}',
@@ -2937,7 +2945,11 @@ class SyncService {
     _checkResponse(response, 'team log');
     final head = (jsonDecode(response.body) as Map<String, dynamic>)['head'];
     try {
-      await _syncTeamLog(head, await _loadSyncCheckpoint());
+      await _syncTeamLog(
+        head,
+        await _loadSyncCheckpoint(),
+        judgeOnly: judgeOnly,
+      );
     } on SyncIntegrityException catch (e) {
       if (e.teamLog != null) return e.teamLog;
       rethrow;
@@ -3114,10 +3126,14 @@ class SyncService {
     }
     // INV-8: only a log this phone refuses as lost now (teamLogMismatchForget),
     // never a fork; asked before any unsent change is dropped.
-    final refusal = await _teamLogRefusal();
-    if (refusal == null || !refusal.offersForget) throw TeamLogNotLost(refusal);
+    // R17-L: asked first without a write; the pull's own judgment (a restore
+    // the server takes makes the log not lost) only once the forget goes on.
+    final judged = await _teamLogRefusal(judgeOnly: true);
+    if (judged == null || !judged.offersForget) throw TeamLogNotLost(judged);
     final unsent = (await _db.getDirtyObjects()).length;
     if (unsent > 0 && !discardUnsent) throw UnsentChangesBlockForget(unsent);
+    final refusal = await _teamLogRefusal();
+    if (refusal == null || !refusal.offersForget) throw TeamLogNotLost(refusal);
     // Only what the file holds is dropped: an edit saved meanwhile stays queued.
     final exported = unsent > 0 ? await _exportDirtyObjects() : null;
     final dropped = [
