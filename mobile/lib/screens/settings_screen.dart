@@ -43,6 +43,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // INV-7: the forget tile shows only where this phone, judging the server's
   // log now, refuses it as lost for good (teamLogMismatchForget).
   bool _teamLogLost = false;
+  // R17-N9: this account's team changes the log or the server no longer took.
+  List<Map<String, dynamic>> _teamChangesSetAside = const [];
 
   @override
   void initState() {
@@ -78,7 +80,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _keptAside = keptAside;
       });
     }
-    if (!_vault.isUnlocked || serverUrl == null) return;
+    if (!_vault.isUnlocked) return;
+    final setAside = await _sync.teamChangesSetAside();
+    if (mounted) setState(() => _teamChangesSetAside = setAside);
+    if (serverUrl == null) return;
     var lost = false;
     try {
       lost = (await _sync.teamLogRefusal())?.offersForget ?? false;
@@ -96,6 +101,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       icon: Icons.report_problem_outlined,
       title: 'Tímový denník odmietnutý',
       subtitle: '$refusal',
+    );
+  }
+
+  /// R17-N9: what the log or the server no longer took, and why (the
+  /// desktop's 'sezam team-log queue'); before, nothing showed it.
+  Widget? _teamChangesSetAsideTile() {
+    if (_teamChangesSetAside.isEmpty) return null;
+    return _settingsTile(
+      icon: Icons.playlist_remove_outlined,
+      title: 'Odložené tímové zmeny (${_teamChangesSetAside.length})',
+      subtitle: [
+        for (final item in _teamChangesSetAside)
+          '${item['type']} ${(item['data'] as Map?)?['user_id'] ?? ''}: ${item['reason']}',
+      ].join('\n'),
     );
   }
 
@@ -207,7 +226,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }
@@ -218,7 +239,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       if (pinned.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Telefón nemá pripnutý žiadny tímový denník.')));
+          const SnackBar(
+            content: Text('Telefón nemá pripnutý žiadny tímový denník.'),
+          ),
+        );
         return;
       }
       await showDialog<bool>(
@@ -228,7 +252,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }
@@ -294,7 +320,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final result = await _auth.provisionFromQR(
         provisionToken: token,
-        genesisFragment: uri?.scheme == 'sezam' && uri?.host == 'provision' ? uri!.fragment : '',
+        genesisFragment: uri?.scheme == 'sezam' && uri?.host == 'provision'
+            ? uri!.fragment
+            : '',
         username: username ?? '',
         password: password,
         serverUrl: serverUrl ?? _serverUrl ?? '',
@@ -550,9 +578,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete the set-aside vault?'),
-        content: const Text(
-          'Anything only in this vault is lost for good.',
-        ),
+        content: const Text('Anything only in this vault is lost for good.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -746,6 +772,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onTap: _confirmTeamFounder,
         ),
         ?_teamLogRefusalTile(),
+        ?_teamChangesSetAsideTile(),
         if (_teamLogLost)
           _settingsTile(
             icon: Icons.link_off_rounded,

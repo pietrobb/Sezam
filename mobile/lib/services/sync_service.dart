@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -2775,11 +2776,22 @@ class SyncService {
   /// lost go out again, signed with the account's key, when the phone
   /// follows the fork (on 18c300f it waited for them for good).
   TeamLogRemake? _teamLogRemake() {
-    final secret = _vault.signingSecretKey;
-    if (secret == null) return null;
+    if (_vault.signingSecretKey == null) return null;
+    // R17-N9: lock() zeroes the key in place; a remake signed with the live
+    // reference after a lock signed with zeros. The key is read at each
+    // signature, under the lock generation the pull started with.
+    final generation = _vault.lockGeneration;
     return TeamLogRemake(
-      sign: (body) =>
-          TeamLog.signRecord(body, (m) => _crypto.signChallenge(m, secret)),
+      sign: (body) {
+        final secret = _vault.signingSecretKey;
+        if (secret == null || _vault.lockGeneration != generation) {
+          throw const VaultLockedMeanwhile();
+        }
+        return TeamLog.signRecord(
+          body,
+          (m) => _crypto.signChallenge(m, secret),
+        );
+      },
       append: (records) async {
         final response = await _http.post(
           Uri.parse('$_serverUrl/api/team-log'),
@@ -2792,7 +2804,12 @@ class SyncService {
           // (desktop: _note_not_taken). The phone still holds the changes.
           return RemakeOutcome.moved;
         }
-        if (response.statusCode >= 400 && response.statusCode < 500) {
+        // R17-N9: only the log's own refusal (400 team_log_refused, as the
+        // desktop's _refusal_from_server) sets them aside. Any other answer
+        // (401, 429, 5xx) throws: the phone keeps them and makes them again
+        // at the next pull; a 401 signs in again (sync).
+        if (response.statusCode == 400 &&
+            _errorCode(response) == 'team_log_refused') {
           // Taken by none: a server that keeps them is not followed (R16-H1).
           await _withdrawTeamRecords([
             for (final r in records) TeamLog.recordHash(r),
@@ -2828,6 +2845,20 @@ class SyncService {
 
   static const teamLogSetAsideSetting = 'team_log_set_aside';
   static const teamLogWithdrawnSetting = 'team_log_withdrawn';
+
+  @visibleForTesting
+  TeamLogRemake? teamLogRemakeForTest() => _teamLogRemake();
+
+  /// R17-N9: this account's team changes the log or the server no longer
+  /// took (type, data, reason); settings show them (nothing read them).
+  Future<List<Map<String, dynamic>>> teamChangesSetAside() async {
+    final stored = await _db.getSetting(teamLogSetAsideSetting);
+    if (stored == null) return const [];
+    return [
+      for (final item in jsonDecode(stored) as List)
+        Map<String, dynamic>.from(item as Map),
+    ];
+  }
 
   /// Hashes of the records this phone sent and the server did not take, and
   /// of this account's records a fork it followed went on without.

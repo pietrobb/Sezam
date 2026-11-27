@@ -19,7 +19,7 @@ FUNCTIONS = [
     "syncWebTeamLog", "catchUpWebTeamLog", "followWebTeamLogFork", "webHeldTeamKeys", "webTeamLedgerAad", "loadWebTeamLedger", "saveWebTeamLedger", "noteWebTeamRecordsSent", "noteWebTeamRecordsTaken", "noteWebTeamLogStored", "sendWebTeamRecords", "teamLogPin", "webTeamFolderAbove", "unauthorizedWrites", "sealingDekId",
     "isEncryptedEnvelope", "teamLogRefusedError", "assertTeamLogAllowsWrite", "payloadDekId",
     "nearestFolderDekId", "keyAuthors", "folderTreeOwner", "provenDekSuccessors", "ulidTimeMs", "webTeamLogTrusted", "webFounderLineage",
-    "webLogAdmins", "restoreWebTeamLog", "remakeWebLostTeamChanges",
+    "webLogAdmins", "restoreWebTeamLog", "remakeWebLostTeamChanges", "webTeamLogRefusedAnswer",
 ]
 ROOT = "01JR0000000000000000000001"
 OTHER = "01JR0000000000000000000002"  # a folder outside every team folder

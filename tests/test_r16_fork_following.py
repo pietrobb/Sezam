@@ -229,9 +229,14 @@ WEB_REMAKE = """
     const held = RECORDS.concat(c.lost);
     let serverRecords = RECORDS.concat(c.theirs);
     const posted = [];
+    let shown = null;
+    renderWebTeamChangesSetAside = items => { shown = items.map(x => x.type); };
     apiFetch = async (url, opts) => {
         if (opts && opts.method === 'POST') {
-            if (REFUSE) { const err = new Error('400 refused'); err.status = 400; throw err; }
+            if (REFUSE) {
+                const err = new Error(`${REFUSE[0]} refused`);
+                err.status = REFUSE[0]; err.code = REFUSE[1]; throw err;
+            }
             posted.push(...opts.body.records);
             serverRecords = serverRecords.concat(opts.body.records);
             return {};
@@ -248,6 +253,7 @@ WEB_REMAKE = """
             posted: posted.map(r => { const b = TL.parseBody(r.body, null); return [b.type, b.data, b.author]; }),
             set_aside: ledger.setAside.map(x => [x.type, x.reason]),
         };
+        if (shown !== null) out.shown = shown;
         if (BACK) {
             // Finding 505: the server serves again what this browser left behind.
             out.withdrawn = [...ledger.withdrawn].sort();
@@ -257,11 +263,17 @@ WEB_REMAKE = """
             } catch (err) { out.back = err.message; }
         }
         return out;
-    } catch (err) { return { error: err.message }; }
+    } catch (err) {
+        const ledger = await loadWebTeamLedger(sodium);
+        return { error: err.message, posted: posted.length, set_aside: ledger.setAside.length,
+                 withdrawn: ledger.withdrawn.size };
+    }
 """
 
+LOG_REFUSES = (400, "team_log_refused")
 
-def _web_remake(name: str, refuse: bool = False, back: bool = False) -> dict:
+
+def _web_remake(name: str, refuse: tuple | None = None, back: bool = False) -> dict:
     case = next(c for c in VECTORS["cases"] if c["name"] == name)
     script = (WEB_REMAKE.replace("ME_SK", json.dumps((bytes(A.sk) + bytes(A.sk.verify_key)).hex()))
               .replace("CASE", json.dumps(case)).replace("REFUSE", json.dumps(refuse))
@@ -284,10 +296,25 @@ def test_the_page_sets_aside_what_the_log_or_the_server_no_longer_takes():
     moved = _web_remake("own_fork_folder_keyed_elsewhere")
     assert moved["followed"] == 0 and moved["posted"] == [], moved
     assert [k for k, _ in moved["set_aside"]] == ["folder.key"] and "folder_key_moved" in moved["set_aside"][0][1]
-    refused = _web_remake("own_fork_shorter", refuse=True)
+    refused = _web_remake("own_fork_shorter", refuse=LOG_REFUSES)
     assert refused == {"followed": 0, "server": 0, "posted": [],
                        "set_aside": [["folder.key", "the server refused them"],
-                                     ["access.set", "the server refused them"]]}, refused
+                                     ["access.set", "the server refused them"]],
+                       "shown": ["folder.key", "access.set"]}, refused
+
+
+@pytest.mark.skipif(node_problem() is not None, reason="node is needed for app.js")
+@pytest.mark.parametrize("answer", [(429, None), (403, None), (400, None), (503, None), (401, "token_invalid")])
+def test_the_page_keeps_what_the_server_did_not_refuse_by_the_log(answer):
+    """R17-N9 (review c02cc47): every 4xx but 409 set the remade changes
+    aside and withdrew them - a 429 lost a member.remove for good. Only the
+    log's own refusal (400 team_log_refused) does now; the rest throws and
+    the next pull makes them again. (The ledger still notes the remade
+    records as not taken: a server that never took them cannot serve them,
+    and taken at the next pull they are this browser's again.)"""
+    got = _web_remake("own_fork_shorter", refuse=answer)
+    assert {k: got.get(k) for k in ("error", "posted", "set_aside")} == {
+        "error": f"{answer[0]} refused", "posted": 0, "set_aside": 0}, got
 
 
 @pytest.mark.skipif(node_problem() is not None, reason="node is needed for app.js")
@@ -296,7 +323,7 @@ def test_the_page_never_follows_back_to_records_it_left_behind():
     lost changes aside (the server refused them made again); on 92b8309 a
     server serving the original records again was followed, and the changes
     the user saw set aside took effect."""
-    got = _web_remake("own_fork_shorter", refuse=True, back=True)
+    got = _web_remake("own_fork_shorter", refuse=LOG_REFUSES, back=True)
     lost = _abandoned_cases()["own_fork_shorter"]
     assert set(lost) <= set(got["withdrawn"]), got
     assert "its record 3 is one this device withdrew" in got["back"], got
@@ -433,7 +460,7 @@ def _serve(db, records: list[dict], from_seq: int) -> None:
     _forget_server_cache()
 
 
-def _handover_refused_and_kept(team, monkeypatch) -> tuple:
+def _handover_refused_and_kept(team, monkeypatch) -> tuple:  # noqa: F811
     db, admin, admin_client, bob, bob_client = team
     _found_with_bob(admin_client, bob)
     _confirm_founder(admin, bob)
@@ -446,7 +473,7 @@ def _handover_refused_and_kept(team, monkeypatch) -> tuple:
     return db, admin, admin_client, bob_id, kept
 
 
-def test_the_server_serves_a_handover_it_refused_in_place_of_the_removal(team, monkeypatch):
+def test_the_server_serves_a_handover_it_refused_in_place_of_the_removal(team, monkeypatch):  # noqa: F811
     """The reviewer's take-over: on 18c300f Bob was the admin, the admin a member."""
     db, admin, admin_client, bob_id, kept = _handover_refused_and_kept(team, monkeypatch)
     admin_id = admin.db.get_meta("user_id")
@@ -458,7 +485,7 @@ def test_the_server_serves_a_handover_it_refused_in_place_of_the_removal(team, m
     assert tl.is_admin(state, admin_id) and not state.members[bob_id].active
 
 
-def test_the_server_serves_a_handover_it_refused_on_top_of_the_log(team, monkeypatch):
+def test_the_server_serves_a_handover_it_refused_on_top_of_the_log(team, monkeypatch):  # noqa: F811
     db, admin, admin_client, bob_id, kept = _handover_refused_and_kept(team, monkeypatch)
     _serve(db, kept, admin_client.team_state().head_seq + 1)
     with pytest.raises(TeamLogMismatch, match="withdrew"):

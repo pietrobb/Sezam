@@ -7032,6 +7032,7 @@ async function apiFetch(path, options = {}) {
         const err = await resp.json().catch(() => ({ detail: resp.statusText }));
         const error = new Error(err.detail || `HTTP ${resp.status}`);
         error.status = resp.status;
+        error.code = typeof err.code === 'string' ? err.code : null;  // server/app/errors.py
         throw error;
     }
 
@@ -8615,7 +8616,9 @@ async function remakeWebLostTeamChanges(lost, missing, served, team, _sodium) {
             return { records: [...served, ...records], team: after };
         } catch (err) {
             if (err.status === 409) return null;  // the head moved: the next pull compares again
-            if (!(Number.isInteger(err.status) && err.status >= 400 && err.status < 500)) throw err;
+            // R17-N9: only the log's own refusal sets them aside; any other
+            // answer (429, 403, 5xx) throws and the next pull makes them again.
+            if (!webTeamLogRefusedAnswer(err)) throw err;
             reason = 'the server refused them';
         }
     }
@@ -8624,8 +8627,38 @@ async function remakeWebLostTeamChanges(lost, missing, served, team, _sodium) {
         ledger.setAside.push(...bodies.map(body => ({ type: body.type, data: body.data, reason })));
         await saveWebTeamLedger(ledger, _sodium);
         console.warn(`Set aside ${bodies.length} lost team change(s): ${reason}`);
+        renderWebTeamChangesSetAside(ledger.setAside);
     }
     return { records: served, team };
+}
+
+/** R17-N9: a 400 team_log_refused (the desktop's _refusal_from_server). */
+function webTeamLogRefusedAnswer(err) {
+    return err?.status === 400 && err?.code === 'team_log_refused';
+}
+
+/** R17-N9: the team changes set aside are shown (nothing read them). */
+function renderWebTeamChangesSetAside(setAside) {
+    let banner = document.getElementById('team-set-aside-banner');
+    if (!setAside?.length) {
+        if (banner) banner.remove();
+        return;
+    }
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'team-set-aside-banner';
+        banner.className = 'sync-conflict-banner';
+        document.body.appendChild(banner);
+    }
+    const message = document.createElement('span');
+    message.textContent = t('sync.team_changes_set_aside', { count: setAside.length });
+    const list = document.createElement('ul');
+    for (const item of setAside) {
+        const row = document.createElement('li');
+        row.textContent = `${item.type} ${item.data?.user_id || ''}: ${item.reason}`;
+        list.append(row);
+    }
+    banner.replaceChildren(message, list);
 }
 
 function webTeamLedgerAad() {
