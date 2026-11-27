@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import time
+from typing import Optional
 
 import pymysql
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -29,7 +30,7 @@ from ..auth import (
 )
 from ..config import ServerConfig
 from ..database import Database, run_transaction
-from ..dependencies import get_config, get_current_user, get_db
+from ..dependencies import get_config, get_current_user, get_db, get_optional_reader
 from ..errors import ORG_RECOVERY_SUPERSEDED, WRONG_CURRENT_PASSWORD, ApiError
 from ..models.schemas import (
     ChallengeResponse,
@@ -379,8 +380,15 @@ async def _current_blob(cur, recovery_signing_pk: str | None = None) -> dict | N
 
 
 @router.get("/status", response_model=OrgRecoveryStatusResponse)
-async def recovery_status(db: Database = Depends(get_db)):
-    """Check whether org recovery is configured. No auth required."""
+async def recovery_status(
+    db: Database = Depends(get_db),
+    user: Optional[dict] = Depends(get_optional_reader),
+):
+    """Check whether org recovery is configured.
+
+    Without a session (the share holders, before any sign-in) only what the
+    recovery asks for: configured, the shares and stale. Who set it up, when
+    and its key go to a signed-in account (review c02cc47 R17-R9s V5)."""
     async with db.acquire() as conn:
         async with conn.cursor() as cur:
             blob = await _current_blob(cur)
@@ -388,6 +396,10 @@ async def recovery_status(db: Database = Depends(get_db)):
                 return OrgRecoveryStatusResponse(configured=False)
             stale = await _blob_is_stale(cur, blob["created_by"], blob["key_epoch"])
 
+    if user is None:
+        return OrgRecoveryStatusResponse(
+            configured=True, threshold=blob["threshold"], total_shares=blob["total_shares"], stale=stale,
+        )
     return OrgRecoveryStatusResponse(
         configured=True,
         threshold=blob["threshold"],

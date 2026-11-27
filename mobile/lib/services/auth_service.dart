@@ -3441,6 +3441,8 @@ class AuthService {
         kek,
       );
       _sync.configure(serverUrl);
+      // Review c02cc47 R17-R9s: who set it up is told to a session only.
+      await _sync.authenticate(username: username, signingSecretKey: signingSk);
       final recovery = await _sync.orgRecoveryStatus();
       if (recovery['configured'] == true &&
           recovery['created_by'] == userId &&
@@ -3467,7 +3469,6 @@ class AuthService {
         userId,
         preAnchor,
       );
-      await _sync.authenticate(username: username, signingSecretKey: signingSk);
       try {
         await _sync.advanceKeyEpoch(
           username: username,

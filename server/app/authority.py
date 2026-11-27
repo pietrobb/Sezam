@@ -246,7 +246,10 @@ ROUTES: dict[str, Route] = {
         ("tests/test_org_recovery_epoch.py", "tests/test_lone_admin_org_recovery.py"),
         "the admin check is inline in the handler (user['is_admin']), not a dependency",
     ),
-    "GET /api/org-recovery/status": Route("", PUBLIC, (), ("tests/test_review13_server_perf.py",)),
+    "GET /api/org-recovery/status": Route(
+        "", PUBLIC + "; who set it up, when and its key: " + READER, ("dependencies:get_optional_reader",),
+        ("tests/test_review13_server_perf.py", "tests/test_r17_r9s_server.py"),
+    ),
     "GET /api/org-recovery/blob": Route("", PUBLIC, (), ("tests/test_org_recovery_epoch.py",),
                                         "the blob is encrypted with the recovery key"),
     "POST /api/org-recovery/challenge": Route(

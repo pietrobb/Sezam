@@ -77,7 +77,7 @@ def test_a_setup_the_log_never_named_voids_the_older_shares(team, server):  # no
     assert not _blob_for(admin_client, first)
     assert _recovers(admin_client, second) == admin_id
     assert _blob_for(admin_client, second)
-    status = admin_client._request("GET", "/api/org-recovery/status")
+    status = admin_client._request("GET", "/api/org-recovery/status", auth=True)
     assert status["recovery_signing_pk"] == bytes(org_recovery_signing_key(second).verify_key).hex()
 
     # Its anchor arriving later changes nothing.

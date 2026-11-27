@@ -73,7 +73,7 @@ def test_lone_admin_recovers_after_the_server_lost_the_recovery_key(team, server
     assert not client.has_pending_key_change()
     assert _recover(admin, url, RECOVERED)["user_id"] == admin.db.get_meta("user_id")
     # The shares work on the server again (web): the blob is back.
-    assert client._request("GET", "/api/org-recovery/status")["configured"]
+    assert client._request("GET", "/api/org-recovery/status", auth=True)["configured"]
 
 
 def _web_setup(admin, admin_client) -> tuple[str, list]:
@@ -120,7 +120,7 @@ def test_a_web_setup_survives_a_server_restore(team, server):  # noqa: F811
     assert client.push()["conflicts"] == []
     assert not client.has_pending_key_change()
     assert _recover(admin, url, RECOVERED)["user_id"] == admin.db.get_meta("user_id")
-    blob = client._request("GET", "/api/org-recovery/status")
+    blob = client._request("GET", "/api/org-recovery/status", auth=True)
     assert blob["configured"] and blob["recovery_signing_pk"] == web_pk and not blob["stale"]
 
 

@@ -67,7 +67,7 @@ async def test_blob_turns_stale_after_the_owner_changes_password(app_client, moc
     assert stored.status_code == 200, stored.text
     assert mock_db._storage["org_recovery_blobs"][0]["key_epoch"] == 2
 
-    status = (await app_client.get("/api/org-recovery/status")).json()
+    status = (await app_client.get("/api/org-recovery/status", headers=_auth(ADMIN, "admin"))).json()
     assert status["configured"] and status["stale"] is False
     assert status["created_by"] == ADMIN
     assert (await app_client.get("/api/org-recovery/blob")).json()["stale"] is False

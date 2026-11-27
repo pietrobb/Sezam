@@ -198,7 +198,7 @@ class OrgRecoveryOnServer(RuntimeError):
 def server_status(vault: "Vault") -> dict:
     """/api/org-recovery/status; {} when the server cannot be asked."""
     try:
-        return _client(vault)._request("GET", "/api/org-recovery/status") or {}
+        return _client(vault)._request("GET", "/api/org-recovery/status", auth=True) or {}
     except RuntimeError:
         return {}
 
@@ -234,7 +234,7 @@ def registration_issue(vault: "Vault") -> Optional[str]:
         return None
     # Always asked: a server restored from a backup taken before the
     # registration lost it, and a local "registered" mark hid that.
-    status = _client(vault)._request("GET", "/api/org-recovery/status") or {}
+    status = _client(vault)._request("GET", "/api/org-recovery/status", auth=True) or {}
     owner = status.get("created_by") if status.get("configured") else None
     if owner and owner != vault.db.get_meta("user_id"):
         return "other_admin"  # a saved registration would only get a 409

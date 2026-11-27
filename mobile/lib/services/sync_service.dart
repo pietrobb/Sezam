@@ -1719,12 +1719,13 @@ class SyncService {
     return data;
   });
 
-  /// Org recovery state (public): whether this account set it up.
+  /// Org recovery state: whether this account set it up (signed in: the
+  /// server tells who set it up only to a session).
   Future<Map<String, dynamic>> orgRecoveryStatus() async {
     _ensureConfigured();
     final response = await _http.get(
       Uri.parse('$_serverUrl/api/org-recovery/status'),
-      headers: _headers(),
+      headers: _authHeaders(),
     );
     _checkResponse(response, 'org recovery status');
     return jsonDecode(response.body) as Map<String, dynamic>;

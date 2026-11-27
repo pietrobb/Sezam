@@ -142,7 +142,7 @@ def test_a_version_1_setup_still_recovers_and_syncs(team, tmp_path):  # noqa: F8
         client = _client(recovered, url)
         assert client.push()["conflicts"] == []  # the version 1 key proved the reset
         assert (pending_states.key_change_journal(recovered.db) or None) is None
-        status = client._request("GET", "/api/org-recovery/status")
+        status = client._request("GET", "/api/org-recovery/status", auth=True)
         assert status["recovery_signing_pk"] == server_blob["recovery_signing_pk"] and not status["stale"]
         # Still version 1: the web rebuilds the same secret and opens it.
         assert _open(_stored_blob(db), secret, V1_AAD) == bytes(recovered.dek_mgr._kek)

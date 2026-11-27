@@ -24,7 +24,7 @@ from tests.test_integration_client_server import PASSWORD, _vault, server  # noq
 
 
 def _status(laptop) -> dict:
-    return org_recovery_server._client(laptop)._request("GET", "/api/org-recovery/status")
+    return org_recovery_server._client(laptop)._request("GET", "/api/org-recovery/status", auth=True)
 
 
 def _laptop_with_waiting_setup(url, tmp_path, monkeypatch):

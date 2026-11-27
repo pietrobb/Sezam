@@ -40,7 +40,7 @@ def _signed(key: SigningKey, user_id: str, wrapped: bytes) -> dict:
 
 
 def _status(client) -> dict:
-    return client._request("GET", "/api/org-recovery/status")
+    return client._request("GET", "/api/org-recovery/status", auth=True)
 
 
 def test_a_voided_recovery_key_does_not_put_its_blob_back(team):  # noqa: F811

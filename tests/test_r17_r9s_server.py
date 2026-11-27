@@ -145,6 +145,25 @@ async def test_after_a_restore_to_a_shorter_log_the_worker_replays_it_once(
 
 
 @pytest.mark.asyncio
+async def test_org_recovery_status_tells_who_set_it_up_only_to_a_session(app_client, mock_db):  # noqa: F811
+    team = Team(mock_db)
+    await _team_folder(app_client, team)
+    mock_db._storage["org_recovery_blobs"] = [{
+        "id": 1, "wrapped_kek": b"w" * 72, "recovery_signing_pk": b"\x07" * 32, "threshold": 2,
+        "total_shares": 3, "created_by": ADMIN, "created_at": 1, "key_epoch": 0, "log_seq": 0,
+    }]
+    anonymous = (await app_client.get("/api/org-recovery/status")).json()
+    assert anonymous == {
+        "configured": True, "threshold": 2, "total_shares": 3, "created_at": None, "created_by": None,
+        "stale": False, "recovery_signing_pk": None,
+    }, anonymous
+    member = (await app_client.get("/api/org-recovery/status", headers=_auth(team.token[BOB]))).json()
+    assert member["created_by"] == ADMIN and member["recovery_signing_pk"] == "07" * 32, member
+    forged = await app_client.get("/api/org-recovery/status", headers={"Authorization": "Bearer x"})
+    assert forged.status_code == 401, forged.text
+
+
+@pytest.mark.asyncio
 async def test_ever_admin_reads_no_log_bodies_once_replayed(app_client, mock_db, monkeypatch):  # noqa: F811
     from server.app import personal_tree
 

@@ -50,7 +50,7 @@ def test_a_queued_desktop_record_does_not_replace_the_newer_web_setup(team, serv
     web_pk = bytes(org_recovery_signing_key(web).verify_key).hex()
 
     result = admin_client.push()
-    status = admin_client._request("GET", "/api/org-recovery/status")
+    status = admin_client._request("GET", "/api/org-recovery/status", auth=True)
     assert status["recovery_signing_pk"] == web_pk  # before: desktop_pk
     assert _recovers(admin_client, web) == admin_id
     assert desktop_pk not in _queued_keys(admin)
@@ -77,7 +77,7 @@ def test_the_desktop_setup_still_reaches_the_log(team, server):  # noqa: F811
     assert not result.get("org_recovery_superseded")
     assert _logged(admin_client, desktop_pk)
     assert _queued_keys(admin) == []
-    status = admin_client._request("GET", "/api/org-recovery/status")
+    status = admin_client._request("GET", "/api/org-recovery/status", auth=True)
     assert status["recovery_signing_pk"] == desktop_pk
 
 
@@ -97,7 +97,7 @@ def test_the_server_refuses_the_record_the_desktop_check_missed(team, server, mo
 
     result = admin_client.push()
     assert _logged(admin_client, desktop_pk) == []  # before: logged, the current one
-    status = admin_client._request("GET", "/api/org-recovery/status")
+    status = admin_client._request("GET", "/api/org-recovery/status", auth=True)
     assert status["recovery_signing_pk"] == web_pk
     assert _recovers(admin_client, web) == admin_id
     assert result.get("org_recovery_superseded") is True

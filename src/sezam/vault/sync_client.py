@@ -994,7 +994,7 @@ class SyncClient(
         admin has to set org recovery up again.
         """
         try:
-            status = self._request("GET", "/api/org-recovery/status") or {}
+            status = self._request("GET", "/api/org-recovery/status", auth=True) or {}
         except RuntimeError:
             return False
         return bool(status.get("stale")) and status.get("created_by") == self._user_id

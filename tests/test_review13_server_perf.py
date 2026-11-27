@@ -84,9 +84,9 @@ async def _with_logged_recovery(app_client, mock_db) -> tuple[Team, str]:  # noq
 
 @pytest.mark.asyncio
 async def test_recovery_status_reads_no_log_records_once_replayed(app_client, mock_db, queries):  # noqa: F811
-    _team, recovery_pk = await _with_logged_recovery(app_client, mock_db)
+    team, recovery_pk = await _with_logged_recovery(app_client, mock_db)
     team_log.forget_cache()
-    first = (await app_client.get("/api/org-recovery/status")).json()
+    first = (await app_client.get("/api/org-recovery/status", headers=_auth(team.token[BOB]))).json()
     assert first["configured"] and first["recovery_signing_pk"] == recovery_pk, first
     queries.clear()
     for path in ("/api/org-recovery/status", f"/api/org-recovery/blob?recovery_signing_pk={recovery_pk}"):
@@ -100,7 +100,7 @@ async def test_recovery_status_reads_no_log_records_once_replayed(app_client, mo
 async def test_the_last_logged_recovery_seq_still_ranks_against_the_stored_blob(app_client, mock_db):  # noqa: F811
     """The org.recovery record is seq 3: a blob stored at log head 2 is older,
     one stored at head 22 newer (review 4acfdde R11 #2)."""
-    _team, logged_pk = await _with_logged_recovery(app_client, mock_db)
+    team, logged_pk = await _with_logged_recovery(app_client, mock_db)
     other_pk = bytes(SigningKey.generate().verify_key).hex()
     for log_seq, expected in ((2, logged_pk), (22, other_pk)):
         mock_db._storage["org_recovery_blobs"] = [{
@@ -108,7 +108,7 @@ async def test_the_last_logged_recovery_seq_still_ranks_against_the_stored_blob(
             "threshold": 2, "total_shares": 3, "created_by": ADMIN, "created_at": 1,
             "key_epoch": 0, "log_seq": log_seq,
         }]
-        status = (await app_client.get("/api/org-recovery/status")).json()
+        status = (await app_client.get("/api/org-recovery/status", headers=_auth(team.token[BOB]))).json()
         assert status["recovery_signing_pk"] == expected, (log_seq, status)
 
 

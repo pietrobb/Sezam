@@ -865,7 +865,7 @@ class TeamLogMixin:
         if waiting_setup(self._db) is None:  # registration or log record (capability run 378)
             return False
         try:
-            status = self._request("GET", "/api/org-recovery/status") or {}
+            status = self._request("GET", "/api/org-recovery/status", auth=True) or {}
         except RuntimeError as exc:
             logger.warning("Org recovery status not known: %s", exc)
             return False
@@ -916,7 +916,7 @@ class TeamLogMixin:
         if pending_states.org_recovery_registration(self._db) is not None:
             return  # so does one the server has yet to take (anchored after it)
         try:
-            status = self._request("GET", "/api/org-recovery/status") or {}
+            status = self._request("GET", "/api/org-recovery/status", auth=True) or {}
         except RuntimeError as exc:
             logger.warning("Org recovery status not known: %s", exc)
             return

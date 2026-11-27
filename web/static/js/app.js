@@ -11072,7 +11072,8 @@ async function handleShamirGenerate() {
         }
         // A new setup voids every share of the current one: say so first.
         let replaceOtherAdmin = false;
-        const current = await apiFetch('/api/org-recovery/status', { noAuth: true });
+        // Review c02cc47 R17-R9s: who set it up is told to a session only.
+        const current = await apiFetch('/api/org-recovery/status');
         if (current && current.configured) {
             replaceOtherAdmin = current.created_by !== state.userId;
             const warning = replaceOtherAdmin ? 'recovery.replace_other_admin'

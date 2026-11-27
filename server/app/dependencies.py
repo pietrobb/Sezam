@@ -191,6 +191,18 @@ async def get_team_log_reader(
     return user
 
 
+async def get_optional_reader(
+    authorization: Annotated[Optional[str], Header()] = None,
+    db: Database = Depends(get_db),
+    jwt_mgr: JWTKeyManager = Depends(get_jwt_manager),
+) -> Optional[dict]:
+    """None without a session; a session that is sent must be valid (as
+    get_team_log_reader)."""
+    if authorization is None:
+        return None
+    return await get_team_log_reader(authorization, db, jwt_mgr)
+
+
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     """Require admin privileges."""
     if not user.get("is_admin"):
