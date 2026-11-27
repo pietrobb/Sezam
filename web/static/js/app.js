@@ -9786,6 +9786,10 @@ function addFieldRow(e, key, value, sensitive) {
  * top). The deleted folder is still a tombstone in the snapshot; its sealed
  * name tells whether it was a personal folder. Without it nothing could be
  * saved in the live folder ('Parent folder is unavailable.').
+ * R16-N29: the blob may be sealed several versions below the tombstone (a
+ * delete kept over a conflict goes out a version above the server's), so it
+ * is read at every version below, as desktop sealed.py and the page's own
+ * reviveFoldersOfUnsentWork do.
  */
 function trashedNode(nodeId) {
     const obj = state.syncObjects?.[nodeId];
@@ -9793,8 +9797,10 @@ function trashedNode(nodeId) {
     const payloadBytes = base64ToBytes(obj.payload || '');
     if (!isEncryptedEnvelope(payloadBytes)) return null;
     const dekId = new TextDecoder().decode(payloadBytes.slice(3, 29)).replace(/\0/g, '');
-    // A tombstone may still carry the blob sealed for the version before it.
-    for (const version of [obj.version, obj.version - 1].filter(v => v >= 1)) {
+    const top = Number(obj.version);
+    const versions = [top - 1, top];
+    for (let v = top - 2; v >= 0 && v > top - 256; v--) versions.push(v);
+    for (const version of versions.filter(v => v >= 0)) {
         try {
             const meta = decryptEnvelope(payloadBytes, obj.id, version, state.deks, state.sodium,
                 BLOB_KIND.NODE_META);
