@@ -28,14 +28,20 @@ from typing import Iterable
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
 
-from .models import ulid_to_bytes
-
 DOMAIN = b"sezam-key-vouchers-v1\x00"
 MAX_ENTRIES = 200_000
 _ID = re.compile(r"^[0-9A-Za-z]{26}$")  # OBJECT_ID in server/app/models/schemas.py
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 
 Entry = tuple[str, int, str]
+
+
+def ulid_to_bytes(ulid_str: str) -> bytes:
+    """Same bytes as sezam.models.ulid_to_bytes; a copy, so the image needs no sezam package (R17-N2)."""
+    raw = ulid_str.encode("ascii")
+    if len(raw) > 26 or b"\x00" in raw:
+        raise ValueError(f"An id is at most 26 ASCII characters without NUL, not {ulid_str!r}")
+    return raw.ljust(26, b"\x00")
 
 
 def canonical_entries(entries: Iterable) -> list[Entry]:
