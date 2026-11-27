@@ -140,11 +140,10 @@ MUTANTS = (
     ),
     # Reverts: R17-N1, a proof of a copy covers every signed field ---------
     Mutant(
-        "R13", "revert", "src/sezam/key_vouchers.py",
-        '        return (obj["id"], version, entry_digest(signer_id, signing_pk, message))\n',
-        '        return (obj["id"], version, payload_hash.lower())\n',
-        ("tests/test_sync_state_machine.py::test_sync_state_machine_leaked_key_signs_a_held_version_again",
-         "tests/test_r17_n1_voucher_binds_signed_fields.py", "tests/test_r17_n1_signed_fields_proofs.py"),
+        "R13", "revert", "core/src/vouchers.rs",
+        "    Some((id, version, to_hex(&hasher.finalize())))\n",
+        '    Some((id, version, obj.get("payload_hash")?.as_str()?.to_ascii_lowercase()))\n',
+        ("key_vouchers_vectors",),
         "R17-N1: a voucher entry names the whole signed message, signer and key, not the payload hash",
     ),
     Mutant(

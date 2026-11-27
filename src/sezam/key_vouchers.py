@@ -2,63 +2,51 @@
 
 Review e443cbc R15, goal #443 (INV-3). A rotated account's old signing key
 stays in its key ring so that what it signed before the rotation still
-verifies. Which objects that is was bounded by ``retired_seq`` and each
-object's ``commit_seq``, both set by the server alone: a server holding a
-leaked retired key could sign any object with it and serve both numbers to a
-device that had not pinned a bound (a new device, a full resync, every web
-session).
+verifies. A voucher list names the object versions it vouches for as (id,
+version, digest), signed by the account's CURRENT signing key; a retired key's
+signature counts only for a listed version (R17-N1: the digest covers the whole
+signed message, its signer's account and key).
 
-A voucher list names the object versions instead, as (id, version, digest),
-and is signed by the account's CURRENT signing key. A retired key's signature
-counts only for a listed version; lists signed by any other key (an older
-current key included) count for nothing, so each rotation carries the
-account's lists forward under the new key.
-
-R17-N1 (review c02cc47): the digest is that of the whole signed message (id,
-type, parent, target, tombstone flag, version, payload hash) together with the
-signer's account and key (``object_entry``). It was the payload hash alone: a
-server holding a leaked retired key signed a vouched version again with
-another parent, as deleted or for another signer, and every client took it.
-
-Self-contained (PyNaCl + stdlib) so that the server uses the very same file
-(the Docker image ships it as server/app/key_vouchers_core.py). Web
-(web/static/js/app.js) and mobile (mobile/lib/services/sync_service.dart)
-build the same message and must pass tests/vectors/key_vouchers.json.
+The rules and every byte are the Rust core's (core/src/vouchers.rs, the same
+copy the web and the phone use; docs/CORE_UNIFICATION.md U5). This file is
+the desktop's and the server's door to it: it only verifies the Ed25519
+signatures the core names, with PyNaCl. Self-contained (PyNaCl, stdlib and the
+core) so that the server uses the very same file (the Docker image ships it as
+server/app/key_vouchers_core.py).
 """
 
 from __future__ import annotations
 
-import hashlib
-import re
-import struct
-from typing import Iterable, Mapping, Optional
+import json
+from typing import Any, Iterable, Mapping, Optional
 
+import sezam_sync_core
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
 
 DOMAIN = b"sezam-key-vouchers-v2\x00"
-ENTRY_DOMAIN = b"sezam-key-voucher-entry-v2\x00"
 MAX_ENTRIES = 200_000
 # R17-N10: the server keeps at most this many lists per key and serves at
 # least one per page, so a client reads at most this many pages.
 MAX_LISTS_PER_KEY = 64
 MAX_PAGES = MAX_LISTS_PER_KEY
-_ID = re.compile(r"^[0-9A-Za-z]{26}$")  # OBJECT_ID in server/app/models/schemas.py
-_HASH = re.compile(r"^[0-9a-f]{64}$")
-# R17-L (review c02cc47): one parse in all three clients. A version is an
-# integral JSON number up to the largest integer every client reads exactly
-# (JavaScript's Number.MAX_SAFE_INTEGER; 3.0 is 3, which JSON.parse cannot
-# tell apart), and keys and signatures are plain hex (bytes.fromhex took
-# spaces, the web and the phone did not).
 MAX_VERSION = 2 ** 53 - 1
-_PK_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
-_SIG_HEX = re.compile(r"^[0-9a-fA-F]{128}$")
 
 Entry = tuple[str, int, str]
 # R17-N1 (S4 style): every field a sync object's signature covers, in
-# signed_message order. Each proof of a copy covers all of them
-# (tests/test_r17_n1_signed_fields_proofs.py, tests/vectors/signed_fields.json).
+# signed_message order (tests/vectors/signed_fields.json).
 SIGNED_FIELDS = ("id", "object_type", "parent_ref", "target_user_id", "is_deleted", "version", "payload_hash")
+
+
+def _call(op: str, **arguments: Any) -> Any:
+    out = json.loads(sezam_sync_core.call(op, json.dumps(arguments)))
+    if "error" in out:
+        raise ValueError(f"sync core {op}: {out['error']}")
+    return out["ok"]
+
+
+def _entries(items: list) -> list[Entry]:
+    return [(obj_id, version, digest) for obj_id, version, digest in items]
 
 
 def ulid_to_bytes(ulid_str: str) -> bytes:
@@ -75,113 +63,74 @@ def signed_message(
 ) -> bytes:
     """The bytes a sync object's signature covers (spec 8.2); ValueError on a
     value the fixed-width fields cannot hold exactly (R15 #428)."""
-    if type(is_deleted) not in (int, bool) or is_deleted not in (0, 1):
-        raise ValueError(f"is_deleted must be 0 or 1, not {is_deleted!r}")
-    if type(version) is not int or not 0 <= version <= 0xFFFFFFFF:
-        raise ValueError(f"version must fit a u32, not {version!r}")
-    ot = object_type.encode("utf-8")
-    return (
-        ulid_to_bytes(id)
-        + struct.pack("B", len(ot)) + ot
-        + (ulid_to_bytes(parent_ref) if parent_ref else b"\x00" * 26)
-        + (ulid_to_bytes(target_user_id) if target_user_id else b"\x00" * 26)
-        + struct.pack("B", is_deleted)
-        + struct.pack(">I", version)
-        + bytes.fromhex(payload_hash)
-    )
-
-
-def entry_digest(signer_id: str, signing_pk: bytes, message: bytes) -> str:
-    """The digest a voucher entry names: the signed message, its signer's
-    account and the key that signed it (R17-N1)."""
-    if len(bytes(signing_pk)) != 32:
-        raise ValueError("A signing key is 32 bytes")
-    return hashlib.sha256(
-        ENTRY_DOMAIN + ulid_to_bytes(signer_id) + bytes(signing_pk) + bytes(message)
-    ).hexdigest()
+    obj = {
+        "id": id, "object_type": object_type, "parent_ref": parent_ref, "target_user_id": target_user_id,
+        "is_deleted": is_deleted, "version": version, "payload_hash": payload_hash,
+    }
+    return bytes.fromhex(_call("key_voucher_signed_message", object=obj))
 
 
 def object_entry(obj: Mapping, signer_id: str, signing_pk: bytes) -> Optional[Entry]:
     """(id, version, digest) of a served sync object as ``signing_pk`` of
     ``signer_id`` signed it, or None when its fields are malformed."""
     try:
-        version = obj.get("version", 1)
-        payload_hash = obj["payload_hash"]
-        message = signed_message(
-            obj["id"], obj["object_type"], obj.get("parent_ref"), obj.get("target_user_id"),
-            obj.get("is_deleted", 0), version, payload_hash.lower(),
+        signed = {name: obj[name] for name in SIGNED_FIELDS if name in obj}
+        out = _call(
+            "key_voucher_object_entry", object=signed, signer_id=signer_id, signing_pk=bytes(signing_pk).hex(),
         )
-        return (obj["id"], version, entry_digest(signer_id, signing_pk, message))
-    except (KeyError, ValueError, TypeError, AttributeError):
+    except (ValueError, TypeError, AttributeError):
         return None
+    return None if out is None else (out[0], out[1], out[2])
 
 
 def canonical_entries(entries: Iterable) -> list[Entry]:
     """Sorted, de-duplicated (id, version, digest); ValueError on any malformed one."""
-    out: set[Entry] = set()
-    for count, entry in enumerate(entries, 1):
-        if count > MAX_ENTRIES:  # as posted, duplicates too (the server's KeyVoucherList)
-            raise ValueError("Too many voucher entries")
-        if not isinstance(entry, (list, tuple)) or len(entry) != 3:
-            raise ValueError("A voucher entry is [id, version, digest]")
-        obj_id, version, payload_hash = entry
-        if not isinstance(obj_id, str) or not _ID.match(obj_id):
-            raise ValueError("A voucher entry needs a 26-character object id")
-        if isinstance(version, float) and version.is_integer():
-            version = int(version)
-        if isinstance(version, bool) or not isinstance(version, int) or not 0 <= version <= MAX_VERSION:
-            raise ValueError("A voucher entry needs an unsigned version of at most 2^53 - 1")
-        if not isinstance(payload_hash, str) or not _HASH.match(payload_hash):
-            raise ValueError("A voucher entry needs a lowercase hex SHA-256 digest")
-        out.add((obj_id, version, payload_hash))
-    return sorted(out)
+    return _entries(_call("key_voucher_canonical", entries=[list(e) if isinstance(e, tuple) else e for e in entries]))
 
 
 def voucher_message(user_id: str, signing_pk: bytes, entries: Iterable) -> bytes:
     """Bytes the account's current key signs for a voucher list."""
+    return bytes.fromhex(_voucher(user_id, signing_pk, entries)["message"])
+
+
+def _voucher(user_id: str, signing_pk: bytes, entries: Iterable) -> dict:
     if len(bytes(signing_pk)) != 32:
         raise ValueError("A voucher signing key is 32 bytes")
-    items = canonical_entries(entries)
-    return (
-        DOMAIN
-        + ulid_to_bytes(user_id)
-        + bytes(signing_pk)
-        + len(items).to_bytes(4, "big")
-        + b"".join(
-            obj_id.encode("ascii") + version.to_bytes(8, "big") + bytes.fromhex(payload_hash)
-            for obj_id, version, payload_hash in items
-        )
+    return _call(
+        "key_voucher_message", user_id=user_id, signing_pk=bytes(signing_pk).hex(),
+        entries=[list(e) if isinstance(e, tuple) else e for e in entries],
     )
 
 
 def sign_vouchers(user_id: str, signing_key: SigningKey, entries: Iterable) -> dict:
     """A voucher list as posted: {signing_pk, entries, signature} (hex)."""
     signing_pk = bytes(signing_key.verify_key)
-    items = canonical_entries(entries)
+    out = _voucher(user_id, signing_pk, entries)
     return {
         "signing_pk": signing_pk.hex(),
-        "entries": [list(item) for item in items],
-        "signature": signing_key.sign(voucher_message(user_id, signing_pk, items)).signature.hex(),
+        "entries": out["entries"],
+        "signature": signing_key.sign(bytes.fromhex(out["message"])).signature.hex(),
     }
+
+
+def _verified(user_id: str, signing_pk: bytes, lists: Any) -> list[bool]:
+    checks = _call("key_voucher_lists", user_id=user_id, current_signing_pk=bytes(signing_pk).hex(), lists=lists)
+    out = []
+    for check in checks:
+        try:
+            VerifyKey(bytes(signing_pk)).verify(bytes.fromhex(check["message"]), bytes.fromhex(check["signature"]))
+            out.append(True)
+        except (BadSignatureError, TypeError, ValueError):
+            out.append(False)
+    return out
 
 
 def list_valid(user_id: str, signing_pk: bytes, voucher_list) -> bool:
     """Is ``voucher_list`` signed by ``signing_pk`` for ``user_id``?"""
-    if not isinstance(voucher_list, dict):
-        return False
-    pk, signature = voucher_list.get("signing_pk"), voucher_list.get("signature")
-    entries = voucher_list.get("entries")
-    if not isinstance(pk, str) or not _PK_HEX.match(pk) or not isinstance(signature, str) \
-            or not _SIG_HEX.match(signature) or not isinstance(entries, (list, type(None))):
-        return False
     try:
-        if bytes.fromhex(pk) != bytes(signing_pk):
-            return False
-        message = voucher_message(user_id, signing_pk, entries or [])
-        VerifyKey(bytes(signing_pk)).verify(message, bytes.fromhex(signature))
-    except (BadSignatureError, ValueError, TypeError, AttributeError):
+        return _verified(user_id, signing_pk, [voucher_list]) == [True]
+    except (ValueError, TypeError):
         return False
-    return True
 
 
 def vouched(user_id: str, current_signing_pk: bytes, lists) -> frozenset[Entry]:
@@ -190,8 +139,12 @@ def vouched(user_id: str, current_signing_pk: bytes, lists) -> frozenset[Entry]:
     A list signed by another key, for another account, or not verifying
     vouches for nothing.
     """
-    out: set[Entry] = set()
-    for voucher_list in lists if isinstance(lists, list) else []:
-        if list_valid(user_id, current_signing_pk, voucher_list):
-            out.update(canonical_entries(voucher_list.get("entries") or []))
-    return frozenset(out)
+    try:
+        verified = _verified(user_id, current_signing_pk, lists)
+        out = _call(
+            "key_voucher_vouched", user_id=user_id, current_signing_pk=bytes(current_signing_pk).hex(),
+            lists=lists, verified=verified,
+        )
+    except (ValueError, TypeError):
+        return frozenset()
+    return frozenset(_entries(out))

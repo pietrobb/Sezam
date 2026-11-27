@@ -9406,6 +9406,8 @@ function keyRotationMessage(userId, oldSigningPk, oldEncryptionPk, newSigningPk,
 // signed by their successor, so the server cannot inject historical keys.
 // ── Key vouchers (goal #443, src/sezam/key_vouchers.py, tests/vectors/key_vouchers.json) ──
 
+// The rules and every byte are the Rust core's (core/src/vouchers.rs, U5);
+// the page only verifies the Ed25519 signatures the core names.
 function keyVoucherKey(id, version, digest) {
     return `${id}:${version}:${String(digest || '').toLowerCase()}`;
 }
@@ -9413,92 +9415,49 @@ function keyVoucherKey(id, version, digest) {
 /**
  * R17-N1: the entry a voucher names for a served object as `signingPk` of
  * `signerId` signed it: the digest of the whole signed message, the signer's
- * account and key (key_vouchers.object_entry). Null when malformed.
+ * account and key. Null when malformed.
  */
 function keyVoucherObjectEntry(obj, signerId, signingPk, _sodium) {
     try {
-        const message = signedObjectMessage({ ...obj, payload_hash: String(obj.payload_hash || '').toLowerCase() });
-        if (!message || signingPk.length !== 32) return null;
-        const domain = new TextEncoder().encode('sezam-key-voucher-entry-v2\0');
-        const input = new Uint8Array(domain.length + 26 + 32 + message.length);
-        input.set(domain, 0);
-        input.set(idBytes26(signerId), domain.length);
-        input.set(signingPk, domain.length + 26);
-        input.set(message, domain.length + 58);
-        return [obj.id, obj.version ?? 1, bytesToHex(_sodium.crypto_hash_sha256(input))];
+        const signed = {};
+        for (const name of ['id', 'object_type', 'parent_ref', 'target_user_id', 'is_deleted', 'version', 'payload_hash']) if (obj && name in obj) signed[name] = obj[name];
+        return globalThis.SezamSyncCore.call('key_voucher_object_entry', {
+            object: signed, signer_id: signerId, signing_pk: bytesToHex(signingPk),
+        });
     } catch {
         return null;
     }
 }
 
-// R17-L: one parse in all three clients (src/sezam/key_vouchers.py): at most
-// MAX_ENTRIES as posted, a version up to Number.MAX_SAFE_INTEGER, plain hex.
 function canonicalKeyVoucherEntries(entries) {
-    if (!Array.isArray(entries)) throw new Error('Voucher entries must be a list');
-    if (entries.length > 200000) throw new Error('Too many voucher entries');
-    const byKey = new Map();
-    for (const entry of entries) {
-        if (!Array.isArray(entry) || entry.length !== 3) {
-            throw new Error('A voucher entry is [id, version, digest]');
-        }
-        const [id, version, payloadHash] = entry;
-        if (typeof id !== 'string' || !/^[0-9A-Za-z]{26}$/.test(id)) {
-            throw new Error('A voucher entry needs a 26-character object id');
-        }
-        if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 0) {
-            throw new Error('A voucher entry needs an unsigned version');
-        }
-        if (typeof payloadHash !== 'string' || !/^[0-9a-f]{64}$/.test(payloadHash)) {
-            throw new Error('A voucher entry needs a lowercase hex SHA-256 digest');
-        }
-        byKey.set(keyVoucherKey(id, version, payloadHash), [id, version, payloadHash]);
-    }
-    return [...byKey.values()].sort((a, b) => (
-        a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1] || (a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0)
-    ));
+    return globalThis.SezamSyncCore.call('key_voucher_canonical', { entries });
 }
 
 function keyVoucherMessage(userId, signingPk, entries) {
     if (signingPk.length !== 32) throw new Error('A voucher signing key is 32 bytes');
-    const items = canonicalKeyVoucherEntries(entries);
-    const encoder = new TextEncoder();
-    const domain = encoder.encode('sezam-key-vouchers-v2\0');
-    const user = idBytes26(userId);
-    const out = new Uint8Array(domain.length + 26 + 32 + 4 + items.length * 66);
-    const view = new DataView(out.buffer);
-    let at = 0;
-    out.set(domain, at); at += domain.length;
-    out.set(user, at); at += 26;
-    out.set(signingPk, at); at += 32;
-    view.setUint32(at, items.length); at += 4;
-    for (const [id, version, payloadHash] of items) {
-        out.set(encoder.encode(id), at); at += 26;
-        view.setBigUint64(at, BigInt(version)); at += 8;
-        out.set(hexToBytes(payloadHash), at); at += 32;
-    }
-    return out;
+    const out = globalThis.SezamSyncCore.call('key_voucher_message', {
+        user_id: userId, signing_pk: bytesToHex(signingPk), entries,
+    });
+    return hexToBytes(out.message);
 }
 
 function vouchedEntries(userId, currentSigningPk, lists, _sodium) {
-    const currentHex = bytesToHex(currentSigningPk);
-    const vouched = new Set();
-    for (const list of Array.isArray(lists) ? lists : []) {
-        try {
-            if (!list || typeof list.signing_pk !== 'string' || !/^[0-9a-fA-F]{64}$/.test(list.signing_pk)
-                || list.signing_pk.toLowerCase() !== currentHex) continue;
-            if (typeof list.signature !== 'string' || !/^[0-9a-fA-F]{128}$/.test(list.signature)) continue;
-            const signature = hexToBytes(list.signature);
-            const message = keyVoucherMessage(userId, currentSigningPk, list.entries ?? []);
-            if (signature.length !== 64
-                || !_sodium.crypto_sign_verify_detached(signature, message, currentSigningPk)) continue;
-            for (const [id, version, payloadHash] of canonicalKeyVoucherEntries(list.entries ?? [])) {
-                vouched.add(keyVoucherKey(id, version, payloadHash));
+    try {
+        const args = { user_id: userId, current_signing_pk: bytesToHex(currentSigningPk), lists: lists ?? null };
+        const verified = globalThis.SezamSyncCore.call('key_voucher_lists', args).map((check) => {
+            try {
+                return !!check && _sodium.crypto_sign_verify_detached(
+                    hexToBytes(check.signature), hexToBytes(check.message), currentSigningPk
+                );
+            } catch {
+                return false;
             }
-        } catch {
-            continue;
-        }
+        });
+        const entries = globalThis.SezamSyncCore.call('key_voucher_vouched', { ...args, verified });
+        return new Set(entries.map(([id, version, digest]) => keyVoucherKey(id, version, digest)));
+    } catch {
+        return new Set();
     }
-    return vouched;
 }
 
 const KEY_VOUCHER_MAX_PAGES = 64;

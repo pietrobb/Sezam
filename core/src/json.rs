@@ -202,10 +202,12 @@ fn run(op: &str, input: &str) -> Result<Value, String> {
             let i: RekeyDueIn = parse(input)?;
             json!(reseal::rekey_due(i.team.as_ref(), &i.keys))
         }
-        _ => match crate::teamlog::ops::run(op, input) {
-            Some(out) => out?,
-            None => return Err(format!("unknown operation {op:?}")),
-        },
+        _ => {
+            match crate::teamlog::ops::run(op, input).or_else(|| crate::vouchers::run(op, input)) {
+                Some(out) => out?,
+                None => return Err(format!("unknown operation {op:?}")),
+            }
+        }
     };
     Ok(out)
 }

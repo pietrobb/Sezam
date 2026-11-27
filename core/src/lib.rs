@@ -34,6 +34,7 @@ pub mod pull;
 pub mod reapply;
 pub mod reseal;
 pub mod teamlog;
+pub mod vouchers;
 
 use serde::{Deserialize, Serialize};
 

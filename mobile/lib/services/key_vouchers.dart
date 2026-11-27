@@ -1,35 +1,49 @@
 // Key vouchers (review e443cbc R15, goal #443, INV-3): which object versions a
-// retired identity key still vouches for. Mirrors src/sezam/key_vouchers.py
-// and must pass tests/vectors/key_vouchers.json.
+// retired identity key still vouches for.
 //
 // A retired key's signature counts only for an (id, version, digest) named by
-// a list signed by the account's CURRENT signing key, not for whatever the
-// server dates before the rotation (retired_seq, commit_seq). R17-N1: the
-// digest is that of the whole signed message, its signer and key
-// (keyVoucherObjectEntry), not the payload hash alone.
+// a list signed by the account's CURRENT signing key. R17-N1: the digest is
+// that of the whole signed message, its signer and key.
+//
+// The rules and every byte are the Rust core's (core/src/vouchers.rs, the
+// copy the desktop, the server and the web use; docs/CORE_UNIFICATION.md U5),
+// reached over FFI (sync_core.dart). The phone only verifies the Ed25519
+// signatures the core names.
 
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'crypto_service.dart';
+import 'sync_core.dart';
 
-final _id = RegExp(r'^[0-9A-Za-z]{26}$');
-final _hash = RegExp(r'^[0-9a-f]{64}$');
-
-// R17-L (review c02cc47): one parse in all three clients
-// (src/sezam/key_vouchers.py): at most this many entries as posted, a version
-// an integral number up to JavaScript's Number.MAX_SAFE_INTEGER (3.0 is 3),
-// keys and signatures plain hex.
-const keyVoucherMaxEntries = 200000;
-const keyVoucherMaxVersion = 9007199254740991; // 2^53 - 1
-final _pkHex = RegExp(r'^[0-9a-fA-F]{64}$');
-final _sigHex = RegExp(r'^[0-9a-fA-F]{128}$');
+const _signedFields = [
+  'id',
+  'object_type',
+  'parent_ref',
+  'target_user_id',
+  'is_deleted',
+  'version',
+  'payload_hash',
+];
 
 String keyVoucherKey(String id, int version, String digest) =>
     '$id:$version:${digest.toLowerCase()}';
 
-/// R17-N1 (key_vouchers.object_entry): the entry a voucher names for an
-/// object as [signingPk] of [signerId] signed it; null when malformed.
+(String, int, String) _entry(Object? raw) {
+  final e = raw as List;
+  return (e[0] as String, e[1] as int, e[2] as String);
+}
+
+/// Run a voucher operation; a refused input is a [FormatException].
+Object? _core(String op, Map<String, Object?> args) {
+  try {
+    return syncCore(op, args);
+  } on StateError catch (e) {
+    throw FormatException(e.message);
+  }
+}
+
+/// R17-N1: the entry a voucher names for an object as [signingPk] of
+/// [signerId] signed it; null when malformed.
 (String, int, String)? keyVoucherObjectEntry({
   required String id,
   required String objectType,
@@ -41,27 +55,26 @@ String keyVoucherKey(String id, int version, String digest) =>
   required String signerId,
   required Uint8List signingPk,
 }) {
+  final values = [
+    id,
+    objectType,
+    parentRef,
+    targetUserId,
+    isDeleted,
+    version,
+    payloadHash,
+  ];
   try {
-    if (signingPk.length != 32) return null;
-    final crypto = CryptoService();
-    final message = crypto.buildSyncSignatureData(
-      id: id,
-      objectType: objectType,
-      parentRef: parentRef == null || parentRef.isEmpty ? null : parentRef,
-      targetUserId: targetUserId == null || targetUserId.isEmpty
-          ? null
-          : targetUserId,
-      isDeleted: isDeleted,
-      version: version,
-      payloadHashHex: payloadHash.toLowerCase(),
-    );
-    final input = BytesBuilder()
-      ..add(utf8.encode('sezam-key-voucher-entry-v2\x00'))
-      ..add(CryptoService.idBytes26(signerId))
-      ..add(signingPk)
-      ..add(message);
-    return (id, version, crypto.sha256Hex(input.toBytes()));
-  } catch (_) {
+    final out = _core('key_voucher_object_entry', {
+      'object': {
+        for (var i = 0; i < _signedFields.length; i++)
+          _signedFields[i]: values[i],
+      },
+      'signer_id': signerId,
+      'signing_pk': bytesToHex(signingPk),
+    });
+    return out == null ? null : _entry(out);
+  } on FormatException {
     return null;
   }
 }
@@ -71,43 +84,8 @@ List<(String, int, String)> canonicalKeyVoucherEntries(Object? entries) {
   if (entries is! List) {
     throw const FormatException('voucher entries must be a list');
   }
-  if (entries.length > keyVoucherMaxEntries) {
-    throw const FormatException('too many voucher entries');
-  }
-  final byKey = <String, (String, int, String)>{};
-  for (final entry in entries) {
-    if (entry is! List || entry.length != 3) {
-      throw const FormatException('a voucher entry is [id, version, digest]');
-    }
-    final id = entry[0];
-    final raw = entry[1];
-    final payloadHash = entry[2];
-    if (id is! String || !_id.hasMatch(id)) {
-      throw const FormatException(
-        'a voucher entry needs a 26-character object id',
-      );
-    }
-    final version = raw is double && raw.isFinite && raw == raw.truncate()
-        ? raw.toInt()
-        : raw;
-    if (version is! int || version < 0 || version > keyVoucherMaxVersion) {
-      throw const FormatException(
-        'a voucher entry needs an unsigned version of at most 2^53 - 1',
-      );
-    }
-    if (payloadHash is! String || !_hash.hasMatch(payloadHash)) {
-      throw const FormatException(
-        'a voucher entry needs a lowercase hex SHA-256 digest',
-      );
-    }
-    byKey[keyVoucherKey(id, version, payloadHash)] = (id, version, payloadHash);
-  }
-  return byKey.values.toList()..sort((a, b) {
-    final byId = a.$1.compareTo(b.$1);
-    if (byId != 0) return byId;
-    final byVersion = a.$2.compareTo(b.$2);
-    return byVersion != 0 ? byVersion : a.$3.compareTo(b.$3);
-  });
+  final out = _core('key_voucher_canonical', {'entries': entries}) as List;
+  return out.map(_entry).toList();
 }
 
 /// Bytes the account's current key signs for a voucher list.
@@ -119,22 +97,17 @@ Uint8List keyVoucherMessage(
   if (signingPk.length != 32) {
     throw const FormatException('a voucher signing key is 32 bytes');
   }
-  final items = canonicalKeyVoucherEntries(entries);
-  final out = BytesBuilder()..add(utf8.encode('sezam-key-vouchers-v2\x00'));
-  final user = CryptoService.idBytes26(userId);
-  out
-    ..add(user)
-    ..add(signingPk);
-  final count = ByteData(4)..setUint32(0, items.length);
-  out.add(count.buffer.asUint8List());
-  for (final (id, version, payloadHash) in items) {
-    final seq = ByteData(8)..setUint64(0, version);
-    out
-      ..add(ascii.encode(id))
-      ..add(seq.buffer.asUint8List())
-      ..add(hexToBytes(payloadHash));
+  if (entries is! List) {
+    throw const FormatException('voucher entries must be a list');
   }
-  return out.toBytes();
+  final out =
+      _core('key_voucher_message', {
+            'user_id': userId,
+            'signing_pk': bytesToHex(signingPk),
+            'entries': entries,
+          })
+          as Map;
+  return hexToBytes(out['message'] as String);
 }
 
 /// Every keyVoucherKey a list signed by [currentSigningPk] names; a list by
@@ -144,39 +117,37 @@ Set<String> vouchedEntries(
   Uint8List currentSigningPk,
   Object? lists,
 ) {
-  final currentHex = bytesToHex(currentSigningPk);
-  final vouched = <String>{};
-  for (final list in lists is List ? lists : const []) {
-    try {
-      if (list is! Map) continue;
-      final pk = list['signing_pk'];
-      final signatureHex = list['signature'];
-      if (pk is! String ||
-          !_pkHex.hasMatch(pk) ||
-          pk.toLowerCase() != currentHex ||
-          signatureHex is! String ||
-          !_sigHex.hasMatch(signatureHex)) {
-        continue;
-      }
-      final entries = list['entries'] ?? const [];
-      final signature = hexToBytes(signatureHex);
-      final message = keyVoucherMessage(userId, currentSigningPk, entries);
-      if (signature.length != 64 ||
-          !CryptoService().verifyDetached(
-            signature: signature,
-            message: message,
-            publicKey: currentSigningPk,
-          )) {
-        continue;
-      }
-      for (final (id, version, payloadHash) in canonicalKeyVoucherEntries(
-        entries,
-      )) {
-        vouched.add(keyVoucherKey(id, version, payloadHash));
-      }
-    } catch (_) {
-      continue;
-    }
+  try {
+    final args = <String, Object?>{
+      'user_id': userId,
+      'current_signing_pk': bytesToHex(currentSigningPk),
+      'lists': lists is List ? lists : null,
+    };
+    final checks = _core('key_voucher_lists', args) as List;
+    final verified = [
+      for (final check in checks) _verifies(check, currentSigningPk),
+    ];
+    final out =
+        _core('key_voucher_vouched', {...args, 'verified': verified}) as List;
+    return {
+      for (final raw in out)
+        if (_entry(raw) case (final id, final version, final digest))
+          keyVoucherKey(id, version, digest),
+    };
+  } on FormatException {
+    return {};
   }
-  return vouched;
+}
+
+bool _verifies(Object? check, Uint8List publicKey) {
+  if (check is! Map) return false;
+  try {
+    return CryptoService().verifyDetached(
+      signature: hexToBytes(check['signature'] as String),
+      message: hexToBytes(check['message'] as String),
+      publicKey: publicKey,
+    );
+  } catch (_) {
+    return false;
+  }
 }
