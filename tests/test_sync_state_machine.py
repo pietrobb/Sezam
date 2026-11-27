@@ -2096,11 +2096,38 @@ class SyncMachine(RuleBasedStateMachine):
             coverage_event("the page refuses a team write while it refuses the team log")
             assert not [i for call in result["calls"] for i in call.get("objects") or []], (
                 f"W: {label} sent objects while the page refuses the team log\n" + self._trace())
+        elif (error and "folder waits for a re-key" in error and action in ("save_object", "delete_entry")
+              and self._web_write_waits_for_a_rekey(step)):
+            # R16-N26 (nightly 45806253109 on ec6213d): a member was removed and
+            # the folder's re-key is still queued on the admin's desktop. The
+            # page seals nothing more under the key the member held (the server's
+            # push rule, core.item_refusal) and sends nothing; the write is the
+            # user's to make again once the re-key is out.
+            coverage_event("the page refuses a write into a folder that waits for a re-key")
+            assert not [i for call in result["calls"] for i in call.get("objects") or []], (
+                f"W: {label} sent objects into a folder that waits for a re-key\n" + self._trace())
         elif error and not any(ok in error for ok in self.WEB_ERRORS):
             raise AssertionError(f"W: {label} failed: {error}\n" + self._trace())
         if not (self.web_view["token"] and self.web_view["unlocked"]):
             self.web_ended = True
         return result
+
+    def _web_write_waits_for_a_rekey(self, step: dict) -> bool:
+        """The server's log has the team folder the page's write ``step``
+        seals under (the object itself or a folder above it) waiting for a re-key."""
+        state = teamlog.replay(self._server_log())
+        if state is None:
+            return False
+        parents = {o: s[2] for o, s in self._web_snap(self.web_view).items()}
+        here, seen = step.get("id") or step.get("parent"), set()
+        if step.get("id") and step.get("parent"):
+            parents[step["id"]] = step["parent"]
+        while here and here != "ROOT" and here not in seen:
+            seen.add(here)
+            if here in state.folders and teamlog.is_stale(state, here):
+                return True
+            here = parents.get(here)
+        return False
 
     def _web_pulled(self, result: dict, skip: str | None = None) -> None:
         """What the page shows after it pulled: learnt; what it does not hold
@@ -5194,6 +5221,38 @@ def test_sync_state_machine_web_retry_after_a_rekey_elsewhere(loopback_server, m
         machine._web_settle()  # the banner's Retry, no pull since the re-key
         unsent = set(machine.web_view["dirty"]) | set(machine.web_view["conflicts"])
         assert not queued & unsent, f"{sorted(queued & unsent)} still queued\n" + machine._trace()
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+@pytest.mark.skipif(not NODE, reason="the web tab needs Node >= 24.7")
+def test_sync_state_machine_web_write_while_a_removal_waits_for_its_rekey(loopback_server, monkeypatch):
+    """R16-N26 (nightly stateful-deep 45806253109 on ec6213d, TeamLogMachine):
+    A removed a member; the folder's re-key stayed queued on A's desktop
+    (RekeyPending). The page then renamed the folder: it refuses ('folder
+    waits for a re-key') and sends nothing, as the server's push rule does.
+    Once A's push sends the re-key, the same rename goes out."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
+    TeamLogMachine.server = loopback_server
+    machine = TeamLogMachine()
+    try:
+        member = machine._active_members()[0]
+        top = machine._folders("A")[0]
+        machine._grant("A", member, top, "write")
+        machine._member_sync(member)
+        machine.track_member_keys()
+        machine.open_web_tab()
+        machine.revoke(_Scripted(device="A", member=member), "before")
+        assert "RekeyPending" in machine.log[-2], machine._trace()
+        machine.web_refresh(None)
+        below = next(f for f, s in machine._web_snap(machine.web_view).items() if s[2] == top)
+        machine.web_rename_folder(_Scripted(folder=below), None)  # sealed with the team folder's key
+        assert "folder waits for a re-key" in machine.log[-1], machine._trace()
+        machine.push(_Scripted(device="A"), None)
+        machine.web_refresh(None)
+        machine.web_rename_folder(_Scripted(folder=below), None)
+        assert machine.log[-1].count(" -> ") == 1, machine._trace()  # 'rename folder X -> F..', no error
         machine._settle(lambda _obj: "server")
     finally:
         machine.teardown()

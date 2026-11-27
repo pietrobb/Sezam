@@ -489,6 +489,20 @@ RESTORE_EXCEPTIONS = {
         "every key is, and the admin signing it could remove and re-add the "
         "member on the main path anyway"
     ),
+    # server/app/team_log.py _own_rotations, the rotations of a membership left
+    # and _refuse_restored_keys ``later`` (review e443cbc P2, capability run 277;
+    # recorded here on R16-N27, nightly 45806253109 on ec6213d).
+    "E7 re-add on the member's own lost rotation": (
+        "an admin's member.add, as member and never made admin in the upload, on "
+        "keys the member's own rotation in the log links its account's keys to "
+        "(signed by the old key, proven by the new one), on a server restored "
+        "from a backup older than that rotation. On the main path the member's "
+        "device signs in with the log's current key and sends the rotation again "
+        "(server/app/dependencies.py), then the admin's append takes the re-add. "
+        "The keys are the member's own and the admin could re-add it anyway; an "
+        "admin role on such keys stays refused (R15-N1: no device of it may be "
+        "there and the team freezes)"
+    ),
 }
 
 
@@ -647,7 +661,9 @@ class NormalPath:
         return self._send()
 
     def _new_keys(self, data: dict) -> bool:
-        row = next(u for u in self.db._storage["users"] if u["id"] == data["user_id"])
+        row = next((u for u in self.db._storage["users"] if u["id"] == data["user_id"]), None)
+        if row is None:
+            return False  # R16-N28: no account yet, _take provisions it on these keys (E2)
         return (row["signing_pk"], row["encryption_pk"]) != (
             bytes.fromhex(data["signing_pk"]), bytes.fromhex(data["encryption_pk"]))
 
@@ -657,7 +673,38 @@ class NormalPath:
             self._provision(body["data"])
         elif body["type"] == "member.add" and (uid in self.left or self._left_inside(i, body)):
             self._left_membership(i, body)
+        elif body["type"] == "member.add" and self._own_lost_rotation(i, body):
+            coverage_event("restore exception E7 re-add on the member's own lost rotation")
+            _set_row_keys(self.db, uid, body["data"]["signing_pk"], body["data"]["encryption_pk"])
         self.batch.append((i, body, record))
+
+    def _own_lost_rotation(self, i: int, body: dict) -> bool:
+        """E7: the member.add ``body`` (as member, never made admin later in
+        the upload) names keys the member's own rotations in the server's log
+        link its account's keys to; its device sends the rotation again first."""
+        data, uid = body["data"], body["data"]["user_id"]
+        if data.get("role") == "admin" or uid in self.mine:
+            return False
+        for record in self.upload[i + 1:]:
+            later = teamlog.parse_body(record["body"])
+            if (later["type"] == "member.role" and later["data"].get("user_id") == uid
+                    and later["data"].get("role") == "admin"):
+                return False
+        row = next((u for u in self.db._storage["users"] if u["id"] == uid), None)
+        if row is None or row["signing_pk"] is None or row["encryption_pk"] is None:
+            return False
+        rotated, current = {}, None
+        for stored in sorted(self.db._storage["team_log"], key=lambda r: r["seq"]):
+            earlier = teamlog.parse_body(stored["body"])
+            if earlier["data"].get("user_id") != uid:
+                continue
+            keys = (earlier["data"].get("signing_pk"), earlier["data"].get("encryption_pk"))
+            if earlier["type"] in ("genesis", "member.add"):
+                current = keys
+            elif earlier["type"] == "member.keys" and current is not None:
+                rotated[current], current = keys, keys
+        account = (row["signing_pk"].hex(), row["encryption_pk"].hex())
+        return (data["signing_pk"], data["encryption_pk"]) in team_log._after(rotated, account)
 
     def _cut(self, upload: list, i: int, earliest: int) -> str:
         """Record ``i`` cannot join the batch: the append must end at least
@@ -864,6 +911,36 @@ def test_the_member_with_the_lost_rotation_uploads_the_handover_itself():
     assert not NormalPath(storage, "B", "A", held).takes(honest.records[kept:], upload)
     REFUSED.clear()
     assert restore(_db(storage), upload, IDS["B"]), REFUSED[-1:]
+
+
+@pytest.mark.parametrize("role", ["member", "admin"])
+def test_counterexample_a_re_add_on_the_members_own_lost_rotation(role):
+    """Nightly stateful-deep run 45806253109 on ec6213d (R16-N27): A adds C, C
+    rotates; the server comes back from the backup before the rotation. A puts
+    the log back, removes C and re-adds it on the keys C rotated to. On the main
+    path C's device sends its rotation again first (E7), so the restore may take
+    it; as admin the restore still refuses it (R15-N1)."""
+    honest = Honest(Keys())
+    assert honest._commit("A", [("member.add", "A", {
+        "user_id": IDS["C"], "signing_pk": honest.current("C").pk,
+        "encryption_pk": honest.current("C").enc, "role": "member",
+    })])
+    new = honest.keys.new()
+    assert honest._commit("C", [_rotation(honest.state, "C", new)], rotate=new)
+    kept, storage = honest.snapshots[0]
+    forger = Forger(honest, "A", teamlog.replay(honest.records))
+    key = forger._key_of(IDS["A"])
+    forger._try("member.remove", IDS["A"], {"user_id": IDS["C"]}, key)
+    forger._try("member.add", IDS["A"], {
+        "user_id": IDS["C"], "signing_pk": new.pk, "encryption_pk": new.enc, "role": role,
+    }, key)
+    assert forger.labels == ["member.remove(A->C)", "member.add(A->C)"]
+    upload = honest.records[kept:] + forger.records
+
+    took = restore(_db(storage), upload, IDS["A"])
+    why = NormalPath(storage, "A", None, forger.held).takes(honest.records[kept:], upload)
+    assert took == (role == "member")
+    assert not took or not why, why
 
 
 def test_counterexample_a_recovery_key_the_same_batch_retires():
