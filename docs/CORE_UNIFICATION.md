@@ -1,0 +1,91 @@
+# Zjednotenie logiky do Rust jadra (fáza U)
+
+Rozhodnutie operátora 2026-11-27: kým sa tá istá logika opravuje trikrát (desktop
+Python, web JS, mobil Dart) a ešte raz na serveri, každé review nájde nové
+rozdiely medzi klientmi (R17-T4: 15 zo 101 prípadov chybných headov dopadlo
+v klientoch rôzne). Preto sa práca na review c02cc47 (vetva #468) zastavuje a
+najprv sa duplicitná logika presunie do `core/` (`sezam-sync-core`), ako sa to
+už raz urobilo so sync rozhodnutiami (docs/SYNC_SINGLE_SOURCE.md bod 4). Toto je
+krok S3 z docs/ROOT_CAUSE_PLAN.md (INV-9), rozšírený o ďalšie duplicitné
+pravidlá.
+
+## 1. Čo je už v jadre
+
+`core/src`: `gate`, `next_cursor`, `check_state`, `decide_pulled(_batch)`,
+`against_held`, `missing_successor`, `order_pulled`, `parents_first`,
+`plan_reapply`, `may_open_superseded`, `reseal_targets`, `rekey_due`
+(≈2 100 riadkov Rust). Väzby: PyO3 (`core/py`), WASM (`core/wasm`,
+`web/static/js/vendor/sezam-sync-core.js`), C ABI + Dart build hook
+(`core/ffi`, `mobile/lib/services/sync_core.dart`). Jeden vstup
+`json::call(op, input)`.
+
+## 2. Inventár duplicít (r17-l @ 35626b4)
+
+Skript `scripts/dupmap.py` (mená funkcií v ≥ 2 z desktop/web/mobil/server):
+142 zdieľaných mien, 35 vo všetkých troch klientoch. Mená sa medzi jazykmi
+často líšia, skutočný rozsah je väčší. Po doménach:
+
+| Doména | Desktop / server (Py) | Web (JS) | Mobil (Dart) | Riadky ×kópie |
+|---|---|---|---|---|
+| **A. Team log**: kanonický JSON, `parse_body`, `validate_body`, `record_hash`, replay, `member.keys` (claim keys, retired), dotazy autority (`is_admin`, `may_write`, `may_hold_key`, `key_recipients`, `current_key`, `key_generation`, `is_stale`, `may_seal`), odmietnutia (`item_refusal`, `tombstone_refusal`, `move_refusal`, `admin_policy_refusal`, `todays_rules_refusal`), `envelope_valid`, `superseded_envelope_valid`, fork (`fork_refusal`, `fork_abandoned`, `resolve_change`), restore (`readmitted`, `restore_part_end`), `next_body` | `teamlog.py` (873; server ho kopíruje v Dockerfile ako `teamlog_core.py`), `team_log_state.py`, `team_log_fork.py`, `team_log_withdrawn.py` | `teamlog.js` (686) + časti `app.js` | `team_log.dart` (919), `write_authority.dart` (369) | ≈ 2 500 × 3 |
+| **B. Autorita nad objektmi**: `sealing_dek_id`, `team_folder_above`, osobný strom (`in_personal_tree`, `is_personal_root`), `unauthorized_writes`, `log_admins`, `team_key_ids`, `held_genesis`, `named_by_team_log`, `team_log_refusal` | `sync_writers.py`, `personal_root.py`, `team_log_local.py`; server `sync.py`, `personal_tree.py`, `team_log.py` | `app.js` | `write_authority.dart`, `vault_service.dart`, `sync_service.dart` | ≈ 1 200 × 4 |
+| **C. Key vouchers** (N1, N6/N7): položka = digest podpísanej správy, `vouched_entries`, `lists_of`, pravidlo zlyhania podpisovateľa | `key_vouchers.py`, `sync_vouchers.py`; server `key_vouchers.py` | `app.js` | `key_vouchers.dart` | ≈ 500 × 4 |
+| **D. Podpisované správy a kanonické formáty**: `sign_auth_challenge`, `key_rotation_message`, `reseed_message`, `org_recovery_rewrap_message`, správa podpisu objektu (`verify_object_signature`), audit záznam (`parse_canonical_audit_record`, `validate_audit_dag`), `signed_fields` | `sync_common.py`, `reseed.py`, `key_rotation.py`, `sync_pull.py`, `sync_client.py`; server `auth.py`, `recovery.py` | `app.js` | `sync_service.dart`, `key_rotation.dart` | ≈ 800 × 3–4 |
+| **E. Dátové formáty bez tajomstiev**: AAD (`build_aad`), pre-anchor (`parse/merge/add/check`), `SZACCT01` bundle encode/decode, `padded_size`, `split_for_push`, `normalize_username`, `password_forms`/`canonical_password`, validácia KDF parametrov, `removal_archive_id`, Shamir GF(256) | `aead.py`, `padding.py`, `sync_limits.py`, `usernames.py`, `kdf.py`, `keys.py`, `dek.py`, `shamir.py`; server `schemas.py` | `app.js` | `crypto_service.dart`, `sync_limits.dart`, `password_forms.dart` | ≈ 900 × 3 |
+| **F. Rozhodnutia sync orchestrácie nad team logom**: catch-up, follow fork, `fail_as_served`, re-send stratených zmien, `seal_to_rotated_members`, `revive_folders_of_unsent` | `team_log_local.py`, `team_log_fork.py`, `sync_rekey.py`, `sync_state.py` | `app.js` | `team_log_client.dart`, `sync_service.dart`, `vault_service.dart` | ≈ 1 500 × 3 |
+| G. Úložisko, UI, sieť, šifrovanie/KDF (libsodium) | zostáva na platforme | | | — |
+
+Zdroj chýb posledných review: A, B, C, F. Takmer všetky nálezy R17 (N1, N4,
+N6/N7, N8, N9, T2, T4, equivocation, W2, Q2, Q3, E3) sú v týchto doménach a
+opravovali sa 3–4-krát.
+
+## 3. Rozhodnutia
+
+1. **Podpisy overuje naďalej libsodium klienta, nie jadro.** Ed25519 v Ruste
+   (`ed25519-dalek`) sa od libsodium líši na okrajoch (small-order body,
+   nekanonické kódovanie A/R), a to sú presne prípady z vektorov R9-A2.
+   Replay preto beží v dvoch krokoch: `team_log_checks(records)` vráti zoznam
+   overení (správa, verejný kľúč, podpis) za predpokladu, že všetky
+   predchádzajúce prešli. Klient ich overí svojím libsodium a zavolá
+   `team_log_replay(records, verified)`, kde `verified` je počet úspešných
+   overení zľava. Replay sa pri prvom neoverenom zastaví s rovnakou chybou
+   ako dnes (`bad_signature` pri danom seq). Rovnako `fork_refusal` a
+   vouchery.
+2. **SHA-256 je v jadre** (`sha2`), lebo hash je deterministický a nemá
+   okrajové prípady (`record_hash`, digest voucheru, signed digest).
+3. **Šifrovanie, KDF a narábanie s tajomstvami zostávajú na platforme**
+   (memzero, výkon Argon2 vo WASM). Do jadra idú len formáty bez tajomstiev
+   (E): skladanie AAD, rozbor a kontrola formátov, padding, limity.
+4. **Stav team logu** je JSON dokument (`state_to_json` už má web). Dotazy
+   autority berú stav, nie celý log, aby sa log neprehrával pri každom
+   dotaze.
+5. **Server** používa to isté jadro cez PyO3 wheel. Dockerfile dostane build
+   stage s Rustom (pripnutý image digestom) namiesto kopírovania
+   `teamlog.py`.
+6. **Staré implementácie sa mažú**, nezostávajú ako orákulum. Orákulom sú
+   spoločné vektory (`tests/vectors/*.json`) a conformance scenáre; kde
+   vektor chýba, pred zmazaním sa doplní zo súčasného správania desktopu a
+   každý rozdiel medzi klientmi sa rozhodne a zapíše.
+7. **Ráčna:** test, ktorý zlyhá, keď sa meno pravidla z jadra (zoznam v
+   `core/src/json.rs`) objaví ako implementácia v kóde klienta alebo servera
+   mimo tenkého obalu.
+
+## 4. Postup (ciele vetvy U)
+
+| Krok | Obsah | Hotové keď |
+|---|---|---|
+| U1 | Team log v jadre: `core/src/teamlog/` (kanonický JSON, telo, validácia, hash, replay v dvoch krokoch, dotazy, odmietnutia, fork, restore, `next_body`, `resolve_change`), operácie v `json.rs`, verzia jadra 0.3.0 | `cargo test` prejde všetkými `team_log*.json` vektormi; PyO3 diferenciálny test proti `teamlog.py` na vektoroch a náhodných logoch zo state machine |
+| U2 | Desktop + server na jadre: `sezam.teamlog` je obal nad `sync_core`, logika zmazaná; server cez wheel, Docker build stage | cielené testy team logu a servera zelené; Docker image naštartuje |
+| U3 | Web na jadre: `teamlog.js` obal nad WASM, logika zmazaná | `test_team_log_differential`, web vektory zelené |
+| U4 | Mobil na jadre: `team_log.dart` + `write_authority.dart` obal nad FFI, logika zmazaná | Flutter vektory team logu zelené |
+| U5 | Autorita nad objektmi (B) a key vouchers (C) v jadre, štyri strany prepnuté | vektory `key_vouchers*.json`, `signed_fields.json` + nové vektory pre B na všetkých stranách |
+| U6 | Podpisované správy a formáty (D, E) v jadre, prepnuté | `cross_client.json`, `padding.json` + nové vektory zelené na všetkých stranách |
+| U7 | Rozhodnutia orchestrácie (F) ako tabuľka „rozhodnutie → akcia“ v jadre | conformance scenáre team logu zelené na troch klientoch |
+| U8 | Ráčna implementácií v CI + aktualizácia AUTHORITY_MAP, ROOT_CAUSE_PLAN (S3 hotové) | test ráčne zelený, zlyhá na vloženej kópii pravidla |
+| U9 | Celé suite (Python+MariaDB, Flutter, SM) raz, push na main cez Sezam-release, CI zelené; potom návrat na vetvu #468 a preverenie, ktoré nálezy R17 ešte platia | push CI zelené |
+
+Každý krok je samostatný commit (alebo malá séria) s testami. Počas vývoja
+len lint a cielené testy, celé suite iba v U9.
+
+Rozpracovaný stav #480 je odložený v `git stash` na `r17-l`
+(„R17 #480 WIP before unification pause“) a v `%TEMP%\r17_480_wip.patch`.
