@@ -29,7 +29,7 @@ from ..auth import (
     key_rotation_message,
     unknown_name_mac,
 )
-from .. import key_vouchers, personal_tree, team_log
+from .. import authority, key_vouchers, personal_tree, team_log
 from ..config import JWTKeyManager, ServerConfig
 from ..database import Database, run_transaction
 from ..dependencies import get_config, get_db, get_jwt_manager, get_rotation_user
@@ -584,6 +584,21 @@ async def _sync_push(
         vouchers_pre = await key_vouchers.checked(
             user_id, candidate_pks[-1], [vl.model_dump() for vl in identity_pre.key_vouchers]
         )
+    # Review R17-R9s (V3): the team log records are parsed and replayed here,
+    # as POST /api/team-log does, not under the global lock; under it they
+    # are reused while the head is the same. A refusal found here is raised
+    # in the locked pass where the records were refused before (after the
+    # history check), so the answer stays the same.
+    team_log_records = [r.model_dump() for r in req.team_log] if req.team_log else []
+    log_prepared: Optional[team_log.Prepared] = None
+    log_refusal: Optional[ApiError] = None
+    if team_log_records:
+        try:
+            async with db.acquire() as conn:
+                async with conn.cursor() as cur:
+                    log_prepared = await team_log.prepare_append(cur, team_log_records, user_id)
+        except ApiError as exc:
+            log_refusal = exc
 
     # Lock order for every push: commit_counter → sync_state → vault_objects.
     # Taking the single commit_counter row first serializes pushes, so two of
@@ -612,17 +627,23 @@ async def _sync_push(
             # a refused record or a moved head refuses the whole push.
             # The objects below are then checked against the log as it stands
             # after these records (None: no log yet, the old rules apply).
-            if req.team_log:
+            if team_log_records:
+                if log_refusal is not None:
+                    raise log_refusal
                 identity_keys = (
                     (identity_pre.new_signing_pk, identity_pre.new_encryption_pk)
                     if identity_pre is not None else None
                 )
                 team_state = await team_log.append(
-                    cur, [r.model_dump() for r in req.team_log], user_id,
-                    pending_identity=identity_keys,
+                    cur, team_log_records, user_id,
+                    pending_identity=identity_keys, prepared=log_prepared,
                 )
             else:
                 team_state = await team_log.load_state(cur)
+            # Review R17-R9s (V5): whether this account is the admin, from the
+            # log as it stands under this lock (after this push's records);
+            # the request's answer is from before it (a handover meanwhile).
+            is_admin = await authority.team_admin(cur, user_id, state=team_state)
             # Everything an identity rotated by this push could still have
             # signed carries a commit_seq up to here (review 688edcb V4).
             seq_before_push = int(counter_row[0]) - 1 if counter_row else 0

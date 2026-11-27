@@ -13,7 +13,6 @@ every record the former admin signed as admin).
 
 from __future__ import annotations
 
-import json
 from typing import Optional
 
 from . import authority
@@ -35,13 +34,6 @@ async def node_row(cur, node_id: str, cache: dict) -> Optional[tuple]:
     return cache[key]
 
 
-def _admin_record(body: str) -> bool:
-    try:
-        return json.loads(body).get("type") != "member.keys"
-    except (TypeError, ValueError, AttributeError):
-        return False
-
-
 async def ever_admin(cur, user_id: str, cache: dict) -> bool:
     """Is ``user_id`` the admin, or did they sign anything as one in the team log?"""
     key = ("ever_admin", user_id)
@@ -53,9 +45,10 @@ async def ever_admin(cur, user_id: str, cache: dict) -> bool:
         admin = row is None or await authority.team_admin(cur, user_id, cached=bool(row[0]))
         if not admin:
             # A member signs only their own member.keys; every other record
-            # is an admin's.
-            await cur.execute("SELECT body FROM team_log WHERE author = %s", (user_id,))
-            admin = any(_admin_record(r[0]) for r in await cur.fetchall())
+            # is an admin's. Review R17-R9s: gathered by the cached replay,
+            # not parsed again from this account's records under the push lock.
+            from . import team_log
+            admin = user_id in await team_log.admin_authors(cur)
         cache[key] = admin
     return cache[key]
 

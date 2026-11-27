@@ -48,6 +48,10 @@ class _Replayed:
     # same replay: /api/org-recovery/status and /blob (anyone may ask) read
     # the whole log for it on every call before (review c78fd19).
     recovery_seq: dict
+    # Authors of a record other than member.keys (a member signs only its
+    # own): who signed anything as the admin (personal_tree.ever_admin
+    # parsed each account's records under the push lock, review R17-R9s).
+    admin_authors: frozenset = frozenset()
 
 
 _cache_lock = threading.Lock()
@@ -65,10 +69,16 @@ def _cached() -> Optional[_Replayed]:
         return _cache
 
 
-def _remember(entry: _Replayed) -> None:
+def _remember(entry: _Replayed, stale: Optional[_Replayed]) -> None:
+    """Cache ``entry`` unless another request cached a later head meanwhile.
+
+    ``stale``: the cached entry the caller found not current (a restored
+    server's shorter or other log). Review R17-R9s: the cache only went
+    forward, so after a restore every request replayed the whole log again.
+    """
     global _cache
     with _cache_lock:
-        if _cache is None or entry.state.head_seq >= _cache.state.head_seq:
+        if _cache is None or _cache is stale or entry.state.head_seq >= _cache.state.head_seq:
             _cache = entry
 
 
@@ -87,9 +97,11 @@ def _replay_lock() -> asyncio.Lock:
         return lock
 
 
-async def _rows_after(cur, seq: int) -> list[dict]:
+async def _rows_after(cur, seq: int, limit: Optional[int] = None) -> list[dict]:
     await cur.execute(
-        "SELECT seq, body, sig, hash FROM team_log WHERE seq > %s ORDER BY seq", (seq,)
+        "SELECT seq, body, sig, hash FROM team_log WHERE seq > %s ORDER BY seq"
+        + (" LIMIT %s" if limit is not None else ""),
+        (seq, limit) if limit is not None else (seq,),
     )
     rows = sorted(await cur.fetchall(), key=lambda row: row[0])
     return [{"seq": int(r[0]), "body": r[1], "sig": r[2], "hash": r[3]} for r in rows]
@@ -119,7 +131,9 @@ async def _load(cur) -> Optional[_Replayed]:
         return entry
     async with _replay_lock():
         # Another request may have replayed while this one waited.
-        entry = await _still_current(cur, _cached())
+        cached = _cached()
+        entry = await _still_current(cur, cached)
+        stale = cached if entry is None else None
         rows = await _rows_after(cur, entry.state.head_seq if entry is not None else -1)
         if not rows:
             return entry
@@ -133,7 +147,7 @@ async def _load(cur) -> Optional[_Replayed]:
                 "message": "the team log stored on this server does not replay; restore the server",
                 "seq": exc.seq,
             }) from exc
-        _remember(entry)
+        _remember(entry, stale)
         return entry
 
 
@@ -154,6 +168,12 @@ async def load_recovery_seqs(cur) -> tuple[Optional[TeamState], dict]:
     return (entry.state, entry.recovery_seq) if entry is not None else (None, {})
 
 
+async def admin_authors(cur) -> frozenset:
+    """Every account that signed a record of the stored log as the admin."""
+    entry = await _load(cur)
+    return entry.admin_authors if entry is not None else frozenset()
+
+
 def _replay_stored(entry: Optional[_Replayed], rows: list[dict]) -> _Replayed:
     records = [{"body": r["body"], "sig": r["sig"]} for r in rows]
     try:
@@ -161,13 +181,16 @@ def _replay_stored(entry: Optional[_Replayed], rows: list[dict]) -> _Replayed:
     except TeamLogError as exc:
         raise _Unreadable(f"stored team log does not replay: {exc}", exc.seq) from exc
     recovery_seq = dict(entry.recovery_seq) if entry is not None else {}
+    authors = set(entry.admin_authors) if entry is not None else set()
     for row, record in zip(rows, records):
         if core.record_hash(record) != row["hash"]:
             raise _Unreadable(f"stored team log hash mismatch at {row['seq']}", row["seq"])
         body = json.loads(row["body"])
         if body["type"] == "org.recovery":
             recovery_seq[body["author"]] = row["seq"]
-    return _Replayed(state, recovery_seq)
+        if body["type"] != "member.keys":
+            authors.add(body["author"])
+    return _Replayed(state, recovery_seq, frozenset(authors))
 
 
 class _Unreadable(RuntimeError):
@@ -227,8 +250,12 @@ async def _prepare(cur, records: list, user_id: str, *, restore: bool) -> Prepar
         raise ApiError(400, TEAM_LOG_REFUSED, {"message": "no team log records"})
     if len(records) > MAX_RECORDS_PER_APPEND:
         raise ApiError(400, TEAM_LOG_REFUSED, {"message": "too many team log records"})
-    bodies = [_parse(r) for r in records]
     state = await load_state(cur) or TeamState()
+    # Review R17-R9s: a member's oversized batch is refused before its bodies
+    # are parsed (all of them were, up to MAX_RECORDS_PER_APPEND of 4 KiB).
+    if not restore and len(records) > MAX_RECORDS_FROM_MEMBER and not await _is_admin_here(cur, state, user_id):
+        raise ApiError(400, TEAM_LOG_REFUSED, {"message": "too many team log records"})
+    bodies = [_parse(r) for r in records]
     _check_head(state, bodies[0], "compare again" if restore else "build the change again")
     if not restore:
         if any(b.get("author") != user_id for b in bodies):
@@ -242,8 +269,6 @@ async def _prepare(cur, records: list, user_id: str, *, restore: bool) -> Prepar
                 "message": f"new team log records follow rules {core.FORMAT_VERSION}",
                 "team_log_code": "rules_outdated", "seq": old.get("seq"),
             })
-        if len(records) > MAX_RECORDS_FROM_MEMBER and not await _is_admin_here(cur, state, user_id):
-            raise ApiError(400, TEAM_LOG_REFUSED, {"message": "too many team log records"})
     current, steps = await _replayed(state, records, bodies)
     if restore:
         _refuse_rules_beyond_appends(bodies, steps)
@@ -356,8 +381,9 @@ async def _replayed(state: TeamState, records: list, bodies: list[dict]) -> tupl
 
 
 async def records_after(cur, since: int, limit: int = MAX_RECORDS_PER_APPEND) -> list[dict]:
-    rows = await _rows_after(cur, since)
-    return [{"body": r["body"], "sig": r["sig"]} for r in rows[:limit]]
+    # Review R17-R9s: the page is limited in SQL, not after reading every row.
+    rows = await _rows_after(cur, since, limit)
+    return [{"body": r["body"], "sig": r["sig"]} for r in rows]
 
 
 def _parse(record) -> dict:
