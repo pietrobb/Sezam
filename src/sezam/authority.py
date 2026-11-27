@@ -63,6 +63,8 @@ def pushed(changes: str, *tests: str, who: str = MEMBER, part_of: tuple[str, ...
 VAULT: dict[str, Op] = {
     "adopt_account_kek": local("this device's KEK wrap: the account KEK after a password recovery",
                                "tests/test_review7_stale_kek_pull.py"),
+    "bind_taken_over_identity": local("the server's account keypair, at the end of a takeover of rotated key material",
+                                      part_of=("SyncClient.adopt_rotated_key_material",)),
     "change_password": pushed("the KEK wrap and, queued for the push, the account's key material",
                               "tests/test_sync_state_machine.py", who=ACCOUNT),
     "create_entry": pushed("a new entry", "tests/test_e2e_scenarios.py"),

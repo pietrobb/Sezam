@@ -168,6 +168,7 @@ Local changes; the push sends them and the server decides there.
 | Operation | Changes | Who may | Decided by | Tests / run by |
 |---|---|---|---|---|
 | `adopt_account_kek` | this device's KEK wrap: the account KEK after a password recovery | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review7_stale_kek_pull.py |
+| `bind_taken_over_identity` | the server's account keypair, at the end of a takeover of rotated key material | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `SyncClient.adopt_rotated_key_material` |
 | `change_password` | the KEK wrap and, queued for the push, the account's key material | the signed-in account, for itself | `POST /api/sync` | test_sync_state_machine.py |
 | `create_entry` | a new entry | a team member; each object by the signer's write access, team folders by the log | `POST /api/sync` | test_e2e_scenarios.py |
 | `create_node` | a new folder | a team member; each object by the signer's write access, team folders by the log | `POST /api/sync` | test_e2e_scenarios.py |
