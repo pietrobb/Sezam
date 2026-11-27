@@ -19,6 +19,9 @@ from tests.test_review14_ai_off_anchored import _anchored_on, _no_running_broker
 
 
 def _cli_off(monkeypatch, path, interactive: bool, typed: str):
+    # The vault under test, never the one in the home directory: without it
+    # CI (no ~/.sezam) took the no-vault branch (push CI run 46051811849).
+    monkeypatch.setenv("SEZAM_VAULT", str(path))
     monkeypatch.setattr(cli, "_open_vault", lambda: Vault(path))
     monkeypatch.setattr(cli, "_load_session", lambda: None)
     monkeypatch.setattr(cli, "_interactive", lambda: interactive, raising=False)
