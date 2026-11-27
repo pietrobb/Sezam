@@ -187,7 +187,7 @@ def put_back(db, records: list) -> None:
     async def go(cur):
         state = await team_log.load_state(cur) or teamlog.TeamState()
         bodies = [team_log._parse(r) for r in records]
-        _, steps = team_log._replay_batch(state, records, bodies)
+        _, steps = team_log._replay_batch(state, records)
         for record, body, step in zip(records, bodies, steps):
             await cur.execute(
                 "INSERT INTO team_log (seq, prev, hash, body, sig, author, created_at) "
@@ -737,15 +737,8 @@ class NormalPath:
 def _todays_rules_refuse(before: list, body: dict) -> str:
     """E4: the change of ``body`` replayed under today's rules on the log
     ``before`` it ('' when they take it)."""
-    if body["type"] == "genesis":
-        return ""  # a fresh log retired no key
-    state = teamlog.replay(before)
-    state.rules = teamlog.FORMAT_VERSION
-    try:
-        teamlog._apply_change(state, body["seq"], body["type"], body["author"], body["data"], body["prev"])
-    except teamlog.TeamLogError as exc:
-        return exc.code
-    return ""
+    refused = teamlog._call("team_log_rejudge", state=teamlog.replay(before).to_core(), body=body)
+    return refused["code"] if refused else ""
 
 
 @settings(

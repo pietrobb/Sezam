@@ -2,7 +2,8 @@
 //! a record is an answer (`{"refused": {code, seq, detail}}`), not an error;
 //! an error is bad input.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex};
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -40,11 +41,58 @@ struct Question {
     args: Vec<Value>,
 }
 
+/// The state a question is about: given whole, or one loaded before.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AskIn {
-    state: State,
+    state: Option<State>,
+    handle: Option<u64>,
     questions: Vec<Question>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RejudgeIn {
+    state: State,
+    body: Map<String, Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LoadIn {
+    state: State,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HandleIn {
+    handle: u64,
+}
+
+/// States loaded for many questions (review 8bc70f7 M8: a 40 000-folder
+/// state took 130 ms to read per question). A side frees what it loads.
+static LOADED: Mutex<(u64, BTreeMap<u64, Arc<State>>)> = Mutex::new((0, BTreeMap::new()));
+
+fn loaded() -> std::sync::MutexGuard<'static, (u64, BTreeMap<u64, Arc<State>>)> {
+    LOADED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn load(state: State) -> u64 {
+    let mut store = loaded();
+    store.0 += 1;
+    let handle = store.0;
+    store.1.insert(handle, Arc::new(state));
+    handle
+}
+
+fn get(handle: u64) -> Result<Arc<State>, String> {
+    loaded()
+        .1
+        .get(&handle)
+        .cloned()
+        .ok_or_else(|| format!("no loaded team log state {handle}"))
 }
 
 #[derive(Deserialize)]
@@ -288,10 +336,12 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
                     (Some(n), false) => {
                         answer(replay::replay(&i.records, i.state.as_ref(), n), "state")
                     }
-                    (Some(n), true) => answer(
-                        replay::replay_steps(&i.records, i.state.as_ref(), n),
-                        "steps",
-                    ),
+                    (Some(n), true) => {
+                        match replay::replay_steps(&i.records, i.state.as_ref(), n) {
+                            Ok((state, steps)) => json!({"state": state, "steps": steps}),
+                            Err(e) => json!({"refused": e.to_json()}),
+                        }
+                    }
                 }
             }
             "team_log_project" => {
@@ -303,12 +353,29 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
             }
             "team_log_ask" => {
                 let i: AskIn = parse(input)?;
+                let state = match (i.state, i.handle) {
+                    (Some(state), None) => Arc::new(state),
+                    (None, Some(handle)) => get(handle)?,
+                    _ => return Err("bad input: name either state or handle".into()),
+                };
                 let answers = i
                     .questions
                     .iter()
-                    .map(|q| ask(&i.state, &q.name, &q.args))
+                    .map(|q| ask(&state, &q.name, &q.args))
                     .collect::<Result<Vec<_>, _>>()?;
                 json!(answers)
+            }
+            "team_log_rejudge" => {
+                let i: RejudgeIn = parse(input)?;
+                json!(replay::rejudge(&i.state, &i.body).map(|e| e.to_json()))
+            }
+            "team_log_load" => {
+                let i: LoadIn = parse(input)?;
+                json!(load(i.state))
+            }
+            "team_log_free" => {
+                let i: HandleIn = parse(input)?;
+                json!(loaded().1.remove(&i.handle).is_some())
             }
             "team_log_fork" => {
                 let i: ForkIn = parse(input)?;

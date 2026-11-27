@@ -66,8 +66,12 @@ def test_the_server_imports_in_the_image_layout_without_sezam(tmp_path):
         "assert server.app.team_log.core.__name__ == 'server.app.teamlog_core'\n"
         "print('ok')\n"
     )
+    import sezam_sync_core
+
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-    env.update({"SEZAM_DATA_DIR": str(tmp_path / "data"), "PYTHONDONTWRITEBYTECODE": "1"})
+    # The image's binding is the one built from core/ (Dockerfile core stage).
+    env.update({"SEZAM_DATA_DIR": str(tmp_path / "data"), "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONPATH": str(Path(sezam_sync_core.__file__).parents[1])})
     run = subprocess.run([sys.executable, "-c", probe], cwd=app, env=env,
                          capture_output=True, text=True, timeout=120)
     assert run.returncode == 0 and run.stdout.strip().endswith("ok"), run.stderr[-3000:]

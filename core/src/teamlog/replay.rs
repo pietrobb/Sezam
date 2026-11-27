@@ -441,18 +441,70 @@ fn apply_change_in(
     Ok(())
 }
 
+/// What the server records about each record of an uploaded batch (its
+/// users table, share links and the TL7 check), from the state after it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Step {
+    pub seq: i64,
+    pub hash: String,
+    /// the record's `user_id` is an active admin after it
+    pub admin: bool,
+    /// that account's access to the record's `folder` after it
+    pub level: Option<String>,
+    /// that account's (signing, encryption) keys after it
+    pub keys: Option<(String, String)>,
+    pub admin_policy: Option<&'static str>,
+    /// what today's rules refuse in it, judged on the log before it
+    pub todays_rules: Option<String>,
+    /// a member.remove its author's member.add undoes in the same run
+    pub readded: bool,
+}
+
 fn run(
     records: &[Value],
     state: Option<&State>,
     v: &mut dyn Verifier,
-    steps: Option<&mut Vec<State>>,
+    steps: Option<&mut Vec<Step>>,
 ) -> LogResult<State> {
     let mut current = state.cloned().unwrap_or_default();
     let mut steps = steps;
-    for record in records {
+    let bodies: Vec<Map<String, Value>> = if steps.is_some() {
+        records
+            .iter()
+            .map(|r| {
+                r.get("body")
+                    .and_then(Value::as_str)
+                    .and_then(|b| parse_body(b, None).ok())
+                    .unwrap_or_default()
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    for (index, record) in records.iter().enumerate() {
+        let todays_rules = match bodies.get(index) {
+            Some(body) => super::rules::todays_rules_refusal(&current, body),
+            None => None,
+        };
         apply(&mut current, record, v)?;
         if let Some(out) = steps.as_deref_mut() {
-            out.push(current.clone());
+            let body = &bodies[index];
+            let data = body.get("data").and_then(Value::as_object);
+            let field = |name| data.and_then(|d| d.get(name)).and_then(Value::as_str);
+            let user = field("user_id");
+            let member = user.and_then(|u| current.members.get(u));
+            out.push(Step {
+                seq: current.head_seq,
+                hash: current.head_hash.clone(),
+                admin: user.is_some_and(|u| super::rules::is_admin(&current, u)),
+                level: field("folder")
+                    .zip(user)
+                    .and_then(|(f, u)| current.access.get(f)?.get(u).cloned()),
+                keys: member.map(|m| (m.signing_pk.clone(), m.encryption_pk.clone())),
+                admin_policy: super::rules::admin_policy_refusal(&current),
+                todays_rules,
+                readded: super::fork::readmitted(&bodies, index).is_some(),
+            });
         }
     }
     Ok(current)
@@ -482,14 +534,14 @@ pub fn replay(records: &[Value], state: Option<&State>, verified: usize) -> LogR
     )
 }
 
-/// Like [`replay`], with the state after each record.
+/// Like [`replay`], with what the server records about each record.
 pub fn replay_steps(
     records: &[Value],
     state: Option<&State>,
     verified: usize,
-) -> LogResult<Vec<State>> {
+) -> LogResult<(State, Vec<Step>)> {
     let mut steps = Vec::new();
-    run(
+    let state = run(
         records,
         state,
         &mut Counted {
@@ -498,7 +550,36 @@ pub fn replay_steps(
         },
         Some(&mut steps),
     )?;
-    Ok(steps)
+    Ok((state, steps))
+}
+
+/// What today's rules refuse in the change of `body`, a record already
+/// taken (its signatures checked) under its own older rules on `state`, the
+/// log before it. A test oracle for [`super::rules::todays_rules_refusal`].
+pub fn rejudge(state: &State, body: &Map<String, Value>) -> Option<LogError> {
+    let field = |name| body.get(name).and_then(Value::as_str).unwrap_or("");
+    if field("type") == "genesis" {
+        return None; // a fresh log retired no key
+    }
+    let mut new = state.clone();
+    new.rules = super::FORMAT_VERSION;
+    let seq = body.get("seq").and_then(Value::as_i64).unwrap_or(-1);
+    let data = body
+        .get("data")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let mut all = Collect(Vec::new());
+    apply_change_in(
+        &mut new,
+        seq,
+        field("type"),
+        field("author"),
+        &data,
+        field("prev"),
+        &mut all,
+    )
+    .err()
 }
 
 /// The state after `author`'s own unsigned change, for local decisions

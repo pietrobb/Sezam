@@ -199,33 +199,15 @@ class _Unreadable(RuntimeError):
         self.seq = seq
 
 
-def _replay_batch(state: TeamState, records: list, bodies: list[dict]) -> tuple[TeamState, list[dict]]:
+def _replay_batch(state: TeamState, records: list) -> tuple[TeamState, list[dict]]:
     """Replay an uploaded batch with one copy of ``state`` (review 1141a20, R9-F:
     a copy per record before), noting per record what the users table needs."""
     clean = [{"body": r.get("body"), "sig": r.get("sig")} for r in records]
-    steps: list[dict] = []
-    current = state
-    replayed = core.replay_steps(clean, state)
-    for index, body in enumerate(bodies):
-        todays_rules = core.todays_rules_refusal(current, body)  # ``current``: the log before ``body``
-        current = next(replayed)
-        data = body["data"]
-        user = data.get("user_id")
-        member = current.members.get(user) if user is not None else None
-        steps.append({
-            "seq": current.head_seq, "hash": current.head_hash,
-            "admin": user is not None and core.is_admin(current, user),
-            "level": current.access.get(data.get("folder"), {}).get(user),
-            "keys": (member.signing_pk, member.encryption_pk) if member is not None else None,
-            "admin_policy": core.admin_policy_refusal(current),
-            "todays_rules": todays_rules,
-            # Review 4acfdde R11 #4: a readmit (member.remove + member.add in
-            # one append) is no removal for the member's share links. R17-L: in
-            # a restore, the same author's run only (a later author's re-add
-            # was another append); its clients do not split one (restore_part_end).
-            "readded": core.readmitted(bodies, index) is not None,
-        })
-    return current, steps
+    # Per record, from the core: seq, hash, admin, level, keys, admin_policy,
+    # todays_rules (judged on the log before it) and readded (review 4acfdde
+    # R11 #4: a readmit in one append is no removal for the member's share
+    # links; R17-L: the same author's run only).
+    return core.replay_batch(clean, state)
 
 
 @dataclass(frozen=True)
@@ -373,7 +355,7 @@ async def prepare_restore(cur, records: list, user_id: str) -> Prepared:
 
 async def _replayed(state: TeamState, records: list, bodies: list[dict]) -> tuple[TeamState, list[dict]]:
     try:
-        return await asyncio.to_thread(_replay_batch, state, records, bodies)
+        return await asyncio.to_thread(_replay_batch, state, records)
     except TeamLogError as exc:
         raise ApiError(400, TEAM_LOG_REFUSED, {
             "message": str(exc), "team_log_code": exc.code, "seq": exc.seq,

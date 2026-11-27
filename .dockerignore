@@ -24,3 +24,5 @@ img
 mobile
 skills
 tests
+core/target
+core/*/target

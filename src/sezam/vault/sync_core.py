@@ -12,7 +12,7 @@ import sezam_sync_core
 # The rules this client was written for (core/Cargo.toml). Review 782dde8:
 # the rules changed under one version, so a stale installed core went on
 # answering by the old ones; another version is refused.
-CORE_VERSION = "0.3.0"
+from ..teamlog import CORE_VERSION
 
 
 def _run(op: str, arguments: dict) -> Any:
