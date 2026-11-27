@@ -121,6 +121,33 @@ def vouched_access_level(db, envelope_id: str, level: Optional[str]) -> str:
     return "read"
 
 
+def current_folder_key(
+    db, dek_mgr, dek_id: str, user_id: str, granted_at: int
+) -> tuple[Optional[str], bool]:
+    """The current key of the folder a retired ``dek_id`` was replaced
+    for (None if there is none), and whether a re-key on the way withdrew
+    ``user_id`` (granted at ``granted_at`` ms)."""
+    from ulid import ULID
+
+    from .dek import archive_removed
+
+    seen = {dek_id}
+    withdrawn = False
+    while True:
+        link = dek_mgr.successor_link(dek_id)
+        if link is None or link[0] in seen:
+            return None, withdrawn
+        dek_id, archive_id = link
+        removed = archive_removed(archive_id, dek_id, dek_mgr.unlock_dek(dek_id), user_id)
+        if removed is None:
+            removed = granted_at <= ULID.from_str(dek_id).milliseconds
+        withdrawn = withdrawn or removed
+        row = db.fetchone("SELECT node_id, scope FROM deks WHERE id = ?", (dek_id,))
+        if row is not None and row["node_id"] and row["scope"] in ("folder", "root"):
+            return dek_id, withdrawn
+        seen.add(dek_id)
+
+
 REKEY_TOO_LARGE_MESSAGE = (
     "The pending folder re-key holds an item over the server's 1 MiB limit per "
     "item (saved before that limit was checked); the server never takes it. Run "

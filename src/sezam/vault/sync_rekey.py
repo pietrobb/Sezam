@@ -20,6 +20,7 @@ from .schema import row_payload_hash
 from .sealed import open_sealed
 
 from .sync_common import (
+    current_folder_key,
     logger,
     queued_for_removal,
     reseal_key_row,
@@ -857,30 +858,6 @@ class RekeyMixin:
         for object_id in resealed:
             self._push_cache.pop(object_id, None)
 
-    def _current_folder_key(self, dek_id: str, user_id: str, granted_at: int) -> tuple[Optional[str], bool]:
-        """The current key of the folder a retired ``dek_id`` was replaced
-        for (None if there is none), and whether a re-key on the way withdrew
-        ``user_id`` (granted at ``granted_at`` ms)."""
-        from ulid import ULID
-
-        from .dek import archive_removed
-
-        seen = {dek_id}
-        withdrawn = False
-        while True:
-            link = self._dek_mgr.successor_link(dek_id)
-            if link is None or link[0] in seen:
-                return None, withdrawn
-            dek_id, archive_id = link
-            removed = archive_removed(archive_id, dek_id, self._dek_mgr.unlock_dek(dek_id), user_id)
-            if removed is None:
-                removed = granted_at <= ULID.from_str(dek_id).milliseconds
-            withdrawn = withdrawn or removed
-            row = self._db.fetchone("SELECT node_id, scope FROM deks WHERE id = ?", (dek_id,))
-            if row is not None and row["node_id"] and row["scope"] in ("folder", "root"):
-                return dek_id, withdrawn
-            seen.add(dek_id)
-
     def _rotation_envelopes_on_successors(self) -> None:
         """R16-Z SM20 (deep stateful run): an unsent identity rotation re-sealed
         a grant under a folder key another device's re-key has since replaced
@@ -913,8 +890,8 @@ class RekeyMixin:
         changed = False
         with self._db.transaction():
             for env in rows:
-                current, withdrawn = self._current_folder_key(
-                    env["dek_id"], env["user_id"], ULID.from_str(env["id"]).milliseconds
+                current, withdrawn = current_folder_key(
+                    self._db, self._dek_mgr, env["dek_id"], env["user_id"], ULID.from_str(env["id"]).milliseconds
                 )
                 if current is None:
                     continue
@@ -980,7 +957,8 @@ class RekeyMixin:
             return  # the pending re-key decides about these members
         from ulid import ULID
 
-        current_key = self._current_folder_key
+        def current_key(dek_id: str, user_id: str, granted_at: int) -> tuple[Optional[str], bool]:
+            return current_folder_key(self._db, self._dek_mgr, dek_id, user_id, granted_at)
 
         # R16-Z SM19c: a grant never sent under a key a re-key replaced. Once
         # the folder's current key holds the member (or the re-key withdrew
