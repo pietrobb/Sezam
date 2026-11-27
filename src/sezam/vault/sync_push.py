@@ -16,7 +16,7 @@ from ..models import EntryData, bytes_to_ulid, new_ulid, ulid_to_bytes
 from . import oplock, outbox, pending_states
 from .audit import AuditLog
 from .move_back import _NO_PARENT, move_back_refused, signed_server_parent
-from .personal_root import in_personal_tree, personal_root_ids, personal_roots_refused
+from .personal_root import dek_parent_ref, in_personal_tree, personal_root_ids, personal_roots_refused
 from .rekey_abandon import UNPULLED, meet_server
 from .sealed import open_sealed
 from .sync_limits import (
@@ -1065,11 +1065,8 @@ class PushMixin:
             # TL7: a key in a personal root's tree (the root's own, a tier-2
             # item's) names no folder, as the web's does; the server takes a
             # member's key only so.
-            folderless = False
-            if row["scope"] in ("personal", "tier2") and row["node_id"]:
-                if personal_tops is None:
-                    personal_tops = set(personal_root_ids(self._db, self._dek_mgr))
-                folderless = in_personal_tree(self._db, row["node_id"], personal_tops)
+            if personal_tops is None and row["scope"] in ("personal", "tier2") and row["node_id"]:
+                personal_tops = set(personal_root_ids(self._db, self._dek_mgr))
             obj = self._make_sync_object(
                 id=obj_id,
                 object_type="dek",
@@ -1078,7 +1075,7 @@ class PushMixin:
                 # folder still names it on the server. Sent without it, the
                 # resend of a landed key change was no identical retry and
                 # refused for good; a re-wrap erased the folder's binding.
-                parent_ref=None if folderless else row["node_id"] or detached.get(obj_id),
+                parent_ref=dek_parent_ref(self._db, row, detached, personal_tops or ()),
                 version=row["version"],
             )
             # Unsigned label so a full resync can tell root/audit/tier-2 DEKs

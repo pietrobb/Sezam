@@ -142,7 +142,8 @@ FIELDS: dict[str, Field] = {
     "GET /api/users/me/signed-objects .objects": Field(
         HINT, "only which ids to look at: a voucher list names an entry (the digest of the whole signed "
         "message, its signer and key, R17-N1) only for a version this device holds (held_signed, or its own "
-        "copy with the same version, payload and parent) whose signature it verifies, under the retiring "
+        "copy with every signed field the same: type, parent, target, tombstone flag, version, payload) whose "
+        "signature it verifies, under the retiring "
         "key, or a retired one where a list or the held copy already names it; a lie leaves an object out, "
         "and the server then refuses the rotation naming it",
         ("key_vouchers:object_entry", "vault.sync_vouchers:VoucherMixin._rotation_vouchers")),

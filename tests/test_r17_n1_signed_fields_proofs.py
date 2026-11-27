@@ -60,17 +60,23 @@ def test_the_register_is_what_the_signature_covers():
 
 
 def _desktop_proofs(obj: dict, signer: str, key: bytes) -> dict:
+    from sezam.vault.sync_vouchers import _local_key
+
     fields = {name: obj[name] for name in key_vouchers.SIGNED_FIELDS}
     return {
         "message": key_vouchers.signed_message(**fields),
         "entry": key_vouchers.object_entry(obj, signer, key),
+        # Capability review 677: an identity rotation of a vault from before
+        # held_signed carries a served copy forward when its id and this key
+        # match the copy held (_rotation_vouchers / _held_locally).
+        "legacy": (obj["id"], _local_key(obj)),
     }
 
 
 def test_every_desktop_proof_covers_every_signed_field():
     signer, key = V["signer_id"], bytes.fromhex(V["signing_pk"])
     proofs = {label: _desktop_proofs(obj, signer, key) for label, obj in _variants()}
-    for kind in ("message", "entry"):
+    for kind in ("message", "entry", "legacy"):
         _all_distinct({label: p[kind] for label, p in proofs.items()})
     # The entry names the signer's account and key too.
     entries = {label: p["entry"] for label, p in proofs.items()}

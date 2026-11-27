@@ -35,7 +35,8 @@ from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
 
 from .. import key_vouchers, teamlog
-from .sync_common import server_error
+from .personal_root import dek_parent_ref, personal_root_ids
+from .sync_common import DETACHED_DEKS_META, server_error
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +75,11 @@ def legacy_entries(held, own_listed) -> list:
 
 
 def _local_key(obj: dict) -> tuple:
-    """What VoucherMixin._held_locally keeps of a served copy."""
-    parent = obj.get("parent_ref") if obj.get("object_type") in ("node", "entry") else None
-    return (obj.get("version", 1), str(obj.get("payload_hash", "")).lower(), parent)
+    """The signed fields of a served copy, as VoucherMixin._held_locally keeps them."""
+    return (
+        obj.get("object_type"), obj.get("parent_ref"), obj.get("target_user_id"),
+        int(bool(obj.get("is_deleted"))), obj.get("version", 1), str(obj.get("payload_hash", "")).lower(),
+    )
 
 
 class VoucherMixin:
@@ -301,18 +304,30 @@ class VoucherMixin:
         return self._signed_lists(entries)
 
     def _held_locally(self) -> dict[str, tuple]:
-        """A copy held from before held_signed, as its signed fields read here
-        (live folders and entries: version, payload hash, parent; other rows:
-        version, payload hash)."""
-        parents = {
-            row["id"]: row["parent"] for row in self._db.fetchall(
-                "SELECT id, parent_id AS parent FROM nodes WHERE is_deleted = 0 "
-                "UNION ALL SELECT id, node_id FROM entries WHERE is_deleted = 0"
+        """A copy held from before held_signed, as _local_key reads a served
+        one: every signed field (capability review 677: version, payload and
+        a folder's or entry's parent alone let a re-signed DEK, tombstone or
+        retyped object of a held version through)."""
+        types = {
+            row["id"]: row["t"] for row in self._db.fetchall(
+                "SELECT id, 'node' AS t FROM nodes UNION ALL SELECT id, 'entry' FROM entries "
+                "UNION ALL SELECT id, 'dek' FROM deks UNION ALL SELECT id, 'dek_archive' FROM dek_archive "
+                "UNION ALL SELECT id, 'envelope' FROM access_envelopes UNION ALL SELECT id, 'audit' FROM audit_log"
             )
         }
+        targets = {row["id"]: row["user_id"] for row in self._db.fetchall("SELECT id, user_id FROM access_envelopes")}
+        detached = self._db.get_meta_json(DETACHED_DEKS_META) or {}
+        roots = set(personal_root_ids(self._db, self._dek_mgr))
+        dek_parents = {
+            row["id"]: dek_parent_ref(self._db, row, detached, roots)
+            for row in self._db.fetchall("SELECT id, node_id, scope FROM deks")
+        }
         return {
-            obj_id: (version, hashlib.sha256(payload).hexdigest(), parents.get(obj_id))
-            for obj_id, version, payload, *_signed in self._local_objects()
+            obj_id: (
+                types.get(obj_id), dek_parents.get(obj_id, parent), targets.get(obj_id),
+                int(bool(is_deleted)), version, hashlib.sha256(payload).hexdigest(),
+            )
+            for obj_id, version, payload, parent, is_deleted in self._local_objects()
         }
 
     def _voucher_fingerprint(self) -> str:

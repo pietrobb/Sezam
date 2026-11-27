@@ -89,6 +89,15 @@ def in_personal_tree(db, node_id, roots) -> bool:
     return False
 
 
+def dek_parent_ref(db, row, detached: dict, roots) -> str | None:
+    """The parent a DEK row is sent (and signed) with: none for a key in a
+    personal root's tree (TL7), else its folder, or the GC-collected folder
+    it was detached from (SM64). ``roots``: personal_root_ids."""
+    if row["scope"] in ("personal", "tier2") and row["node_id"] and in_personal_tree(db, row["node_id"], roots):
+        return None
+    return row["node_id"] or detached.get(row["id"])
+
+
 def fold_personal_tree_keys(db, dek_mgr) -> int:
     """Move folders below a personal root off keys the server never took.
 
