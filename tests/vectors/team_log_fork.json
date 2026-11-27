@@ -593,6 +593,47 @@
    }
   },
   {
+   "name": "own_fork_access_of_a_member_removed_and_added_back_since",
+   "user_id": "01JM0000000000000000000001",
+   "held_keys": [
+    "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70",
+    "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934"
+   ],
+   "withdrawn": [],
+   "lost": [
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+     "sig": "a58d248e932d82c59bf0db328c2f7a663a715d03c91f034bde3e25234ddab6d93c5ec9bc53f838044e408e4b918803aa46e0a9c2ac759e23a4d135922d9a7d03"
+    },
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+     "sig": "35e626a9b69b7c5517ec2d6d4fcf02d8359f0f1b6c44dab9a01b7a445f4ed10ccfa0c1592f1527361714b41f99733d4fce310ad7441ddaff98520b04fddecb07"
+    }
+   ],
+   "theirs": [
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+     "sig": "6324b8b9e3a0b8b1777046b68d9bce8b177c9d0e28b3491fd5ae0f9ae1311cfc46abdc8b71a593c1b6f55e08c6d3e495fdb45bb3bbdca52954a27341468e5202"
+    },
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"5aa6fb0a87362e68b19c8a24023b4b0493e6347ec52321f3e01cfa8952faf55a\",\"seq\":4,\"type\":\"folder.key\",\"v\":2}",
+     "sig": "0f6bda83914ab3bff70dc1341a36d51baed900c24d17e36ca973c69a4484f7416b0cab5170d4d6a3c23f132639d55020b3fa3ef0b6e7c425299ca710749ac409"
+    },
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8ce22b3d896f0b0330b03d3254f5e41ea3dc5bd5b75b309e8c4b0784de4cc1e5\",\"seq\":5,\"type\":\"member.remove\",\"v\":2}",
+     "sig": "dd135b31c438608f7b7c9660f97f1d69ea0bc55820111ee88259dc976cd93d4a8b6c906310925ff8d8ef4ffde863a688a4ae934cfda787132845cc877fe2f100"
+    },
+    {
+     "body": "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"9ff42b64d44385442dc9a993b3cff554f27ba2657748800932717acc8b758106\",\"seq\":6,\"type\":\"member.add\",\"v\":2}",
+     "sig": "46cf70a2c69b40aee4cd960b5cbaa5fe22b907b4c0a2adbd742768910986b2391f8a48f11d77403693fda34211f7609f88ca18b1106ddc9ac7716a23d20ff407"
+    }
+   ],
+   "expect": {
+    "refusal": "its record 6 adds a member this device did not lose",
+    "missing": []
+   }
+  },
+  {
    "name": "own_fork_original_returns_after_set_aside",
    "user_id": "01JM0000000000000000000001",
    "held_keys": [

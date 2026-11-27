@@ -143,6 +143,12 @@ def build_cases() -> list[dict]:
     # is made again (made again, the log refused it as not_active for good).
     case("own_fork_access_of_a_member_removed_since", own,
          _from(_other(_base()).key(F1, 0, K[1], None).remove(B)), missing=[4], abandoned=[3, 4])
+    # Capability finding 689: removed and added back there, the member looks
+    # as if never removed; such a fork is not followed, so no lost access goes
+    # out to the member again (a desktop's waiting one: the pull drops it).
+    case("own_fork_access_of_a_member_removed_and_added_back_since", own,
+         _from(_other(_base()).key(F1, 0, K[1], None).remove(B).member(B)),
+         refusal="its record 6 adds a member this device did not lose")
     # Capability finding 505: the device followed the shorter copy, withdrew
     # its records 3 and 4, and set their changes aside (the server refused
     # them made again); a server that serves the originals again is refused.

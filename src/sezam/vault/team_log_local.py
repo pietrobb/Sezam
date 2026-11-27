@@ -295,6 +295,71 @@ class TeamLogMixin:
         if self._db.get_meta(GENESIS_META) is None:
             self._db.set_meta(GENESIS_META, state.genesis_hash)
 
+    def _drop_access_removed_since(self, records: list[dict]) -> None:
+        """A removal among ``records`` (pulled: made after everything waiting
+        here) takes the access this device still has waiting for that member.
+
+        R17-N8, capability finding 689: 0c5bf83 voided a waiting access.set
+        only while the log held the member as removed. Another device of the
+        admin removed Bob and later added him back: the raise to write waiting
+        here went out with its envelope and gave back what the removal took
+        (or, the removed member's folder waiting for its re-key, the server
+        refused the batch on every push). What was queued after a queued
+        removal of the member (a readmit made here) was made knowing it: kept.
+        """
+        removed = {
+            body["data"]["user_id"] for body in (teamlog.parse_body(r["body"]) for r in records)
+            if body["type"] == "member.remove"
+        }
+        if not removed:
+            return
+
+        def kept(changes: list) -> list[bool]:
+            out, readmitted = [], set()
+            for kind, data in changes:
+                if kind == "member.remove":
+                    readmitted.add(data.get("user_id"))
+                user_id = data.get("user_id")
+                out.append(not (kind == "access.set" and user_id in removed and user_id not in readmitted))
+            return out
+
+        def note(change) -> None:
+            logger.warning("A removal pulled from the team log takes the waiting %s %s", change[0], change[1])
+
+        queued = queued_changes(self._db)
+        keep = kept(queued)
+        if not all(keep):
+            for change, k in zip(queued, keep):
+                if not k:
+                    note(change)
+            _set_queued_changes(self._db, [c for c, k in zip(queued, keep) if k])
+        aside = set_aside_changes(self._db)
+        keep = kept([item["change"] for item in aside])
+        if not all(keep):
+            _set_aside(self._db, [item for item, k in zip(aside, keep) if k])
+        batch = pending_states.rekey_batch(self._db)
+        changes = [list(c) for c in batch.get("team_changes") or []]
+        keep = kept(changes)
+        if not all(keep):
+            for change, k in zip(changes, keep):
+                if not k:
+                    note(change)
+            pending_states.set_rekey_batch(
+                self._db, {**batch, "team_changes": [c for c, k in zip(changes, keep) if k]})
+        self._withdraw_batch_envelopes_to(removed)
+        for envelope_id, grant in sorted(self.pending_team_grants().items()):
+            if all(kept(grant)):
+                continue
+            note(("grant", envelope_id))
+            row = self._db.fetchone("SELECT dek_id, user_id FROM access_envelopes WHERE id = ?", (envelope_id,))
+            if outbox.is_pending(self._db, outbox.ENVELOPE, envelope_id):
+                self._db.execute("DELETE FROM access_envelopes WHERE id = ?", (envelope_id,))
+                outbox.sent(self._db, outbox.ENVELOPE, envelope_id)
+            elif row is not None:  # the server holds it alone (as a refused grant, _push_team_grants)
+                pending_states.note_leaked_grant(self._db, row["dek_id"], row["user_id"])
+            self.drop_team_grant(envelope_id)
+            self._push_cache.pop(envelope_id, None)
+
     # ── Following the server ────────────────────────────────────────
 
     def _sync_team_log(self, server_head: Optional[dict]) -> Optional[teamlog.TeamState]:
@@ -416,6 +481,8 @@ class TeamLogMixin:
                 if held is not None:
                     self._db.execute("DELETE FROM team_log")  # the damaged copy, fetched again above
                 self._store_team_log(fetched, state)
+                if local is not None and held is None:  # ``fetched``: what was made after this copy
+                    self._drop_access_removed_since(fetched)
         if raced:
             return self._sync_team_log(server_head)
         return state

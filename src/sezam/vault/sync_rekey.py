@@ -157,6 +157,12 @@ class RekeyMixin:
             return
         pending = pending_states.rekey_batch(self._db)
         dek_map = pending.get("dek_map")
+        if not dek_map and self._dek_mgr is not None and not pending.get("identity_rotation"):
+            # R17-N8, capability finding 689: a batch with no new key (a level
+            # change: an envelope and its access.set) has nothing to re-seal.
+            # The pull just made may have changed it (a removal took its
+            # access); it goes out again as it is now.
+            return
         if not dek_map or self._dek_mgr is None:
             raise RuntimeError(
                 "Atomic re-key batch was refused and this device cannot rebase it"
@@ -566,14 +572,17 @@ class RekeyMixin:
         on every push and the member's folders were never re-keyed. It is
         dropped (never sent); the old envelope's withdrawal still goes.
         """
-        pending = pending_states.rekey_batch(self._db)
-        object_ids = list(pending.get("object_ids") or [])
-        if not object_ids or pending.get("identity_rotation"):
-            return  # a rotation's envelopes are judged by its own rules (key vouchers)
-        removed = queued_for_removal(self._db) | {
+        self._withdraw_batch_envelopes_to(queued_for_removal(self._db) | {
             user_id for user_id, member in (state.members.items() if state is not None else ())
             if not member.active
-        }
+        })
+
+    def _withdraw_batch_envelopes_to(self, removed: set) -> None:
+        """The pending batch's unsent envelopes to ``removed`` leave it (never sent)."""
+        pending = pending_states.rekey_batch(self._db)
+        object_ids = list(pending.get("object_ids") or [])
+        if not object_ids or not removed or pending.get("identity_rotation"):
+            return  # a rotation's envelopes are judged by its own rules (key vouchers)
         withdrawn = {t["id"] for t in pending.get("envelope_tombstones") or []}
         with self._db.transaction(immediate=True):
             dropped = [

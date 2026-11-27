@@ -6145,7 +6145,9 @@ def test_sync_state_machine_team_log_lost_grant_to_a_removed_member(loopback_ser
     """Deep run on 07487c3 (R16-Z SM15, test harness): the server lost B's
     grant to m6 (restored from a backup), A removed m6, and B sent its lost
     grant again: the log refuses it (not_active) and B sets it aside. The
-    user's way out is 'sezam team-log discard N'; the settle takes it."""
+    user's way out was 'sezam team-log discard N'. R17-N8 (capability finding
+    689): the removal B pulls takes the grant still waiting there; nothing
+    is left to set aside or discard."""
     monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)
     TeamLogMachine.server = loopback_server
     machine = TeamLogMachine()
@@ -6161,7 +6163,12 @@ def test_sync_state_machine_team_log_lost_grant_to_a_removed_member(loopback_ser
         machine.pull(_Scripted(device="A"), None)
         machine.revoke(_Scripted(device="A", member=member), None)
         machine._settle(lambda _obj: "server")
-        assert any("team-log discard" in line for line in machine.log), machine._trace()
+        logged = teamlog.replay(machine._server_log())
+        assert not logged.members[member].active, machine._trace()
+        assert all(member not in access for access in logged.access.values()), machine._trace()
+        b = machine.devices["B"].client
+        assert not b.set_aside_team_changes() and not b.pending_team_changes(), machine._trace()
+        assert not b.pending_team_grants(), machine._trace()
     finally:
         machine.teardown()
 
