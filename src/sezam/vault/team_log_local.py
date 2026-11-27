@@ -362,6 +362,7 @@ class TeamLogMixin:
 
     # ── Following the server ────────────────────────────────────────
 
+    @oplock.held  # INV-6 (R17-L): restores, re-sends and withdraws, from any caller
     def _sync_team_log(self, server_head: Optional[dict]) -> Optional[teamlog.TeamState]:
         """Bring the local copy up to ``server_head`` (from the pull answer).
 
@@ -1201,6 +1202,7 @@ class TeamLogMixin:
         self._db.set_meta_json(PRE_LOG_GRANTS_META, [])  # each is now a team grant, the log's, or withdrawn
         return withdrawn
 
+    @oplock.held  # R17-L: 'team-log status', 'confirm-founder', 'forget-pin'
     def _refresh_team_log(self) -> None:
         if not self._token:
             self.authenticate()
