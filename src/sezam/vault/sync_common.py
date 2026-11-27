@@ -187,6 +187,9 @@ KEY_VOUCHERS_FULL = "key_vouchers_full"
 # SHA-256 of the server's encrypted keypair at the key epoch this device holds:
 # what its key-change push sent, or what it took over (stateful test SM30).
 SERVER_KEY_MATERIAL_META = "server_key_material_hash"
+# The unsigned account name a 409 'Identity key rotated' carried: the takeover
+# tries it and keeps it only once /auth/recover under it opens this account.
+ROTATED_USERNAME_META = "rotated_username"
 # Items shown below the root because their folder was gone: id -> [kind, folder, version].
 REATTACHED_META = "reattached_parents"
 # Folder DEKs unbound because their folder was gone: dek id -> folder id (SM59).

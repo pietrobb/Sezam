@@ -416,9 +416,12 @@ class AuthService {
     try {
       await _crypto.init();
       await _completePendingKeypairMigration();
-      final pendingRegistration = await _secureStorage.read(key: 'sezam_pending_invitation_registration');
+      final pendingRegistration = await _secureStorage.read(
+        key: 'sezam_pending_invitation_registration',
+      );
       if (pendingRegistration != null) {
-        final context = (jsonDecode(pendingRegistration) as Map)['context'] as Map;
+        final context =
+            (jsonDecode(pendingRegistration) as Map)['context'] as Map;
         if (context['server'] != serverUrl || context['username'] != username) {
           throw StateError('Finish the pending invitation registration first');
         }
@@ -516,19 +519,33 @@ class AuthService {
       }
       // Keys taken from the server for the account this phone already holds
       // (its object id), not a fresh phone or a pending enrollment (run 416).
-      final holdsVault = recoveredUserObjectId != null &&
-          localObjectId == userObjectId && pendingRegistration == null;
-      if (recoveredUserObjectId != null && localObjectId == userObjectId &&
-          localHex != null && localHex.isNotEmpty) {
+      final holdsVault =
+          recoveredUserObjectId != null &&
+          localObjectId == userObjectId &&
+          pendingRegistration == null;
+      if (recoveredUserObjectId != null &&
+          localObjectId == userObjectId &&
+          localHex != null &&
+          localHex.isNotEmpty) {
         // Authenticate the old carrier even when there are no local DEKs.
         try {
           final unlockedKek = _vault.currentKek;
           continuityKek = unlockedKek == null
-              ? await _deriveLocalKek(previousPassword ?? password,
-                  opens: (candidate) => _opensKeypair(candidate, hexToBytes(localHex), userObjectId))
+              ? await _deriveLocalKek(
+                  previousPassword ?? password,
+                  opens: (candidate) => _opensKeypair(
+                    candidate,
+                    hexToBytes(localHex),
+                    userObjectId,
+                  ),
+                )
               : Uint8List.fromList(unlockedKek);
           if (continuityKek == null ||
-              !_opensKeypair(continuityKek, hexToBytes(localHex), userObjectId)) {
+              !_opensKeypair(
+                continuityKek,
+                hexToBytes(localHex),
+                userObjectId,
+              )) {
             _crypto.zeroize(derived);
             return AuthResult.needsPreviousPassword();
           }
@@ -572,7 +589,9 @@ class AuthService {
       if ((await _sync.unreadableOwnDeks(kek, userObjectId)).isNotEmpty) {
         final oldKek = continuityKek != null
             ? Uint8List.fromList(continuityKek)
-            : previousPassword == null ? null : await _deriveLocalKek(
+            : previousPassword == null
+            ? null
+            : await _deriveLocalKek(
                 previousPassword,
                 opens: (candidate) => _opensKeypair(
                   candidate,
@@ -661,7 +680,8 @@ class AuthService {
           : prefs.getBool(_isAdminKey) ?? false;
 
       if (serverAuthenticated) {
-        if (userId != userObjectId) throw const FormatException('Authentication identity mismatch');
+        if (userId != userObjectId)
+          throw const FormatException('Authentication identity mismatch');
         try {
           await _sync.prepareInitialTeamLog(userId, kek: kek);
         } catch (_) {
@@ -670,7 +690,9 @@ class AuthService {
           // already holds locked; the team is refused with a way out. Keys a
           // fresh phone takes from the server, or an enrollment pending, are not that
           // vault: a refused log must not adopt them or finish the enrollment.
-          if ((recoveredUserObjectId != null && !holdsVault) || pendingRegistration != null) rethrow;
+          if ((recoveredUserObjectId != null && !holdsVault) ||
+              pendingRegistration != null)
+            rethrow;
         }
       }
       // 6. Unlock vault
@@ -691,7 +713,9 @@ class AuthService {
       await prefs.setString(_serverUrlKey, serverUrl);
       if (serverAuthenticated) await prefs.setBool(_isAdminKey, isAdmin);
       if (serverAuthenticated && pendingRegistration != null) {
-        await _secureStorage.delete(key: 'sezam_pending_invitation_registration');
+        await _secureStorage.delete(
+          key: 'sezam_pending_invitation_registration',
+        );
       }
 
       // Try to sync (non-blocking)
@@ -798,8 +822,11 @@ class AuthService {
       final offlineUserId =
           _canonicalUserObjectIdPattern.hasMatch(userObjectId) &&
               ((prefs.getString(_serverUrlKey) ?? '').isNotEmpty ||
-                  (await _secureStorage.read(key: 'sezam_pending_invitation_registration') != null &&
-                   await readConfirmedTeamGenesis(userObjectId) != null))
+                  (await _secureStorage.read(
+                            key: 'sezam_pending_invitation_registration',
+                          ) !=
+                          null &&
+                      await readConfirmedTeamGenesis(userObjectId) != null))
           ? userObjectId
           : 'local';
       await _vault.unlock(
@@ -1014,7 +1041,9 @@ class AuthService {
     var signedIn = false;
     var committed = false;
     final lockGeneration = _vault.isUnlocked ? _vault.lockGeneration : null;
-    var previousKek = _vault.currentKek == null ? null : Uint8List.fromList(_vault.currentKek!);
+    var previousKek = _vault.currentKek == null
+        ? null
+        : Uint8List.fromList(_vault.currentKek!);
     try {
       final genesis = provisioningGenesis(genesisFragment);
       await _crypto.init();
@@ -1038,18 +1067,29 @@ class AuthService {
         return AuthResult.failure('Invalid provisioning response');
       }
 
-      final sameAccount = await _secureStorage.read(key: _userObjectIdKey) == userObjectId &&
+      final sameAccount =
+          await _secureStorage.read(key: _userObjectIdKey) == userObjectId &&
           await _secureStorage.read(key: _encryptedKeypairKey) != null;
       if (sameAccount && previousKek == null) {
-        final localEnvelope = hexToBytes((await _secureStorage.read(key: _encryptedKeypairKey))!);
+        final localEnvelope = hexToBytes(
+          (await _secureStorage.read(key: _encryptedKeypairKey))!,
+        );
         try {
-          previousKek = await _deriveLocalKek(password,
-              opens: (candidate) => _opensKeypair(candidate, localEnvelope, userObjectId));
-          if (previousKek == null || !_opensKeypair(previousKek, localEnvelope, userObjectId)) {
-            return AuthResult.failure('Unlock the local vault before provisioning this device');
+          previousKek = await _deriveLocalKek(
+            password,
+            opens: (candidate) =>
+                _opensKeypair(candidate, localEnvelope, userObjectId),
+          );
+          if (previousKek == null ||
+              !_opensKeypair(previousKek, localEnvelope, userObjectId)) {
+            return AuthResult.failure(
+              'Unlock the local vault before provisioning this device',
+            );
           }
         } catch (_) {
-          return AuthResult.failure('Unlock the local vault before provisioning this device');
+          return AuthResult.failure(
+            'Unlock the local vault before provisioning this device',
+          );
         }
       }
       // 2. Derive KEK from password with the account's KDF params
@@ -1125,7 +1165,8 @@ class AuthService {
       // Review 7c10379: a vault of this phone's own (not the account's
       // keypair) joins the account like a password connect. Re-wrapping it
       // in place kept its own root, and its push gave the account a second.
-      if (unreadable && !sameAccount &&
+      if (unreadable &&
+          !sameAccount &&
           !(_vault.isUnlocked &&
               localSigningPk != null &&
               _bytesEqual(localSigningPk, signingPublicKey))) {
@@ -1338,7 +1379,8 @@ class AuthService {
     final kek = Uint8List.sublistView(derived, 0, 32);
     derived.fillRange(32, derived.length, 0);
 
-    ({Uint8List keypairData, String? confirmedGenesis, Uint8List? preAnchor}) account;
+    ({Uint8List keypairData, String? confirmedGenesis, Uint8List? preAnchor})
+    account;
     try {
       account = _crypto.openAccountKeypair(
         backup.encryptedEnvelope,
@@ -1362,14 +1404,24 @@ class AuthService {
 
       // Desktop backup IDs are random AAD contexts, not server account IDs.
       final localUserId = _vault.userId;
-      final userObjectId = localUserId != null && _canonicalUserObjectIdPattern.hasMatch(localUserId)
-          ? localUserId : await _secureStorage.read(key: _userObjectIdKey) ?? backup.userObjectId;
+      final userObjectId =
+          localUserId != null &&
+              _canonicalUserObjectIdPattern.hasMatch(localUserId)
+          ? localUserId
+          : await _secureStorage.read(key: _userObjectIdKey) ??
+                backup.userObjectId;
       final cachedEnvelope = userObjectId == backup.userObjectId
           ? backup.encryptedEnvelope
           : account.confirmedGenesis != null
-              ? _crypto.wrapAccountKeypair(account.keypairData, account.confirmedGenesis!,
-                  kek, backup.kekDekId, userObjectId, account.preAnchor)
-              : _crypto.wrapKeypair(normalized, kek, backup.kekDekId, userObjectId);
+          ? _crypto.wrapAccountKeypair(
+              account.keypairData,
+              account.confirmedGenesis!,
+              kek,
+              backup.kekDekId,
+              userObjectId,
+              account.preAnchor,
+            )
+          : _crypto.wrapKeypair(normalized, kek, backup.kekDekId, userObjectId);
       // The backup's salt replaces the one the local DEKs are wrapped under
       // (lockout review #5): first prove it is this vault's keypair and move
       // the DEKs to the backup's KEK, else nothing may change.
@@ -1492,15 +1544,24 @@ class AuthService {
       await _completePendingKeypairMigration();
       _sync.configure(serverUrl);
 
-      final pendingRegistration = await _secureStorage.read(key: 'sezam_pending_invitation_registration');
+      final pendingRegistration = await _secureStorage.read(
+        key: 'sezam_pending_invitation_registration',
+      );
       if (pendingRegistration != null) {
-        final context = (jsonDecode(pendingRegistration) as Map)['context'] as Map;
+        final context =
+            (jsonDecode(pendingRegistration) as Map)['context'] as Map;
         if (context['server'] != serverUrl || context['username'] != username) {
           throw StateError('Finish the pending invitation registration first');
         }
         final genesis = context['genesis'] as String?;
-        return await registerWithInvitation(serverUrl: serverUrl, username: username, password: password,
-          invitationToken: '${context['invitation']}${genesis == null ? '' : '#g=$genesis'}', onProgress: onProgress);
+        return await registerWithInvitation(
+          serverUrl: serverUrl,
+          username: username,
+          password: password,
+          invitationToken:
+              '${context['invitation']}${genesis == null ? '' : '#g=$genesis'}',
+          onProgress: onProgress,
+        );
       }
 
       // Step 1: Check server status
@@ -1809,8 +1870,12 @@ class AuthService {
             await _vault.unlock(
               kek: Uint8List.fromList(kek),
               signingSecretKey: signingSecretKey,
-              signingPublicKey: Uint8List.fromList(keypairBytes.sublist(32, 64)),
-              encryptionSecretKey: Uint8List.fromList(keypairBytes.sublist(64, 96)),
+              signingPublicKey: Uint8List.fromList(
+                keypairBytes.sublist(32, 64),
+              ),
+              encryptionSecretKey: Uint8List.fromList(
+                keypairBytes.sublist(64, 96),
+              ),
               userId: userObjectId,
               isAdmin: authData['is_admin'] as bool? ?? false,
               unlessLockedSince: lockGeneration,
@@ -1842,7 +1907,10 @@ class AuthService {
           await _sync.pull();
           await _vault.reloadData();
         } catch (e) {
-          return ConnectResult(outcome: ConnectOutcome.error, message: 'Synchronizacia zlyhala: $e');
+          return ConnectResult(
+            outcome: ConnectOutcome.error,
+            message: 'Synchronizacia zlyhala: $e',
+          );
         }
         await prefs.setString(_usernameKey, _sync.accountNameFor(username));
         await prefs.setString(_serverUrlKey, serverUrl);
@@ -2254,9 +2322,15 @@ class AuthService {
 
   /// The onboarding of an account registered under these keys, or null when
   /// the server has none (401).
-  Future<Map<String, dynamic>?> _resumedRegistration(String username, Uint8List signingSk) async {
+  Future<Map<String, dynamic>?> _resumedRegistration(
+    String username,
+    Uint8List signingSk,
+  ) async {
     try {
-      return await _sync.resumeRegistration(username: username, signingSecretKey: signingSk);
+      return await _sync.resumeRegistration(
+        username: username,
+        signingSecretKey: signingSk,
+      );
     } on SyncException catch (e) {
       if (e.statusCode == 401) return null;
       rethrow;
@@ -2283,38 +2357,69 @@ class AuthService {
       // Enrollment needs a signing proof, not an unlocked data vault. In
       // particular, no trusted log exists yet after a preapproval restart.
       final localUserId = await _secureStorage.read(key: _userObjectIdKey);
-      final localEnvelope = await _secureStorage.read(key: _encryptedKeypairKey);
+      final localEnvelope = await _secureStorage.read(
+        key: _encryptedKeypairKey,
+      );
       if (localUserId == null || localEnvelope == null) {
         throw StateError('Local keypair state is incomplete');
       }
       if (_vault.isUnlocked && !await _passwordOpensUnlockedVault(password)) {
-        return const ConnectResult(outcome: ConnectOutcome.wrongPassword, message: 'Nespravne heslo.');
+        return const ConnectResult(
+          outcome: ConnectOutcome.wrongPassword,
+          message: 'Nespravne heslo.',
+        );
       }
-      registrationKek = _vault.isUnlocked ? Uint8List.fromList(_vault.currentKek!) : await _deriveLocalKek(password,
-        opens: (kek) => _opensKeypair(kek, hexToBytes(localEnvelope), localUserId));
+      registrationKek = _vault.isUnlocked
+          ? Uint8List.fromList(_vault.currentKek!)
+          : await _deriveLocalKek(
+              password,
+              opens: (kek) =>
+                  _opensKeypair(kek, hexToBytes(localEnvelope), localUserId),
+            );
       if (registrationKek == null ||
-          !_opensKeypair(registrationKek, hexToBytes(localEnvelope), localUserId) ||
-          (_vault.isUnlocked && !_bytesEqual(registrationKek, _vault.currentKek!))) {
-        return const ConnectResult(outcome: ConnectOutcome.wrongPassword, message: 'Nespravne heslo.');
+          !_opensKeypair(
+            registrationKek,
+            hexToBytes(localEnvelope),
+            localUserId,
+          ) ||
+          (_vault.isUnlocked &&
+              !_bytesEqual(registrationKek, _vault.currentKek!))) {
+        return const ConnectResult(
+          outcome: ConnectOutcome.wrongPassword,
+          message: 'Nespravne heslo.',
+        );
       }
       final account = _crypto.openAccountKeypair(
-        hexToBytes(localEnvelope), registrationKek, localUserId,
+        hexToBytes(localEnvelope),
+        registrationKek,
+        localUserId,
       );
-      registrationKeys = expandDesktopKeypair(account.keypairData,
-        _crypto.signingPublicKeyFromSeed(Uint8List.sublistView(account.keypairData, 0, 32)));
+      registrationKeys = expandDesktopKeypair(
+        account.keypairData,
+        _crypto.signingPublicKeyFromSeed(
+          Uint8List.sublistView(account.keypairData, 0, 32),
+        ),
+      );
       final signingSk = Uint8List.sublistView(registrationKeys, 0, 64);
       final signingPkHex = bytesToHex(Uint8List.sublistView(signingSk, 32, 64));
-      final encryptionPkHex = bytesToHex(_crypto.scalarmultBase(Uint8List.sublistView(registrationKeys, 64, 96)));
+      final encryptionPkHex = bytesToHex(
+        _crypto.scalarmultBase(Uint8List.sublistView(registrationKeys, 64, 96)),
+      );
       String? registrationGenesis;
       try {
         final pinned = await readConfirmedTeamGenesis(localUserId);
         // An anchor this phone left (forgetTeamLogPin) is no anchor any more.
-        final anchor = (await readForgottenTeamGenesis(localUserId)).contains(account.confirmedGenesis)
-            ? null : account.confirmedGenesis;
+        final anchor =
+            (await readForgottenTeamGenesis(
+              localUserId,
+            )).contains(account.confirmedGenesis)
+            ? null
+            : account.confirmedGenesis;
         registrationGenesis = invitation.genesis ?? anchor ?? pinned;
-        if ([anchor, pinned].any(
-          (anchor) => anchor != null && anchor != registrationGenesis,
-        )) {
+        if ([
+          anchor,
+          pinned,
+        ].any((anchor) => anchor != null && anchor != registrationGenesis)) {
           throw const FormatException('Account anchor changed or removed');
         }
       } finally {
@@ -2328,11 +2433,16 @@ class AuthService {
         const pendingKey = 'sezam_pending_invitation_registration';
         final pending = await _secureStorage.read(key: pendingKey);
         final context = {
-          'server': serverUrl, 'username': username, 'invitation': invitation.token,
-          'genesis': registrationGenesis, 'signing_pk': signingPkHex,
+          'server': serverUrl,
+          'username': username,
+          'invitation': invitation.token,
+          'genesis': registrationGenesis,
+          'signing_pk': signingPkHex,
           'encryption_pk': encryptionPkHex,
         };
-        final saved = pending == null ? <String, dynamic>{'context': context} : jsonDecode(pending) as Map<String, dynamic>;
+        final saved = pending == null
+            ? <String, dynamic>{'context': context}
+            : jsonDecode(pending) as Map<String, dynamic>;
         if (jsonEncode(saved['context']) != jsonEncode(context)) {
           throw StateError('Finish the pending invitation registration first');
         }
@@ -2341,10 +2451,12 @@ class AuthService {
         if (pending != null) {
           try {
             registerResp = await _sync.resumeRegistration(
-              username: username, signingSecretKey: signingSk,
+              username: username,
+              signingSecretKey: signingSk,
             );
             final previous = saved['response'] as Map?;
-            if (previous != null && previous['user_id'] != registerResp['user_id']) {
+            if (previous != null &&
+                previous['user_id'] != registerResp['user_id']) {
               throw StateError('Registration account changed');
             }
           } on SyncException catch (e) {
@@ -2363,12 +2475,16 @@ class AuthService {
           // (no such invitation, used/expired, name taken), and no earlier
           // try landed (resume found no account under these keys). Nothing
           // is registered: keeping the intent would bind the phone to it.
-          if (!{404, 409, 410}.contains(e.statusCode) || saved['response'] != null) rethrow;
+          if (!{404, 409, 410}.contains(e.statusCode) ||
+              saved['response'] != null)
+            rethrow;
           // Review 4acfdde R11: an earlier try whose answer was lost can land
           // after this try's resume found nothing; the refusal is then the
           // server seeing that very account (name taken, invitation used).
           // Dropping the intent left it orphaned with the name taken.
-          registerResp = pending == null ? null : await _resumedRegistration(username, signingSk);
+          registerResp = pending == null
+              ? null
+              : await _resumedRegistration(username, signingSk);
           if (registerResp == null) {
             await _secureStorage.delete(key: pendingKey);
             rethrow;
@@ -2387,26 +2503,42 @@ class AuthService {
         if (canonicalEncryptedKeypair == null) {
           final envelope = hexToBytes(localEnvelope);
           if (registrationGenesis == null) {
-            canonicalEncryptedKeypair = bytesToHex(_crypto.rewrapKeypairObjectId(
-              envelope, registrationKek, localUserId, canonicalUserObjectId,
-            ));
+            canonicalEncryptedKeypair = bytesToHex(
+              _crypto.rewrapKeypairObjectId(
+                envelope,
+                registrationKek,
+                localUserId,
+                canonicalUserObjectId,
+              ),
+            );
           } else {
             // The account envelope carries the invitation anchor, so a new
             // device of this member trusts it rather than the server.
-            final local = _crypto.openAccountKeypair(envelope, registrationKek, localUserId);
+            final local = _crypto.openAccountKeypair(
+              envelope,
+              registrationKek,
+              localUserId,
+            );
             try {
-              canonicalEncryptedKeypair = bytesToHex(_crypto.wrapAccountKeypair(
-                local.keypairData, registrationGenesis, registrationKek,
-                utf8.decode(envelope.sublist(3, 29)).replaceAll('\x00', ''), canonicalUserObjectId,
-                local.preAnchor,
-              ));
+              canonicalEncryptedKeypair = bytesToHex(
+                _crypto.wrapAccountKeypair(
+                  local.keypairData,
+                  registrationGenesis,
+                  registrationKek,
+                  utf8.decode(envelope.sublist(3, 29)).replaceAll('\x00', ''),
+                  canonicalUserObjectId,
+                  local.preAnchor,
+                ),
+              );
             } finally {
               _crypto.zeroize(local.keypairData);
             }
           }
         }
         final pendingAccount = _crypto.openAccountKeypair(
-          hexToBytes(canonicalEncryptedKeypair), registrationKek, canonicalUserObjectId,
+          hexToBytes(canonicalEncryptedKeypair),
+          registrationKek,
+          canonicalUserObjectId,
         );
         try {
           if (pendingAccount.confirmedGenesis != registrationGenesis) {
@@ -2419,7 +2551,8 @@ class AuthService {
         await _secureStorage.write(key: pendingKey, value: jsonEncode(saved));
         final uploadedHash = registerResp['key_material_hash'] as String?;
         if (uploadedHash != null) {
-          if (_crypto.sha256Hex(hexToBytes(canonicalEncryptedKeypair)) != uploadedHash) {
+          if (_crypto.sha256Hex(hexToBytes(canonicalEncryptedKeypair)) !=
+              uploadedHash) {
             throw StateError('Registration key material changed');
           }
         } else {
@@ -2435,7 +2568,8 @@ class AuthService {
           userObjectId: canonicalUserObjectId,
           encryptedKeypairHex: canonicalEncryptedKeypair,
         );
-        if (_vault.isUnlocked) _vault.bindRegisteredAccount(canonicalUserObjectId, previousUserId!);
+        if (_vault.isUnlocked)
+          _vault.bindRegisteredAccount(canonicalUserObjectId, previousUserId!);
       } on SyncException catch (e) {
         if (e.statusCode == 404) {
           return ConnectResult(
@@ -2482,17 +2616,28 @@ class AuthService {
 
   /// Poll for admin approval.
   /// Returns true when user is approved (can authenticate).
-  Future<bool> pollForApproval({required String username, String? password, String? serverUrl}) async {
+  Future<bool> pollForApproval({
+    required String username,
+    String? password,
+    String? serverUrl,
+  }) async {
     username = normalizeUsername(username);
     final wasLocked = !_vault.isUnlocked;
     try {
       if (wasLocked) {
         if (password == null || serverUrl == null) return false;
-        final pending = await _secureStorage.read(key: 'sezam_pending_invitation_registration');
+        final pending = await _secureStorage.read(
+          key: 'sezam_pending_invitation_registration',
+        );
         if (pending == null) return false;
         final context = (jsonDecode(pending) as Map)['context'] as Map;
-        if (context['server'] != serverUrl || context['username'] != username) return false;
-        final opened = await unlockWithPassword(password: password, username: username, serverUrl: serverUrl);
+        if (context['server'] != serverUrl || context['username'] != username)
+          return false;
+        final opened = await unlockWithPassword(
+          password: password,
+          username: username,
+          serverUrl: serverUrl,
+        );
         if (!opened.success) return false;
       }
       final signingSecretKey = _vault.signingSecretKey;
@@ -2502,7 +2647,10 @@ class AuthService {
         username: username,
         signingSecretKey: signingSecretKey,
       );
-      if (active) await _secureStorage.delete(key: 'sezam_pending_invitation_registration');
+      if (active)
+        await _secureStorage.delete(
+          key: 'sezam_pending_invitation_registration',
+        );
       if (!active && wasLocked) _vault.lock();
       return active;
     } catch (_) {
@@ -2596,12 +2744,18 @@ class AuthService {
   /// The anchor this phone's own keys name when the keys just opened
   /// ([genesis]) changed or removed it, null otherwise.
   Future<String?> _changedAccountAnchor(
-    String userId, String? genesis, Uint8List previousKek,
+    String userId,
+    String? genesis,
+    Uint8List previousKek,
   ) async {
     if (await _secureStorage.read(key: _userObjectIdKey) != userId) return null;
     final encoded = await _secureStorage.read(key: _encryptedKeypairKey);
     if (encoded == null) throw StateError('Local keypair state is incomplete');
-    final previous = _crypto.openAccountKeypair(hexToBytes(encoded), previousKek, userId);
+    final previous = _crypto.openAccountKeypair(
+      hexToBytes(encoded),
+      previousKek,
+      userId,
+    );
     try {
       final anchor = previous.confirmedGenesis;
       // An unreadable list of left hashes leaves nothing (run 411): only keys
@@ -2610,7 +2764,9 @@ class AuthService {
       try {
         forgotten = await readForgottenTeamGenesis(userId);
       } on TeamLogMismatch {}
-      return anchor != null && anchor != genesis && !forgotten.contains(anchor) ? anchor : null;
+      return anchor != null && anchor != genesis && !forgotten.contains(anchor)
+          ? anchor
+          : null;
     } finally {
       _crypto.zeroize(previous.keypairData);
     }
@@ -2618,20 +2774,38 @@ class AuthService {
 
   /// [kek] (the server's password state) is one this phone left while its
   /// keys named no anchor: its keys' pre-anchor states and those it recorded.
-  Future<bool> _leftWithoutAnchor(Uint8List kek, String userId, Uint8List previousKek) async {
+  Future<bool> _leftWithoutAnchor(
+    Uint8List kek,
+    String userId,
+    Uint8List previousKek,
+  ) async {
     final encoded = await _secureStorage.read(key: _encryptedKeypairKey);
     if (encoded == null) throw StateError('Local keypair state is incomplete');
-    final previous = _crypto.openAccountKeypair(hexToBytes(encoded), previousKek, userId);
+    final previous = _crypto.openAccountKeypair(
+      hexToBytes(encoded),
+      previousKek,
+      userId,
+    );
     _crypto.zeroize(previous.keypairData);
     final check = bytesToHex(_crypto.preAnchorCheck(kek));
-    final known = _crypto.mergePreAnchor(previous.preAnchor, await _preAnchorHistory());
-    return _crypto.parsePreAnchor(known).any((e) => bytesToHex(e.check) == check);
+    final known = _crypto.mergePreAnchor(
+      previous.preAnchor,
+      await _preAnchorHistory(),
+    );
+    return _crypto
+        .parsePreAnchor(known)
+        .any((e) => bytesToHex(e.check) == check);
   }
 
   Future<Uint8List> _openAnchoredAccountKeypair(
-    Uint8List envelope, Uint8List kek, String userId,
-    {Uint8List? previousKek, String? expectedGenesis, bool fromServer = false, bool heldVault = false}
-  ) async {
+    Uint8List envelope,
+    Uint8List kek,
+    String userId, {
+    Uint8List? previousKek,
+    String? expectedGenesis,
+    bool fromServer = false,
+    bool heldVault = false,
+  }) async {
     final account = _crypto.openAccountKeypair(envelope, kek, userId);
     try {
       final genesis = account.confirmedGenesis;
@@ -2639,8 +2813,13 @@ class AuthService {
         requireConfirmedGenesis(expectedGenesis, genesis);
       }
       final oldKek = previousKek ?? _vault.currentKek;
-      var changed = oldKek == null ? null : await _changedAccountAnchor(userId, genesis, oldKek);
-      if (changed != null && genesis == null && fromServer && expectedGenesis == null &&
+      var changed = oldKek == null
+          ? null
+          : await _changedAccountAnchor(userId, genesis, oldKek);
+      if (changed != null &&
+          genesis == null &&
+          fromServer &&
+          expectedGenesis == null &&
           !await _leftWithoutAnchor(kek, userId, oldKek!)) {
         // R15 (goal #429): keys without the anchor this phone's keys named
         // are a downgrade only under a password state this phone left before
@@ -2649,7 +2828,8 @@ class AuthService {
         // anchored change had not landed): the server held no anchor to
         // strip. The keys are taken; the anchor stays pinned here.
         try {
-          if (await readConfirmedTeamGenesis(userId) == null) await confirmTeamGenesis(userId, changed);
+          if (await readConfirmedTeamGenesis(userId) == null)
+            await confirmTeamGenesis(userId, changed);
         } catch (_) {}
         changed = null;
       }
@@ -2661,7 +2841,8 @@ class AuthService {
       if (heldVault && expectedGenesis == null) {
         if (changed != null) {
           try {
-            if (await readConfirmedTeamGenesis(userId) == null) await confirmTeamGenesis(userId, changed);
+            if (await readConfirmedTeamGenesis(userId) == null)
+              await confirmTeamGenesis(userId, changed);
           } catch (_) {}
         }
         try {
@@ -2685,7 +2866,9 @@ class AuthService {
       }
       return expandDesktopKeypair(
         account.keypairData,
-        _crypto.signingPublicKeyFromSeed(Uint8List.sublistView(account.keypairData, 0, 32)),
+        _crypto.signingPublicKeyFromSeed(
+          Uint8List.sublistView(account.keypairData, 0, 32),
+        ),
       );
     } finally {
       _crypto.zeroize(account.keypairData);
@@ -2812,7 +2995,12 @@ class AuthService {
     final local = await _localKdf();
     final envelope = await _secureStorage.read(key: _encryptedKeypairKey);
     if (local == null || envelope == null) return;
-    final ({Uint8List keypairData, String? confirmedGenesis, Uint8List? preAnchor}) account;
+    final ({
+      Uint8List keypairData,
+      String? confirmedGenesis,
+      Uint8List? preAnchor,
+    })
+    account;
     try {
       account = _crypto.openAccountKeypair(hexToBytes(envelope), kek, userId);
     } on Object {
@@ -2820,9 +3008,18 @@ class AuthService {
     }
     _crypto.zeroize(account.keypairData);
     if (account.confirmedGenesis != null) return;
-    final history = _crypto.addPreAnchor(await _preAnchorHistory(), hexToBytes(local.saltHex),
-        local.kdf.timeCost, local.kdf.memoryCost, local.kdf.parallelism, kek);
-    await _secureStorage.write(key: _preAnchorHistoryKey, value: bytesToHex(history!));
+    final history = _crypto.addPreAnchor(
+      await _preAnchorHistory(),
+      hexToBytes(local.saltHex),
+      local.kdf.timeCost,
+      local.kdf.memoryCost,
+      local.kdf.parallelism,
+      kek,
+    );
+    await _secureStorage.write(
+      key: _preAnchorHistoryKey,
+      value: bytesToHex(history!),
+    );
   }
 
   /// KDF params of the account key material [meta] describes: this device's
@@ -2841,7 +3038,8 @@ class AuthService {
 
   /// INV-8 (review e443cbc): an emergency action (forget the team log pin,
   /// drop unsent changes) asks for the account password, as on desktop and web.
-  Future<bool> passwordOpensUnlockedVault(String password) => _passwordOpensUnlockedVault(password);
+  Future<bool> passwordOpensUnlockedVault(String password) =>
+      _passwordOpensUnlockedVault(password);
 
   /// True only when [password] derives (under the local salt/params) the KEK
   /// the unlocked vault runs on.
@@ -2880,12 +3078,18 @@ class AuthService {
     }
     final localSigningPk = _vault.signingPublicKey;
     final localEncryptionPk = _vault.encryptionPublicKey;
-    if (localSigningPk == null || localEncryptionPk == null ||
+    if (localSigningPk == null ||
+        localEncryptionPk == null ||
         !_bytesEqual(localSigningPk, backup.signingPublicKey) ||
         !_bytesEqual(localEncryptionPk, backup.encryptionPublicKey)) {
       throw StateError('This backup holds a different keypair than this vault');
     }
-    if (await _changedAccountAnchor(userObjectId, confirmedGenesis, currentKek) != null) {
+    if (await _changedAccountAnchor(
+          userObjectId,
+          confirmedGenesis,
+          currentKek,
+        ) !=
+        null) {
       throw const FormatException('Account anchor changed or removed');
     }
     if (confirmedGenesis != null) {
@@ -2947,45 +3151,90 @@ class AuthService {
     var adopted = false;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(_usernameKey) ?? '';
+      final stored = prefs.getString(_usernameKey) ?? '';
       final serverUrl = prefs.getString(_serverUrlKey) ?? '';
-      if (username.isEmpty || serverUrl.isEmpty) {
+      if (stored.isEmpty || serverUrl.isEmpty) {
         return AuthResult.failure('No server configured');
       }
       _sync.configure(serverUrl);
 
-      final meta = await _sync.fetchMeta(username: username);
-      final argon2SaltHex = meta['argon2_salt'] as String?;
-      if (argon2SaltHex == null || argon2SaltHex.isEmpty) {
-        return AuthResult.failure('User not found or not configured');
+      // Review c02cc47 R17-L: the name a 409 'Identity key rotated' carried
+      // is unsigned. It is tried first and kept only once /auth/recover
+      // under it opens this account; a lie falls back to the stored name.
+      final candidate =
+          prefs.getString(SyncService.rotatedUsernamePrefKey) ?? '';
+      final names = [
+        if (candidate.isNotEmpty && candidate != stored) candidate,
+        stored,
+      ];
+      String? username;
+      String? argon2SaltHex;
+      AccountKdf? kdf;
+      Map<String, dynamic>? recoverResp;
+      AuthResult? refusal;
+      for (final name in names) {
+        if (derived != null) _crypto.zeroize(derived);
+        derived = null;
+        try {
+          final meta = await _sync.fetchMeta(username: name);
+          final salt = meta['argon2_salt'] as String?;
+          if (salt == null || salt.isEmpty) {
+            refusal = AuthResult.failure('User not found or not configured');
+            continue;
+          }
+          final nameKdf = await _accountKdfFor(meta);
+          final ({Uint8List derived, Map<String, dynamic> resp}) recovered;
+          try {
+            recovered = await _recoverWithForms(
+              username: name,
+              password: currentPassword,
+              salt: hexToBytes(salt),
+              timeCost: nameKdf.timeCost,
+              memoryCost: nameKdf.memoryCost,
+              parallelism: nameKdf.parallelism,
+            );
+          } catch (e) {
+            refusal = AuthResult.recoverFailure(e);
+            continue;
+          }
+          derived = recovered.derived;
+          if (requireCanonicalUserObjectId(recovered.resp) != userId) {
+            refusal = AuthResult.failure(
+              'The server account does not match this vault',
+            );
+            continue;
+          }
+          (username, argon2SaltHex, kdf, recoverResp) = (
+            name,
+            salt,
+            nameKdf,
+            recovered.resp,
+          );
+          break;
+        } catch (e) {
+          if (name == names.last) rethrow;
+        }
       }
-      final kdf = await _accountKdfFor(meta);
-      final Map<String, dynamic> recoverResp;
-      try {
-        final recovered = await _recoverWithForms(
-          username: username,
-          password: currentPassword,
-          salt: hexToBytes(argon2SaltHex),
-          timeCost: kdf.timeCost,
-          memoryCost: kdf.memoryCost,
-          parallelism: kdf.parallelism,
-        );
-        derived = recovered.derived;
-        recoverResp = recovered.resp;
-      } catch (e) {
-        return AuthResult.recoverFailure(e);
+      if (username == null ||
+          argon2SaltHex == null ||
+          kdf == null ||
+          recoverResp == null ||
+          derived == null) {
+        return refusal ??
+            AuthResult.failure('User not found or not configured');
+      }
+      if (candidate.isNotEmpty) {
+        if (username == candidate) {
+          await prefs.setString(_usernameKey, candidate);
+        }
+        await prefs.remove(SyncService.rotatedUsernamePrefKey);
       }
       derived.fillRange(32, derived.length, 0);
       final newKek = Uint8List.sublistView(derived, 0, 32);
       final encryptedKeypairHex = recoverResp['encrypted_keypair'] as String?;
-      final recoveredUserId = requireCanonicalUserObjectId(recoverResp);
+      final recoveredUserId = userId;
       if (encryptedKeypairHex == null || encryptedKeypairHex.isEmpty) {
         return AuthResult.failure('No encrypted keypair on the server');
-      }
-      if (recoveredUserId != userId) {
-        return AuthResult.failure(
-          'The server account does not match this vault',
-        );
       }
       try {
         keypairBytes = await _openAnchoredAccountKeypair(
@@ -3043,7 +3292,9 @@ class AuthService {
         await _vault.unlock(
           kek: newKek,
           signingSecretKey: signingSecretKey,
-          signingPublicKey: Uint8List.fromList(signingSecretKey.sublist(32, 64)),
+          signingPublicKey: Uint8List.fromList(
+            signingSecretKey.sublist(32, 64),
+          ),
           encryptionSecretKey: Uint8List.fromList(keypairBytes.sublist(64, 96)),
           userId: userId,
           isAdmin: isAdmin,
@@ -3130,7 +3381,10 @@ class AuthService {
     final serverUrl = prefs.getString(_serverUrlKey) ?? '';
     final local = await _localKdf();
     final kekDekId = await DatabaseService().getSetting('kek_dek_id');
-    if (username.isEmpty || serverUrl.isEmpty || local == null || kekDekId == null) {
+    if (username.isEmpty ||
+        serverUrl.isEmpty ||
+        local == null ||
+        kekDekId == null) {
       return AuthResult.failure('No server account on this phone');
     }
     Uint8List? current;
@@ -3158,14 +3412,23 @@ class AuthService {
       // Capability run 269: the password states left here opened bundles
       // without the anchor; the anchored bundle records them so no client
       // moves the account back to one.
-      final localEnvelope = await _secureStorage.read(key: _encryptedKeypairKey);
+      final localEnvelope = await _secureStorage.read(
+        key: _encryptedKeypairKey,
+      );
       if (localEnvelope == null) {
         return AuthResult.failure('Local keypair state is incomplete');
       }
-      final localAccount = _crypto.openAccountKeypair(hexToBytes(localEnvelope), kek, userId);
+      final localAccount = _crypto.openAccountKeypair(
+        hexToBytes(localEnvelope),
+        kek,
+        userId,
+      );
       _crypto.zeroize(localAccount.keypairData);
       // Capability run 273: with every earlier state this phone left.
-      final known = _crypto.mergePreAnchor(localAccount.preAnchor, await _preAnchorHistory());
+      final known = _crypto.mergePreAnchor(
+        localAccount.preAnchor,
+        await _preAnchorHistory(),
+      );
       if (await _crypto.passwordReopensPreAnchor(newPassword, known)) {
         return AuthResult.failure(preAnchorPasswordRefused);
       }
@@ -3508,7 +3771,10 @@ class AuthService {
   /// [newUsername] rejoins under another name: the log names the member by
   /// id, and an account registered after the backup may hold the old name
   /// (review 4acfdde R11, low; [AuthResult.usernameTaken]).
-  Future<AuthResult> rejoinServer({required String password, String? newUsername}) async {
+  Future<AuthResult> rejoinServer({
+    required String password,
+    String? newUsername,
+  }) async {
     final userId = _vault.userId;
     final signingSk = _vault.signingSecretKey;
     if (!_vault.isUnlocked || userId == null || signingSk == null) {
@@ -3520,7 +3786,9 @@ class AuthService {
     final db = DatabaseService();
     final prefs = await SharedPreferences.getInstance();
     final previousName = prefs.getString(_usernameKey);
-    final username = newUsername != null ? normalizeUsername(newUsername) : previousName ?? '';
+    final username = newUsername != null
+        ? normalizeUsername(newUsername)
+        : previousName ?? '';
     if (username.isEmpty) return AuthResult.failure('The username is empty.');
     var stage = await db.outboxOperation(outboxRejoin);
     final resumed = stage != null;
@@ -3535,7 +3803,8 @@ class AuthService {
       await db.putOutboxOperation(outboxRejoin, stage);
     }
     if (stage == 'rejoin') {
-      final keyEpoch = int.tryParse(await db.getSetting('key_epoch') ?? '0') ?? 0;
+      final keyEpoch =
+          int.tryParse(await db.getSetting('key_epoch') ?? '0') ?? 0;
       // The sign-ins below and a resumed run use the stored name.
       await prefs.setString(_usernameKey, _sync.accountNameFor(username));
       bool created;
@@ -3544,9 +3813,13 @@ class AuthService {
       } on SyncException catch (e) {
         if (e.statusCode < 400 || e.statusCode >= 500) rethrow;
         await db.dropOutboxOperation(outboxRejoin);
-        if (previousName != null) await prefs.setString(_usernameKey, previousName);
-        if (e is UsernameTakenException) return AuthResult.usernameTaken(username);
-        return AuthResult.failure('The server refused the rejoin: ${e.message}');
+        if (previousName != null)
+          await prefs.setString(_usernameKey, previousName);
+        if (e is UsernameTakenException)
+          return AuthResult.usernameTaken(username);
+        return AuthResult.failure(
+          'The server refused the rejoin: ${e.message}',
+        );
       }
       if (!created && !resumed) {
         await db.dropOutboxOperation(outboxRejoin);
@@ -3557,7 +3830,10 @@ class AuthService {
       } else {
         // An earlier run's rejoin landed with its answer lost (or its
         // upload did not): sign in and upload unless the server has it.
-        await _sync.authenticate(username: username, signingSecretKey: signingSk);
+        await _sync.authenticate(
+          username: username,
+          signingSecretKey: signingSk,
+        );
         try {
           await _uploadKeypairToServer(
             password,

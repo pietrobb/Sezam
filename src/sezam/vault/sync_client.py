@@ -57,6 +57,7 @@ from .sync_common import (
     RESEED_ARCHIVES_META,
     _rotated_account_name,
     server_error,
+    ROTATED_USERNAME_META,
     SERVER_KEY_MATERIAL_META,
     SERVER_ROLLBACK_META,
     ServerError,
@@ -195,10 +196,11 @@ class SyncClient(
                         # is taken over like a password change made elsewhere.
                         # A renamed account is taken over under its current
                         # name, not the old one another account holds now
-                        # (review 526419e N8).
+                        # (review 526419e N8). The name is unsigned (review
+                        # c02cc47 R17-L): only a candidate the takeover tries.
                         current_name = _rotated_account_name(exc)
                         if current_name:
-                            self._db.set_meta("username", current_name)
+                            self._db.set_meta(ROTATED_USERNAME_META, current_name)
                         raise KeyEpochStale() from exc
                     if refused and pending_states.last_pushed_key_epoch(self._db) > 0:
                         # Stateful test SM14: the server lost an identity
@@ -568,25 +570,42 @@ class SyncClient(
 
         from .crud import open_server_keypair, recover_with_password, server_account_kdf
 
-        username = self._get_username()
-        meta = self._request("GET", f"/api/meta?username={quote(username)}") or {}
-        if not meta.get("argon2_salt"):
-            raise RuntimeError("Server did not return the account KDF parameters")
-        salt = bytes.fromhex(meta["argon2_salt"])
-        params = server_account_kdf(meta, self._db)
-        try:
-            kek, resp = recover_with_password(
-                lambda body: self._request("POST", "/api/auth/recover", body),
-                username, account_password, salt, params,
-            )
-        except RuntimeError as exc:
-            if server_error(exc, 401) or server_error(exc, 403):
-                raise RuntimeError("Wrong current account password") from exc
-            raise
+        # Review c02cc47 R17-L: the name a 409 'Identity key rotated' carried
+        # is unsigned. It is tried first and kept only once /auth/recover
+        # under it opens this account; a lie falls back to the stored name.
+        stored = self._get_username()
+        candidate = normalize_username(self._db.get_meta(ROTATED_USERNAME_META) or "")
+        names = [name for name in dict.fromkeys((candidate, stored)) if name]
+        for index, username in enumerate(names):
+            try:
+                meta = self._request("GET", f"/api/meta?username={quote(username)}") or {}
+                if not meta.get("argon2_salt"):
+                    raise RuntimeError("Server did not return the account KDF parameters")
+                salt = bytes.fromhex(meta["argon2_salt"])
+                params = server_account_kdf(meta, self._db)
+                try:
+                    kek, resp = recover_with_password(
+                        lambda body: self._request("POST", "/api/auth/recover", body),
+                        username, account_password, salt, params,
+                    )
+                except RuntimeError as exc:
+                    if server_error(exc, 401) or server_error(exc, 403):
+                        raise RuntimeError("Wrong current account password") from exc
+                    raise
+                if resp.get("user_id") != self._db.get_meta("user_id"):
+                    kek[:] = b"\x00" * len(kek)
+                    raise RuntimeError("Server returned a different account")
+            except RuntimeError:
+                if index + 1 < len(names):
+                    continue
+                raise
+            break
+        if candidate:
+            if username == candidate and candidate != stored:
+                self._db.set_meta("username", candidate)
+            self._db.set_meta(ROTATED_USERNAME_META, "")
         server_keypair = former_sk = None
         try:
-            if resp.get("user_id") != self._db.get_meta("user_id"):
-                raise RuntimeError("Server returned a different account")
             if bytes.fromhex(resp.get("argon2_salt") or "") != salt:
                 raise RuntimeError("Server changed the account salt during recovery")
             server_keypair = open_server_keypair(resp, kek)

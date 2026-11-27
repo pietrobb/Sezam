@@ -87,14 +87,55 @@ def test_desktop_takes_over_under_the_current_name():
     client._request = request
     with pytest.raises(KeyEpochStale):
         client.authenticate()
-    assert meta["username"] == "carol-2"
+    # Review c02cc47 R17-L: the name is unsigned, only a candidate.
+    assert meta["username"] == "carol"
+    assert meta["rotated_username"] == "carol-2"
 
 
-def test_mobile_stores_the_name_of_the_409():
-    sync = (ROOT / "mobile" / "lib" / "services" / "sync_service.dart").read_text(
-        encoding="utf-8"
-    )
-    block = sync.split("verifyResp.body.contains('Identity key rotated')", 1)[1]
-    block = block.split("throw const KeyEpochStaleException();", 1)[0]
-    assert "_rotatedAccountName(verifyResp.body)" in block
-    assert "prefs.setString(usernamePrefKey, currentName)" in block
+OWN_ID = "01JM0000000000000000000001"
+
+
+def _takeover(recover_ids: dict) -> tuple[dict, list]:
+    """adopt_rotated_key_material up to the name it keeps: /auth/recover
+    under a name answers that name's account (recover_ids); the salt check
+    right after the name choice stops the takeover there."""
+    from sezam.vault.sync_client import SyncClient
+
+    meta = {"username": "carol", "rotated_username": "carol-2", "user_id": OWN_ID}
+    db = mock.Mock(path=None)  # no vault file: no sync lock
+    db.get_meta.side_effect = meta.get
+    db.set_meta.side_effect = meta.__setitem__
+    client = SyncClient.__new__(SyncClient)
+    client._db = db
+    client._request = lambda method, path, body=None, auth=False: {"argon2_salt": "11"}
+    tried = []
+
+    def recover(_post, username, _password, _salt, _params):
+        tried.append(username)
+        if recover_ids.get(username) is None:
+            raise RuntimeError("404 user not found")
+        return bytearray(32), {"user_id": recover_ids[username], "argon2_salt": "22"}
+
+    with mock.patch("sezam.vault.crud.recover_with_password", recover), \
+            mock.patch("sezam.vault.crud.server_account_kdf", lambda meta, db: (1, 1, 1)), \
+            pytest.raises(RuntimeError, match="salt"):
+        client.adopt_rotated_key_material(mock.Mock(), "pw")
+    return meta, tried
+
+
+def test_desktop_takeover_keeps_the_name_that_opens_this_account():
+    meta, tried = _takeover({"carol-2": OWN_ID, "carol": "01JM0000000000000000000009"})
+    assert tried == ["carol-2"]
+    assert (meta["username"], meta["rotated_username"]) == ("carol-2", "")
+
+
+def test_desktop_takeover_falls_back_from_a_name_of_another_account():
+    meta, tried = _takeover({"carol-2": "01JM0000000000000000000009", "carol": OWN_ID})
+    assert tried == ["carol-2", "carol"]
+    assert (meta["username"], meta["rotated_username"]) == ("carol", "")
+
+
+def test_desktop_takeover_falls_back_from_a_name_the_server_does_not_know():
+    meta, tried = _takeover({"carol": OWN_ID})
+    assert tried == ["carol-2", "carol"]
+    assert (meta["username"], meta["rotated_username"]) == ("carol", "")

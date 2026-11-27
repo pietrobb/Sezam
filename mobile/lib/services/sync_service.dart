@@ -377,6 +377,11 @@ class SyncService {
   /// SharedPreferences key of the account name this phone signs in with.
   static const usernamePrefKey = 'sezam_username';
 
+  /// The unsigned account name a 409 'Identity key rotated' carried (review
+  /// c02cc47 R17-L): the takeover tries it and keeps it only once
+  /// /auth/recover under it opens this account.
+  static const rotatedUsernamePrefKey = 'sezam_rotated_username';
+
   final _crypto = CryptoService();
   final _db = DatabaseService();
   final _vault = VaultService();
@@ -1032,11 +1037,12 @@ class SyncService {
     if (verifyResp.statusCode == 409 &&
         verifyResp.body.contains('Identity key rotated')) {
       // Review 526419e N8: a renamed account is taken over under its current
-      // name, not the old one another account holds now.
+      // name, not the old one another account holds now. R17-L: the name
+      // is unsigned, only a candidate the takeover tries.
       final currentName = _rotatedAccountName(verifyResp.body);
       if (currentName != null && currentName != username) {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(usernamePrefKey, currentName);
+        await prefs.setString(rotatedUsernamePrefKey, currentName);
       }
       throw const KeyEpochStaleException();
     }
