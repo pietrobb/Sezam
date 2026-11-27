@@ -2236,7 +2236,29 @@ async def _top_folder_is_own(
     return cache[key]
 
 
-def unknown_name_kdf(name_mac: bytes, in_use: list[Optional[str]]) -> dict:
+# Review c02cc47 R17-L: every /api/meta with a name read every account's KDF
+# params, so its cost (and time) grew with the accounts on the server. The
+# spread of params in use is read at most once a minute per server.
+KDF_SPREAD_TTL_S = 60.0
+_kdf_spread_cache: "weakref.WeakKeyDictionary[object, tuple[float, dict[str, int]]]" = weakref.WeakKeyDictionary()
+
+
+async def _kdf_spread(cur, db) -> dict[str, int]:
+    """How many accounts use each KDF params (canonical JSON -> count)."""
+    now = time.monotonic()
+    cached = _kdf_spread_cache.get(db)
+    if cached is not None and now - cached[0] < KDF_SPREAD_TTL_S:
+        return cached[1]
+    await cur.execute("SELECT argon2_params FROM users")
+    counts: dict[str, int] = {}
+    for (stored,) in await cur.fetchall():
+        key = json.dumps(account_kdf_params(stored), sort_keys=True)
+        counts[key] = counts.get(key, 0) + 1
+    _kdf_spread_cache[db] = (now, counts)
+    return counts
+
+
+def unknown_name_kdf(name_mac: bytes, counts: dict[str, int]) -> dict:
     """KDF params to report for a name without an account (R16-L5).
 
     Real accounts carry the params of the device that set the password, and
@@ -2245,12 +2267,8 @@ def unknown_name_kdf(name_mac: bytes, in_use: list[Optional[str]]) -> dict:
     account as real. An unknown name now gets params of the accounts on this
     server, picked per name in proportion to how many use them, so a name's
     params say no more than that some account uses them. A server with no
-    account answers with a client default, as before.
+    account answers with a client default, as before. ``counts``: _kdf_spread.
     """
-    counts: dict[str, int] = {}
-    for stored in in_use:
-        key = json.dumps(account_kdf_params(stored), sort_keys=True)
-        counts[key] = counts.get(key, 0) + 1
     pick = int.from_bytes(name_mac[:8], "big")
     if not counts:
         return dict(CLIENT_DEFAULT_ACCOUNT_KDFS[pick % len(CLIENT_DEFAULT_ACCOUNT_KDFS)])
@@ -2291,10 +2309,9 @@ async def get_meta(
                     (username,),
                 )
                 row = await cur.fetchone()
-                # Review 18c300f R16-L5: run for every name, so the answer
-                # about an unknown one takes the same queries.
-                await cur.execute("SELECT argon2_params FROM users")
-                in_use = [stored for (stored,) in await cur.fetchall()]
+                # Review 18c300f R16-L5: for every name, so the answer about
+                # an unknown one takes the same queries (R17-L: cached).
+                in_use = await _kdf_spread(cur, db)
         # The column collation is case/accent-insensitive: "ADMIN" would find
         # "admin" and return its real salts, while a nonexistent name gets
         # fake ones — an enumeration oracle. Only an exact match is real.
