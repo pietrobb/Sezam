@@ -60,13 +60,16 @@ def test_a_retired_key_cannot_re_sign_a_vouched_version_with_other_fields(
         bob.lock()
 
 
+@pytest.mark.parametrize("legacy", [False, True], ids=["held_signed", "held before held_signed"])
 @pytest.mark.parametrize("change", ["deleted", "parent"])
 def test_the_signer_s_own_key_on_other_fields_of_a_held_version_is_an_equivocation(
-    server, tmp_path, change  # noqa: F811
+    server, tmp_path, change, legacy  # noqa: F811
 ):
     """against_held compared the payload hash alone: the same version with
     another parent or as deleted was the copy held ("same"), and the device
-    then held (and would vouch for) a message it never kept."""
+    then held (and would vouch for) a message it never kept. A copy held
+    from before held_signed (an upgraded vault) compares its own parent and
+    tombstone flag too."""
     url, _db = server
     laptop = _vault(tmp_path / "laptop", "admin")
     root = laptop.db.get_meta("root_node_id")
@@ -84,6 +87,9 @@ def test_the_signer_s_own_key_on_other_fields_of_a_held_version_is_an_equivocati
         target_user_id=forged.get("target_user_id"), is_deleted=forged["is_deleted"],
         version=forged["version"], payload_hash=forged["payload_hash"],
     )).signature.hex()
+    if legacy:
+        with phone.db.transaction():
+            phone.db.execute("DELETE FROM held_signed WHERE object_id = ?", (entry,))
     try:
         _serve_again(phone_client, forged, floor_lie=False)
         result = phone_client.pull()
@@ -91,7 +97,7 @@ def test_the_signer_s_own_key_on_other_fields_of_a_held_version_is_an_equivocati
         assert entry in _live_entries(phone)
         assert phone.db.fetchone("SELECT node_id FROM entries WHERE id = ?", (entry,))[0] == root
         # Only the message held is held: no voucher of this device names the other.
-        assert len(_digests(phone, entry)) == 1
+        assert len(_digests(phone, entry)) == (0 if legacy else 1)
     finally:
         laptop.lock()
         phone.lock()

@@ -135,6 +135,22 @@ MUTANTS = (
         ("tests/test_inv1_restore_admin_from_log.py",),
         "capability run 453: after a lost log, the restored log's admin, not the users row's",
     ),
+    # Reverts: R17-N1, a proof of a copy covers every signed field ---------
+    Mutant(
+        "R13", "revert", "src/sezam/key_vouchers.py",
+        '        return (obj["id"], version, entry_digest(signer_id, signing_pk, message))\n',
+        '        return (obj["id"], version, payload_hash.lower())\n',
+        ("tests/test_sync_state_machine.py::test_sync_state_machine_leaked_key_signs_a_held_version_again",
+         "tests/test_r17_n1_voucher_binds_signed_fields.py", "tests/test_r17_n1_signed_fields_proofs.py"),
+        "R17-N1: a voucher entry names the whole signed message, signer and key, not the payload hash",
+    ),
+    Mutant(
+        "R14", "revert", "src/sezam/vault/sync_apply.py",
+        "            return (entry[2] if entry[2] in held else min(held)), entry[2]\n",
+        "            return local_hash, payload_hash\n",
+        ("tests/test_r17_n1_voucher_binds_signed_fields.py",),
+        "R17-N1: against_held compares the held copy's whole signed message, not its payload",
+    ),
     Mutant(
         "B5", "branch", "server/app/authority.py",
         "    if state is not None and state.members:\n        from .team_log import core\n",

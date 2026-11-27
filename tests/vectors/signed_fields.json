@@ -1,0 +1,27 @@
+{
+  "_comment": "R17-N1 (S4 style): every field a sync object's signature covers (key_vouchers.SIGNED_FIELDS, in signed_message order) and, per field, another value. Each proof of a copy (the signed message, the voucher entry, the held-copy comparison) must change with each one; the voucher entry also with the signer and the key. Checked by tests/test_r17_n1_signed_fields_proofs.py (desktop, web) and mobile/test/r17_n1_signed_fields_test.dart.",
+  "fields": ["id", "object_type", "parent_ref", "target_user_id", "is_deleted", "version", "payload_hash"],
+  "object": {
+    "id": "01JSIGNEDFIELDS00000000001",
+    "object_type": "node",
+    "parent_ref": "01JSIGNEDFIELDSPARENT00001",
+    "target_user_id": "01JSIGNEDFIELDSTARGET00001",
+    "is_deleted": 0,
+    "version": 3,
+    "payload_hash": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "other": {
+    "id": "01JSIGNEDFIELDS00000000002",
+    "object_type": "entry",
+    "parent_ref": "01JSIGNEDFIELDSPARENT00002",
+    "target_user_id": "01JSIGNEDFIELDSTARGET00002",
+    "is_deleted": 1,
+    "version": 4,
+    "payload_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "none": ["parent_ref", "target_user_id"],
+  "signer_id": "01JSIGNEDFIELDSSIGNER00001",
+  "other_signer_id": "01JSIGNEDFIELDSSIGNER00002",
+  "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+  "other_signing_pk": "4444444444444444444444444444444444444444444444444444444444444444"
+}

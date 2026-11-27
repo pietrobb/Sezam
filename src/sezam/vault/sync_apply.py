@@ -121,8 +121,7 @@ class ApplyMixin:
         seq = self._db.fetchone(
             "SELECT commit_seq FROM object_server_seq WHERE object_id = ?", (obj_id,)
         )
-        local_hash, payload_hash = self._copy_hashes(
-            obj_id, existing["version"], version, local_hash, payload_hash)
+        local_hash, payload_hash = self._copy_hashes(obj_id, existing, version, local_hash, payload_hash)
         decision = sync_core.call(
             "against_held",
             gc_floor_seq=self._gc_floor,
@@ -151,27 +150,35 @@ class ApplyMixin:
         return decision != "apply"
 
     def _copy_hashes(
-        self, obj_id: str, held_version: int, version: int, local_hash: str,
+        self, obj_id: str, existing, version: int, local_hash: str,
         payload_hash: Optional[str],
     ) -> tuple[str, Optional[str]]:
         """What against_held compares (R17-N1): at the version held, the
         whole signed message with its signer and key (held_signed, and the
         entry of the pulled copy that verified), so the same version with
         another parent, tombstone flag or signer is an equivocation, never
-        the copy held. A copy held from before held_signed has its payload."""
+        the copy held. A folder or entry held from before held_signed (an
+        upgraded vault) compares its own parent and tombstone flag beside the
+        payload, as the web and the phone (heldCopyKey); a DEK its payload."""
         verified = self._verified_entries.get(obj_id)
-        if verified is None or version != held_version:
+        if verified is None or version != existing["version"]:
             return local_hash, payload_hash
         held = {
             row["digest"] for row in self._db.fetchall(
                 "SELECT digest FROM held_signed WHERE object_id = ? AND version = ?",
-                (obj_id, held_version),
+                (obj_id, version),
             )
         }
         entry = key_vouchers.object_entry(*verified)
-        if not held or entry is None:
+        if held and entry is not None:
+            return (entry[2] if entry[2] in held else min(held)), entry[2]
+        if "parent" not in existing.keys():
             return local_hash, payload_hash
-        return (entry[2] if entry[2] in held else min(held)), entry[2]
+        pulled = verified[0]
+        return (
+            f"{local_hash}|{existing['parent'] or ''}|{int(bool(existing['is_deleted']))}",
+            f"{payload_hash or ''}|{pulled.get('parent_ref') or ''}|{int(bool(pulled.get('is_deleted')))}",
+        )
 
     def _apply_node(
         self, obj_id: str, parent_ref: Optional[str],
@@ -180,7 +187,7 @@ class ApplyMixin:
     ) -> None:
         """UPSERT node — only if server version > local version."""
         existing = self._db.fetchone(
-            f"SELECT version, encrypted_meta, is_deleted, {outbox.queued('nodes')} AS queued "
+            f"SELECT version, encrypted_meta, is_deleted, parent_id AS parent, {outbox.queued('nodes')} AS queued "
             "FROM nodes WHERE id = ?",
             (obj_id,),
         )
@@ -271,7 +278,7 @@ class ApplyMixin:
     ) -> None:
         """UPSERT entry — parse length-prefixed payload to get meta + data."""
         existing = self._db.fetchone(
-            "SELECT version, encrypted_meta, encrypted_data, is_deleted, "
+            "SELECT version, encrypted_meta, encrypted_data, is_deleted, node_id AS parent, "
             f"{outbox.queued('entries')} AS queued FROM entries WHERE id = ?",
             (obj_id,),
         )

@@ -2774,6 +2774,83 @@ class SyncMachine(RuleBasedStateMachine):
         if how == "full_resync" and outcome == "full resync done":
             self._observe(device)
 
+    @precondition(lambda self: self._retired_signers())
+    @rule(data=st.data(), change=st.sampled_from(["deleted", "parent"]),
+          how=st.sampled_from(["pull", "full_resync"]))
+    def zero_trust_in_a_held_version_a_leaked_key_signs_again(self, data, change, how):
+        """R17-N1 (review c02cc47, INV-2/INV-3): the server holds a signing key
+        an identity rotation retired and signs a version that key signed (a
+        voucher list names it, a device holds it) again, at the same version
+        with other signed fields: as deleted, or below another folder. A voucher
+        named (id, version, payload_hash) and against_held compared the payload
+        alone, so every client took it as the copy it held. The device may
+        refuse it (an equivocation), never take it."""
+        retired = self._retired_signers()
+        user_id, signer = retired[self._pick(data, range(len(retired)), "leaked key")]
+        storage = self.db._storage
+        signed = {o["id"]: o for o in storage["vault_objects"]
+                  if o.get("object_type") == "entry" and not o.get("is_deleted")
+                  and o.get("signature_user_id") == user_id}
+        picked = self._pick(data, signed, "object")
+        if picked is None:
+            return
+        target = signed[picked]
+        changed = {"is_deleted": 1}
+        if change == "parent":
+            folders = sorted(o["id"] for o in storage["vault_objects"]
+                             if o.get("object_type") == "node" and not o.get("is_deleted")
+                             and o["id"] != target.get("parent_ref"))
+            folder = self._pick(data, folders, "folder")
+            if folder is None:
+                return
+            changed = {"parent_ref": folder}
+        device = self._device(data)
+        vault = self.devices[device].vault
+        held_row = lambda: vault.db.fetchone(  # noqa: E731
+            f"SELECT version, node_id, is_deleted, {outbox.queued('entries')} AS queued FROM entries WHERE id = ?",
+            (picked,))
+        before = held_row()
+        if before is not None and before["queued"]:
+            return  # its own change meets the copy in decide_pulled
+        original = copy.deepcopy(target)
+        counter = storage["commit_counter"][0]
+        commit_seq = counter["next_seq"]
+        counter["next_seq"] += 1
+        forged = {**target, **changed}
+        canonical = SyncClient._build_signature_payload(
+            id=picked, object_type="entry", parent_ref=forged.get("parent_ref"),
+            target_user_id=forged.get("target_user_id"), is_deleted=forged["is_deleted"],
+            version=forged["version"], payload_hash=forged["payload_hash"],
+        )
+        target.update(changed, commit_seq=commit_seq, client_signature=signer.sign(canonical).signature)
+        self.log.append(f"server: signs {picked} v{target['version']} again with {user_id}'s retired key, "
+                        f"{changed} ({device} {how})")
+        client = self._command(device).client
+        try:
+            if how == "full_resync" and client.full_resync_blocker():
+                outcome = f"full resync refused: {client.full_resync_blocker()}"
+            else:
+                try:
+                    result = client.full_resync(confirmed=True) if how == "full_resync" else client.pull()
+                    outcome = "accepted" + (" (equivocation)" if (result or {}).get("equivocations") else "")
+                except REFUSALS as exc:
+                    outcome = f"refused: {exc}"
+        finally:
+            # By id: a request that rolled back put the memory database's copy
+            # from its start in their place (as the rule above).
+            for row in storage["vault_objects"]:
+                if row.get("id") == picked:
+                    row.clear()
+                    row.update(copy.deepcopy(original))
+        self.log.append(f"   -> {outcome}")
+        coverage_event(f"held version signed again ({change}, {how}): {outcome.split(':')[0]}")
+        after = held_row()
+        took = after is not None and after["version"] == forged["version"] and (
+            after["node_id"] == forged["parent_ref"] if change == "parent" else after["is_deleted"] == 1)
+        assert not took, (
+            f"{device} took {picked} v{forged['version']} {changed}, signed again by {user_id}'s retired key\n"
+            + self._trace())
+
     def _withhold_archives_from_a_new_device(self) -> None:
         """Run 157: only the re-key archive ties a folder's new key to the one
         it retired, and both name the folder. A new device whose first pull
@@ -4324,6 +4401,35 @@ def test_sync_state_machine_server_holds_a_leaked_retired_key(loopback_server, m
         assert signed, machine._trace()
         machine.with_a_leaked_retired_key_the_server_forges(
             _Scripted(**{"leaked key": 0, "object": signed[0], "device": "B"}), how)
+        machine._settle(lambda _obj: "server")
+    finally:
+        machine.teardown()
+
+
+@pytest.mark.parametrize("how", ["pull", "full_resync"])
+@pytest.mark.parametrize("change", ["deleted", "parent"])
+def test_sync_state_machine_leaked_key_signs_a_held_version_again(loopback_server, monkeypatch, change, how):
+    """R17-N1 (review c02cc47): after A's identity rotation the server signs a
+    version B holds again with A's retired key, at the same version with other
+    signed fields. B took it as the copy it held (the voucher named the payload
+    hash, against_held compared it alone)."""
+    monkeypatch.setattr(sys.modules[__name__], "coverage_event", lambda _name: None)  # outside a Hypothesis run
+    SyncMachine.server = loopback_server
+    machine = SyncMachine()
+    try:
+        machine.rotate_identity(_Scripted(device="A"), None)
+        machine._settle(lambda _obj: "server")
+        assert machine._retired_signers(), machine._trace()
+        admin = machine.devices["A"].vault.db.get_meta("user_id")
+        storage = machine.db._storage["vault_objects"]
+        signed = sorted(o["id"] for o in storage if o.get("object_type") == "entry" and not o.get("is_deleted")
+                        and o.get("signature_user_id") == admin)
+        assert signed, machine._trace()
+        parent = next(o["parent_ref"] for o in storage if o["id"] == signed[0])
+        folder = sorted(o["id"] for o in storage if o.get("object_type") == "node" and not o.get("is_deleted")
+                        and o["id"] != parent)[0]
+        machine.zero_trust_in_a_held_version_a_leaked_key_signs_again(
+            _Scripted(**{"leaked key": 0, "object": signed[0], "folder": folder, "device": "B"}), change, how)
         machine._settle(lambda _obj: "server")
     finally:
         machine.teardown()

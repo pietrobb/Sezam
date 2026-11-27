@@ -43,6 +43,10 @@ _ID = re.compile(r"^[0-9A-Za-z]{26}$")  # OBJECT_ID in server/app/models/schemas
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 
 Entry = tuple[str, int, str]
+# R17-N1 (S4 style): every field a sync object's signature covers, in
+# signed_message order. Each proof of a copy covers all of them
+# (tests/test_r17_n1_signed_fields_proofs.py, tests/vectors/signed_fields.json).
+SIGNED_FIELDS = ("id", "object_type", "parent_ref", "target_user_id", "is_deleted", "version", "payload_hash")
 
 
 def ulid_to_bytes(ulid_str: str) -> bytes:
