@@ -88,6 +88,13 @@ class SyncStateMixin:
                 (obj_id, version, digest) for held_version, held_hash, digest in signed[obj_id]
                 if held_version == version and held_hash == payload_hash
             )
+        # An envelope withdrawn here has no row left; its held copy is the
+        # withdrawal the server took (or a pull verified), whose digest names
+        # the deleted flag: no live version matches it.
+        for row in self._db.fetchall("SELECT envelope_id FROM withdrawn_envelopes"):
+            obj_id = row["envelope_id"]
+            if obj_id not in unsent:
+                out.update((obj_id, version, digest) for version, _hash, digest in signed.get(obj_id, ()))
         return out
 
     def _local_objects(self) -> list[tuple[str, int, bytes, Optional[str], int]]:

@@ -295,7 +295,7 @@ class VoucherMixin:
                 held = self._held_digests(entry[0], entry[1])
                 if held and entry[2] not in held:
                     continue
-                if entry in vouched or (pk == old and not held and local.get(obj["id"]) == _local_key(obj)):
+                if entry in vouched or (pk == old and (held or local.get(obj["id"]) == _local_key(obj))):
                     entries.append(entry)
                     break
         return self._signed_lists(entries)
