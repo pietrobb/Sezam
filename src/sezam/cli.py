@@ -2882,7 +2882,7 @@ def push(server: Optional[str]):
         vault.lock()
         sys.exit(1)
 
-    from .vault.revocation import blocked_message, finish_queued_into
+    from .vault.revocation import blocked_message, push_with_queued_revocations
     from .vault.sync_client import KeyEpochStale, SyncClient
     client = SyncClient(vault.db, server, vault.keypair, vault.db.get_meta("user_id"))
     client.set_dek_manager(vault.dek_mgr)
@@ -2890,21 +2890,15 @@ def push(server: Optional[str]):
         # Members revoked while another re-key waited (review 688edcb #8b):
         # a queued member's pending batch is sent and counted first, the
         # rest are re-keyed once the push landed the batch they waited for.
-        rekeyed: dict[str, int] = {}
-        blocked: dict[str, list[str]] = {}
-        too_large: dict[str, str] = {}
-
-        def finish_queued() -> None:
-            # Review e4cd15a #3: a re-key waits for open conflicts in its
-            # folders; the rest of the push (and of the queue, 526419e S4) goes on.
-            finish_queued_into(vault, client, rekeyed, blocked, too_large)
-
+        # Review e4cd15a #3: a re-key waits for open conflicts in its
+        # folders; the rest of the push (and of the queue, 526419e S4) goes on.
+        # Review c02cc47 R17-N4: the GUI's push, one entry point.
         try:
-            finish_queued()
-            result = client.push()
+            result = push_with_queued_revocations(vault, client)
         except KeyEpochStale:
             _adopt_rotation_prompt(client, vault)
-            result = client.push()
+            result = push_with_queued_revocations(vault, client)
+        rekeyed, blocked, too_large = result["rekeyed"], result["blocked"], result["too_large"]
         accepted = len(result.get("accepted", []))
         conflicts = len(result.get("conflicts", []))
         click.echo(f"Push: {accepted} accepted, {conflicts} conflicts.")
@@ -2926,7 +2920,9 @@ def push(server: Optional[str]):
                 "this app and takes no personal folder of a member yet ('sezam status').",
                 err=True,
             )
-        finish_queued()
+        for reason in dict.fromkeys((result.get("team_log_refused"), result.get("queue_refused"))):
+            if reason:
+                click.echo(f"Warning: the team's changes wait for the team log: {reason}", err=True)
         for user_id, object_ids in blocked.items():
             click.echo(f"Warning: {blocked_message(user_id, object_ids)}", err=True)
         if blocked:
@@ -2941,9 +2937,7 @@ def push(server: Optional[str]):
             click.echo(f"Warning: the re-key of revoked user {user_id} waits: {reason}", err=True)
         for user_id, count in rekeyed.items():
             click.echo(f"Re-keyed {count} folder(s) after revoking user {user_id}.")
-        from .vault.revocation import finish_handover_rekeys
-
-        for user_id, count in finish_handover_rekeys(vault, client).items():
+        for user_id, count in result["handover_rekeyed"].items():
             click.echo(f"Re-keyed {count} folder(s) the former admin {user_id} held.")
         if conflicts:
             for c in result["conflicts"]:

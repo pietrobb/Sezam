@@ -108,7 +108,7 @@ Server: 57 routes, 36 of them change something.
 | `org-recovery-setup` | the organisation's recovery | the team admin in the local team log; the server takes only records the log allows | — | runs `org_recovery_server:setup_and_register` |
 | `provision-device` | a one-time device token | the signed-in account, for itself | — | runs `SyncClient.create_provisioning_token` |
 | `pull` | applies the server's changes | whoever unlocked the vault (master password, or the broker's session key) | — | runs `SyncClient.pull` |
-| `push` | sends local changes | a team member; each object by the signer's write access, team folders by the log | — | runs `SyncClient.push`<br>`revocation:finish_queued_into` |
+| `push` | sends local changes | a team member; each object by the signer's write access, team folders by the log | — | runs `revocation:push_with_queued_revocations` |
 | `restore` | replaces the vault with a backup file | whoever unlocked the vault (master password, or the broker's session key) | — | runs `snapshots:stage_file`<br>`snapshots:install_staged` |
 | `revoke-user` | removes a member | the team admin in the local team log; the server takes only records the log allows | — | runs `revocation:revoke_member` |
 | `rotate-identity` | the account's identity keys | the signed-in account, for itself | — | runs `Vault.change_password`<br>`SyncClient.push` |
@@ -322,10 +322,8 @@ Keyed `module:function` under `sezam.vault`.
 | `reseed:rejoin_server` | brings this account back on a server a backup lost | the signed-in account, for itself | `POST /api/auth/rejoin` | test_review11_rejoin_name_taken.py |
 | `reseed:reseed_server` | the first admin of an empty server, with this vault's identity | whoever unlocked the vault, while the server has no admin | `POST /api/bootstrap` | test_ai_r3_reseed.py |
 | `revocation:blocked_message` | — | — | — | run by `sezam.cli:push` |
-| `revocation:finish_handover_rekeys` | the re-keys a hand-over left | the team admin in the local team log; the server takes only records the log allows | `POST /api/sync` | run by `sezam.cli:push` |
-| `revocation:finish_queued_into` | the queued removals' re-keys | the team admin in the local team log; the server takes only records the log allows | `POST /api/sync` | run by `sezam.cli:push` |
 | `revocation:grant_member` | a member's access to a folder: envelope and access.set | the team admin in the local team log; the server takes only records the log allows | `POST /api/sync`<br>`POST /api/team-log` | test_grant_folder_access.py |
-| `revocation:push_with_queued_revocations` | pushes with the queued removals | the team admin in the local team log; the server takes only records the log allows | `POST /api/sync` | test_review13_handover_rekey.py |
+| `revocation:push_with_queued_revocations` | local changes; for the log admin also the queued removals' and a hand-over's re-keys | a team member; each object by the signer's write access, team folders by the log | `POST /api/sync` | test_review13_handover_rekey.py<br>test_r17_n4_admin_push_while_refused.py |
 | `revocation:revoke_member` | removes a member: member.remove, revocation on the server, re-keys | the team admin in the local team log; the server takes only records the log allows | `POST /api/team-log`<br>`DELETE /api/users/{user_id}`<br>`POST /api/sync` | test_grant_under_rekeyed_key_sm62.py |
 | `snapshots:discard_staged` | drops a staged restore | whoever unlocked the vault (master password, or the broker's session key) | `local` | test_review10_snapshots.py |
 | `snapshots:drop_snapshots_of_other_passwords` | deletes snapshots under older passwords | whoever unlocked the vault (master password, or the broker's session key) | `local` | run by `sezam.cli:snapshot_drop_old_passwords` |

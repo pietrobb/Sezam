@@ -1004,6 +1004,12 @@ class TeamDialog(QDialog):
             ]
             if result.get("conflicts"):
                 lines.append(f"The push left {len(result['conflicts'])} conflict(s).")
+            # R17-N4: the personal tree went out; the team's part waits.
+            lines += [
+                f"The team's changes wait for the team log: {reason}"
+                for reason in dict.fromkeys((result.get("team_log_refused"), result.get("queue_refused")))
+                if reason
+            ]
             QMessageBox.information(
                 self, "Re-keys", "\n".join(lines) or "No member re-key is waiting."
             )

@@ -12,7 +12,13 @@ from .rekey_abandon import UNPULLED, meet_server
 from .sync_client import CONFIRMED_MEMBER_KEYS_META
 from .sync_limits import SyncUnitTooLarge
 from .sync_common import ServerError, queued_for_removal, server_error
-from .team_log_local import PRE_LOG_GRANTS_META, local_team_state, projected_team_state, unlogged_folder_keys
+from .team_log_local import (
+    PRE_LOG_GRANTS_META,
+    TeamLogMismatch,
+    local_team_state,
+    projected_team_state,
+    unlogged_folder_keys,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -422,10 +428,14 @@ def finish_queued_revocations(vault: Vault, client: SyncClient) -> dict[str, int
 def finish_queued_into(
     vault: Vault, client: SyncClient, rekeyed: dict[str, int], blocked: dict[str, list[str]],
     too_large: Optional[dict[str, str]] = None,
-) -> None:
+) -> Optional[str]:
     """finish_queued_revocations, collecting the re-keyed and the members that
     wait for conflicts (``blocked`` is replaced) or whose re-key the server
-    can never take (``too_large``, replaced) instead of raising for them."""
+    can never take (``too_large``, replaced) instead of raising for them.
+
+    Review c02cc47 R17-N4 (INV-7 rule 1): a refused team log holds back only
+    the queue, which is the team's part: the refusal is returned (the queue
+    stays as it is) and the push of the personal tree goes on."""
     if too_large is None:
         too_large = {}
 
@@ -435,8 +445,8 @@ def finish_queued_into(
         for user_id, count in done.items():
             rekeyed[user_id] = rekeyed.get(user_id, 0) + count
 
-    queue_revoked_holders(vault, client)
     try:
+        queue_revoked_holders(vault, client)
         add(finish_queued_revocations(vault, client))
         blocked.clear()
         too_large.clear()
@@ -446,6 +456,9 @@ def finish_queued_into(
         blocked.update(exc.blocked)
         too_large.clear()
         too_large.update(exc.too_large)
+    except TeamLogMismatch as exc:
+        return str(exc)
+    return None
 
 
 @oplock.held  # INV-6: writes the revocation queue (oplock.require)
@@ -493,17 +506,21 @@ def finish_handover_rekeys(vault: Vault, client: SyncClient) -> dict[str, int]:
 
 @oplock.held  # INV-6: writes the revocation queue (oplock.require)
 def push_with_queued_revocations(vault: Vault, client: SyncClient) -> dict:
-    """A push that also finishes the revocation queue, as 'sezam push' does
-    (review 526419e S4: the GUI never did), and the re-key after an admin
-    handover. Returns the push result plus ``rekeyed`` (member -> folders),
-    ``blocked`` (member -> conflict ids) and ``handover_rekeyed`` (former
-    admin -> folders)."""
+    """The push of 'sezam push' and the GUI (review c02cc47 R17-N4: one entry
+    point): it also finishes the revocation queue (review 526419e S4: the GUI
+    never did) and the re-key after an admin handover. Returns the push
+    result plus ``rekeyed`` (member -> folders), ``blocked`` (member ->
+    conflict ids), ``too_large``, ``handover_rekeyed`` (former admin ->
+    folders) and, when a refused team log held the queue back,
+    ``queue_refused`` (the refusal)."""
     rekeyed: dict[str, int] = {}
     blocked: dict[str, list[str]] = {}
     too_large: dict[str, str] = {}
-    finish_queued_into(vault, client, rekeyed, blocked, too_large)
+    refused = finish_queued_into(vault, client, rekeyed, blocked, too_large)
     result = dict(client.push())
-    finish_queued_into(vault, client, rekeyed, blocked, too_large)
+    refused = finish_queued_into(vault, client, rekeyed, blocked, too_large) or refused
+    if refused:
+        result["queue_refused"] = refused
     result["handover_rekeyed"] = finish_handover_rekeys(vault, client)
     result["rekeyed"] = rekeyed
     result["blocked"] = blocked
