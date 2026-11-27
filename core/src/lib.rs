@@ -18,7 +18,10 @@
 //!   aside;
 //! - [`reseal`]: the send side after a re-key: the key an unsent write goes
 //!   out under, when a replaced folder key may be opened, and whether a
-//!   member revoked elsewhere still needs a re-key.
+//!   member revoked elsewhere still needs a re-key;
+//! - [`teamlog`]: the signed team log's replay and every decision from it
+//!   (who may write, hold or seal which key; refusals; forks), with the
+//!   signatures checked by each client's libsodium in a second run.
 //!
 //! [`json::call`] is the one entry point the bindings (PyO3, wasm-bindgen,
 //! flutter_rust_bridge) expose: an operation name and a JSON document in,
@@ -30,6 +33,7 @@ pub mod order;
 pub mod pull;
 pub mod reapply;
 pub mod reseal;
+pub mod teamlog;
 
 use serde::{Deserialize, Serialize};
 
