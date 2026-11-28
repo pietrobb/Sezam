@@ -2984,8 +2984,10 @@ class TestPasswordChangeRecovery:
 
         assert "await getUserSigningPks(signerId)" in pull
         assert "await vouches(sigPk) && verifyObjectSignature(obj, sigPk, _sodium)" in pull
-        assert "data.archived_keys || []" in resolver
-        assert "Archived key fingerprint mismatch" in resolver
+        # Capability review 716: the archives' chain is the core's key_ring
+        # (tests/test_key_ring_vectors.py runs the web's keyRing on it).
+        assert "keyRing(userId, current, currentEncryption, data.archived_keys" in resolver
+        assert "SezamSyncCore.call('key_ring'" in src
         assert "userPks.some(userPk =>" in audit
 
     def test_mobile_qr_provisioning_binds_and_journals_canonical_user_id(self):

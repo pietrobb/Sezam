@@ -1652,6 +1652,7 @@ function normalizeUsername(value) {
 
 async function handleLogin(e) {
     e.preventDefault();
+    await globalThis.SezamSyncCore.ready;  // normalizeUsername is the core's; a fast submit (autofill) can come first
     // N3: onboarding stores the trimmed name (IndexedDB, server account), so
     // " alice" must log in as "alice".
     const username = normalizeUsername(document.getElementById('username').value);
@@ -1852,6 +1853,7 @@ async function forgetTeamLogPinAtLogin(typed, password, session, _sodium) {
 
 async function handleOnboarding(e) {
     e.preventDefault();
+    await globalThis.SezamSyncCore.ready;  // normalizeUsername is the core's; a fast submit (autofill) can come first
     const username = normalizeUsername(document.getElementById('onboard-username').value);
     const password = document.getElementById('onboard-password').value;
     const confirm = document.getElementById('onboard-confirm').value;
@@ -2051,6 +2053,7 @@ function validateBootstrapConfirmPassword() {
 
 async function handleBootstrap(e) {
     e.preventDefault();
+    await globalThis.SezamSyncCore.ready;  // normalizeUsername is the core's; a fast submit (autofill) can come first
     const username = normalizeUsername(document.getElementById('bootstrap-username').value);
     const password = document.getElementById('bootstrap-password').value;
     const confirm = document.getElementById('bootstrap-confirm').value;
@@ -9161,10 +9164,6 @@ async function getUserSigningPks(userId) {
         if (current.length !== 32 || currentEncryption.length !== 32) {
             throw new Error('Current public keys must be 32 bytes');
         }
-        await globalThis.SezamSyncCore.ready;  // the key ring's rule (keyRing)
-        const ring = keyRing(userId, current, currentEncryption, data.archived_keys, await ensureSodium());
-        const keys = ring.map(pair => pair.signingPk);
-
         const currentSigningHex = bytesToHex(current);
         const currentEncryptionHex = bytesToHex(currentEncryption);
         if (userId === state.userId && state.keypair?.signingPk && state.keypair?.encryptionSk) {
@@ -9187,6 +9186,10 @@ async function getUserSigningPks(userId) {
             }
         }
 
+        // A changed pin is refused above, before any archive is verified.
+        await globalThis.SezamSyncCore.ready;  // the key ring's rule (keyRing)
+        const ring = keyRing(userId, current, currentEncryption, data.archived_keys, await ensureSodium());
+        const keys = ring.map(pair => pair.signingPk);
         state.userKeys[userId] = keys;
         // Goal #443: the archived keys vouch only for what the voucher lists
         // of the current key name (fetchVouchedEntries); retired_seq is not read.

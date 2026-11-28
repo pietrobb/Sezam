@@ -67,6 +67,11 @@ def test_every_web_entry_point_normalizes():
     src = (ROOT / "web" / "static" / "js" / "app.js").read_text(encoding="utf-8")
     for field in ("username", "onboard-username", "bootstrap-username"):
         assert f"normalizeUsername(document.getElementById('{field}').value)" in src
+    # CI run 46139831115: a submit before the WASM core loaded threw "sync core
+    # is not loaded yet" (normalizeUsername is the core's); each form waits.
+    for handler in ("handleLogin", "handleOnboarding", "handleBootstrap"):
+        body = src.split(f"async function {handler}(e) {{", 1)[1]
+        assert body.index("await globalThis.SezamSyncCore.ready;") < body.index("normalizeUsername("), handler
 
 
 def test_phone_normalizes_like_the_server():
