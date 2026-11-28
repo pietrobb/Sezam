@@ -46,7 +46,7 @@ _VOUCHER_NEXT = ("paging (R17-N10): a lie ends the lists early (what a left-out 
 _OBJECT_SIG = ("vault.sync_client:SyncClient._verify_object_signature",)
 _TOFU = ("vault.sync_client:SyncClient._get_signing_pk",)
 _KDF = ("vault.crud:server_account_kdf",)
-_LOG = ("teamlog:_verify", "teamlog:apply_record")
+_LOG = ("teamlog:_passed", "teamlog:replay")
 _TOKEN = "a bearer token for the server itself; a lie only fails the next request"
 _ID = "the server's own row id; the client acts on it only towards the server"
 _SHOWN = "shown to the user only"
@@ -436,6 +436,11 @@ _HELD_NOT_ASKED = {key: Field(UNREAD, "this client never calls /api/objects/held
     "HeldResponse.objects", "HeldObject.id", "HeldObject.object_type", "HeldObject.version",
     "HeldObject.is_deleted")}
 
+# The only ``note`` read is the core's anchor-pin answer (team_log_anchor_pin:
+# note, pin, conflict), not this server's.
+_ANCHOR_NOTE = {key: Field(UNREAD, "the name is the core's anchor-pin answer, not the server's") for key in (
+    "DELETE /api/users/{user_id} .note", "PATCH /api/users/{user_id}/reactivate .note")}
+
 CLIENT_FIELDS: dict[str, dict[str, Field]] = {
     "web": {
         "VerifyResponse.is_admin": Field(
@@ -496,6 +501,7 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
         **_pull_fields(("verifyObjectSignature", "pullAndBuildTreeLocked"), "pullAndBuildTreeLocked",
                        "syncWebTeamLog", Field(HINT, _HELD_SEQ + _NO_BOUND, ("webPulledIsStale",))),
         "PullObject.modified_at": Field(UNREAD, "the name is a field of a decrypted entry, not the server's"),
+        **_ANCHOR_NOTE,
         **_log_fields("syncWebTeamLog", "webTeamLogRefusal", "replay"),
         **_HELD_NOT_ASKED,
         "PushResponse.accepted": Field(
@@ -747,6 +753,7 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             "OrgRecoveryStatusResponse.stale")},
         **{key: Field(UNREAD, "the names read are a signed team log record's") for key in (
             "OrgRecoveryStatusResponse.threshold", "OrgRecoveryStatusResponse.total_shares")},
+        **_ANCHOR_NOTE,
         **_not_called("/api/org-recovery/blob or /keypair (recovery is the desktop's and the web's)",
                       "OrgRecoveryBlobResponse.stale", "OrgRecoveryBlobResponse.wrapped_kek",
                       "OrgRecoveryKeypairResponse.argon2_salt", "OrgRecoveryKeypairResponse.encrypted_keypair",

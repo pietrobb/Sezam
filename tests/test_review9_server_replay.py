@@ -10,7 +10,6 @@ Replay now runs in a worker thread, with one copy of the state per batch.
 
 from __future__ import annotations
 
-import copy
 import threading
 
 import pytest
@@ -34,21 +33,20 @@ def _keys(team: Team, count: int, start: int = 0) -> list[dict]:
 
 @pytest.fixture
 def watched(monkeypatch):
-    """Copies of a TeamState and the threads team-log records are applied on."""
+    """Copies of a TeamState handed to the core and the threads it replays on.
+
+    The core replays a whole batch in one call (sezam.teamlog._replay): the
+    state crosses into it once per call, a copy that call makes."""
     seen = {"copies": 0, "threads": set()}
-    real_copy, real_apply = copy.deepcopy, core._apply
+    real_replay = core._replay
 
-    def counting_copy(value, *args, **kwargs):
-        if isinstance(value, core.TeamState):
-            seen["copies"] += 1
-        return real_copy(value, *args, **kwargs)
-
-    def watched_apply(state, record):
+    def watched_replay(records, state, steps=False):
         seen["threads"].add(threading.get_ident())
-        return real_apply(state, record)
+        if state is not None:
+            seen["copies"] += 1
+        return real_replay(records, state, steps)
 
-    monkeypatch.setattr(core.copy, "deepcopy", counting_copy)
-    monkeypatch.setattr(core, "_apply", watched_apply)
+    monkeypatch.setattr(core, "_replay", watched_replay)
     return seen
 
 

@@ -95,7 +95,7 @@ async def test_workers_appending_onto_one_head_land_exactly_one(mariadb, monkeyp
     team = await _founded(mariadb)
     # Separate workers: no shared in-process gate, no warm cache.
     monkeypatch.setattr(team_log_router, "_push_gate", lambda: asyncio.Lock())
-    monkeypatch.setattr(team_log, "_remember", lambda state: None)
+    monkeypatch.setattr(team_log, "_remember", lambda entry, stale: None)
     base = team.state
     rivals = [
         team.record("folder.key", team.admin, {
@@ -166,13 +166,13 @@ async def test_a_cold_replay_leaves_the_event_loop_free(mariadb, monkeypatch):  
     team = await _founded(mariadb)
     await _append(mariadb, team.admin, team.folder_keys(60))
     team_log.forget_cache()
-    real_apply = core._apply
+    real_replay = core._replay
 
-    def slow_apply(state, record):
-        time.sleep(0.01)  # 63 records: ~0.6 s of replay
-        return real_apply(state, record)
+    def slow_replay(records, state, steps=False):
+        time.sleep(0.01 * len(records))  # 63 records: ~0.6 s of replay
+        return real_replay(records, state, steps)
 
-    monkeypatch.setattr(core, "_apply", slow_apply)
+    monkeypatch.setattr(core, "_replay", slow_replay)
     worst, done = 0.0, False
 
     async def ticker():

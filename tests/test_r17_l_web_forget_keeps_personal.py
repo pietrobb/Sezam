@@ -22,7 +22,8 @@ PERSONAL_DEK = "01JD0000000000000000000P01"
 TEAM_DEK = "01JD0000000000000000000T01"
 
 # The queue of the R15 test, with one personal and one team write in place of
-# its untyped ones; the personal folder P is this account's, signed by it.
+# its untyped ones; the personal folder P is this account's, signed by it and
+# sealed under its own key (a personal root has one: core authority::personal_tree).
 QUEUE = """
         btoa = value => Buffer.from(value, 'binary').toString('base64');
         atob = value => Buffer.from(value, 'base64').toString('binary');
@@ -32,7 +33,8 @@ QUEUE = """
             const out = new Uint8Array(64); out.set(env, 4); return bytesToBase64(out);
         };
         state.deks = { '%(p)s': new Uint8Array(32) };
-        state.nodes = { P: { id: 'P', personal: true, parent_ref: null }, T: { id: 'T', parent_ref: null } };
+        state.nodes = { P: { id: 'P', personal: true, parent_ref: null, dekId: '%(p)s' },
+                        T: { id: 'T', parent_ref: null, dekId: '%(t)s' } };
         state.syncObjects = { P: { id: 'P', signer: state.userId }, T: { id: 'T', signer: state.userId } };
         const personalEntry = id => ({ id, object_type: 'entry', parent_ref: 'P', is_deleted: 0, payload: sealed('%(p)s') });
         state.outbox = { e1: personalEntry('e1'),
