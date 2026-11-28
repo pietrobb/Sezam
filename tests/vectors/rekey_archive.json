@@ -1,0 +1,1505 @@
+{
+ "about": "Removal re-key archive id (docs/CORE_UNIFICATION.md U6, core/src/rekey_archive.rs), from the desktop's dek.removal_archive_id / archive_removed before the move. key is the new DEK the platform hashes with (BLAKE2b, 16 bytes); mark/member are the digests of messages.mark/member under it.",
+ "cases": [
+  {
+   "new_dek_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2E3",
+   "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+   "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "prefix": "01J0000000",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d76310030314851385258334235573659375a384139423043314432453300",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d76310030314851385258334235573659375a38413942304331443245330030314851385258334235573659375a3841394230433144324242"
+   },
+   "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+   "member": "7b22500a85559f07a54fc9779c34e7c4",
+   "archive_id": "01J00000000EWNZ1PQV2GA5NZ7",
+   "checks": [
+    {
+     "archive_id": "01J00000000EWNZ1PQV2GA5NZ7",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "7b22500a85559f07a54fc9779c34e7c4",
+     "removed": true
+    },
+    {
+     "archive_id": "01J00000000EWNZ1PQV2GA5NZ7",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "5a5ebf0efc6d571c36d9eaac4b2146e9",
+     "removed": false
+    },
+    {
+     "archive_id": "01J00000000EWNZ1PQV2GA5NZ7",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "3aa636fb34a3ed829aa6d729c0b905cd",
+     "removed": null
+    },
+    {
+     "archive_id": "01J00000000000000000000000",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "7b22500a85559f07a54fc9779c34e7c4",
+     "removed": null
+    },
+    {
+     "archive_id": "01J00000000EWNZ1PQV2",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "7b22500a85559f07a54fc9779c34e7c4",
+     "removed": false
+    },
+    {
+     "archive_id": "01J00000000EWNZ1PQ",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "7b22500a85559f07a54fc9779c34e7c4",
+     "removed": false
+    },
+    {
+     "archive_id": "01J00000000EWNZ1PQV2GA5NZ7EXTRA",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "7b22500a85559f07a54fc9779c34e7c4",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "7b22500a85559f07a54fc9779c34e7c4",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2E3",
+   "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+   "key": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "prefix": "7ZZZZZZZZZ",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d76310030314851385258334235573659375a384139423043314432453300",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d76310030314851385258334235573659375a38413942304331443245330030314851385258334235573659375a3841394230433144324343"
+   },
+   "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+   "member": "4fe64a47429f7888f2ecec79c93d8928",
+   "archive_id": "7ZZZZZZZZZDEYAYHGTF6A72ZR8",
+   "checks": [
+    {
+     "archive_id": "7ZZZZZZZZZDEYAYHGTF6A72ZR8",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "4fe64a47429f7888f2ecec79c93d8928",
+     "removed": true
+    },
+    {
+     "archive_id": "7ZZZZZZZZZDEYAYHGTF6A72ZR8",
+     "user_id": "",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "e821fe2cb6c8bcd1388333245f6238a4",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZDEYAYHGTF6A72ZR8",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "5a5ebf0efc6d571c36d9eaac4b2146e9",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0000000000000000",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "4fe64a47429f7888f2ecec79c93d8928",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZDEYAYHGTF6",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "4fe64a47429f7888f2ecec79c93d8928",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZDEYAYHGT",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "4fe64a47429f7888f2ecec79c93d8928",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZDEYAYHGTF6A72ZR8EXTRA",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "4fe64a47429f7888f2ecec79c93d8928",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "4fe64a47429f7888f2ecec79c93d8928",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2E3",
+   "user_id": "",
+   "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "prefix": "01HQ8RX3B5",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d76310030314851385258334235573659375a384139423043314432453300",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d76310030314851385258334235573659375a384139423043314432453300"
+   },
+   "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+   "member": "4ff5a9a5b8c2c0e7b9c1203d13234848",
+   "archive_id": "01HQ8RX3B50EWNZ1PQFN95R207",
+   "checks": [
+    {
+     "archive_id": "01HQ8RX3B50EWNZ1PQFN95R207",
+     "user_id": "",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "4ff5a9a5b8c2c0e7b9c1203d13234848",
+     "removed": true
+    },
+    {
+     "archive_id": "01HQ8RX3B50EWNZ1PQFN95R207",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "05ecf017ce0675ccddd8fcb85721b512",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B50EWNZ1PQFN95R207",
+     "user_id": "",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "e821fe2cb6c8bcd1388333245f6238a4",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B50000000000000000",
+     "user_id": "",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "4ff5a9a5b8c2c0e7b9c1203d13234848",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B50EWNZ1PQFN",
+     "user_id": "",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "4ff5a9a5b8c2c0e7b9c1203d13234848",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B50EWNZ1PQ",
+     "user_id": "",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "4ff5a9a5b8c2c0e7b9c1203d13234848",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B50EWNZ1PQFN95R207EXTRA",
+     "user_id": "",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "4ff5a9a5b8c2c0e7b9c1203d13234848",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "4ff5a9a5b8c2c0e7b9c1203d13234848",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2E3",
+   "user_id": "\u017eofia\u00e9",
+   "key": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "prefix": "01J0000000",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d76310030314851385258334235573659375a384139423043314432453300",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d76310030314851385258334235573659375a384139423043314432453300c5be6f666961c3a9"
+   },
+   "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+   "member": "c66e9788fd8f505a368d8f5d41f3ebe1",
+   "archive_id": "01J0000000DEYAYHGT6EQ8XFGT",
+   "checks": [
+    {
+     "archive_id": "01J0000000DEYAYHGT6EQ8XFGT",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "c66e9788fd8f505a368d8f5d41f3ebe1",
+     "removed": true
+    },
+    {
+     "archive_id": "01J0000000DEYAYHGT6EQ8XFGT",
+     "user_id": "a\u0000b",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "d67e0ccacd9d551a5aa6b9d190a39187",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000DEYAYHGT6EQ8XFGT",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "05ecf017ce0675ccddd8fcb85721b512",
+     "removed": null
+    },
+    {
+     "archive_id": "01J00000000000000000000000",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "c66e9788fd8f505a368d8f5d41f3ebe1",
+     "removed": null
+    },
+    {
+     "archive_id": "01J0000000DEYAYHGT6E",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "c66e9788fd8f505a368d8f5d41f3ebe1",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000DEYAYHGT",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "c66e9788fd8f505a368d8f5d41f3ebe1",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000DEYAYHGT6EQ8XFGTEXTRA",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "c66e9788fd8f505a368d8f5d41f3ebe1",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "c66e9788fd8f505a368d8f5d41f3ebe1",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2E3",
+   "user_id": "a\u0000b",
+   "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "prefix": "7ZZZZZZZZZ",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d76310030314851385258334235573659375a384139423043314432453300",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d76310030314851385258334235573659375a384139423043314432453300610062"
+   },
+   "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+   "member": "b1942374babd1466de073fe247b7f53d",
+   "archive_id": "7ZZZZZZZZZ0EWNZ1PQHM3MTXM6",
+   "checks": [
+    {
+     "archive_id": "7ZZZZZZZZZ0EWNZ1PQHM3MTXM6",
+     "user_id": "a\u0000b",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "b1942374babd1466de073fe247b7f53d",
+     "removed": true
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0EWNZ1PQHM3MTXM6",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "7b22500a85559f07a54fc9779c34e7c4",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0EWNZ1PQHM3MTXM6",
+     "user_id": "a\u0000b",
+     "mark": "6daebe6a1e11d05ab7e139e8b7a29651",
+     "member": "d67e0ccacd9d551a5aa6b9d190a39187",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0000000000000000",
+     "user_id": "a\u0000b",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "b1942374babd1466de073fe247b7f53d",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0EWNZ1PQHM",
+     "user_id": "a\u0000b",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "b1942374babd1466de073fe247b7f53d",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0EWNZ1PQ",
+     "user_id": "a\u0000b",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "b1942374babd1466de073fe247b7f53d",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0EWNZ1PQHM3MTXM6EXTRA",
+     "user_id": "a\u0000b",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "b1942374babd1466de073fe247b7f53d",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "a\u0000b",
+     "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+     "member": "b1942374babd1466de073fe247b7f53d",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+   "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+   "key": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "prefix": "01HQ8RX3B5",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d763100303141525a334e44454b5453563452524646513639473546415600",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d763100303141525a334e44454b545356345252464651363947354641560030314851385258334235573659375a3841394230433144324242"
+   },
+   "mark": "8c8cab0de2d14118bd164d222db4daf0",
+   "member": "d0e1439e5fa8638a300d38ec35652de4",
+   "archive_id": "01HQ8RX3B5CCBD2H1RG13YZ83A",
+   "checks": [
+    {
+     "archive_id": "01HQ8RX3B5CCBD2H1RG13YZ83A",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d0e1439e5fa8638a300d38ec35652de4",
+     "removed": true
+    },
+    {
+     "archive_id": "01HQ8RX3B5CCBD2H1RG13YZ83A",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "1ca793a7fd0e43edb1550c67922d3012",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B5CCBD2H1RG13YZ83A",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "bfdf3761b861fb690795e1a344cbf8aa",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B50000000000000000",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d0e1439e5fa8638a300d38ec35652de4",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B5CCBD2H1RG1",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d0e1439e5fa8638a300d38ec35652de4",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B5CCBD2H1R",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d0e1439e5fa8638a300d38ec35652de4",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B5CCBD2H1RG13YZ83AEXTRA",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d0e1439e5fa8638a300d38ec35652de4",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d0e1439e5fa8638a300d38ec35652de4",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+   "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+   "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "prefix": "01J0000000",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d763100303141525a334e44454b5453563452524646513639473546415600",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d763100303141525a334e44454b545356345252464651363947354641560030314851385258334235573659375a3841394230433144324343"
+   },
+   "mark": "f85d81369c4c2121fe8982f551687a4d",
+   "member": "2b9b0e20a61e2215b099e8d30df650ab",
+   "archive_id": "01J0000000RX1PWC11BVE06Y2N",
+   "checks": [
+    {
+     "archive_id": "01J0000000RX1PWC11BVE06Y2N",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "2b9b0e20a61e2215b099e8d30df650ab",
+     "removed": true
+    },
+    {
+     "archive_id": "01J0000000RX1PWC11BVE06Y2N",
+     "user_id": "",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "fdd8dc6eb84ca60d625ac02f7a0f294b",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000RX1PWC11BVE06Y2N",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "1ca793a7fd0e43edb1550c67922d3012",
+     "removed": null
+    },
+    {
+     "archive_id": "01J00000000000000000000000",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "2b9b0e20a61e2215b099e8d30df650ab",
+     "removed": null
+    },
+    {
+     "archive_id": "01J0000000RX1PWC11BV",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "2b9b0e20a61e2215b099e8d30df650ab",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000RX1PWC11",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "2b9b0e20a61e2215b099e8d30df650ab",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000RX1PWC11BVE06Y2NEXTRA",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "2b9b0e20a61e2215b099e8d30df650ab",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "2b9b0e20a61e2215b099e8d30df650ab",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+   "user_id": "",
+   "key": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "prefix": "7ZZZZZZZZZ",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d763100303141525a334e44454b5453563452524646513639473546415600",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d763100303141525a334e44454b5453563452524646513639473546415600"
+   },
+   "mark": "8c8cab0de2d14118bd164d222db4daf0",
+   "member": "d6deacb3d23e6b4c6617e0a6f7a1fdee",
+   "archive_id": "7ZZZZZZZZZCCBD2H1RPYCKJYBC",
+   "checks": [
+    {
+     "archive_id": "7ZZZZZZZZZCCBD2H1RPYCKJYBC",
+     "user_id": "",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d6deacb3d23e6b4c6617e0a6f7a1fdee",
+     "removed": true
+    },
+    {
+     "archive_id": "7ZZZZZZZZZCCBD2H1RPYCKJYBC",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "839be866cf2cc8fa10671f548379865a",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZCCBD2H1RPYCKJYBC",
+     "user_id": "",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "fdd8dc6eb84ca60d625ac02f7a0f294b",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0000000000000000",
+     "user_id": "",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d6deacb3d23e6b4c6617e0a6f7a1fdee",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZCCBD2H1RPY",
+     "user_id": "",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d6deacb3d23e6b4c6617e0a6f7a1fdee",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZCCBD2H1R",
+     "user_id": "",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d6deacb3d23e6b4c6617e0a6f7a1fdee",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZCCBD2H1RPYCKJYBCEXTRA",
+     "user_id": "",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d6deacb3d23e6b4c6617e0a6f7a1fdee",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d6deacb3d23e6b4c6617e0a6f7a1fdee",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+   "user_id": "\u017eofia\u00e9",
+   "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "prefix": "01HQ8RX3B5",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d763100303141525a334e44454b5453563452524646513639473546415600",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d763100303141525a334e44454b5453563452524646513639473546415600c5be6f666961c3a9"
+   },
+   "mark": "f85d81369c4c2121fe8982f551687a4d",
+   "member": "1957989856b0af21a399ab1985187e43",
+   "archive_id": "01HQ8RX3B5RX1PWC11SQRRPGF1",
+   "checks": [
+    {
+     "archive_id": "01HQ8RX3B5RX1PWC11SQRRPGF1",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "1957989856b0af21a399ab1985187e43",
+     "removed": true
+    },
+    {
+     "archive_id": "01HQ8RX3B5RX1PWC11SQRRPGF1",
+     "user_id": "a\u0000b",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "ed3eac3789fc8bf76f3bdb25b5265151",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B5RX1PWC11SQRRPGF1",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "839be866cf2cc8fa10671f548379865a",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B50000000000000000",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "1957989856b0af21a399ab1985187e43",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B5RX1PWC11SQ",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "1957989856b0af21a399ab1985187e43",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B5RX1PWC11",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "1957989856b0af21a399ab1985187e43",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B5RX1PWC11SQRRPGF1EXTRA",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "1957989856b0af21a399ab1985187e43",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "1957989856b0af21a399ab1985187e43",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+   "user_id": "a\u0000b",
+   "key": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "prefix": "01J0000000",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d763100303141525a334e44454b5453563452524646513639473546415600",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d763100303141525a334e44454b5453563452524646513639473546415600610062"
+   },
+   "mark": "8c8cab0de2d14118bd164d222db4daf0",
+   "member": "f36fbd82e07382806c84a2e36d516d01",
+   "archive_id": "01J0000000CCBD2H1RKFX20K20",
+   "checks": [
+    {
+     "archive_id": "01J0000000CCBD2H1RKFX20K20",
+     "user_id": "a\u0000b",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "f36fbd82e07382806c84a2e36d516d01",
+     "removed": true
+    },
+    {
+     "archive_id": "01J0000000CCBD2H1RKFX20K20",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "d0e1439e5fa8638a300d38ec35652de4",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000CCBD2H1RKFX20K20",
+     "user_id": "a\u0000b",
+     "mark": "f85d81369c4c2121fe8982f551687a4d",
+     "member": "ed3eac3789fc8bf76f3bdb25b5265151",
+     "removed": null
+    },
+    {
+     "archive_id": "01J00000000000000000000000",
+     "user_id": "a\u0000b",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "f36fbd82e07382806c84a2e36d516d01",
+     "removed": null
+    },
+    {
+     "archive_id": "01J0000000CCBD2H1RKF",
+     "user_id": "a\u0000b",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "f36fbd82e07382806c84a2e36d516d01",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000CCBD2H1R",
+     "user_id": "a\u0000b",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "f36fbd82e07382806c84a2e36d516d01",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000CCBD2H1RKFX20K20EXTRA",
+     "user_id": "a\u0000b",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "f36fbd82e07382806c84a2e36d516d01",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "a\u0000b",
+     "mark": "8c8cab0de2d14118bd164d222db4daf0",
+     "member": "f36fbd82e07382806c84a2e36d516d01",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "",
+   "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+   "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "prefix": "7ZZZZZZZZZ",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d76310000",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d7631000030314851385258334235573659375a3841394230433144324242"
+   },
+   "mark": "293e0f884d7d0bf4974b575b6aec1812",
+   "member": "e871e4b2d2c5979d42608c3ed758f468",
+   "archive_id": "7ZZZZZZZZZ9YF8DXBM8H4JJ5QX",
+   "checks": [
+    {
+     "archive_id": "7ZZZZZZZZZ9YF8DXBM8H4JJ5QX",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "e871e4b2d2c5979d42608c3ed758f468",
+     "removed": true
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ9YF8DXBM8H4JJ5QX",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "3ae4851e33e58a7e3d948e17ccec0c09",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ9YF8DXBM8H4JJ5QX",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "f7ca280d588c0381f286b9648137e79e",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0000000000000000",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "e871e4b2d2c5979d42608c3ed758f468",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ9YF8DXBM8H",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "e871e4b2d2c5979d42608c3ed758f468",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ9YF8DXBM",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "e871e4b2d2c5979d42608c3ed758f468",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ9YF8DXBM8H4JJ5QXEXTRA",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "e871e4b2d2c5979d42608c3ed758f468",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "e871e4b2d2c5979d42608c3ed758f468",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "",
+   "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+   "key": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "prefix": "01HQ8RX3B5",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d76310000",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d7631000030314851385258334235573659375a3841394230433144324343"
+   },
+   "mark": "f03dbd5c24814a865614c5a347e4237a",
+   "member": "d6e034f9ce054cc312db162ead37fc6a",
+   "archive_id": "01HQ8RX3B5GXXW41A6P0MSE5C3",
+   "checks": [
+    {
+     "archive_id": "01HQ8RX3B5GXXW41A6P0MSE5C3",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "d6e034f9ce054cc312db162ead37fc6a",
+     "removed": true
+    },
+    {
+     "archive_id": "01HQ8RX3B5GXXW41A6P0MSE5C3",
+     "user_id": "",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "f721b5774b638c0dded5fdcaad7ef2f2",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B5GXXW41A6P0MSE5C3",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "3ae4851e33e58a7e3d948e17ccec0c09",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B50000000000000000",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "d6e034f9ce054cc312db162ead37fc6a",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B5GXXW41A6P0",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "d6e034f9ce054cc312db162ead37fc6a",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B5GXXW41A6",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "d6e034f9ce054cc312db162ead37fc6a",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B5GXXW41A6P0MSE5C3EXTRA",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "d6e034f9ce054cc312db162ead37fc6a",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "d6e034f9ce054cc312db162ead37fc6a",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "",
+   "user_id": "",
+   "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "prefix": "01J0000000",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d76310000",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d76310000"
+   },
+   "mark": "293e0f884d7d0bf4974b575b6aec1812",
+   "member": "87de0929a8e61f62955d9ee01730a636",
+   "archive_id": "01J00000009YF8DXBM7Y9986Z2",
+   "checks": [
+    {
+     "archive_id": "01J00000009YF8DXBM7Y9986Z2",
+     "user_id": "",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "87de0929a8e61f62955d9ee01730a636",
+     "removed": true
+    },
+    {
+     "archive_id": "01J00000009YF8DXBM7Y9986Z2",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "471c988ca826e9ab7ff7389737282758",
+     "removed": false
+    },
+    {
+     "archive_id": "01J00000009YF8DXBM7Y9986Z2",
+     "user_id": "",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "f721b5774b638c0dded5fdcaad7ef2f2",
+     "removed": null
+    },
+    {
+     "archive_id": "01J00000000000000000000000",
+     "user_id": "",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "87de0929a8e61f62955d9ee01730a636",
+     "removed": null
+    },
+    {
+     "archive_id": "01J00000009YF8DXBM7Y",
+     "user_id": "",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "87de0929a8e61f62955d9ee01730a636",
+     "removed": false
+    },
+    {
+     "archive_id": "01J00000009YF8DXBM",
+     "user_id": "",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "87de0929a8e61f62955d9ee01730a636",
+     "removed": false
+    },
+    {
+     "archive_id": "01J00000009YF8DXBM7Y9986Z2EXTRA",
+     "user_id": "",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "87de0929a8e61f62955d9ee01730a636",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "87de0929a8e61f62955d9ee01730a636",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "",
+   "user_id": "\u017eofia\u00e9",
+   "key": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "prefix": "7ZZZZZZZZZ",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d76310000",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d76310000c5be6f666961c3a9"
+   },
+   "mark": "f03dbd5c24814a865614c5a347e4237a",
+   "member": "cdd104ccb2f204fd9c68fd5a9c956778",
+   "archive_id": "7ZZZZZZZZZGXXW41A6DH4CJJ4X",
+   "checks": [
+    {
+     "archive_id": "7ZZZZZZZZZGXXW41A6DH4CJJ4X",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "cdd104ccb2f204fd9c68fd5a9c956778",
+     "removed": true
+    },
+    {
+     "archive_id": "7ZZZZZZZZZGXXW41A6DH4CJJ4X",
+     "user_id": "a\u0000b",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "b1a54ee226366aaffe870bdb78fc54a8",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZGXXW41A6DH4CJJ4X",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "471c988ca826e9ab7ff7389737282758",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0000000000000000",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "cdd104ccb2f204fd9c68fd5a9c956778",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZGXXW41A6DH",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "cdd104ccb2f204fd9c68fd5a9c956778",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZGXXW41A6",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "cdd104ccb2f204fd9c68fd5a9c956778",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZGXXW41A6DH4CJJ4XEXTRA",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "cdd104ccb2f204fd9c68fd5a9c956778",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "cdd104ccb2f204fd9c68fd5a9c956778",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "",
+   "user_id": "a\u0000b",
+   "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "prefix": "01HQ8RX3B5",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d76310000",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d76310000610062"
+   },
+   "mark": "293e0f884d7d0bf4974b575b6aec1812",
+   "member": "09b05de7f44bbce8e32cac77af5e94db",
+   "archive_id": "01HQ8RX3B59YF8DXBM9GX7MBW8",
+   "checks": [
+    {
+     "archive_id": "01HQ8RX3B59YF8DXBM9GX7MBW8",
+     "user_id": "a\u0000b",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "09b05de7f44bbce8e32cac77af5e94db",
+     "removed": true
+    },
+    {
+     "archive_id": "01HQ8RX3B59YF8DXBM9GX7MBW8",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "e871e4b2d2c5979d42608c3ed758f468",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B59YF8DXBM9GX7MBW8",
+     "user_id": "a\u0000b",
+     "mark": "f03dbd5c24814a865614c5a347e4237a",
+     "member": "b1a54ee226366aaffe870bdb78fc54a8",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B50000000000000000",
+     "user_id": "a\u0000b",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "09b05de7f44bbce8e32cac77af5e94db",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B59YF8DXBM9G",
+     "user_id": "a\u0000b",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "09b05de7f44bbce8e32cac77af5e94db",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B59YF8DXBM",
+     "user_id": "a\u0000b",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "09b05de7f44bbce8e32cac77af5e94db",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B59YF8DXBM9GX7MBW8EXTRA",
+     "user_id": "a\u0000b",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "09b05de7f44bbce8e32cac77af5e94db",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "a\u0000b",
+     "mark": "293e0f884d7d0bf4974b575b6aec1812",
+     "member": "09b05de7f44bbce8e32cac77af5e94db",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "x",
+   "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+   "key": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "prefix": "01J0000000",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d7631007800",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d763100780030314851385258334235573659375a3841394230433144324242"
+   },
+   "mark": "a6c353f348b237e75e4dd074633b3d39",
+   "member": "0f1b253899368ea24fa95e1fa1657d91",
+   "archive_id": "01J000000063KK8JQ7FV5RSPE2",
+   "checks": [
+    {
+     "archive_id": "01J000000063KK8JQ7FV5RSPE2",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "0f1b253899368ea24fa95e1fa1657d91",
+     "removed": true
+    },
+    {
+     "archive_id": "01J000000063KK8JQ7FV5RSPE2",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "8d456401fe02b14679caa69d2d1836e0",
+     "removed": false
+    },
+    {
+     "archive_id": "01J000000063KK8JQ7FV5RSPE2",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "b323da511fbf040da51698b00b8bf758",
+     "removed": null
+    },
+    {
+     "archive_id": "01J00000000000000000000000",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "0f1b253899368ea24fa95e1fa1657d91",
+     "removed": null
+    },
+    {
+     "archive_id": "01J000000063KK8JQ7FV",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "0f1b253899368ea24fa95e1fa1657d91",
+     "removed": false
+    },
+    {
+     "archive_id": "01J000000063KK8JQ7",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "0f1b253899368ea24fa95e1fa1657d91",
+     "removed": false
+    },
+    {
+     "archive_id": "01J000000063KK8JQ7FV5RSPE2EXTRA",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "0f1b253899368ea24fa95e1fa1657d91",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "0f1b253899368ea24fa95e1fa1657d91",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "x",
+   "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+   "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "prefix": "7ZZZZZZZZZ",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d7631007800",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d763100780030314851385258334235573659375a3841394230433144324343"
+   },
+   "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+   "member": "f1ac33ed85f7c67b38a722c640781125",
+   "archive_id": "7ZZZZZZZZZD8K8HW5PHCKD5Q6V",
+   "checks": [
+    {
+     "archive_id": "7ZZZZZZZZZD8K8HW5PHCKD5Q6V",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "f1ac33ed85f7c67b38a722c640781125",
+     "removed": true
+    },
+    {
+     "archive_id": "7ZZZZZZZZZD8K8HW5PHCKD5Q6V",
+     "user_id": "",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "ec79a424ae5a477fe4ce4080be1c11b7",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZD8K8HW5PHCKD5Q6V",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "8d456401fe02b14679caa69d2d1836e0",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0000000000000000",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "f1ac33ed85f7c67b38a722c640781125",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZD8K8HW5PHC",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "f1ac33ed85f7c67b38a722c640781125",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZD8K8HW5P",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "f1ac33ed85f7c67b38a722c640781125",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZD8K8HW5PHCKD5Q6VEXTRA",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "f1ac33ed85f7c67b38a722c640781125",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2CC",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "f1ac33ed85f7c67b38a722c640781125",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "x",
+   "user_id": "",
+   "key": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "prefix": "01HQ8RX3B5",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d7631007800",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d7631007800"
+   },
+   "mark": "a6c353f348b237e75e4dd074633b3d39",
+   "member": "d26128bb3bc9344c3dc8906560fc8f8f",
+   "archive_id": "01HQ8RX3B563KK8JQ7J18VV9MC",
+   "checks": [
+    {
+     "archive_id": "01HQ8RX3B563KK8JQ7J18VV9MC",
+     "user_id": "",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "d26128bb3bc9344c3dc8906560fc8f8f",
+     "removed": true
+    },
+    {
+     "archive_id": "01HQ8RX3B563KK8JQ7J18VV9MC",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "521980fb87d1cdf3e0ef06712d85d893",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B563KK8JQ7J18VV9MC",
+     "user_id": "",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "ec79a424ae5a477fe4ce4080be1c11b7",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B50000000000000000",
+     "user_id": "",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "d26128bb3bc9344c3dc8906560fc8f8f",
+     "removed": null
+    },
+    {
+     "archive_id": "01HQ8RX3B563KK8JQ7J1",
+     "user_id": "",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "d26128bb3bc9344c3dc8906560fc8f8f",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B563KK8JQ7",
+     "user_id": "",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "d26128bb3bc9344c3dc8906560fc8f8f",
+     "removed": false
+    },
+    {
+     "archive_id": "01HQ8RX3B563KK8JQ7J18VV9MCEXTRA",
+     "user_id": "",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "d26128bb3bc9344c3dc8906560fc8f8f",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "d26128bb3bc9344c3dc8906560fc8f8f",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "x",
+   "user_id": "\u017eofia\u00e9",
+   "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "prefix": "01J0000000",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d7631007800",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d7631007800c5be6f666961c3a9"
+   },
+   "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+   "member": "faaae8a278a150049614dc047361d890",
+   "archive_id": "01J0000000D8K8HW5PTA82R1G4",
+   "checks": [
+    {
+     "archive_id": "01J0000000D8K8HW5PTA82R1G4",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "faaae8a278a150049614dc047361d890",
+     "removed": true
+    },
+    {
+     "archive_id": "01J0000000D8K8HW5PTA82R1G4",
+     "user_id": "a\u0000b",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "adcf4a53b97a3147449fd6e80a806ea3",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000D8K8HW5PTA82R1G4",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "521980fb87d1cdf3e0ef06712d85d893",
+     "removed": null
+    },
+    {
+     "archive_id": "01J00000000000000000000000",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "faaae8a278a150049614dc047361d890",
+     "removed": null
+    },
+    {
+     "archive_id": "01J0000000D8K8HW5PTA",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "faaae8a278a150049614dc047361d890",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000D8K8HW5P",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "faaae8a278a150049614dc047361d890",
+     "removed": false
+    },
+    {
+     "archive_id": "01J0000000D8K8HW5PTA82R1G4EXTRA",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "faaae8a278a150049614dc047361d890",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "\u017eofia\u00e9",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "faaae8a278a150049614dc047361d890",
+     "removed": null
+    }
+   ]
+  },
+  {
+   "new_dek_id": "x",
+   "user_id": "a\u0000b",
+   "key": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "prefix": "7ZZZZZZZZZ",
+   "messages": {
+    "mark": "73657a616d2d72656b65792d617263686976652d7631007800",
+    "member": "73657a616d2d72656b65792d72656d6f7665642d7631007800610062"
+   },
+   "mark": "a6c353f348b237e75e4dd074633b3d39",
+   "member": "79c63473b06db44dda5af467ffc74a69",
+   "archive_id": "7ZZZZZZZZZ63KK8JQ7S6MKGDMD",
+   "checks": [
+    {
+     "archive_id": "7ZZZZZZZZZ63KK8JQ7S6MKGDMD",
+     "user_id": "a\u0000b",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "79c63473b06db44dda5af467ffc74a69",
+     "removed": true
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ63KK8JQ7S6MKGDMD",
+     "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "0f1b253899368ea24fa95e1fa1657d91",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ63KK8JQ7S6MKGDMD",
+     "user_id": "a\u0000b",
+     "mark": "edc8b3a8d11ca596541ee7b4b34fb1e1",
+     "member": "adcf4a53b97a3147449fd6e80a806ea3",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ0000000000000000",
+     "user_id": "a\u0000b",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "79c63473b06db44dda5af467ffc74a69",
+     "removed": null
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ63KK8JQ7S6",
+     "user_id": "a\u0000b",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "79c63473b06db44dda5af467ffc74a69",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ63KK8JQ7",
+     "user_id": "a\u0000b",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "79c63473b06db44dda5af467ffc74a69",
+     "removed": false
+    },
+    {
+     "archive_id": "7ZZZZZZZZZ63KK8JQ7S6MKGDMDEXTRA",
+     "user_id": "a\u0000b",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "79c63473b06db44dda5af467ffc74a69",
+     "removed": true
+    },
+    {
+     "archive_id": "",
+     "user_id": "a\u0000b",
+     "mark": "a6c353f348b237e75e4dd074633b3d39",
+     "member": "79c63473b06db44dda5af467ffc74a69",
+     "removed": null
+    }
+   ]
+  }
+ ],
+ "refused": [
+  {
+   "op": "removal_archive_messages",
+   "input": {
+    "new_dek_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2\u00c93",
+    "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB"
+   }
+  },
+  {
+   "op": "removal_archive_messages",
+   "input": {
+    "new_dek_id": "\u043a\u043b\u044e\u0447",
+    "user_id": "01HQ8RX3B5W6Y7Z8A9B0C1D2BB"
+   }
+  },
+  {
+   "op": "removal_archive_id",
+   "input": {
+    "prefix": "01J000000",
+    "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+    "member": "7b22500a85559f07a54fc9779c34e7c4"
+   }
+  },
+  {
+   "op": "removal_archive_id",
+   "input": {
+    "prefix": "01J00000000",
+    "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+    "member": "7b22500a85559f07a54fc9779c34e7c4"
+   }
+  },
+  {
+   "op": "removal_archive_id",
+   "input": {
+    "prefix": "01J000000I",
+    "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+    "member": "7b22500a85559f07a54fc9779c34e7c4"
+   }
+  },
+  {
+   "op": "removal_archive_id",
+   "input": {
+    "prefix": "01j0000000",
+    "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+    "member": "7b22500a85559f07a54fc9779c34e7c4"
+   }
+  },
+  {
+   "op": "removal_archive_id",
+   "input": {
+    "prefix": "01J0000000",
+    "mark": "80ee3c559fc1f6574dc6f4943fc87b",
+    "member": "7b22500a85559f07a54fc9779c34e7c4"
+   }
+  },
+  {
+   "op": "removal_archive_id",
+   "input": {
+    "prefix": "01J0000000",
+    "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+    "member": "7b22500a85559f07a54fc9779c34e7c400"
+   }
+  },
+  {
+   "op": "removal_archive_id",
+   "input": {
+    "prefix": "01J0000000",
+    "mark": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+    "member": "7b22500a85559f07a54fc9779c34e7c4"
+   }
+  },
+  {
+   "op": "removal_archive_id",
+   "input": {
+    "prefix": null,
+    "mark": "80ee3c559fc1f6574dc6f4943fc87bd8",
+    "member": "7b22500a85559f07a54fc9779c34e7c4"
+   }
+  }
+ ]
+}

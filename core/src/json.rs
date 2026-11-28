@@ -211,6 +211,7 @@ fn run(op: &str, input: &str) -> Result<Value, String> {
                 .or_else(|| crate::audit::run(op, input))
                 .or_else(|| crate::account::run(op, input))
                 .or_else(|| crate::kdf::run(op, input))
+                .or_else(|| crate::rekey_archive::run(op, input))
             {
                 Some(out) => out?,
                 None => return Err(format!("unknown operation {op:?}")),

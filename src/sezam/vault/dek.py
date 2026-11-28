@@ -38,18 +38,14 @@ from .db import VaultChangedElsewhere, VaultDB
 DEK_SIZE = 32  # 256-bit
 
 
-_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-_REMOVAL_MARK = b"sezam-rekey-archive-v1\x00"
-_REMOVAL_MEMBER = b"sezam-rekey-removed-v1\x00"
-
-
-def _archive_chars(new_dek: bytes, label: bytes, new_dek_id: str, user_id: str = "") -> str:
-    digest = hashlib.blake2b(
-        label + new_dek_id.encode("ascii") + b"\x00" + user_id.encode("utf-8"),
-        digest_size=16,
-        key=bytes(new_dek),
-    ).digest()
-    return "".join(_CROCKFORD[b & 0x1F] for b in digest[:8])
+def _archive_digests(new_dek_id: str, new_dek: bytes, user_id: str) -> dict:
+    """The two removal tags' BLAKE2b digests under the new DEK; the core
+    (core/src/rekey_archive.rs) builds what is hashed and encodes the result."""
+    messages = sync_core.call("removal_archive_messages", new_dek_id=new_dek_id, user_id=user_id)
+    return {
+        name: hashlib.blake2b(bytes.fromhex(messages[name]), digest_size=16, key=bytes(new_dek)).hexdigest()
+        for name in ("mark", "member")
+    }
 
 
 def removal_archive_id(new_dek_id: str, new_dek: bytes, removed_user_id: str) -> str:
@@ -63,21 +59,16 @@ def removal_archive_id(new_dek_id: str, new_dek: bytes, removed_user_id: str) ->
     archive without the tag hides the successor too. Web and mobile read the
     id as an opaque ULID.
     """
-    return (
-        new_ulid()[:10]
-        + _archive_chars(new_dek, _REMOVAL_MARK, new_dek_id)
-        + _archive_chars(new_dek, _REMOVAL_MEMBER, new_dek_id, removed_user_id)
+    return sync_core.call(
+        "removal_archive_id", prefix=new_ulid()[:10], **_archive_digests(new_dek_id, new_dek, removed_user_id)
     )
 
 
 def archive_removed(archive_id: str, new_dek_id: str, new_dek: bytes, user_id: str) -> Optional[bool]:
     """Whether the re-key behind ``archive_id`` removed ``user_id``; None when
     the archive carries no removal tag (older or other re-keys)."""
-    tail = archive_id[10:26]
-    if not hmac.compare_digest(tail[:8], _archive_chars(new_dek, _REMOVAL_MARK, new_dek_id)):
-        return None
-    return hmac.compare_digest(
-        tail[8:], _archive_chars(new_dek, _REMOVAL_MEMBER, new_dek_id, user_id)
+    return sync_core.call(
+        "removal_archive_check", archive_id=archive_id, **_archive_digests(new_dek_id, new_dek, user_id)
     )
 
 

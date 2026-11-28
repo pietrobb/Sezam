@@ -14,7 +14,7 @@ from __future__ import annotations
 from tests.test_review_web import _run, pytestmark  # noqa: F401
 
 SEAL = ["writesNotToSeal", "unauthorizedWrites", "sealingDekId", "isEncryptedEnvelope"]
-REKEY = ["buildWebRekeyBatch", "generateULID", "rekeyArchiveChars", "removalArchiveId", *SEAL]
+REKEY = ["buildWebRekeyBatch", "generateULID", "removalArchiveId", *SEAL]
 SWEEP = ["resealOwnWritesUnderSuccessors", *SEAL]
 
 STATE = r"""

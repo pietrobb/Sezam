@@ -250,9 +250,23 @@ mobil ignoroval `hash_len`. Vektory `tests/vectors/kdf.json` (1955 účet + 2595
 `mobile/test/kdf_vectors_test.dart`. Web testy, ktoré vyberajú funkcie z
 `app.js`, načítajú jadro cez `tests/node_support.with_sync_core`.
 
+Archív re-key, ktorý odobral člena (U6i, `core/src/rekey_archive.rs`):
+`removal_archive_messages` (vstupy kľúčovaného hashu: label
+`sezam-rekey-archive-v1\0` / `sezam-rekey-removed-v1\0` + id nového kľúča
+ASCII + NUL + id člena UTF-8), `removal_archive_id` (10 znakov času ULID + 2 ×
+8 znakov Crockford z digestov) a `removal_archive_check` (true/false/None ako
+desktopové `archive_removed`). BLAKE2b pod novým DEK robí platforma (pravidlo
+3). Desktop (`dek.removal_archive_id`, `archive_removed`) a web
+(`removalArchiveId`; `rekeyArchiveChars` zmazané) volajú jadro; mobil id len
+číta ako ULID. Zjednotené: web hashoval aj id kľúča mimo ASCII, desktop ho
+odmietol; teraz ho odmietnu obe. Vektory `tests/vectors/rekey_archive.json` (20
+prípadov, 160 kontrol, 10 odmietnutí, z desktopu pred zmenou) v
+`core/tests/rekey_archive_vectors.rs` a `tests/test_rekey_archive_vectors.py`
+(desktop, web).
+
 Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
-`web/static/js`, `mobile/lib`, po U6g): v jadre treba ešte
-`sezam-rekey-archive/removed` (`removal_archive_id`). Zámerne mimo jadra, s tajomstvom (pravidlo 3):
+`web/static/js`, `mobile/lib`, po U6i): všetky podpisované a hashované formáty
+bez tajomstva sú v jadre. Zámerne mimo jadra, s tajomstvom (pravidlo 3):
 `sezam-pre-anchor-kek-v1` (SHA-256 nad KEK), `sezam-org-recovery-v1/v2` (HKDF
 soľ a AAD nad tajomstvom obnovy). Len na serveri, jedna kópia (nie duplikát
 medzi stranami): `sezam-auth-challenge-v1` a `sezam-recovery-unlock-v1` (HMAC

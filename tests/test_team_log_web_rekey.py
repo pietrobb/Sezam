@@ -26,7 +26,7 @@ TEAMLOG_JS = (Path(__file__).parents[1] / "web" / "static" / "js" / "teamlog.js"
 FUNCTIONS = [
     "buildWebRekeyBatch", "webTeamRekeyPlan", "webTeamLogTrusted", "webFounderLineage", "webTeamFolderAbove", "teamLogRefusedError",
     "writesNotToSeal", "unauthorizedWrites", "sealingDekId", "isEncryptedEnvelope", "payloadDekId", "keyAuthors",
-    "folderTreeOwner", "provenDekSuccessors", "ulidTimeMs", "generateULID", "rekeyArchiveChars",
+    "folderTreeOwner", "provenDekSuccessors", "ulidTimeMs", "generateULID",
     "webLogAdmins", "removalArchiveId", "hexToBytes", "bytesToHex", "pushWebRekeyBatch", "handleInviteUser",
     "handleOnboarding", "normalizeUsername", "syncCheckpointKey", "idbKeysRequest",
     "invitationTeamGenesis", "loadConfirmedTeamGenesis", "saveConfirmedTeamGenesis",

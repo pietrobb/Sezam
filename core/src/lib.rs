@@ -38,6 +38,7 @@ pub mod messages;
 pub mod order;
 pub mod pull;
 pub mod reapply;
+pub mod rekey_archive;
 pub mod reseal;
 pub mod teamlog;
 pub mod vouchers;

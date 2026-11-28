@@ -7057,23 +7057,18 @@ function generateULID() {
     return timePart + randomPart;
 }
 
-function rekeyArchiveChars(newDek, label, newDekId, userId, _sodium) {
-    const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-    const message = new TextEncoder().encode(label + newDekId + '\0' + userId);
-    const digest = _sodium.crypto_generichash(16, message, newDek);
-    let out = '';
-    for (let i = 0; i < 8; i++) out += ENCODING[digest[i] & 0x1f];
-    return out;
-}
-
 // Capability review run 140: the archive id of a re-key that removed a
 // member tags it under the new key, so a desktop's grant again can tell the
 // member this re-key withdrew from a grant it never saw (desktop
-// dek.removal_archive_id; same bytes).
+// dek.removal_archive_id; same bytes). The core (core/src/rekey_archive.rs)
+// builds what is hashed and encodes it; the keyed BLAKE2b under the new DEK
+// stays here.
 function removalArchiveId(newDekId, newDek, removedUserId, _sodium) {
-    return generateULID().slice(0, 10)
-        + rekeyArchiveChars(newDek, 'sezam-rekey-archive-v1\0', newDekId, '', _sodium)
-        + rekeyArchiveChars(newDek, 'sezam-rekey-removed-v1\0', newDekId, removedUserId, _sodium);
+    const messages = globalThis.SezamSyncCore.call('removal_archive_messages',
+        { new_dek_id: newDekId, user_id: removedUserId });
+    const digest = name => bytesToHex(_sodium.crypto_generichash(16, hexToBytes(messages[name]), newDek));
+    return globalThis.SezamSyncCore.call('removal_archive_id',
+        { prefix: generateULID().slice(0, 10), mark: digest('mark'), member: digest('member') });
 }
 
 // ── SHA-256 hex ──

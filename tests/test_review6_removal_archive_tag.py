@@ -38,7 +38,7 @@ def test_an_untagged_or_foreign_key_archive_is_unknown():
 
 def test_web_and_desktop_tag_the_same_way():
     web_id = _run(
-        ["generateULID", "rekeyArchiveChars", "removalArchiveId"],
+        ["generateULID", "removalArchiveId"],
         f"removalArchiveId('{NEW_DEK_ID}', hex('{NEW_DEK.hex()}'), '{BOB}', sodium)",
     )
     assert archive_removed(web_id, NEW_DEK_ID, NEW_DEK, BOB) is True

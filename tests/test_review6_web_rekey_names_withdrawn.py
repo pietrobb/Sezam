@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from tests.test_review_web import _run, pytestmark  # noqa: F401
 
-FUNCTIONS = ["buildWebRekeyBatch", "generateULID", "rekeyArchiveChars", "removalArchiveId",
+FUNCTIONS = ["buildWebRekeyBatch", "generateULID", "removalArchiveId",
              "writesNotToSeal", "unauthorizedWrites", "sealingDekId"]
 
 SCRIPT = r"""
