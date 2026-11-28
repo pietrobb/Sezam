@@ -833,11 +833,12 @@ class VaultService {
   Future<LocalTeamLog?> _loadTeamLog({
     bool replacingUnreadableTrust = false,
   }) async {
-    Future<String?> trust(Future<String?> Function(String) read) async {
+    TeamLogMismatch? unreadable;
+    Future<T?> trust<T>(Future<T?> Function(String) read) async {
       try {
         return await read(_userId!);
-      } on TeamLogMismatch {
-        if (!replacingUnreadableTrust) rethrow;
+      } on TeamLogMismatch catch (e) {
+        if (!replacingUnreadableTrust) unreadable ??= e;
         return null;
       }
     }
@@ -856,19 +857,24 @@ class VaultService {
       ];
       // Unreadable, it may hold any pin above: the team is refused
       // (local_damaged) even with no account anchor noted (run 412).
-      await trust(
-        (userId) async => (await readForgottenTeamGenesis(userId)).firstOrNull,
-      );
+      final forgotten = await trust(readForgottenTeamGenesis);
       final anchor = await trust(readAccountTeamGenesis);
-      if (anchor != null &&
-          [
-            confirmed,
-            for (final pin in pins) pin['genesis_hash'],
-            _heldGenesis(raw),
-          ].any((genesis) => genesis != null && genesis != anchor)) {
+      final held = _heldGenesis(raw);
+      // docs/CORE_UNIFICATION.md U7f: whether and why is the core's
+      // (core/src/teamlog/local.rs).
+      final refusal = syncCore('team_log_local_refusal', {
+        'unreadable': unreadable?.detail,
+        'anchor': anchor,
+        'forgotten': forgotten ?? const <String>[],
+        'confirmed': confirmed,
+        'pins': [for (final pin in pins) pin['genesis_hash']],
+        'held': held == null ? null : {'genesis': held},
+      });
+      if (refusal is Map) {
+        if (refusal['what'] == 'trust') throw unreadable!;
         throw TeamLogMismatch(
           'names another genesis than the account keys (another server, or a log left elsewhere)',
-          'anchor_conflict',
+          refusal['cause'] as String,
         );
       }
       _teamGenesisPinned =

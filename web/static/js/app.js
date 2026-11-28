@@ -8308,15 +8308,21 @@ function teamLogUnreachable(what) {
  * (anchor_conflict; the pins are forgotten together). Never a failed sign-in.
  */
 function webLocalTeamLogRefusal() {
-    if (state.teamLogDamaged) return state.teamLogDamaged;
-    const anchor = state.keypair?.confirmedGenesis;
-    if (anchor && !(state.forgottenTeamGenesis || []).includes(anchor) &&
-            [state.confirmedTeamGenesis, state.syncCheckpoint?.team_log?.genesis_hash, state.teamLog?.team.genesisHash]
-                .some(genesis => genesis && genesis !== anchor)) {
-        return teamLogMismatch(
-            'names another genesis than the account keys (another server, or a log left elsewhere)', 'anchor_conflict');
-    }
-    return null;
+    // docs/CORE_UNIFICATION.md U7f: whether and why is the core's
+    // (core/src/teamlog/local.rs); the held log is replayed and verified.
+    const held = state.teamLog?.team?.genesisHash || null;
+    const refusal = globalThis.SezamSyncCore.call('team_log_local_refusal', {
+        unreadable: state.teamLogDamaged ? String(state.teamLogDamaged.message) : null,
+        anchor: state.keypair?.confirmedGenesis || null,
+        forgotten: state.forgottenTeamGenesis || [],
+        confirmed: state.confirmedTeamGenesis || null,
+        pins: [state.syncCheckpoint?.team_log?.genesis_hash || null],
+        held: held ? { genesis: held } : null,
+    });
+    if (refusal === null) return null;
+    if (refusal.what === 'trust') return state.teamLogDamaged;
+    return teamLogMismatch(
+        'names another genesis than the account keys (another server, or a log left elsewhere)', refusal.cause);
 }
 
 /** This account's personal trees (TL7, INV-7 rule 3): the core's

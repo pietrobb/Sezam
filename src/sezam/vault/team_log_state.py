@@ -231,35 +231,51 @@ def local_team_state(db) -> Optional[teamlog.TeamState]:
 
 
 def _local_team_state(db) -> Optional[teamlog.TeamState]:
-    forgotten_genesis(db)
-    anchor = db.get_meta(ACCOUNT_ANCHOR_META)
-    if anchor is not None and _anchor_conflicts(db, anchor):
-        raise TeamLogMismatch(
-            "The account keys name another team log than the one this device holds or pins.", "anchor_conflict"
-        )
-    rows = db.fetchall("SELECT seq, body, sig, hash FROM team_log ORDER BY seq")
-    if not rows:
-        return None
-    # Review e443cbc (goal #438): only the replay is kept, under every byte
-    # of the rows; the checks above run on each call. A cache under the head
-    # row alone outlived damage below it and every refusal by the pins.
-    key = hashlib.sha256(repr([tuple(r) for r in rows]).encode()).digest()
-    if (state := _REPLAYED.get(key)) is not None:
-        return copy.deepcopy(state)
-    # A local copy that does not replay was accepted by no version of this
-    # code: refuse rather than decide from part of it.
+    unreadable = None
     try:
-        state = teamlog.replay([{"body": r["body"], "sig": r["sig"]} for r in rows])
-    except teamlog.TeamLogError as exc:
-        raise TeamLogMismatch(f"This device's copy of the team log does not replay ({exc}).{LOCAL_DAMAGED_HINT}",
-                              "local_damaged") from exc
-    if rows[-1]["seq"] != state.head_seq or any(
-            teamlog.record_hash({"body": r["body"], "sig": r["sig"]}) != r["hash"] for r in rows):
-        raise TeamLogMismatch("This device's copy of the team log does not match its stored hashes."
-                              + LOCAL_DAMAGED_HINT, "local_damaged")
-    if len(_REPLAYED) >= _REPLAYED_MAX:
-        _REPLAYED.clear()
-    _REPLAYED[key] = copy.deepcopy(state)
+        forgotten = forgotten_genesis(db)
+    except TeamLogMismatch as exc:
+        unreadable, forgotten = exc, []
+    rows = db.fetchall("SELECT seq, body, sig, hash FROM team_log ORDER BY seq")
+    state, copy_error, fresh = None, None, False
+    if rows:
+        # Review e443cbc (goal #438): only the replay is kept, under every
+        # byte of the rows; the refusal below is asked on each call. A cache
+        # under the head row alone outlived damage below it and every
+        # refusal by the pins.
+        key = hashlib.sha256(repr([tuple(r) for r in rows]).encode()).digest()
+        if (cached := _REPLAYED.get(key)) is not None:
+            state = copy.deepcopy(cached)
+        else:
+            # A local copy that does not replay was accepted by no version
+            # of this code: refused rather than decided from part of it.
+            try:
+                state, fresh = teamlog.replay([{"body": r["body"], "sig": r["sig"]} for r in rows]), True
+            except teamlog.TeamLogError as exc:
+                copy_error = f"This device's copy of the team log does not replay ({exc}).{LOCAL_DAMAGED_HINT}"
+            if state is not None and (rows[-1]["seq"] != state.head_seq or any(
+                    teamlog.record_hash({"body": r["body"], "sig": r["sig"]}) != r["hash"] for r in rows)):
+                state, fresh = None, False
+                copy_error = "This device's copy of the team log does not match its stored hashes." + LOCAL_DAMAGED_HINT
+    # docs/CORE_UNIFICATION.md U7f: whether and why it is refused is the core's.
+    refusal = local_refusal(
+        db, db.get_meta(ACCOUNT_ANCHOR_META), forgotten, state=state, copy_error=copy_error,
+        unreadable=None if unreadable is None else str(unreadable),
+    )
+    if refusal is not None:
+        if refusal["what"] == "trust":
+            raise unreadable
+        if refusal["what"] == "anchor":
+            raise TeamLogMismatch(
+                "The account keys name another team log than the one this device holds or pins.", "anchor_conflict"
+            )
+        raise TeamLogMismatch(refusal["detail"], refusal["cause"])
+    if state is None:
+        return None
+    if fresh:
+        if len(_REPLAYED) >= _REPLAYED_MAX:
+            _REPLAYED.clear()
+        _REPLAYED[key] = copy.deepcopy(state)
     return state
 
 
@@ -414,25 +430,37 @@ def received_envelope_sender(db, env, receipt: dict) -> str:
         raise CryptoError("Invalid team envelope receipt") from exc
 
 
-def held_genesis(db) -> Optional[str]:
-    """The genesis the local copy holds: its first record's stored hash while
-    the record still hashes to it. Capability run 418: a damaged first record
-    named its own hash as another genesis, so local damage (repaired by the
-    next pull, under the pins) was refused as anchor_conflict instead."""
+def _held(db, state: Optional[teamlog.TeamState] = None) -> Optional[dict]:
+    """The local copy's first record for the core: its genesis replayed
+    (signature checked; ``state``: the whole copy, replayed already) and the
+    hash stored with it."""
     first = db.fetchone("SELECT body, sig, hash FROM team_log WHERE seq = 0")
     if first is None:
         return None
-    try:
-        own = teamlog.record_hash({"body": first["body"], "sig": first["sig"]})
-    except ValueError:
-        return None
-    return first["hash"] if own == first["hash"] else None
+    genesis = state.genesis_hash if state is not None else None
+    if genesis is None:
+        try:
+            genesis = teamlog.replay([{"body": first["body"], "sig": first["sig"]}]).genesis_hash
+        except (teamlog.TeamLogError, ValueError):
+            genesis = None
+    return {"genesis": genesis, "stored": first["hash"]}
 
 
-def _anchor_conflicts(db, genesis: str) -> bool:
-    """A pin or the genesis the local copy holds is another than ``genesis``."""
-    return any(pin is not None and pin != genesis
-               for pin in (db.get_meta(CONFIRMED_GENESIS_META), db.get_meta(GENESIS_META), held_genesis(db)))
+def held_genesis(db) -> Optional[str]:
+    """The genesis the local copy holds (core/src/teamlog/local.rs held_genesis)."""
+    held = _held(db)
+    return None if held is None else sync_core.call("team_log_held_genesis", **held)
+
+
+def local_refusal(db, anchor: Optional[str], forgotten: list[str], *, unreadable: Optional[str] = None,
+                  copy_error: Optional[str] = None, state: Optional[teamlog.TeamState] = None) -> Optional[dict]:
+    """INV-7: the core's refusal of this device's own log (U7f,
+    core/src/teamlog/local.rs): null, or {cause, what, detail, forget}."""
+    return sync_core.call(
+        "team_log_local_refusal", unreadable=unreadable, anchor=anchor, forgotten=forgotten,
+        confirmed=db.get_meta(CONFIRMED_GENESIS_META), pins=[db.get_meta(GENESIS_META)],
+        held=_held(db, state), copy_error=copy_error,
+    )
 
 
 def record_account_anchor(db, keypair) -> None:
@@ -451,7 +479,7 @@ def record_account_anchor(db, keypair) -> None:
         return
     db.set_meta(ACCOUNT_ANCHOR_META, genesis)
     # An unreadable list may hold this genesis: not pinned from the keys then.
-    if forgotten is not None and not _anchor_conflicts(db, genesis):
+    if forgotten is not None and local_refusal(db, genesis, forgotten) is None:
         db.set_meta(CONFIRMED_GENESIS_META, genesis)
 
 
@@ -529,8 +557,7 @@ def import_account_anchor(db, keypair) -> None:
     """Adopt an authenticated bundle anchor without replacing local continuity:
     account keys from the server naming another log are not taken."""
     genesis = keypair.confirmed_genesis
-    if (genesis is not None and genesis not in (readable_forgotten_genesis(db) or [])
-            and _anchor_conflicts(db, genesis)):
+    if local_refusal(db, genesis, readable_forgotten_genesis(db) or []) is not None:
         raise TeamLogMismatch("The account anchor conflicts with this device's team log.", "anchor_conflict")
     record_account_anchor(db, keypair)
 

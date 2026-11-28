@@ -357,6 +357,22 @@ neadmin posunie značku ako desktop (predtým ju nechal stáť). Vektory
 `core/tests/rotated_revive_vectors.rs`, `tests/test_rotated_revive_vectors.py`
 (desktop, WASM) a `mobile/test/revive_folders_vectors_test.dart`.
 
+Odmietnutie vlastnej kópie (U7f, capability run 707, `core/src/teamlog/local.rs`):
+`team_log_local_refusal` (záznam dôvery, ktorý sa neotvorí → `local_damaged`
+`trust`; kľúče účtu menujú iný log než potvrdená genesis, pin alebo držaná
+genesis a nie je medzi opustenými → `anchor_conflict`; chyba replayu alebo
+uložených hashov kópie → `local_damaged` `copy`; inak null) a
+`team_log_held_genesis` (prvý záznam platí len s rovnakým uloženým hashom,
+run 418). Desktop `_local_team_state`/`record_account_anchor`/
+`import_account_anchor`, web `webLocalTeamLogRefusal` a mobil `_loadTeamLog`
+len čítajú, otvárajú a replayujú (libsodium) a hlásia chybu; ich porovnania
+(`_anchor_conflicts`, inline výnimka opustenej genesis) sú zmazané.
+Zjednotené (mobil ako desktop a web): genesis v zozname opustených nie je
+konflikt. Vektory `tests/vectors/team_log_local_refusal.json` (223 prípadov
+z desktopu pred zmenou) v `core/tests/team_log_local_refusal_vectors.rs`,
+`tests/test_team_log_local_refusal_vectors.py` (desktop, WASM) a
+`mobile/test/team_log_local_refusal_vectors_test.dart`.
+
 Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
 `web/static/js`, `mobile/lib`, po U6i): všetky podpisované a hashované formáty
 bez tajomstva sú v jadre. Zámerne mimo jadra, s tajomstvom (pravidlo 3):

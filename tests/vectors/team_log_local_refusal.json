@@ -1,0 +1,3812 @@
+{
+ "_comment": "U7f (docs/CORE_UNIFICATION.md): why a device refuses its own team log before asking the server (local_damaged, anchor_conflict) and whether forgetting is offered. Built by tests/team_log_local_refusal_vectors.py from the desktop's rule on 9c7c0e3 (one case, forged_first_record, takes the phone's held genesis). Never regenerate it to make a client pass.",
+ "cases": [
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_b_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_none_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_b_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_a_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_b_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_none_confirmed_b_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_b_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_none_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_b_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_a_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_b_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_a_forgot_a_confirmed_b_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_b_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_none_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_b_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_a_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_b_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_none_confirmed_b_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_b_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_none_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": null,
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_b_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_a_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_empty_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_empty_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_empty_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_empty_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_empty_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_empty_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_b_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_b_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_b_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_b_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_b_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_b_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_none-a_held_none",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_none-a_held_valid_a",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_none-a_held_valid_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_none-a_held_damaged_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_none-a_held_unstored_b",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": null
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "anchor_none_forgot_a_confirmed_b_pins_none-a_held_mismatch",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [
+    null,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": null,
+   "expect": null
+  },
+  {
+   "name": "unreadable_list_first",
+   "unreadable": "list of logs left",
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": null,
+   "copy_error": "bad record",
+   "expect": {
+    "cause": "local_damaged",
+    "what": "trust",
+    "detail": "list of logs left",
+    "forget": false
+   }
+  },
+  {
+   "name": "unreadable_without_anchor",
+   "unreadable": "confirmed genesis",
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": null,
+   "copy_error": null,
+   "expect": {
+    "cause": "local_damaged",
+    "what": "trust",
+    "detail": "confirmed genesis",
+    "forget": false
+   }
+  },
+  {
+   "name": "damaged_copy",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "copy_error": "does not replay",
+   "expect": {
+    "cause": "local_damaged",
+    "what": "copy",
+    "detail": "does not replay",
+    "forget": false
+   }
+  },
+  {
+   "name": "damaged_copy_no_anchor",
+   "unreadable": null,
+   "anchor": null,
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": "stored hashes",
+   "expect": {
+    "cause": "local_damaged",
+    "what": "copy",
+    "detail": "stored hashes",
+    "forget": false
+   }
+  },
+  {
+   "name": "conflict_before_damage",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "pins": [],
+   "held": null,
+   "copy_error": "does not replay",
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  },
+  {
+   "name": "forged_first_record",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [],
+   "confirmed": null,
+   "pins": [],
+   "held": {
+    "genesis": null,
+    "stored": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "copy_error": "bad signature",
+   "expect": {
+    "cause": "local_damaged",
+    "what": "copy",
+    "detail": "bad signature",
+    "forget": false
+   }
+  },
+  {
+   "name": "other_forgotten",
+   "unreadable": null,
+   "anchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "forgotten": [
+    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+   ],
+   "confirmed": null,
+   "pins": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "held": null,
+   "copy_error": null,
+   "expect": {
+    "cause": "anchor_conflict",
+    "what": "anchor",
+    "detail": null,
+    "forget": true
+   }
+  }
+ ]
+}

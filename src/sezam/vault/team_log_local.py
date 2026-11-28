@@ -62,7 +62,7 @@ from .team_log_state import (  # noqa: F401 - re-exported: callers import these 
     projected_team_state,
     received_envelope_sender,
     held_genesis,
-    _anchor_conflicts,
+    local_refusal,
     record_account_anchor,
     keep_identity_continuation,
     identity_continuation,
