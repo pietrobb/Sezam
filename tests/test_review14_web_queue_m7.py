@@ -108,7 +108,7 @@ def test_a_full_pull_keeps_a_newer_version_than_the_server_serves(server, tmp_pa
 
 
 PUSH = [
-    "assertNotStackedOnConflict", "assertTeamLogAllowsWrite", "syncPayloadBytes", "assertSyncObjectFits",
+    "assertNotStackedOnConflict", "assertTeamLogAllowsWrite", "webWriteState", "syncPayloadBytes", "assertSyncObjectFits",
     "pushEncryptedVaultObject", "pushEncryptedVaultObjectLocked", "renumberedAboveBase", "webBase",
     "withWebBase", "isSameSyncVersion", "webDirtyStateRecordId", "webDirtyStateAAD", "loadWebDirtyState",
     "saveWebDirtyState", "validWebOutboxOps", "idbKeysRequest", "hexToBytes", "bytesToHex",

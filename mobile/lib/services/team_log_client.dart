@@ -22,7 +22,9 @@ const forgetPinMinChars = 16;
 // device-local trust, not the portable encrypted account anchor.
 const _trustStorage = FlutterSecureStorage(
   aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+  iOptions: IOSOptions(
+    accessibility: KeychainAccessibility.first_unlock_this_device,
+  ),
 );
 
 String _genesisHash(Object? value) {
@@ -35,21 +37,27 @@ String _genesisHash(Object? value) {
 String? provisioningGenesis(String fragment) {
   if (fragment.isEmpty) return null; // Legacy QR without a team log.
   final fields = Uri.splitQueryString(fragment);
-  if (fields.length != 1 || !fields.containsKey('g') ||
+  if (fields.length != 1 ||
+      !fields.containsKey('g') ||
       fragment.contains('&')) {
     throw TeamLogMismatch('has an invalid QR genesis fragment');
   }
   return _genesisHash(fields['g']);
 }
 
-({String token, String? genesis}) invitationDetails(String input, String serverUrl) {
+({String token, String? genesis}) invitationDetails(
+  String input,
+  String serverUrl,
+) {
   final uri = Uri.parse(input.trim());
   String token;
   if (uri.hasScheme) {
     final server = Uri.parse(serverUrl);
     if ((uri.scheme != 'http' && uri.scheme != 'https') ||
-        uri.origin != server.origin || uri.userInfo.isNotEmpty ||
-        uri.path.replaceFirst(RegExp(r'/$'), '') != server.path.replaceFirst(RegExp(r'/$'), '')) {
+        uri.origin != server.origin ||
+        uri.userInfo.isNotEmpty ||
+        uri.path.replaceFirst(RegExp(r'/$'), '') !=
+            server.path.replaceFirst(RegExp(r'/$'), '')) {
       throw const FormatException('Invitation belongs to another server');
     }
     final values = uri.queryParametersAll['invite'];
@@ -58,7 +66,8 @@ String? provisioningGenesis(String fragment) {
     }
     token = values.single;
   } else {
-    if (uri.hasAuthority || uri.hasQuery) throw const FormatException('Invalid invitation');
+    if (uri.hasAuthority || uri.hasQuery)
+      throw const FormatException('Invalid invitation');
     token = uri.path;
   }
   if (token.isEmpty || RegExp(r'\s').hasMatch(token)) {
@@ -71,17 +80,20 @@ String? provisioningGenesis(String fragment) {
 // refuses the team (local_damaged), never the unlock, and is no password
 // error; the founder confirmed again replaces it (confirmTeamFounder).
 TeamLogMismatch _unreadableTrust(String what, Object error) => TeamLogMismatch(
-      "anchor held on this phone cannot be read ($what: $error); confirming the team's founder "
+  "anchor held on this phone cannot be read ($what: $error); confirming the team's founder "
       'again (Settings → Team trust) replaces it',
-      'local_damaged',
-    );
+  'local_damaged',
+);
 
 Future<String?> readConfirmedTeamGenesis(String userId) async {
-  final raw = await _trustStorage.read(key: 'sezam_confirmed_team_genesis:$userId');
+  final raw = await _trustStorage.read(
+    key: 'sezam_confirmed_team_genesis:$userId',
+  );
   if (raw == null) return null;
   try {
     final value = jsonDecode(raw) as Map<String, dynamic>;
-    if (value['user_id'] != userId) throw const FormatException('another account');
+    if (value['user_id'] != userId)
+      throw const FormatException('another account');
     return _genesisHash(value['genesis_hash']);
   } catch (e) {
     throw _unreadableTrust('confirmed genesis', e);
@@ -90,8 +102,12 @@ Future<String?> readConfirmedTeamGenesis(String userId) async {
 
 /// [replaceUnreadable]: the founder confirmed again on purpose replaces a pin
 /// or a list of left genesis hashes that cannot be read.
-Future<void> confirmTeamGenesis(String userId, String genesis,
-    {void Function()? beforeWrite, bool replaceUnreadable = false}) async {
+Future<void> confirmTeamGenesis(
+  String userId,
+  String genesis, {
+  void Function()? beforeWrite,
+  bool replaceUnreadable = false,
+}) async {
   _genesisHash(genesis);
   String? previous;
   try {
@@ -115,7 +131,10 @@ Future<void> confirmTeamGenesis(String userId, String genesis,
     if (!replaceUnreadable) rethrow;
   }
   if (forgotten == null || forgotten.contains(genesis)) {
-    await _writeForgottenTeamGenesis(userId, (forgotten ?? const []).where((g) => g != genesis));
+    await _writeForgottenTeamGenesis(
+      userId,
+      (forgotten ?? const []).where((g) => g != genesis),
+    );
   }
   if (replaceUnreadable) {
     try {
@@ -131,11 +150,14 @@ Future<void> confirmTeamGenesis(String userId, String genesis,
 // (SyncService.forgetTeamLogPin). The account bundle on the server may still
 // name one; it is then not pinned again from there.
 Future<List<String>> readForgottenTeamGenesis(String userId) async {
-  final raw = await _trustStorage.read(key: 'sezam_forgotten_team_genesis:$userId');
+  final raw = await _trustStorage.read(
+    key: 'sezam_forgotten_team_genesis:$userId',
+  );
   if (raw == null) return const [];
   try {
     final value = jsonDecode(raw) as Map<String, dynamic>;
-    if (value['user_id'] != userId) throw const FormatException('another account');
+    if (value['user_id'] != userId)
+      throw const FormatException('another account');
     return [for (final g in value['genesis'] as List) _genesisHash(g)];
   } catch (e) {
     throw _unreadableTrust('genesis hashes this phone left', e);
@@ -151,20 +173,32 @@ Future<List<String>?> _readableForgottenTeamGenesis(String userId) async {
   }
 }
 
-Future<void> _writeForgottenTeamGenesis(String userId, Iterable<String> genesis) async {
+Future<void> _writeForgottenTeamGenesis(
+  String userId,
+  Iterable<String> genesis,
+) async {
   final key = 'sezam_forgotten_team_genesis:$userId';
   final list = genesis.toSet().toList()..sort();
   if (list.isEmpty) {
     await _trustStorage.delete(key: key);
   } else {
-    await _trustStorage.write(key: key, value: jsonEncode({'user_id': userId, 'genesis': list}));
+    await _trustStorage.write(
+      key: key,
+      value: jsonEncode({'user_id': userId, 'genesis': list}),
+    );
   }
 }
 
 /// Leave [genesis]: remembered as left, the confirmed pin removed.
-Future<void> forgetConfirmedTeamGenesis(String userId, Iterable<String> genesis) async {
+Future<void> forgetConfirmedTeamGenesis(
+  String userId,
+  Iterable<String> genesis,
+) async {
   // An unreadable list is replaced, never in the way of leaving (run 411).
-  await _writeForgottenTeamGenesis(userId, [...?await _readableForgottenTeamGenesis(userId), ...genesis]);
+  await _writeForgottenTeamGenesis(userId, [
+    ...?await _readableForgottenTeamGenesis(userId),
+    ...genesis,
+  ]);
   await _trustStorage.delete(key: 'sezam_confirmed_team_genesis:$userId');
 }
 
@@ -226,17 +260,21 @@ Future<String?> readAccountTeamGenesis(String userId) async {
   final String genesis;
   try {
     final value = jsonDecode(raw) as Map<String, dynamic>;
-    if (value['user_id'] != userId) throw const FormatException('another account');
+    if (value['user_id'] != userId)
+      throw const FormatException('another account');
     genesis = _genesisHash(value['genesis_hash']);
   } catch (e) {
     throw _unreadableTrust('account anchor', e);
   }
-  return (await readForgottenTeamGenesis(userId)).contains(genesis) ? null : genesis;
+  return (await readForgottenTeamGenesis(userId)).contains(genesis)
+      ? null
+      : genesis;
 }
 
 // Review c78fd19: the way out once the team's log is lost for good. INV-8:
 // every offer is marked as a risk (RISK_MARKER in team_log_local.py).
-const lostTeamLogHint = '. RISK: a hostile server can cause this on purpose (drop its log, serve a new genesis) '
+const lostTeamLogHint =
+    '. RISK: a hostile server can cause this on purpose (drop its log, serve a new genesis) '
     'so that this phone drops its pin. Only if your admin confirms out of band that the team\'s log '
     'is lost for good (another server, a reseed), '
     'Settings → "Zabudnúť pripnutý tímový denník" leaves it on this phone';
@@ -254,10 +292,18 @@ void requireConfirmedGenesis(String? confirmed, String? actual) {
 // forgotten. The same list as MISMATCH_CAUSES in team_log_local.py and
 // TEAM_LOG_MISMATCH_FORGET in app.js (tests/vectors/team_log_mismatch.json).
 const teamLogMismatchForget = <String, bool>{
-  'confirmed_genesis': true, 'log_gone': true, 'other_genesis': true,
-  'left_earlier_log': false, 'went_back': false, 'differs': false, 'does_not_replay': false,
-  'short_of_head': false, 'head_genesis': false, 'refused_at_head': false,
-  'local_damaged': false, 'anchor_conflict': true,
+  'confirmed_genesis': true,
+  'log_gone': true,
+  'other_genesis': true,
+  'left_earlier_log': false,
+  'went_back': false,
+  'differs': false,
+  'does_not_replay': false,
+  'short_of_head': false,
+  'head_genesis': false,
+  'refused_at_head': false,
+  'local_damaged': false,
+  'anchor_conflict': true,
 };
 
 class TeamLogMismatch implements Exception {
@@ -265,7 +311,11 @@ class TeamLogMismatch implements Exception {
   /// state, never offered); [offersForget] and the hint follow from it alone.
   TeamLogMismatch(this.detail, [this.cause]) {
     if (cause != null && !teamLogMismatchForget.containsKey(cause)) {
-      throw ArgumentError.value(cause, 'cause', 'unknown team log mismatch cause');
+      throw ArgumentError.value(
+        cause,
+        'cause',
+        'unknown team log mismatch cause',
+      );
     }
   }
   final String detail;
@@ -274,7 +324,8 @@ class TeamLogMismatch implements Exception {
   bool get offersForget => cause != null && teamLogMismatchForget[cause]!;
 
   @override
-  String toString() => "TEAM LOG MISMATCH: the server's team log $detail${offersForget ? lostTeamLogHint : ''}";
+  String toString() =>
+      "TEAM LOG MISMATCH: the server's team log $detail${offersForget ? lostTeamLogHint : ''}";
 }
 
 /// A change the log refuses: never queued, the server would refuse it for good.
@@ -294,20 +345,32 @@ class LocalTeamLog {
 
 // Only call with a signature-verified replay. A checkpoint is continuity,
 // not independent authority for a server-chosen founder.
-bool localTeamLogTrusted(LocalTeamLog? local, String? confirmedGenesis,
-    String userId, String? signingPk, String? encryptionPk) {
+bool localTeamLogTrusted(
+  LocalTeamLog? local,
+  String? confirmedGenesis,
+  String userId,
+  String? signingPk,
+  String? encryptionPk,
+) {
   if (local == null || local.records.isEmpty) return false;
-  if (confirmedGenesis != null) return local.team.genesisHash == confirmedGenesis;
+  if (confirmedGenesis != null)
+    return local.team.genesisHash == confirmedGenesis;
   if (signingPk == null || encryptionPk == null) return false;
   final founder = teamFounderLineage(local);
-  return founder.userId == userId && founder.keys.contains((signingPk, encryptionPk));
+  return founder.userId == userId &&
+      founder.keys.contains((signingPk, encryptionPk));
 }
 
 // Input must be a freshly signature-verified log, never a server key directory.
-({String userId, List<(String, String)> keys}) teamFounderLineage(LocalTeamLog local) {
-  final genesis = (jsonDecode(local.records.first['body'] as String) as Map)['data'] as Map;
+({String userId, List<(String, String)> keys}) teamFounderLineage(
+  LocalTeamLog local,
+) {
+  final genesis =
+      (jsonDecode(local.records.first['body'] as String) as Map)['data'] as Map;
   final userId = genesis['user_id'] as String;
-  final known = <(String, String)>[(genesis['signing_pk'] as String, genesis['encryption_pk'] as String)];
+  final known = <(String, String)>[
+    (genesis['signing_pk'] as String, genesis['encryption_pk'] as String),
+  ];
   var linked = true;
   for (final record in local.records) {
     final body = jsonDecode(record['body'] as String) as Map;
@@ -318,7 +381,10 @@ bool localTeamLogTrusted(LocalTeamLog? local, String? confirmedGenesis,
     } else if (body['type'] == 'member.add') {
       linked = known.contains((data['signing_pk'], data['encryption_pk']));
     } else if (body['type'] == 'member.keys' && linked) {
-      known.add((data['signing_pk'] as String, data['encryption_pk'] as String));
+      known.add((
+        data['signing_pk'] as String,
+        data['encryption_pk'] as String,
+      ));
     }
   }
   return (userId: userId, keys: known);
@@ -344,7 +410,8 @@ Future<Map<String, dynamic>?> _restoreTeamLog(
   Map<String, dynamic>? head,
   LocalTeamLog local,
   Map<String, dynamic>? pin,
-  Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records) restore,
+  Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)
+  restore,
 ) async {
   final localSeq = local.team.headSeq;
   final serverSeq = head == null ? -1 : head['seq'];
@@ -359,13 +426,19 @@ Future<Map<String, dynamic>?> _restoreTeamLog(
   try {
     var current = head;
     final bodies = [
-      for (var seq = 0; seq < local.records.length; seq++) TeamLog.parseBody(local.records[seq]['body'], seq),
+      for (var seq = 0; seq < local.records.length; seq++)
+        TeamLog.parseBody(local.records[seq]['body'], seq),
     ];
     // R17-L: a part ends nowhere inside a readmit (its share links).
-    for (var start = serverSeq + 1, end = 0; start < local.records.length; start = end) {
+    for (
+      var start = serverSeq + 1, end = 0;
+      start < local.records.length;
+      start = end
+    ) {
       end = TeamLog.restorePartEnd(bodies, start, teamLogPages);
       current = await restore([
-        for (final r in local.records.sublist(start, end)) {'body': r['body'], 'sig': r['sig']},
+        for (final r in local.records.sublist(start, end))
+          {'body': r['body'], 'sig': r['sig']},
       ]);
     }
     return current;
@@ -388,7 +461,8 @@ LocalTeamLog verifiedTeamLogCopy(
 ) {
   if (raw == null) throw const FormatException('cached log is missing');
   final records = [
-    for (final r in jsonDecode(raw) as List) Map<String, dynamic>.from(r as Map),
+    for (final r in jsonDecode(raw) as List)
+      Map<String, dynamic>.from(r as Map),
   ];
   if (records.isEmpty) throw const FormatException('cached log is empty');
   final team = TeamLog(verify).replay(records);
@@ -418,18 +492,24 @@ Future<LocalTeamLog?> syncTeamLog({
   String? ownUserId,
   List<String>? ownKeys,
   required Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
-  Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)? restore,
+  Future<Map<String, dynamic>?> Function(List<Map<String, dynamic>> records)?
+  restore,
   TeamLogRemake? remake,
   Set<String> withdrawn = const {},
   Future<void> Function(List<String> hashes)? withdraw,
 }) async {
-  Never fail(String detail, String cause) => throw TeamLogMismatch(detail, cause);
+  Never fail(String detail, String cause) =>
+      throw TeamLogMismatch(detail, cause);
   // Goal #440: a cause that offers to forget the pin only as far as the
   // records served bear it out, never on the unsigned head alone. No record
   // while the head says none is the log gone; a first record that is
   // [genesis] makes the head a lie; another genesis is the loss named.
   Future<Never> failAsServed(
-      Map<String, dynamic>? shownHead, String? genesis, String detail, String cause) async {
+    Map<String, dynamic>? shownHead,
+    String? genesis,
+    String detail,
+    String cause,
+  ) async {
     final served = await fetchPage(-1);
     if (served.isEmpty) {
       if (shownHead == null) fail(detail, cause);
@@ -442,7 +522,10 @@ Future<LocalTeamLog?> syncTeamLog({
       fail('does not replay: $e', 'does_not_replay');
     }
     if (first == genesis) {
-      fail('head names another genesis than the records it serves', 'head_genesis');
+      fail(
+        'head names another genesis than the records it serves',
+        'head_genesis',
+      );
     }
     if (cause == 'log_gone') {
       fail('starts with another genesis than this device saw', 'other_genesis');
@@ -458,24 +541,41 @@ Future<LocalTeamLog?> syncTeamLog({
     head = await _restoreTeamLog(head, local, pin, restore);
   }
   if (confirmedGenesis != null && confirmedGenesis != head?['genesis_hash']) {
-    await failAsServed(head, confirmedGenesis, 'does not match the confirmed genesis', 'confirmed_genesis');
+    await failAsServed(
+      head,
+      confirmedGenesis,
+      'does not match the confirmed genesis',
+      'confirmed_genesis',
+    );
   }
   if (head == null) {
     if (local != null || pin != null) {
-      await failAsServed(null, local?.team.genesisHash ?? pin?['genesis_hash'] as String?,
-          'is gone (a server restored from a backup, or another server)', 'log_gone');
+      await failAsServed(
+        null,
+        local?.team.genesisHash ?? pin?['genesis_hash'] as String?,
+        'is gone (a server restored from a backup, or another server)',
+        'log_gone',
+      );
     }
     // Review 8bc70f7 M2: a phone that left a log does not fall back to the
     // rules from before any log because a server sends none.
     if (leftEarlierLog) {
-      fail("is missing, and this phone left an earlier team log: it waits for the team's "
-          'new log (the admin founds it) and its confirmed founder', 'left_earlier_log');
+      fail(
+        "is missing, and this phone left an earlier team log: it waits for the team's "
+            'new log (the admin founds it) and its confirmed founder',
+        'left_earlier_log',
+      );
     }
     return null;
   }
   final pinned = local?.team.genesisHash ?? pin?['genesis_hash'] as String?;
   if (pinned != null && head['genesis_hash'] != pinned) {
-    await failAsServed(head, pinned, 'starts with another genesis than this device saw', 'other_genesis');
+    await failAsServed(
+      head,
+      pinned,
+      'starts with another genesis than this device saw',
+      'other_genesis',
+    );
   }
   try {
     return await _catchUpTeamLog(log, head, local, pin, fetchPage, withdrawn);
@@ -487,10 +587,23 @@ Future<LocalTeamLog?> syncTeamLog({
     }
     final LocalTeamLog? followed;
     try {
-      followed = await _followFork(log, head, local, pin, ownUserId, ownKeys, fetchPage, remake, withdrawn, withdraw);
+      followed = await _followFork(
+        log,
+        head,
+        local,
+        pin,
+        ownUserId,
+        ownKeys,
+        fetchPage,
+        remake,
+        withdrawn,
+        withdraw,
+      );
     } on _ForkRefused catch (refused) {
       throw TeamLogMismatch(
-          "${e.detail}; it forks from this phone's copy and is not followed: ${refused.reason}", e.cause);
+        "${e.detail}; it forks from this phone's copy and is not followed: ${refused.reason}",
+        e.cause,
+      );
     }
     if (followed == null) rethrow;
     return followed;
@@ -530,24 +643,33 @@ Future<LocalTeamLog?> _followFork(
   }
   final served = <Map<String, dynamic>>[];
   for (var page = 0; page < teamLogPages && served.length <= headSeq; page++) {
-    final got = (await fetchPage(served.length - 1)).take(headSeq + 1 - served.length).toList();
+    final got = (await fetchPage(
+      served.length - 1,
+    )).take(headSeq + 1 - served.length).toList();
     if (got.isEmpty) break;
     served.addAll(got);
   }
   var fork = 0;
   while (fork < served.length &&
       fork < local.records.length &&
-      TeamLog.recordHash(served[fork]) == TeamLog.recordHash(local.records[fork])) {
+      TeamLog.recordHash(served[fork]) ==
+          TeamLog.recordHash(local.records[fork])) {
     fork++;
   }
-  if (fork == 0 || fork == served.length || fork == local.records.length) return null;
+  if (fork == 0 || fork == served.length || fork == local.records.length)
+    return null;
   final TeamState team;
   final List<int> missing;
   try {
     // [withdrawn]: what this phone sent and the server refused, and this
     // account's records a fork it followed went on without.
     final (refusal, lostOwn) = TeamLog.forkRefusal(
-        local.records.sublist(fork), served.sublist(fork), ownUserId, ownKeys, withdrawn);
+      local.records.sublist(fork),
+      served.sublist(fork),
+      ownUserId,
+      ownKeys,
+      withdrawn,
+    );
     if (refusal != null) throw _ForkRefused(refusal);
     missing = lostOwn;
     team = log.replay(served);
@@ -556,16 +678,24 @@ Future<LocalTeamLog?> _followFork(
   } catch (_) {
     return null;
   }
-  if (team.headSeq != headSeq || team.headHash != head['hash'] || TeamLog.adminPolicyRefusal(team) != null) {
+  if (team.headSeq != headSeq ||
+      team.headHash != head['hash'] ||
+      TeamLog.adminPolicyRefusal(team) != null) {
     return null;
   }
   // Capability finding 505 (desktop: _follow_fork): this account's records
   // left behind are withdrawn - a server serving them again later is not
   // followed (their changes went out again, or aside).
-  final abandoned = TeamLog.forkAbandoned(local.records.sublist(fork), ownUserId);
+  final abandoned = TeamLog.forkAbandoned(
+    local.records.sublist(fork),
+    ownUserId,
+  );
   Future<LocalTeamLog> follow(LocalTeamLog followed) async {
     if (abandoned.isNotEmpty) {
-      if (withdraw == null) throw StateError('a phone following a fork withdraws what it left behind');
+      if (withdraw == null)
+        throw StateError(
+          'a phone following a fork withdraws what it left behind',
+        );
       await withdraw(abandoned);
     }
     return followed;
@@ -575,21 +705,28 @@ Future<LocalTeamLog?> _followFork(
   if (ownUserId == null || remake == null) return null;
   final bodies = [
     for (final r in local.records.sublist(fork))
-      if (missing.contains(TeamLog.parseBody(r['body'], -1)['seq'])) TeamLog.parseBody(r['body'], -1),
+      if (missing.contains(TeamLog.parseBody(r['body'], -1)['seq']))
+        TeamLog.parseBody(r['body'], -1),
   ];
   // Review 18c300f R16-M5 (desktop: _follow_fork queues them again): this
   // account's lost changes go out again on the server's head; the phone made
   // them, or nobody else holds them, and on 18c300f it waited for good.
-  if (bodies.any((body) => !TeamLog.remadeKinds.contains(body['type']))) return null;
+  if (bodies.any((body) => !TeamLog.remadeKinds.contains(body['type'])))
+    return null;
   var after = team;
   final records = <Map<String, dynamic>>[];
   String? setAside;
   try {
     for (final body in bodies) {
-      final data =
-          TeamLog.resolveChange(after, body['type'] as String, Map<String, dynamic>.from(body['data'] as Map));
+      final data = TeamLog.resolveChange(
+        after,
+        body['type'] as String,
+        Map<String, dynamic>.from(body['data'] as Map),
+      );
       if (data == null) continue;
-      final record = remake.sign(TeamLog.nextBody(after, body['type'] as String, ownUserId, data));
+      final record = remake.sign(
+        TeamLog.nextBody(after, body['type'] as String, ownUserId, data),
+      );
       after = log.replay([record], after);
       records.add(record);
     }
@@ -619,10 +756,16 @@ enum RemakeOutcome { taken, moved, refused }
 /// onto the server's head, [setAside] reports the changes the log or the
 /// server no longer takes (the desktop's 'sezam team-log queue').
 class TeamLogRemake {
-  TeamLogRemake({required this.sign, required this.append, required this.setAside});
+  TeamLogRemake({
+    required this.sign,
+    required this.append,
+    required this.setAside,
+  });
   final Map<String, dynamic> Function(Map<String, Object?> body) sign;
-  final Future<RemakeOutcome> Function(List<Map<String, dynamic>> records) append;
-  final Future<void> Function(List<Map<String, dynamic>> changes, String reason) setAside;
+  final Future<RemakeOutcome> Function(List<Map<String, dynamic>> records)
+  append;
+  final Future<void> Function(List<Map<String, dynamic>> changes, String reason)
+  setAside;
 }
 
 class _ForkRefused implements Exception {
@@ -638,7 +781,8 @@ Future<LocalTeamLog> _catchUpTeamLog(
   Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
   Set<String> withdrawn,
 ) async {
-  Never fail(String detail, String cause) => throw TeamLogMismatch(detail, cause);
+  Never fail(String detail, String cause) =>
+      throw TeamLogMismatch(detail, cause);
   final localSeq = local?.team.headSeq ?? -1;
   final pinSeq = pin?['seq'] as int? ?? -1;
   final seen = localSeq > pinSeq ? localSeq : pinSeq;
@@ -679,15 +823,23 @@ Future<LocalTeamLog> _catchUpTeamLog(
   if (team.genesisHash != head['genesis_hash']) {
     fail('genesis differs from the head it announced', 'head_genesis');
   }
-  for (var seq = localSeq + 1; withdrawn.isNotEmpty && seq < records.length; seq++) {
+  for (
+    var seq = localSeq + 1;
+    withdrawn.isNotEmpty && seq < records.length;
+    seq++
+  ) {
     // R16-M5 (R16-H1 for what the phone now sends): the server kept a record it refused.
     if (withdrawn.contains(TeamLog.recordHash(records[seq]))) {
-      fail('holds record $seq, which this phone withdrew (the server refused it)', 'differs');
+      fail(
+        'holds record $seq, which this phone withdrew (the server refused it)',
+        'differs',
+      );
     }
   }
   // TL7: the server refuses such an append; a head with it is not followed.
   final refusal = TeamLog.adminPolicyRefusal(team);
-  if (refusal != null) fail('is refused at its head: $refusal', 'refused_at_head');
+  if (refusal != null)
+    fail('is refused at its head: $refusal', 'refused_at_head');
   return LocalTeamLog(records, team);
 }
 
@@ -704,7 +856,18 @@ Set<String> teamLogRefusedPulls(
   Map<String, String>? reasons,
 }) {
   final after = {...held, for (final row in pulled) row['id'] as String: row};
-  final ownKeys = ownKeySigners(after.values, ownUserId);
+  final judged = [
+    for (final row in pulled)
+      if (row['object_type'] == 'node' || row['object_type'] == 'entry') row,
+  ];
+  final verdicts = teamLogVerdicts(
+    judged,
+    held,
+    team,
+    ownUserId: ownUserId,
+    sealing: false,
+    after: after,
+  );
   return {
     for (final row in pulled)
       if (row['object_type'] == 'envelope' &&
@@ -721,24 +884,10 @@ Set<String> teamLogRefusedPulls(
                 : team.members[row['target_user_id']]?.encryptionPk ?? '',
           ))
         row['id'] as String,
-    for (final row in pulled)
-      if ((row['object_type'] == 'node' || row['object_type'] == 'entry') &&
-          _noted(
-                reasons,
-                row['id'] as String,
-                teamLogVerdict(
-                  row,
-                  after,
-                  team,
-                  ownKeys: ownKeys,
-                  ownUserId: ownUserId,
-                  sealing: false,
-                  held: held[row['id']],
-                  heldRows: held,
-                ).refusal,
-              ) !=
-              null)
-        row['id'] as String,
+    for (var i = 0; i < judged.length; i++)
+      if (_noted(reasons, judged[i]['id'] as String, verdicts[i].refusal) !=
+          null)
+        judged[i]['id'] as String,
   };
 }
 
@@ -797,10 +946,21 @@ void requireTrustedTeamWrites(
   Map<String, Map<String, dynamic>> held,
 ) {
   requireConfirmedGenesis(confirmedGenesis, local?.team.genesisHash);
-  if (local == null || localTeamLogTrusted(local, confirmedGenesis, userId, signingPk, encryptionPk)) return;
+  if (local == null ||
+      localTeamLogTrusted(
+        local,
+        confirmedGenesis,
+        userId,
+        signingPk,
+        encryptionPk,
+      ))
+    return;
   final team = local.team;
   final after = {...held, for (final row in writes) row['id'] as String: row};
-  bool touches(Map<String, dynamic> row, Map<String, Map<String, dynamic>> rows) =>
+  bool touches(
+    Map<String, dynamic> row,
+    Map<String, Map<String, dynamic>> rows,
+  ) =>
       TeamLog.isTeamFolder(team, row['id'] as String) ||
       teamFolderAbove(rows, team, row['parent_ref'] as String?) != null ||
       team.dekIndex.containsKey(row['id']) ||
@@ -823,15 +983,11 @@ String? teamLogWriteRefusal(
   Map<String, dynamic> row,
   Map<String, Map<String, dynamic>> rows,
 ) {
-  final after = {...rows, row['id'] as String: row};
-  return teamLogVerdict(
-    row,
-    after,
+  return teamLogVerdicts(
+    [row],
+    rows,
     team,
-    ownKeys: ownKeySigners(after.values, userId),
     ownUserId: userId,
     sealing: true,
-    held: rows[row['id']],
-    heldRows: rows,
-  ).refusal;
+  ).single.refusal;
 }

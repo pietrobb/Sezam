@@ -13,7 +13,7 @@ from tests.test_review_web import pytestmark  # noqa: F401
 from tests.test_web_push_limits import STUBS, _run
 
 FUNCTIONS = [
-    "assertNotStackedOnConflict", "assertTeamLogAllowsWrite", "syncPayloadBytes", "assertSyncObjectFits",
+    "assertNotStackedOnConflict", "assertTeamLogAllowsWrite", "webWriteState", "syncPayloadBytes", "assertSyncObjectFits",
     "pushEncryptedVaultObject", "pushEncryptedVaultObjectLocked", "renumberedAboveBase", "webBase", "withWebBase", "isSameSyncVersion",
 ]
 

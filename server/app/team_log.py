@@ -845,37 +845,8 @@ async def restore(cur, records: list, user_id: str, *, prepared: Optional[Prepar
 
 # ── Pushes once the organisation has a log (design §4.3.4–6, §5) ─────────
 
-async def team_folder_above(cur, state: TeamState, node_id: Optional[str], cache: dict) -> Optional[str]:
-    """``node_id`` or its nearest ancestor that the log knows as a team folder.
-
-    ``cache`` is the push's authority cache (``("node", id) -> (owner, parent)``).
-    """
-    current = node_id
-    for _ in range(64):
-        if current is None:
-            return None
-        if current in state.folders:
-            return current
-        key = ("node", current)
-        if key not in cache:
-            await cur.execute(
-                "SELECT owner_id, parent_ref FROM vault_objects "
-                "WHERE id = %s AND object_type = 'node' AND is_deleted = 0",
-                (current,),
-            )
-            row = await cur.fetchone()
-            cache[key] = tuple(row) if row else None
-        row = cache[key]
-        if row is None:
-            return None
-        current = row[1]
-    return None
-
-
-# The same rules decide on every client's pull (shared core).
-item_refusal = core.item_refusal
-tombstone_refusal = core.tombstone_refusal
-move_refusal = core.move_refusal
+# The push rule (sealing) of the same core: core/src/authority.rs write_refusal.
+write_refusal = core.write_refusal
 
 
 def envelope_refusal(

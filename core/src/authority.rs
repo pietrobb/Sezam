@@ -273,55 +273,164 @@ impl<'a> Ctx<'a> {
         None
     }
 
-    fn known(team: &State, dek_id: Option<&str>) -> bool {
-        dek_id.is_some_and(|d| team.dek_index.contains_key(d))
-    }
-
     /// None: the log does not decide; Some(None): valid; Some(Some(why)).
     fn team_refusal(&self, team: &State, rec: &Obj) -> Option<Option<&'static str>> {
-        let author = rec.signer.clone().unwrap_or_default();
-        let folder = self.snap.team_folder_above(team, rec.parent());
         let held = self
             .prev
             .as_ref()
             .and_then(|p| p.get(&rec.id))
             .filter(|h| !h.is_deleted);
-        let stored = held.and_then(|h| h.dek_id.as_deref());
-        if rec.is_deleted {
-            if folder.is_none() && !Self::known(team, stored) {
-                return None;
-            }
-            return Some(rules::tombstone_refusal(team, &author, stored));
-        }
-        let dek_id = rec.dek_id.as_deref();
-        // TL7: one's own personal object may leave for the personal root
-        // (only its author holds that key to seal the next version).
-        let own_personal = stored.is_some() && stored == dek_id && !Self::known(team, stored);
         let left = held.and_then(|h| self.prev.as_ref()?.team_folder_above(team, h.parent()));
-        if let Some(why) = rules::move_refusal(
+        let own_dek = rec.dek_id.is_some() && self.sealed_by(rec) == Some(&rec.signer);
+        team_write_verdict(
             team,
-            &author,
+            rec,
+            self.snap.team_folder_above(team, rec.parent()).as_deref(),
+            held,
             left.as_deref(),
-            folder.as_deref(),
-            own_personal,
-        ) {
-            return Some(Some(why));
-        }
-        if folder.is_none() && !Self::known(team, dek_id) {
+            own_dek,
+            None,
+        )
+    }
+}
+
+fn known(team: &State, dek_id: Option<&str>) -> bool {
+    dek_id.is_some_and(|d| team.dek_index.contains_key(d))
+}
+
+/// The log's verdict on one folder/item write `rec`, by its signer: None
+/// when the log has no say (outside every team folder, sealed with a key it
+/// does not know); Some(None) valid; Some(Some(why)). `folder`: the team
+/// folder at or above its parent; `held`: the live copy before it and `left`
+/// the team folder that copy was in; `own_dek`: its key names no folder and
+/// its author signed it. `push`: None for a pulled copy; for a write about to
+/// be sent or taken (sealing), the signer of the held copy's key.
+fn team_write_verdict(
+    team: &State,
+    rec: &Obj,
+    folder: Option<&str>,
+    held: Option<&Obj>,
+    left: Option<&str>,
+    own_dek: bool,
+    push: Option<Option<&str>>,
+) -> Option<Option<&'static str>> {
+    let author = rec.signer.as_deref().unwrap_or_default();
+    let stored = held.and_then(|h| h.dek_id.as_deref());
+    let authors_key = push.is_none_or(|signer| signer == Some(author));
+    if rec.is_deleted {
+        if folder.is_none() && !known(team, stored) && (push.is_none() || left.is_none()) {
             return None;
         }
-        let own_dek = dek_id.is_some() && self.sealed_by(rec) == Some(&rec.signer);
-        Some(rules::item_refusal(
+        let refusal = rules::tombstone_refusal(team, author, stored);
+        if refusal.is_some() || push.is_none() || held.and_then(Obj::parent) == rec.parent() {
+            return Some(refusal);
+        }
+        // Review c78fd19 (#1), the server's push rule: a tombstone that also
+        // moves the object moves it as a live write would.
+        let own_personal = stored.is_some() && !known(team, stored) && authors_key;
+        return Some(rules::move_refusal(
             team,
-            &author,
-            &rec.id,
-            folder.as_deref(),
-            dek_id,
-            own_dek,
-            false,
-        ))
+            author,
+            left,
+            folder,
+            own_personal,
+        ));
     }
+    let dek_id = rec.dek_id.as_deref();
+    // TL7: one's own personal object may leave for the personal root (only
+    // its author holds that key to seal the next version). A push also
+    // needs the author's own key (the server's rule, review c78fd19).
+    let own_personal = stored.is_some() && stored == dek_id && !known(team, stored) && authors_key;
+    if let Some(why) = rules::move_refusal(team, author, left, folder, own_personal) {
+        return Some(Some(why));
+    }
+    if folder.is_none() && !known(team, dek_id) {
+        return None;
+    }
+    Some(rules::item_refusal(
+        team,
+        author,
+        &rec.id,
+        folder,
+        dek_id,
+        own_dek,
+        push.is_some(),
+    ))
+}
 
+/// The log's verdict on each folder/item of `writes`, by its signer.
+/// `objects`: the state before them (each one's copy there, the folders it
+/// left); `after`: the state they land in (folders to walk, keys and their
+/// signers; default `objects` with `writes`). `sealing`: the push rule
+/// (design §4.3.4-6) on writes about to be sent (a client) or taken (the
+/// server); else a pulled copy's rule, as `unauthorized_writes` judges it.
+/// Some(None) valid, None the log has no say.
+pub fn write_refusals(
+    team: &State,
+    writes: &[Obj],
+    objects: &[Obj],
+    after: Option<&[Obj]>,
+    sealing: bool,
+) -> Vec<Option<Option<&'static str>>> {
+    let before = Snapshot::new(objects, []);
+    let landed: Vec<Obj>;
+    let after = match after {
+        Some(a) => Snapshot::new(a, []),
+        None => {
+            landed = objects.iter().chain(writes).cloned().collect();
+            Snapshot::new(&landed, [])
+        }
+    };
+    let key = |dek_id: Option<&str>| {
+        let id = dek_id?;
+        after
+            .get(id)
+            .or_else(|| before.get(id))
+            .filter(|k| k.object_type == "dek" && !(sealing && k.is_deleted))
+    };
+    writes
+        .iter()
+        .map(|rec| {
+            let held = before
+                .get(&rec.id)
+                .filter(|h| !h.is_deleted && h.object_type == rec.object_type);
+            let left = held.and_then(|h| before.team_folder_above(team, h.parent()));
+            let own_dek = key(rec.dek_id.as_deref()).is_some_and(|k| {
+                k.parent().is_none() && k.signer.is_some() && k.signer == rec.signer
+            });
+            let stored_signer =
+                key(held.and_then(|h| h.dek_id.as_deref())).and_then(|k| k.signer.as_deref());
+            team_write_verdict(
+                team,
+                rec,
+                after.team_folder_above(team, rec.parent()).as_deref(),
+                held,
+                left.as_deref(),
+                own_dek,
+                sealing.then_some(stored_signer),
+            )
+        })
+        .collect()
+}
+
+/// The team folder at or above node `node_id`; `parents`: each folder's parent.
+pub fn team_folder_above(
+    team: &State,
+    parents: &HashMap<String, Option<String>>,
+    node_id: Option<&str>,
+) -> Option<String> {
+    let mut current = node_id.filter(|n| !n.is_empty());
+    for _ in 0..MAX_DEPTH {
+        let id = current?;
+        if rules::is_team_folder(team, id) {
+            return Some(id.to_string());
+        }
+        current = parents.get(id)?.as_deref().filter(|p| !p.is_empty());
+    }
+    None
+}
+
+impl<'a> Ctx<'a> {
     /// true: `rec` is blocked.
     fn judge(&self, j: &mut Judged, rec: &Obj, depth: usize) -> bool {
         if let Some(v) = j.verdicts.get(&rec.id) {
@@ -697,6 +806,41 @@ fn team_of(
     }
 }
 
+fn yes() -> bool {
+    true
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WriteIn {
+    /// The folders and items to judge.
+    writes: Vec<Obj>,
+    /// The state before them: folders, keys, each one's own copy.
+    objects: Vec<Obj>,
+    /// The state it lands in (default: `objects` with it).
+    #[serde(default)]
+    after: Option<Vec<Obj>>,
+    /// false: a pulled copy (default: the push rule).
+    #[serde(default = "yes")]
+    sealing: bool,
+    #[serde(default)]
+    team: Option<State>,
+    #[serde(default)]
+    team_handle: Option<u64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FolderIn {
+    node_id: Option<String>,
+    /// Each folder's parent (None: top level).
+    parents: HashMap<String, Option<String>>,
+    #[serde(default)]
+    team: Option<State>,
+    #[serde(default)]
+    team_handle: Option<u64>,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct HeadIn {
@@ -755,6 +899,30 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 json!(log_admins(&bodies, &team))
+            }
+            "authority_write_refusal" => {
+                let mut i: WriteIn = serde_json::from_str(input).map_err(bad)?;
+                for o in i
+                    .writes
+                    .iter_mut()
+                    .chain(i.objects.iter_mut())
+                    .chain(i.after.iter_mut().flatten())
+                {
+                    o.read_head()?;
+                }
+                let team = team_of(i.team, i.team_handle)?.ok_or("team or team_handle needed")?;
+                let verdicts =
+                    write_refusals(&team, &i.writes, &i.objects, i.after.as_deref(), i.sealing);
+                let out: Vec<Value> = verdicts
+                    .into_iter()
+                    .map(|v| json!({"decided": v.is_some(), "refusal": v.flatten()}))
+                    .collect();
+                json!(out)
+            }
+            "authority_team_folder_above" => {
+                let i: FolderIn = serde_json::from_str(input).map_err(bad)?;
+                let team = team_of(i.team, i.team_handle)?.ok_or("team or team_handle needed")?;
+                json!(team_folder_above(&team, &i.parents, i.node_id.as_deref()))
             }
             "authority_sealing_dek_id" => {
                 let i: HeadIn = serde_json::from_str(input).map_err(bad)?;

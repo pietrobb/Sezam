@@ -236,6 +236,32 @@ async def test_moving_an_item_out_of_a_team_folder_needs_write_there(app_client,
 
 
 @pytest.mark.asyncio
+async def test_only_its_author_takes_a_personal_item_out_of_a_team_folder(app_client, mock_db):
+    """The push rule in the core (core/src/authority.rs write_refusal; TL7,
+    review c78fd19 #1): one's own personal item, its own key before and now,
+    may leave a team folder; a reader may neither move nor delete it out."""
+    team = Team(mock_db)
+    await _team_folder(app_client, team)
+    kb = "01JD000000000000000000000A"
+    resp = await _push(app_client, team, BOB, [
+        _obj(team.sk[BOB], kb, "dek", b"own key" * 10), _entry(team, BOB, kb)])
+    assert resp.status_code == 200, resp.text
+    # Carol (read) copies the header of Bob's key: not her key.
+    assert _errors(await _push(app_client, team, CAROL, [
+        _entry(team, CAROL, kb, version=2, parent=None)])) == ["team log gives no write access here"]
+    moved = _obj(team.sk[CAROL], ENTRY, "entry", b"", parent=None, version=2, deleted=1)
+    assert _errors(await _push(app_client, team, CAROL, [moved])) == [
+        "team log gives no write access here"]
+    # Bob takes it into his personal root (a top-level folder of his own key).
+    root, kr = "01JN000000000000000000000E", "01JD000000000000000000000E"
+    resp = await _push(app_client, team, BOB, [
+        _obj(team.sk[BOB], kr, "dek", b"own key" * 10), _obj(team.sk[BOB], root, "node", _sealed(kr))])
+    assert resp.status_code == 200, resp.text
+    assert (await _push(app_client, team, BOB, [
+        _entry(team, BOB, kb, version=2, parent=root)])).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_keys_and_envelopes_the_log_does_not_name_are_refused(app_client, mock_db):
     team = Team(mock_db)
     await _team_folder(app_client, team)

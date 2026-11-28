@@ -19,7 +19,7 @@ FUNCTIONS = [
     "syncPayloadBytes", "assertSyncObjectFits", "assertSyncUnitFits", "splitForPush",
     "postAtomicSyncBatch", "pushWebRekeyBatch", "sendWebTeamRecords", "noteWebTeamRecordsSent", "noteWebTeamRecordsTaken", "prepareWebRekeyJournal",
     "finishWebRevocation", "retryAllWebDirtyObjects", "oversizedQueuedObjects",
-    "assertNotStackedOnConflict", "assertTeamLogAllowsWrite", "pushEncryptedVaultObject", "pushEncryptedVaultObjectLocked", "renumberedAboveBase", "webBase", "withWebBase", "isSameSyncVersion",
+    "assertNotStackedOnConflict", "assertTeamLogAllowsWrite", "webWriteState", "pushEncryptedVaultObject", "pushEncryptedVaultObjectLocked", "renumberedAboveBase", "webBase", "withWebBase", "isSameSyncVersion",
 ]
 
 SETUP = STUBS + """

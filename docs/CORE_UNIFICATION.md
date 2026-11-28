@@ -110,5 +110,16 @@ ich správanie a vektory `authority.json` sú bez zmeny. Testy:
 `core/tests/authority_held.rs` (odpovede desktopového `held_back` z fa0c02f)
 a `tests/test_review8_unknown_parent_h2.py`.
 
+Pravidlo pushu (U5g): `authority::write_refusal` je jeden verdikt logu nad
+zápisom priečinka/položky; súdi ním pull (`unauthorized_writes`) aj push.
+Server (`_team_log_refusal`), web (`assertTeamLogAllowsWrite`), mobil
+(`write_authority.dart`) a desktop (`team_folder_at_or_above`) volajú op
+`authority_write_refusal` / `authority_team_folder_above`; kópie
+`team_folder_above`, `item/tombstone/move_refusal` v serveri sú zmazané.
+
+Známe zlyhanie mimo vetvy U: `tests/test_review13_handover_rekey.py::
+test_the_new_admin_rekeys_what_the_former_admin_held` (409 „target_user_id is
+admin only“) padá od R17 commitu e55ddb8 (7f9a191 zelené); opraviť pred U9.
+
 Rozpracovaný stav #480 je odložený v `git stash` na `r17-l`
 („R17 #480 WIP before unification pause“) a v `%TEMP%\r17_480_wip.patch`.

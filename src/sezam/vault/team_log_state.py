@@ -309,16 +309,19 @@ def _team_key_ids(db) -> set[str]:
 
 
 def team_folder_at_or_above(db, team: Optional[teamlog.TeamState], node_id: Optional[str]) -> Optional[str]:
-    """The team folder of ``team`` at or above ``node_id`` (None: in none)."""
-    current = node_id
-    for _ in range(64):
-        if current is None or team is None:
-            return None
-        if teamlog.is_team_folder(team, current):
-            return current
+    """The team folder of ``team`` at or above ``node_id`` (None: in none);
+    the core's walk over the folders above it here."""
+    if team is None or node_id is None:
+        return None
+    parents: dict[str, Optional[str]] = {}
+    current: Optional[str] = node_id
+    while current is not None and current not in parents and len(parents) < 64:
         row = db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (current,))
-        current = row["parent_id"] if row else None
-    return None
+        if row is None:
+            break
+        parents[current] = row["parent_id"]
+        current = row["parent_id"]
+    return teamlog.team_folder_above(team, parents, node_id)
 
 
 def unlogged_folder_keys(db, logged, node_id: str) -> list[tuple[str, str]]:

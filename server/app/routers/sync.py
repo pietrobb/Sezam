@@ -1891,37 +1891,62 @@ async def _team_log_refusal(
         return None
     if stored_type not in ("node", "entry"):
         return None
-    if obj.is_deleted:
-        if existing is None:
-            return None
+    # The push rule is the core's (authority::write_refusal, sealing): this
+    # gathers what it reads - the stored copy, the folders above both
+    # parents, the keys named and who signed them.
+    objects = []
+    stored = None
+    if existing is not None and not existing[8]:
         await cur.execute("SELECT payload FROM vault_objects WHERE id = %s", (obj.id,))
         row = await cur.fetchone()
         stored = _sealing_dek_id(bytes(row[0]), stored_type == "entry") if row and row[0] else None
-        refusal = team_log.tombstone_refusal(state, user_id, stored)
-        if refusal or obj.parent_ref == existing[5]:
-            return refusal
-        # Review c78fd19 (#1): a tombstone that also moves the object (a
-        # device deleted what it had moved) moves it as a live write would.
-        folder = await team_log.team_folder_above(cur, state, obj.parent_ref, cache)
-        old_folder = await team_log.team_folder_above(cur, state, existing[5], cache)
-        own_personal = old_folder is not None and await _own_personal_object(
-            cur, state, user_id, existing, obj.id
+        objects.append({
+            "id": obj.id, "object_type": existing[4], "parent_ref": existing[5], "dek_id": stored,
+        })
+    dek_id = None if obj.is_deleted else _sealing_dek_id(payload, stored_type == "entry")
+    for start in {obj.parent_ref, existing[5] if existing is not None else None} - {None}:
+        objects.extend(await _folders_above(cur, start, cache))
+    for key in {dek_id, stored} - {None}:
+        if key in batch_dek_ids:
+            objects.append({"id": key, "object_type": "dek", "parent_ref": None, "signer": user_id})
+            continue
+        await cur.execute(
+            "SELECT owner_id, parent_ref FROM vault_objects "
+            "WHERE id = %s AND object_type = 'dek' AND is_deleted = 0",
+            (key,),
         )
-        return team_log.move_refusal(state, user_id, old_folder, folder, own_personal)
-    folder = await team_log.team_folder_above(cur, state, obj.parent_ref, cache)
-    if existing is not None and not existing[8]:
-        # Finding 205: moving out of a team folder removes from it. TL7: one's
-        # own personal object may leave for the personal root.
-        old_folder = await team_log.team_folder_above(cur, state, existing[5], cache)
-        own_personal = old_folder is not None and await _own_personal_object(
-            cur, state, user_id, existing, obj.id
-        )
-        refusal = team_log.move_refusal(state, user_id, old_folder, folder, own_personal)
-        if refusal:
-            return refusal
-    dek_id = _sealing_dek_id(payload, stored_type == "entry")
-    own = dek_id in batch_dek_ids or await _own_personal_key(cur, state, user_id, dek_id)
-    return team_log.item_refusal(state, user_id, obj.id, folder, dek_id, own)
+        row = await cur.fetchone()
+        if row is not None:
+            objects.append({"id": key, "object_type": "dek", "parent_ref": row[1], "signer": row[0]})
+    write = {
+        "id": obj.id, "object_type": stored_type, "parent_ref": obj.parent_ref,
+        "is_deleted": bool(obj.is_deleted), "signer": user_id, "dek_id": dek_id,
+    }
+    return team_log.write_refusal(state, write, objects)[1]
+
+
+async def _folders_above(cur, node_id: Optional[str], cache: dict) -> list[dict]:
+    """The live folders from ``node_id`` up (64 at most), as the core walks
+    them. ``cache`` is the push's authority cache (``("node", id) -> (owner, parent)``)."""
+    out = []
+    current = node_id
+    seen = set()
+    while current is not None and current not in seen and len(out) < 64:
+        seen.add(current)
+        key = ("node", current)
+        if key not in cache:
+            await cur.execute(
+                "SELECT owner_id, parent_ref FROM vault_objects "
+                "WHERE id = %s AND object_type = 'node' AND is_deleted = 0",
+                (current,),
+            )
+            row = await cur.fetchone()
+            cache[key] = tuple(row) if row else None
+        if cache[key] is None:
+            break
+        out.append({"id": current, "object_type": "node", "parent_ref": cache[key][1]})
+        current = cache[key][1]
+    return out
 
 
 async def _own_personal_object(cur, state, user_id: str, existing, obj_id: str) -> bool:
@@ -1946,20 +1971,6 @@ async def _own_personal_object(cur, state, user_id: str, existing, obj_id: str) 
         (stored, user_id),
     )
     return bool(await cur.fetchone())
-
-
-async def _own_personal_key(cur, state, user_id: str, dek_id: Optional[str]) -> bool:
-    """Is ``dek_id`` the user's personal key: theirs, outside the log, bound to no
-    folder (an admin's folder key outside the log is not personal)?"""
-    if dek_id is None or dek_id in state.dek_index:
-        return False
-    await cur.execute(
-        "SELECT owner_id, parent_ref FROM vault_objects "
-        "WHERE id = %s AND object_type = 'dek' AND is_deleted = 0",
-        (dek_id,),
-    )
-    row = await cur.fetchone()
-    return row is not None and row[0] == user_id and row[1] is None
 
 
 async def _live_envelopes(cur, objects) -> frozenset[str]:

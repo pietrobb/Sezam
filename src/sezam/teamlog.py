@@ -377,6 +377,28 @@ def move_refusal(
     return _ask(state, "move_refusal", user_id, old_folder, new_folder, bool(own_personal))
 
 
+def write_refusal(
+    state: TeamState, obj: dict, objects: list[dict], after: Optional[list[dict]] = None,
+    sealing: bool = True,
+) -> tuple[bool, Optional[str]]:
+    """The log's verdict on folder/item ``obj`` (its ``signer`` writes it):
+    (decided, why not or None). ``objects``: the state before it (its copy,
+    the folders it left, the keys and their signers); ``after``: the state it
+    lands in. ``sealing``: the push rule (core authority::write_refusal,
+    docs/CORE_UNIFICATION.md U5)."""
+    arguments = {"writes": [obj], "objects": objects, "sealing": sealing, **core_argument(state)}
+    if after is not None:
+        arguments["after"] = after
+    out = _call("authority_write_refusal", **arguments)[0]
+    return out["decided"], out["refusal"]
+
+
+def team_folder_above(state: TeamState, parents: dict, node_id: Optional[str]) -> Optional[str]:
+    """The team folder at or above node ``node_id``; ``parents``: each
+    folder's parent (core authority::team_folder_above)."""
+    return _call("authority_team_folder_above", node_id=node_id, parents=parents, **core_argument(state))
+
+
 def envelope_valid(
     state: TeamState, signer_id: str, target_id: str, dek_id: str, level: Optional[str],
     target_encryption_pk: str,

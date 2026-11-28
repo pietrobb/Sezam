@@ -17,7 +17,7 @@ from tests.test_review_web import _function, _run_source, pytestmark  # noqa: F4
 TEAMLOG_JS = (Path(__file__).parents[1] / "web" / "static" / "js" / "teamlog.js").read_text(encoding="utf-8")
 FUNCTIONS = [
     "syncWebTeamLog", "catchUpWebTeamLog", "followWebTeamLogFork", "webHeldTeamKeys", "webTeamLedgerAad", "loadWebTeamLedger", "saveWebTeamLedger", "noteWebTeamRecordsSent", "noteWebTeamRecordsTaken", "noteWebTeamLogStored", "sendWebTeamRecords", "teamLogPin", "webTeamFolderAbove", "unauthorizedWrites", "sealingDekId",
-    "isEncryptedEnvelope", "teamLogRefusedError", "assertTeamLogAllowsWrite", "payloadDekId",
+    "isEncryptedEnvelope", "teamLogRefusedError", "assertTeamLogAllowsWrite", "webWriteState", "payloadDekId",
     "nearestFolderDekId", "keyAuthors", "folderTreeOwner", "provenDekSuccessors", "ulidTimeMs", "webTeamLogTrusted", "webFounderLineage",
     "webLogAdmins", "restoreWebTeamLog", "remakeWebLostTeamChanges", "webTeamLogRefusedAnswer",
 ]

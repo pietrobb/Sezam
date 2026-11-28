@@ -9089,38 +9089,45 @@ function assertTeamLogAllowsWrite(vaultObj) {
         throw teamLogRefusedError('the externally confirmed team log is not downloaded');
     }
     if (!team || !['node', 'entry'].includes(vaultObj.object_type)) return;
-    const TL = globalThis.SezamTeamLog;
     const objects = state.syncObjects || {};
-    const folder = webTeamFolderAbove(objects, team, vaultObj.parent_ref);
     const held = objects[vaultObj.id] && !objects[vaultObj.id].is_deleted ? objects[vaultObj.id] : null;
-    const previousFolder = held ? webTeamFolderAbove(objects, team, held.parent_ref) : null;
-    const touchesTeam = folder !== null || previousFolder !== null ||
-        Object.hasOwn(team.dekIndex, payloadDekId(vaultObj)) ||
+    const dekId = vaultObj.is_deleted ? null : payloadDekId(vaultObj);
+    const touchesTeam = webTeamFolderAbove(objects, team, vaultObj.parent_ref) !== null ||
+        (held && webTeamFolderAbove(objects, team, held.parent_ref) !== null) ||
+        Object.hasOwn(team.dekIndex, dekId) ||
         (held && Object.hasOwn(team.dekIndex, sealingDekId(held)));
     if (touchesTeam && !webTeamLogTrusted(state.sodium)) {
         throw teamLogRefusedError('the founder is not confirmed on this device');
     }
-    let refusal;
-    if (vaultObj.is_deleted) {
-        refusal = TL.tombstoneRefusal(team, state.userId, held ? sealingDekId(held) : null);
-    } else {
-        const dekId = payloadDekId(vaultObj);
-        // TL7 (review 1141a20): one's own personal object (sealed, before and
-        // now, with a key outside the log) may leave for the personal root.
-        const stored = held ? sealingDekId(held) : null;
-        const ownPersonal = stored !== null && stored === dekId && !Object.hasOwn(team.dekIndex, stored);
-        refusal = TL.moveRefusal(
-            team, state.userId, previousFolder, folder, ownPersonal);
-        const known = dekId !== null && Object.hasOwn(team.dekIndex, dekId);
-        if (!refusal && (folder !== null || known)) {
-            // Not in the log: only this account's own key (a DEK with no folder) may seal here.
-            const dek = dekId ? objects[dekId] : null;
-            const ownDek = !known && dekId !== null &&
-                !(dek && (dek.parent_ref || (dek.signer || dek.owner_id) !== state.userId));
-            refusal = TL.itemRefusal(team, state.userId, vaultObj.id, folder, dekId, ownDek, true);
-        }
-    }
+    // The push rule is the core's (core/src/authority.rs write_refusal).
+    const [{ refusal }] = globalThis.SezamSyncCore.call('authority_write_refusal', {
+        writes: [{
+            id: vaultObj.id, object_type: vaultObj.object_type, parent_ref: vaultObj.parent_ref || null,
+            is_deleted: !!vaultObj.is_deleted, signer: state.userId, dek_id: dekId,
+        }],
+        objects: webWriteState(objects, vaultObj.id, dekId),
+        ...globalThis.SezamTeamLog.teamArgument(team),
+    });
     if (refusal) throw teamLogRefusedError(refusal);
+}
+
+// What the core's push rule reads: the folders, the keys and who signed
+// them, the copy held of `id`. A key this browser holds that the server has
+// not got yet was made here, by this account.
+function webWriteState(objects, id, dekId) {
+    const out = [];
+    for (const rec of Object.values(objects)) {
+        if (rec.object_type !== 'node' && rec.object_type !== 'dek' && rec.id !== id) continue;
+        out.push({
+            id: rec.id, object_type: rec.object_type, parent_ref: rec.parent_ref || null,
+            is_deleted: !!rec.is_deleted, signer: rec.signer || rec.owner_id || null,
+            dek_id: rec.id === id && !rec.is_deleted ? sealingDekId(rec) : null,
+        });
+    }
+    if (dekId && !objects[dekId] && state.deks?.[dekId]) {
+        out.push({ id: dekId, object_type: 'dek', parent_ref: null, signer: state.userId });
+    }
+    return out;
 }
 
 /**
@@ -9135,16 +9142,16 @@ function webLogAdmins(teamLog) {
     }));
 }
 
-/** The team folder at or above node `nodeId` in `objects`, or null. */
+/** The team folder at or above node `nodeId` in `objects`, or null (the core's walk). */
 function webTeamFolderAbove(objects, team, nodeId) {
-    let current = nodeId || null;
-    for (let i = 0; i < 64 && current; i++) {
-        if (Object.hasOwn(team.folders, current)) return current;
-        const rec = objects?.[current];
-        if (!rec || rec.object_type !== 'node') return null;
-        current = rec.parent_ref || null;
+    if (!nodeId) return null;
+    const parents = {};
+    for (const rec of Object.values(objects || {})) {
+        if (rec.object_type === 'node') parents[rec.id] = rec.parent_ref || null;
     }
-    return null;
+    return globalThis.SezamSyncCore.call('authority_team_folder_above', {
+        node_id: nodeId, parents, ...globalThis.SezamTeamLog.teamArgument(team),
+    });
 }
 
 // Which pulled folders and items not to show (and all below them): the

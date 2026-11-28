@@ -57,92 +57,83 @@ String? sealingDekId(Map<String, dynamic> row) {
 // move out of a team folder: finding 205) needs write access where it was.
 // Write envelopes and accounts the server takes for admins decide nothing there.
 
-/// The team folder at or above node [nodeId] in [rows], or null.
+String? _parent(Map<String, dynamic> row) {
+  final parent = row['parent_ref'] as String?;
+  return parent == null || parent.isEmpty ? null : parent;
+}
+
+/// The team folder at or above node [nodeId] in [rows], or null (the
+/// core's walk).
 String? teamFolderAbove(
   Map<String, Map<String, dynamic>> rows,
   TeamState team,
   String? nodeId,
 ) {
-  var current = nodeId;
-  for (var i = 0; i < 64 && current != null && current.isNotEmpty; i++) {
-    if (TeamLog.isTeamFolder(team, current)) return current;
-    final row = rows[current];
-    if (row == null || row['object_type'] != 'node') return null;
-    current = row['parent_ref'] as String?;
-  }
-  return null;
+  if (nodeId == null || nodeId.isEmpty) return null;
+  return syncCore('authority_team_folder_above', {
+        'node_id': nodeId,
+        'parents': {
+          for (final row in rows.values)
+            if (row['object_type'] == 'node') row['id'] as String: _parent(row),
+        },
+        ...team.coreArgument(),
+      })
+      as String?;
 }
 
-/// Signer of each key with no folder (an account's own key).
-Map<String, String?> ownKeySigners(
-  Iterable<Map<String, dynamic>> rows,
-  String? ownUserId,
-) => {
-  for (final row in rows)
-    if (row['object_type'] == 'dek' &&
-        ((row['parent_ref'] as String?) ?? '').isEmpty)
-      row['id'] as String: _signer(row, ownUserId),
-};
-
-/// The log's verdict on folder/item [row] in [rows] (the state with it):
-/// `decided` false when the log has no say (outside every team folder,
-/// sealed with a key it does not know); else `refusal` null when valid, or
-/// why not. [held] is the copy this device had before, [heldRows] the rows
-/// it sat in. [sealing] false for a pulled copy (design §4.3.4).
-({bool decided, String? refusal}) teamLogVerdict(
-  Map<String, dynamic> row,
+/// What the core's write rule reads of [rows]: the folders, the keys and
+/// who signed them, and the copies of [ids].
+List<Map<String, Object?>> _writeState(
   Map<String, Map<String, dynamic>> rows,
+  Set<String> ids,
+  String? ownUserId,
+) => [
+  for (final row in rows.values)
+    if (row['object_type'] == 'node' ||
+        row['object_type'] == 'dek' ||
+        ids.contains(row['id']))
+      ids.contains(row['id'])
+          ? _authorityObject(row, ownUserId)
+          : {
+              'id': row['id'],
+              'object_type': row['object_type'],
+              'parent_ref': _parent(row),
+              'is_deleted': row['is_deleted'] == 1,
+              'signer': _signer(row, ownUserId),
+            },
+];
+
+/// The log's verdict on each folder/item of [writes] (core/src/authority.rs
+/// write_refusals): `decided` false when the log has no say (outside every
+/// team folder, sealed with a key it does not know); else `refusal` null
+/// when valid, or why not. [before] holds the copies this device had and
+/// the folders they sat in, [after] the state they land in (default:
+/// [before] with them). [sealing] false for a pulled copy (design §4.3.4).
+List<({bool decided, String? refusal})> teamLogVerdicts(
+  List<Map<String, dynamic>> writes,
+  Map<String, Map<String, dynamic>> before,
   TeamState team, {
-  required Map<String, String?> ownKeys,
   required String? ownUserId,
   required bool sealing,
-  Map<String, dynamic>? held,
-  Map<String, Map<String, dynamic>>? heldRows,
+  Map<String, Map<String, dynamic>>? after,
 }) {
-  final author = _signer(row, ownUserId) ?? '';
-  final folder = teamFolderAbove(rows, team, row['parent_ref'] as String?);
-  final before = held != null && held['is_deleted'] != 1 ? held : null;
-  bool known(String? dekId) =>
-      dekId != null && team.dekIndex.containsKey(dekId);
-  if (row['is_deleted'] == 1) {
-    final stored = before == null ? null : sealingDekId(before);
-    if (folder == null && !known(stored))
-      return (decided: false, refusal: null);
-    return (
-      decided: true,
-      refusal: TeamLog.tombstoneRefusal(team, author, stored),
-    );
-  }
-  final left = before == null
-      ? null
-      : teamFolderAbove(
-          heldRows ?? rows,
-          team,
-          before['parent_ref'] as String?,
-        );
-  final dekId = sealingDekId(row);
-  // TL7 (review 1141a20): a personal object (sealed, before and now, with one
-  // key outside the log) may leave for the personal root, as the server and
-  // the desktop decide. Only its author holds that key.
-  final stored = before == null ? null : sealingDekId(before);
-  final ownPersonal = stored != null && stored == dekId && !known(stored);
-  final moved = TeamLog.moveRefusal(team, author, left, folder, ownPersonal);
-  if (moved != null) return (decided: true, refusal: moved);
-  if (folder == null && !known(dekId)) return (decided: false, refusal: null);
-  final ownDek =
-      dekId != null && ownKeys.containsKey(dekId) && ownKeys[dekId] == author;
-  return (
-    decided: true,
-    refusal: TeamLog.itemRefusal(
-      team,
-      author,
-      row['id'] as String,
-      folder,
-      dekId,
-      ownDek,
-      sealing,
-    ),
-  );
+  if (writes.isEmpty) return const [];
+  final ids = {for (final row in writes) row['id'] as String};
+  final out =
+      syncCore('authority_write_refusal', {
+            'writes': [
+              for (final row in writes) _authorityObject(row, ownUserId),
+            ],
+            'objects': _writeState(before, ids, ownUserId),
+            if (after != null) 'after': _writeState(after, const {}, ownUserId),
+            'sealing': sealing,
+            ...team.coreArgument(),
+          })
+          as List;
+  return [
+    for (final v in out.cast<Map>())
+      (decided: v['decided'] as bool, refusal: v['refusal'] as String?),
+  ];
 }
 
 /// Accounts the log [records] ever made admin that are still active members
