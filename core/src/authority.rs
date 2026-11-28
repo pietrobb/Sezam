@@ -19,7 +19,7 @@
 //! grants write, a top-level folder is an admin's or its signer's own tree,
 //! and below the first level of the organisation's tree only an admin writes.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -49,6 +49,20 @@ pub struct Obj {
     /// The key the sealed meta's header names (`sealing_dek_id`).
     #[serde(default)]
     pub dek_id: Option<String>,
+    /// Or the payload's start (hex): the core reads `dek_id` from it.
+    #[serde(default)]
+    pub head: Option<String>,
+}
+
+impl Obj {
+    fn read_head(&mut self) -> Result<(), String> {
+        if let Some(head) = self.head.take() {
+            let bytes =
+                crate::teamlog::from_hex(&head.to_ascii_lowercase()).ok_or("head must be hex")?;
+            self.dek_id = sealing_dek_id(&self.object_type, &bytes);
+        }
+        Ok(())
+    }
 }
 
 fn flag<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
@@ -86,14 +100,64 @@ pub fn sealing_dek_id(object_type: &str, head: &[u8]) -> Option<String> {
     (!id.is_empty() && bytes[3..29].is_ascii()).then_some(id)
 }
 
-/// Objects by id in their first order, the last copy of an id winning.
+/// A client's own record of what it judged before (the desktop judges each
+/// pull's batch against its database; web and phone send their whole state
+/// and no context).
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Context {
+    /// Folders applied here and not judged again: walked only (their
+    /// signer is not known).
+    #[serde(default)]
+    pub known_nodes: Vec<Obj>,
+    /// Ids not applied before: everything below them is not applied either.
+    #[serde(default)]
+    pub refused: BTreeSet<String>,
+    #[serde(default)]
+    pub personal_dek_signers: HashMap<String, String>,
+    /// A member's personal folder directly below a top-level folder -> member.
+    #[serde(default)]
+    pub personal_trees: HashMap<String, String>,
+    /// Without a log: accounts seen signing what only an admin may push.
+    #[serde(default)]
+    pub admin_signers: BTreeSet<String>,
+    /// Without a log: write grants held here (envelope id, grantee, folder, granter).
+    #[serde(default)]
+    pub write_grants: Vec<Grant>,
+    /// The folder each key named by a pulled envelope belongs to here.
+    #[serde(default)]
+    pub dek_folders: HashMap<String, String>,
+    /// This account's top-level folders among `known_nodes`.
+    #[serde(default)]
+    pub own_tops: BTreeSet<String>,
+    /// Review a159e97 H2 (the desktop): the accounts this device has its own
+    /// evidence for. Given, a folder or item below a folder neither this call
+    /// nor `known_nodes` has is held back (not judged) unless this account or
+    /// one of them wrote it. The caller passes what it held back before again
+    /// with the batch. Web and phone send none and hold nothing.
+    #[serde(default)]
+    pub vouched: Option<BTreeSet<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Grant {
+    pub id: String,
+    pub user_id: String,
+    pub folder: String,
+    pub by: String,
+}
+
+/// Objects by id in their first order, the last copy of an id winning;
+/// a folder not among them may be one of the context's walk-only ones.
 struct Snapshot<'a> {
     order: Vec<&'a str>,
     by_id: HashMap<&'a str, &'a Obj>,
+    known: HashMap<&'a str, &'a Obj>,
 }
 
 impl<'a> Snapshot<'a> {
-    fn new(objects: &'a [Obj]) -> Self {
+    fn new(objects: &'a [Obj], known: impl IntoIterator<Item = &'a Obj>) -> Self {
         let mut order = Vec::new();
         let mut by_id = HashMap::new();
         for obj in objects {
@@ -101,15 +165,28 @@ impl<'a> Snapshot<'a> {
                 order.push(obj.id.as_str());
             }
         }
-        Snapshot { order, by_id }
+        let known = known.into_iter().map(|o| (o.id.as_str(), o)).collect();
+        Snapshot {
+            order,
+            by_id,
+            known,
+        }
     }
 
     fn get(&self, id: &str) -> Option<&'a Obj> {
         self.by_id.get(id).copied()
     }
 
+    /// Judged in this call (not a walk-only folder).
+    fn judged_here(&self, id: &str) -> bool {
+        self.by_id.contains_key(id)
+    }
+
     fn node(&self, id: &str) -> Option<&'a Obj> {
-        self.get(id).filter(|o| o.object_type == "node")
+        match self.get(id) {
+            Some(o) => Some(o).filter(|o| o.object_type == "node"),
+            None => self.known.get(id).copied(),
+        }
     }
 
     /// The team folder at or above node `node_id`, or None.
@@ -133,6 +210,19 @@ impl<'a> Snapshot<'a> {
 pub struct Verdict {
     pub blocked: Vec<String>,
     pub by_team_log: BTreeSet<String>,
+    /// Why the log refused each of `by_team_log` it decided itself.
+    pub refusals: BTreeMap<String, String>,
+    /// Blocked because the folder above was (in this call or before).
+    pub below_refused: BTreeSet<String>,
+    /// The context's personal trees after this call.
+    pub personal_trees: BTreeMap<String, String>,
+    /// Without a log: the accounts seen signing what only an admin may push.
+    pub admin_signers: BTreeSet<String>,
+    /// The signer of each key that names no folder (the context's and this call's).
+    pub personal_dek_signers: BTreeMap<String, String>,
+    /// Held back below a folder not known here (H2): neither applied nor
+    /// judged; the caller judges them again once that folder arrives.
+    pub held: Vec<String>,
 }
 
 type Signer = Option<String>;
@@ -146,13 +236,18 @@ struct Ctx<'a> {
     personal_dek_signers: HashMap<&'a str, Signer>,
     write_grants: BTreeSet<(Signer, &'a str)>,
     own_write_grants: BTreeSet<(Signer, &'a str)>,
+    refused: &'a BTreeSet<String>,
+    own_tops: &'a BTreeSet<String>,
 }
 
 #[derive(Default)]
 struct Judged {
     verdicts: HashMap<String, bool>,
-    personal_owner: HashMap<String, String>,
+    /// Personal folders directly below a top-level folder -> member.
+    personal_trees: BTreeMap<String, String>,
     by_team_log: BTreeSet<String>,
+    refusals: BTreeMap<String, String>,
+    below_refused: BTreeSet<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -163,6 +258,19 @@ impl<'a> Ctx<'a> {
     /// The signer of the account's own key `rec` is sealed with; None: no such key.
     fn sealed_by(&self, rec: &Obj) -> Option<&Signer> {
         self.personal_dek_signers.get(rec.dek_id.as_deref()?)
+    }
+
+    /// The member whose personal tree folder `node_id` is in, or None.
+    fn personal_owner(&self, j: &Judged, node_id: &str) -> Option<String> {
+        let mut current = Some(node_id);
+        for _ in 0..MAX_DEPTH {
+            let id = current?;
+            if let Some(owner) = j.personal_trees.get(id) {
+                return Some(owner.clone());
+            }
+            current = self.snap.node(id)?.parent();
+        }
+        None
     }
 
     fn known(team: &State, dek_id: Option<&str>) -> bool {
@@ -231,19 +339,26 @@ impl<'a> Ctx<'a> {
             .filter(|_| depth < MAX_DEPTH);
         let decided = self.team.and_then(|t| self.team_refusal(t, rec));
         let author = &rec.signer;
-        if let Some(parent) = parent {
-            if self.judge(j, parent, depth + 1) {
-                if j.by_team_log.contains(&parent.id) {
+        if let Some(p) = rec.parent() {
+            let parent_blocked = if self.snap.judged_here(p) {
+                parent.is_some_and(|parent| self.judge(j, parent, depth + 1))
+            } else {
+                self.refused.contains(p)
+            };
+            if parent_blocked {
+                if j.by_team_log.contains(p) {
                     j.by_team_log.insert(rec.id.clone());
                 }
+                j.below_refused.insert(rec.id.clone());
                 return true;
             }
         }
         // The log decides first, a top-level folder too (a team folder's
         // own meta, one sealed with a team folder's key; the desktop's rule).
         if let Some(refusal) = decided {
-            if refusal.is_some() {
+            if let Some(why) = refusal {
                 j.by_team_log.insert(rec.id.clone());
+                j.refusals.insert(rec.id.clone(), why.to_string());
             }
             return refusal.is_some();
         }
@@ -264,7 +379,7 @@ impl<'a> Ctx<'a> {
         };
         let sealed: Signer = self.sealed_by(rec).cloned().flatten();
         if parent.parent().is_some() {
-            let owner = j.personal_owner.get(&parent.id).cloned();
+            let owner = self.personal_owner(j, &parent.id);
             let mut blocked = false;
             if let Some(owner) = &owner {
                 // With a log only the owner removes from a personal tree.
@@ -275,9 +390,6 @@ impl<'a> Ctx<'a> {
                     && sealed.as_deref() != Some(owner.as_str())
                 {
                     blocked = true;
-                }
-                if rec.object_type == "node" {
-                    j.personal_owner.insert(rec.id.clone(), owner.clone());
                 }
             }
             if self.team.is_some()
@@ -292,13 +404,15 @@ impl<'a> Ctx<'a> {
             }
             return blocked;
         }
+        // Directly below a top-level folder: decided again here.
+        j.personal_trees.remove(&rec.id);
         if self.is_own(author) {
             return false;
         }
         let key = (author.clone(), parent.id.as_str());
         let granted = if self.team.is_some() {
             self.admins.contains(author)
-        } else if self.is_own(&parent.signer) {
+        } else if self.is_own(&parent.signer) || self.own_tops.contains(&parent.id) {
             // Review a159e97 H4 / capability run 196: directly below this
             // account's own top-level folder an 'admin' is the server's word;
             // only a write grant this account made counts there.
@@ -311,7 +425,7 @@ impl<'a> Ctx<'a> {
         }
         if rec.object_type == "node" && sealed == *author {
             if let Some(a) = author {
-                j.personal_owner.insert(rec.id.clone(), a.clone());
+                j.personal_trees.insert(rec.id.clone(), a.clone());
             }
             return false;
         }
@@ -319,6 +433,35 @@ impl<'a> Ctx<'a> {
         // is sealed with its owner's key (the desktop's rule).
         true
     }
+}
+
+/// Review a159e97 H2: is `rec` held back (see `Context::vouched`)? Below a
+/// folder of this call it is held when that folder is; the first folder up
+/// that this call lacks decides: not known here and written by an account
+/// this device does not vouch for (an 'admin' is the server's word). Not
+/// held below a folder refused before (that blocks it).
+fn held_back(snap: &Snapshot, own: Option<&str>, context: &Context, rec: &Obj) -> bool {
+    let Some(vouched) = context.vouched.as_ref() else {
+        return false;
+    };
+    let mut cur = rec;
+    for _ in 0..MAX_DEPTH {
+        let Some(p) = cur.parent() else {
+            return false;
+        };
+        if context.refused.contains(p) {
+            return false;
+        }
+        match snap.get(p).filter(|o| o.object_type == "node") {
+            Some(parent) => cur = parent,
+            None => {
+                let author = cur.signer.as_deref();
+                let vouched_for = author.is_some_and(|a| own == Some(a) || vouched.contains(a));
+                return !snap.known.contains_key(p) && !vouched_for;
+            }
+        }
+    }
+    false // a cycle within this call: every folder of it is here
 }
 
 /// The ids of folders and items in `objects` not to apply or show.
@@ -331,12 +474,21 @@ pub fn unauthorized_writes(
     team: Option<&State>,
     previous: Option<&[Obj]>,
     team_admins: Option<&BTreeSet<String>>,
+    context: &Context,
 ) -> Verdict {
-    let snap = Snapshot::new(objects);
+    let snap = Snapshot::new(objects, &context.known_nodes);
     let records: Vec<&Obj> = snap.order.iter().map(|id| snap.by_id[id]).collect();
-    let mut admins: BTreeSet<Signer> = BTreeSet::new();
-    let mut personal_dek_signers = HashMap::new();
-    let mut dek_folders: HashMap<&str, &str> = HashMap::new();
+    let mut admins: BTreeSet<Signer> = context.admin_signers.iter().cloned().map(Some).collect();
+    let mut personal_dek_signers: HashMap<&str, Signer> = context
+        .personal_dek_signers
+        .iter()
+        .map(|(k, v)| (k.as_str(), Some(v.clone())))
+        .collect();
+    let mut dek_folders: HashMap<&str, &str> = context
+        .dek_folders
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     for rec in &records {
         match rec.object_type.as_str() {
             "envelope" | "dek_archive" | "audit" => {
@@ -388,7 +540,27 @@ pub fn unauthorized_writes(
                 own_write_grants.insert((rec.target_user_id.clone(), folder));
             }
         }
+        // The grants held here, but for one this pull withdraws.
+        let withdrawn: BTreeSet<&str> = records
+            .iter()
+            .filter(|r| r.object_type == "envelope" && r.is_deleted)
+            .map(|r| r.id.as_str())
+            .collect();
+        for g in &context.write_grants {
+            if withdrawn.contains(g.id.as_str()) {
+                continue;
+            }
+            write_grants.insert((Some(g.user_id.clone()), g.folder.as_str()));
+            if own.as_deref() == Some(g.by.as_str()) {
+                own_write_grants.insert((Some(g.user_id.clone()), g.folder.as_str()));
+            }
+        }
     }
+    let admin_signers: BTreeSet<String> = admins.iter().flatten().cloned().collect();
+    let dek_signers_out: BTreeMap<String, String> = personal_dek_signers
+        .iter()
+        .filter_map(|(k, v)| Some((k.to_string(), v.clone()?)))
+        .collect();
     if let Some(team) = team {
         admins = match team_admins {
             Some(list) => list.iter().cloned().map(Some).collect(),
@@ -401,20 +573,46 @@ pub fn unauthorized_writes(
                 .collect(),
         };
     }
+    let held: Vec<&Obj> = records
+        .iter()
+        .copied()
+        .filter(|r| {
+            matches!(r.object_type.as_str(), "node" | "entry")
+                && held_back(&snap, own.as_deref(), context, r)
+        })
+        .collect();
+    // A held folder is walked only, where things were too.
+    let prev_known = context
+        .known_nodes
+        .iter()
+        .chain(held.iter().copied().filter(|r| r.object_type == "node"));
     let ctx = Ctx {
         snap,
-        prev: previous.map(Snapshot::new),
+        prev: previous.map(|p| Snapshot::new(p, prev_known)),
         own_user_id: own,
         team,
         admins,
         personal_dek_signers,
         write_grants,
         own_write_grants,
+        refused: &context.refused,
+        own_tops: &context.own_tops,
     };
-    let mut judged = Judged::default();
+    let mut judged = Judged {
+        personal_trees: context
+            .personal_trees
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+        // Not judged: what is below a held folder is held too.
+        verdicts: held.iter().map(|r| (r.id.clone(), false)).collect(),
+        ..Judged::default()
+    };
+    let held_ids: BTreeSet<&str> = held.iter().map(|r| r.id.as_str()).collect();
     let mut blocked = Vec::new();
     for rec in &records {
         if (rec.object_type == "node" || rec.object_type == "entry")
+            && !held_ids.contains(rec.id.as_str())
             && ctx.judge(&mut judged, rec, 0)
         {
             blocked.push(rec.id.clone());
@@ -423,6 +621,12 @@ pub fn unauthorized_writes(
     Verdict {
         blocked,
         by_team_log: judged.by_team_log,
+        refusals: judged.refusals,
+        below_refused: judged.below_refused,
+        personal_trees: judged.personal_trees,
+        admin_signers,
+        personal_dek_signers: dek_signers_out,
+        held: held.iter().map(|r| r.id.clone()).collect(),
     }
 }
 
@@ -465,6 +669,8 @@ struct WritesIn {
     previous: Option<Vec<Obj>>,
     #[serde(default)]
     team_admins: Option<BTreeSet<String>>,
+    #[serde(default)]
+    context: Option<Context>,
 }
 
 #[derive(Deserialize)]
@@ -507,7 +713,16 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
     let out = (|| -> Result<Value, String> {
         Ok(match op {
             "authority_unauthorized_writes" => {
-                let i: WritesIn = serde_json::from_str(input).map_err(bad)?;
+                let mut i: WritesIn = serde_json::from_str(input).map_err(bad)?;
+                let context = i.context.get_or_insert_with(Context::default);
+                for o in i
+                    .objects
+                    .iter_mut()
+                    .chain(i.previous.iter_mut().flatten())
+                    .chain(context.known_nodes.iter_mut())
+                {
+                    o.read_head()?;
+                }
                 let team = team_of(i.team, i.team_handle)?;
                 let v = unauthorized_writes(
                     &i.objects,
@@ -515,8 +730,18 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
                     team.as_deref(),
                     i.previous.as_deref(),
                     i.team_admins.as_ref(),
+                    i.context.as_ref().unwrap_or(&Context::default()),
                 );
-                json!({"blocked": v.blocked, "by_team_log": v.by_team_log})
+                json!({
+                    "blocked": v.blocked,
+                    "by_team_log": v.by_team_log,
+                    "refusals": v.refusals,
+                    "below_refused": v.below_refused,
+                    "personal_trees": v.personal_trees,
+                    "admin_signers": v.admin_signers,
+                    "personal_dek_signers": v.personal_dek_signers,
+                    "held": v.held,
+                })
             }
             "authority_log_admins" => {
                 let i: AdminsIn = serde_json::from_str(input).map_err(bad)?;

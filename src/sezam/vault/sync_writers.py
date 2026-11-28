@@ -25,9 +25,7 @@ import base64
 from typing import Optional
 
 from .. import teamlog
-from . import outbox
-from ..crypto.aead import parse_envelope
-from ..models import bytes_to_ulid
+from . import outbox, sync_core
 from .sync_common import (
     CONFIRMED_MEMBER_KEYS_META,
     DETACHED_DEKS_META,
@@ -68,15 +66,17 @@ REFUSED_COPIES_META = "refused_server_copies"
 _ADMIN_ONLY = ("envelope", "dek_archive", "audit")
 
 
-def _sealing_dek_id(obj: dict) -> Optional[str]:
-    """The key named in a folder's meta or an item's meta header."""
+def _head(obj: dict) -> str:
+    """The start of a pulled object's payload (hex): enough for its header."""
     try:
-        payload = base64.b64decode(obj.get("payload") or "")
-        if obj.get("object_type") == "entry":
-            payload = payload[4:4 + int.from_bytes(payload[:4], "big")]
-        return bytes_to_ulid(parse_envelope(payload).dek_id)
+        return base64.b64decode(obj.get("payload") or "")[:57].hex()
     except ValueError:
-        return None
+        return ""
+
+
+def _sealing_dek_id(obj: dict) -> Optional[str]:
+    """The key named in a folder's meta or an item's meta header (the core's rule)."""
+    return sync_core.call("authority_sealing_dek_id", object_type=obj.get("object_type") or "", head=_head(obj))
 
 
 class WritersMixin:
@@ -111,29 +111,15 @@ class WritersMixin:
         return (vouched - queued_for_removal(self._db)) | {self._user_id}
 
     def _with_held_back_writes(self, objects: list[dict]) -> list[dict]:
-        """``objects`` plus the writes held back for a folder that is known
-        now (in this batch or here), to be judged with it (review a159e97 H2).
-        A newer copy in the batch replaces the held one. Call inside the
-        pull's transaction, before _unauthorized_writes."""
+        """``objects`` plus the writes held back before (review a159e97 H2):
+        the core judges them again with the batch and holds back the ones
+        whose folder is still not known. A newer copy in the batch replaces
+        the held one. Call inside the pull's transaction, before
+        _unauthorized_writes."""
         objects = self._with_writes_the_log_now_allows(objects)
         deferred = self._db.get_meta_json(DEFERRED_WRITES_META) or {}
-        if not deferred:
-            return objects
         in_batch = {obj.get("id") for obj in objects}
-        known = {obj["id"] for obj in objects if obj.get("object_type") == "node"}
-        revived: list[dict] = []
-        waiting = {obj_id: obj for obj_id, obj in deferred.items() if obj_id not in in_batch}
-        progress = True
-        while progress:
-            progress = False
-            for obj_id, obj in list(waiting.items()):
-                parent = obj.get("parent_ref")
-                if parent in known or self._db.fetchone("SELECT 1 FROM nodes WHERE id = ?", (parent,)):
-                    revived.append(obj)
-                    del waiting[obj_id]
-                    if obj.get("object_type") == "node":
-                        known.add(obj_id)
-                    progress = True
+        revived = [obj for obj_id, obj in deferred.items() if obj_id not in in_batch]
         return revived + objects if revived else objects
 
     def _with_writes_the_log_now_allows(self, objects: list[dict]) -> list[dict]:
@@ -182,50 +168,188 @@ class WritersMixin:
 
     def _unauthorized_writes(self, objects: list[dict], full: bool = False) -> set[str]:
         """Ids of pulled folders and items not to apply. Call inside the pull's
-        transaction; ``full`` for a full resync's complete snapshot."""
-        admins = self._admin_signers()
+        transaction; ``full`` for a full resync's complete snapshot.
 
+        The rules are the core's (core/src/authority.rs, the web's and the
+        phone's too; docs/CORE_UNIFICATION.md U5). This device judges each
+        batch against its database, so the core gets what it holds as
+        context: its folders (walked only), the ids it did not apply, the
+        keys and personal trees it learned, its write grants, the accounts it
+        vouches for and what it holds back. Storing a held-back write and
+        judging it again once its folder arrives stay here.
+        """
         def stored(key: str) -> dict:
             return {} if full else dict(self._db.get_meta_json(key) or {})
 
         dek_signers, ignored, personal = (
             stored(DEK_SIGNERS_META), stored(IGNORED_WRITES_META), stored(PERSONAL_TREES_META)
         )
-        batch_nodes: dict[str, dict] = {}
-        batch_dek_folders: dict[str, str] = {}
-        envelopes: list[dict] = []
-        for obj in objects:
-            kind = obj.get("object_type")
-            signer = self._signer_id(obj)
-            if kind == "node":
-                batch_nodes[obj["id"]] = obj
-            elif kind in _ADMIN_ONLY:
-                admins.add(signer)
-                if kind == "envelope":
-                    envelopes.append(obj)
-            elif kind == "dek":
-                if obj.get("parent_ref"):
-                    admins.add(signer)  # a member's key names no folder
-                    batch_dek_folders[obj["id"]] = obj["parent_ref"]
-                else:
-                    dek_signers[obj["id"]] = signer
-        for obj in batch_nodes.values():
-            # Only an admin writes a top-level node sealed with a folder's key.
-            # TL7: one sealed with a key of its signer's own that names no
-            # folder is that account's own tree (a member's personal root, the
-            # root of a member's own vault); it makes no admin.
-            signer = self._signer_id(obj)
-            if obj.get("parent_ref") is None and dek_signers.get(_sealing_dek_id(obj) or "") != signer:
-                admins.add(signer)
-        withdrawn = {env["id"] for env in envelopes if env.get("is_deleted")}
-        detached = self._db.get_meta_json(DETACHED_DEKS_META) or {}
+        deferred = stored(DEFERRED_WRITES_META)
+        no_access = stored(LOG_REFUSED_WRITES_META)
+        unknown_key = stored(UNKNOWN_KEY_WRITES_META)
+        below_refused = stored(BELOW_REFUSED_WRITES_META)
+        refused_copies = stored(REFUSED_COPIES_META)
+        judged = self._order_pulled_objects(objects)
+        was_held = set(deferred)
+        for obj in judged:
+            if obj.get("object_type") in ("node", "entry"):
+                deferred.pop(obj["id"], None)  # this copy decides now
+                no_access.pop(obj["id"], None)
+                unknown_key.pop(obj["id"], None)
+                below_refused.pop(obj["id"], None)
+
         team = self.team_state()
+        previous = self._authority_previous(judged)
         # Review 1141a20 H6: with a team log only the accounts it made admin
-        # are admins (the signers above stay recorded for a vault without
-        # one), and no unsigned access_level grants write.
-        signers = admins
-        if team is not None:
-            admins = log_admins(self._db, team)
+        # are admins, and no unsigned access_level grants write.
+        with_team = {} if team is None else {
+            "team_admins": sorted(log_admins(self._db, team)), **teamlog.core_argument(team)
+        }
+        verdict = sync_core.call(
+            "authority_unauthorized_writes",
+            objects=[self._authority_object(obj) for obj in judged],
+            own_user_id=self._user_id,
+            previous=previous,
+            context={
+                **self._authority_context(judged, previous, ignored, dek_signers, personal, team is None),
+                # Review a159e97 H2 (the core holds back): before, a write below
+                # an unknown folder passed and the reattach hung it below the
+                # root; one by an account vouched for is applied (as an orphan,
+                # review d150605 #1).
+                "vouched": sorted(self._vouched_writers()),
+            },
+            **with_team,
+        )
+        held = set(verdict["held"])
+        by_id = {obj["id"]: obj for obj in judged}
+        for obj_id in verdict["held"]:
+            obj = by_id[obj_id]
+            if obj_id not in was_held:
+                logger.warning(
+                    "Pulled %s %s below folder %s, which this device does not know; "
+                    "held back until that folder arrives", obj["object_type"], obj_id, obj.get("parent_ref"),
+                )
+            deferred[obj_id] = obj
+        blocked = set(verdict["blocked"])
+        refusals = verdict["refusals"]
+        below = set(verdict["below_refused"])
+        for obj in judged:
+            if obj.get("object_type") not in ("node", "entry") or obj["id"] in held:
+                continue
+            obj_id, parent = obj["id"], obj.get("parent_ref")
+            if obj_id not in blocked:
+                ignored.pop(obj_id, None)
+                refused_copies.pop(obj_id, None)
+                continue
+            if obj_id in below:
+                below_refused[obj_id] = obj
+            elif obj_id in refusals:
+                refusal = refusals[obj_id]
+                logger.warning(
+                    "Pulled %s %s below folder %s by %s: %s; not applied",
+                    obj["object_type"], obj_id, parent, self._signer_id(obj), refusal,
+                )
+                if refusal == NO_WRITE_ACCESS and not obj.get("is_deleted"):
+                    no_access[obj_id] = obj
+                elif refusal == UNKNOWN_KEY and not obj.get("is_deleted"):
+                    unknown_key[obj_id] = obj
+            else:
+                logger.warning(
+                    "Pulled %s %s below folder %s by %s, who may not write it there "
+                    "or not under that key; not applied", obj["object_type"], obj_id, parent,
+                    self._signer_id(obj),
+                )
+            ignored[obj_id] = parent
+            refused_copies[obj_id] = [obj.get("version"), obj.get("payload_hash")]
+
+        self._db.set_meta_json(REFUSED_COPIES_META, refused_copies)
+        self._db.set_meta_json(WRITER_ACCOUNTS_META, verdict["admin_signers"])
+        self._db.set_meta_json(DEK_SIGNERS_META, verdict["personal_dek_signers"])
+        self._db.set_meta_json(IGNORED_WRITES_META, ignored)
+        self._db.set_meta_json(PERSONAL_TREES_META, verdict["personal_trees"])
+        self._db.set_meta_json(DEFERRED_WRITES_META, deferred)
+        self._db.set_meta_json(LOG_REFUSED_WRITES_META, no_access)
+        self._db.set_meta_json(UNKNOWN_KEY_WRITES_META, unknown_key)
+        self._db.set_meta_json(BELOW_REFUSED_WRITES_META, below_refused)
+        if full:
+            self._db.set_meta(WRITES_AUDITED_META, "1")
+        return (blocked & {obj["id"] for obj in judged}) | held
+
+    def _authority_object(self, obj: dict) -> dict:
+        """A pulled object as the core judges it: by the account whose
+        signature verified, not the unsigned owner_id."""
+        return {
+            "id": obj["id"],
+            "object_type": obj.get("object_type") or "",
+            "parent_ref": obj.get("parent_ref"),
+            "is_deleted": bool(obj.get("is_deleted")),
+            "signer": self._signer_id(obj),
+            "access_level": obj.get("access_level"),
+            "target_user_id": obj.get("target_user_id"),
+            "head": _head(obj),
+        }
+
+    def _authority_previous(self, judged: list[dict]) -> list[dict]:
+        """The rows the pulled folders and items replace (where a removal or
+        a move was). R16-N2 (nightly TeamLogMachine): a row with an unsent
+        move left from the server copy it builds on, as web and phone do."""
+        previous = []
+        for obj in judged:
+            kind = obj.get("object_type")
+            if kind not in ("node", "entry"):
+                continue
+            table, column = ("nodes", "parent_id") if kind == "node" else ("entries", "node_id")
+            row = self._db.fetchone(
+                f"SELECT CASE WHEN {outbox.queued('t')} AND t.base_parent IS NOT NULL "
+                f"THEN NULLIF(t.base_parent, '') ELSE t.{column} END AS parent, "
+                f"t.encrypted_meta, t.is_deleted FROM {table} t WHERE t.id = ?",
+                (obj["id"],),
+            )
+            if row is not None:
+                previous.append({
+                    "id": obj["id"], "object_type": kind, "parent_ref": row["parent"],
+                    "is_deleted": bool(row["is_deleted"]), "head": bytes(row["encrypted_meta"])[:57].hex(),
+                })
+        return previous
+
+    def _authority_context(
+        self, judged: list[dict], previous: list[dict], ignored: dict,
+        dek_signers: dict, personal: dict, without_log: bool,
+    ) -> dict:
+        """What this device holds that the batch does not carry: the folders
+        above the batch's (and above where it was), walked only."""
+        batch = {obj["id"] for obj in judged}
+        batch_parents = {obj["id"]: obj.get("parent_ref") for obj in judged if obj.get("object_type") == "node"}
+        known: dict[str, dict] = {}
+        pending = [obj.get("parent_ref") for obj in judged] + [p["parent_ref"] for p in previous]
+        seen: set[str] = set()
+        while pending:
+            node_id = pending.pop()
+            if not node_id or node_id in seen or node_id in known:
+                continue
+            seen.add(node_id)
+            if node_id in batch_parents:
+                pending.append(batch_parents[node_id])
+                continue
+            row = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (node_id,))
+            if row is not None:
+                known[node_id] = {"id": node_id, "object_type": "node", "parent_ref": row["parent_id"]}
+                pending.append(row["parent_id"])
+        context: dict = {
+            "known_nodes": [node for node_id, node in known.items() if node_id not in batch],
+            "refused": sorted(ignored),
+            "personal_dek_signers": dek_signers,
+            "personal_trees": personal,
+            # Stored with a log too, as before.
+            "admin_signers": sorted(self._admin_signers()),
+        }
+        if not without_log:
+            return context
+        detached = self._db.get_meta_json(DETACHED_DEKS_META) or {}
+        batch_dek_folders = {
+            obj["id"]: obj["parent_ref"] for obj in judged
+            if obj.get("object_type") == "dek" and obj.get("parent_ref")
+        }
 
         def dek_folder(dek_id: str) -> Optional[str]:
             if dek_id in batch_dek_folders:
@@ -233,244 +357,29 @@ class WritersMixin:
             row = self._db.fetchone("SELECT node_id FROM deks WHERE id = ?", (dek_id,))
             return (row["node_id"] if row else None) or detached.get(dek_id)
 
-        def write_grant(user_id: str, top: str, own: bool) -> bool:
-            """``own``: only a grant this account made counts (this account's root)."""
-            if team is not None:
-                return False
-            for env in envelopes:
-                if (
-                    not env.get("is_deleted") and env.get("target_user_id") == user_id
-                    and env.get("access_level") == "write"
-                    and dek_folder(env.get("parent_ref") or "") == top
-                    and (not own or self._signer_id(env) == self._user_id)
-                ):
-                    return True
-            return any(
-                row["id"] not in withdrawn and dek_folder(row["dek_id"]) == top
-                and (not own or row["created_by"] == self._user_id)
-                for row in self._db.fetchall(
-                    "SELECT id, dek_id, created_by FROM access_envelopes "
-                    "WHERE user_id = ? AND access_level = 'write'",
-                    (user_id,),
-                )
-            )
-
-        def parent_of(node_id: str) -> tuple[bool, Optional[str]]:
-            if node_id in batch_nodes:
-                return True, batch_nodes[node_id].get("parent_ref")
-            row = self._db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (node_id,))
-            return (row is not None), (row["parent_id"] if row else None)
-
-        def personal_owner(node_id: str) -> Optional[str]:
-            current: Optional[str] = node_id
-            for _ in range(64):
-                if current is None:
-                    return None
-                if current in personal:
-                    return personal[current]
-                current = parent_of(current)[1]
-            return None
-
-        deferred = stored(DEFERRED_WRITES_META)
-        no_access = stored(LOG_REFUSED_WRITES_META)
-        unknown_key = stored(UNKNOWN_KEY_WRITES_META)
-        below_refused = stored(BELOW_REFUSED_WRITES_META)
-        refused_copies = stored(REFUSED_COPIES_META)
-        vouched = self._vouched_writers()
-        # This account's top-level nodes: signed by it in this batch (a new
-        # device's first pull: its root is adopted only after), or the root
-        # under its own KEK (a member's adopted org root is reached by envelope).
-        own_tops = {
-            node_id for node_id, obj in batch_nodes.items()
-            if obj.get("parent_ref") is None and self._signer_id(obj) == self._user_id
+        named = {obj.get("parent_ref") for obj in judged if obj.get("object_type") == "envelope"}
+        context["dek_folders"] = {
+            dek_id: folder for dek_id in named - set(batch_dek_folders) - {None}
+            if (folder := dek_folder(dek_id))
         }
+        grants = []
+        for row in self._db.fetchall(
+            "SELECT id, user_id, dek_id, created_by FROM access_envelopes WHERE access_level = 'write'"
+        ):
+            folder = dek_folder(row["dek_id"])
+            if folder:
+                grants.append({"id": row["id"], "user_id": row["user_id"], "folder": folder, "by": row["created_by"]})
+        context["write_grants"] = grants
+        # This account's root: the root under its own KEK (a member's adopted
+        # org root is reached by envelope). One signed by it in this batch the
+        # core sees itself.
         root_id = self._db.get_meta("root_node_id")
         root_row = self._db.fetchone("SELECT dek_id FROM nodes WHERE id = ?", (root_id or "",))
         if root_row is not None and root_row["dek_id"] not in set(
             self._db.get_meta_json("foreign_dek_ids") or []
         ):
-            own_tops.add(root_id)
-
-        def held_back(obj: dict, author: str) -> bool:
-            """Review a159e97 H2: written below a folder this device does not
-            know (held back by the server, or never there). Before, it passed
-            and the reattach hung it below the root. Only a write by an account
-            this device vouches for is applied (as an orphan, review d150605
-            #1); an 'admin' is the server's word (capability run 196)."""
-            parent = obj.get("parent_ref")
-            if not parent or parent in ignored:
-                return False
-            if parent in deferred:
-                return True
-            return not parent_of(parent)[0] and author not in vouched
-
-        def allowed(obj: dict, author: str) -> bool:
-            obj_id, parent = obj["id"], obj.get("parent_ref")
-            sealed_by = dek_signers.get(_sealing_dek_id(obj) or "")
-            if not parent:
-                # Review 1141a20 H5: with a log a top-level folder is an
-                # admin's (the organisation's root) or its signer's own tree
-                # under a key of their own, not one the server re-signed.
-                return (
-                    team is None or obj.get("object_type") != "node" or bool(obj.get("is_deleted"))
-                    or author in (self._user_id, sealed_by) or author in admins
-                )
-            known, grandparent = parent_of(parent)
-            if not known:
-                return True  # by an account vouched for (held_back): reattached
-            if grandparent is not None:
-                owner = personal_owner(parent)
-                if owner is None:
-                    # Review 1141a20 H6: below the first level of the
-                    # organisation's own tree (no team folder, no personal
-                    # tree) only its admin writes or deletes.
-                    return team is None or author == self._user_id or author in admins
-                return (
-                    owner == self._user_id or sealed_by == owner
-                    or (bool(obj.get("is_deleted")) and (team is None or author == owner))
-                )
-            personal.pop(obj_id, None)
-            if author == self._user_id:
-                return True
-            # Capability run 196: directly below this account's root an
-            # 'admin' (who signed something the server took from admins only)
-            # is the server's word; only a write grant this account made counts.
-            own = parent in own_tops
-            if (not own and author in admins) or write_grant(author, parent, own):
-                return True
-            if obj["object_type"] == "node" and (
-                sealed_by == author or (obj.get("is_deleted") and before.get(obj_id) == author)
-            ):
-                personal[obj_id] = author  # a member's personal folder
-                return True
-            return False
-
-        def team_folder_above(node_id: Optional[str]) -> Optional[str]:
-            current = node_id
-            for _ in range(64):
-                if current is None or team is None:
-                    return None
-                if current in team.folders:
-                    return current
-                known, current = parent_of(current)
-                if not known:
-                    return None
-            return None
-
-        def stored_dek(obj: dict) -> Optional[str]:
-            table = "nodes" if obj["object_type"] == "node" else "entries"
-            row = self._db.fetchone(f"SELECT encrypted_meta FROM {table} WHERE id = ?", (obj["id"],))
-            try:
-                return bytes_to_ulid(parse_envelope(bytes(row["encrypted_meta"])).dek_id) if row else None
-            except ValueError:
-                return None
-
-        def team_refusal(obj: dict, author: str) -> tuple[bool, Optional[str]]:
-            """(decided by the team log, why not valid) — docs/DESIGN_TEAM_LOG.md
-            §4.3.4: in a team folder only the log says who may write and under
-            which key, by the server's own rules (teamlog.item_refusal)."""
-            if team is None:
-                return False, None
-            folder = team_folder_above(obj.get("parent_ref"))
-            if obj.get("is_deleted"):
-                stored = stored_dek(obj)
-                if folder is None and stored not in team.dek_index:
-                    return False, None
-                return True, teamlog.tombstone_refusal(team, author, stored)
-            # Finding 205: leaving a team folder this device holds it in is a removal from it.
-            table, column = ("nodes", "parent_id") if obj["object_type"] == "node" else ("entries", "node_id")
-            # R16-N2 (nightly TeamLogMachine): left from the server copy the
-            # local row builds on, as web and phone do. This device's unsent
-            # move is not where the author's copy came from: by it a write
-            # the log allows was refused and the move conflicted for good.
-            row = self._db.fetchone(
-                f"SELECT CASE WHEN {outbox.queued('t')} AND t.base_parent IS NOT NULL "
-                f"THEN NULLIF(t.base_parent, '') ELSE t.{column} END AS {column} "
-                f"FROM {table} t WHERE t.id = ?",
-                (obj["id"],),
-            )
-            dek_id = _sealing_dek_id(obj)
-            # TL7: a personal object (sealed, before and now, with one key outside
-            # the log) may leave for the personal root. Only its author holds that
-            # key, so nobody else can seal its next version.
-            stored = stored_dek(obj) if row else None
-            own_personal = stored is not None and stored == dek_id and stored not in team.dek_index
-            moved = teamlog.move_refusal(
-                team, author, team_folder_above(row[column]) if row else None, folder, own_personal
-            )
-            if moved:
-                return True, moved
-            if folder is None and dek_id not in team.dek_index:
-                return False, None
-            own = dek_id is not None and dek_signers.get(dek_id) == author
-            return True, teamlog.item_refusal(
-                team, author, obj["id"], folder, dek_id, own, sealing=False
-            )
-
-        before = dict(personal)
-        skipped: set[str] = set()
-        for obj in self._order_pulled_objects(objects):
-            if obj.get("object_type") not in ("node", "entry"):
-                continue
-            obj_id, parent = obj["id"], obj.get("parent_ref")
-            author = self._signer_id(obj)
-            deferred.pop(obj_id, None)  # this copy decides now
-            no_access.pop(obj_id, None)
-            unknown_key.pop(obj_id, None)
-            below_refused.pop(obj_id, None)
-            if held_back(obj, author):
-                logger.warning(
-                    "Pulled %s %s below folder %s, which this device does not know; "
-                    "held back until that folder arrives", obj["object_type"], obj_id, parent,
-                )
-                deferred[obj_id] = obj
-                skipped.add(obj_id)
-                continue
-            decided, refusal = team_refusal(obj, author)
-            if decided and parent not in ignored:
-                if refusal is None:
-                    ignored.pop(obj_id, None)
-                    refused_copies.pop(obj_id, None)
-                    continue
-                logger.warning(
-                    "Pulled %s %s below folder %s by %s: %s; not applied",
-                    obj["object_type"], obj_id, parent, author, refusal,
-                )
-                ignored[obj_id] = parent
-                refused_copies[obj_id] = [obj.get("version"), obj.get("payload_hash")]
-                if refusal == NO_WRITE_ACCESS and not obj.get("is_deleted"):
-                    no_access[obj_id] = obj
-                elif refusal == UNKNOWN_KEY and not obj.get("is_deleted"):
-                    unknown_key[obj_id] = obj
-                skipped.add(obj_id)
-                continue
-            if parent not in ignored and allowed(obj, author):
-                ignored.pop(obj_id, None)
-                refused_copies.pop(obj_id, None)
-                continue
-            if parent not in ignored:
-                logger.warning(
-                    "Pulled %s %s below folder %s by %s, who may not write it there "
-                    "or not under that key; not applied", obj["object_type"], obj_id, parent, author,
-                )
-            else:
-                below_refused[obj_id] = obj
-            ignored[obj_id] = parent
-            refused_copies[obj_id] = [obj.get("version"), obj.get("payload_hash")]
-            skipped.add(obj_id)
-
-        self._db.set_meta_json(REFUSED_COPIES_META, refused_copies)
-        self._db.set_meta_json(WRITER_ACCOUNTS_META, sorted(signers))
-        self._db.set_meta_json(DEK_SIGNERS_META, dek_signers)
-        self._db.set_meta_json(IGNORED_WRITES_META, ignored)
-        self._db.set_meta_json(PERSONAL_TREES_META, personal)
-        self._db.set_meta_json(DEFERRED_WRITES_META, deferred)
-        self._db.set_meta_json(LOG_REFUSED_WRITES_META, no_access)
-        self._db.set_meta_json(UNKNOWN_KEY_WRITES_META, unknown_key)
-        self._db.set_meta_json(BELOW_REFUSED_WRITES_META, below_refused)
-        if full:
-            self._db.set_meta(WRITES_AUDITED_META, "1")
-        return skipped
+            context["own_tops"] = [root_id]
+        return context
 
     def _audit_applied_writes(self) -> int:
         """Remove what an older client applied before this check (capability

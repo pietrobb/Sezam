@@ -99,5 +99,16 @@ jadro blokuje celé (desktop závisel od poradia). Čo desktop vie z vlastnej
 databázy (zadržané uzly, osobné stromy, granty, vlastné horné priečinky),
 dostane jadro ako kontext, keď sa desktop prepne.
 
+H2 (review a159e97, capability run 698) je v jadre: zápis pod priečinkom,
+ktorý volanie ani `known_nodes` nemá, jadro zadrží (výstup `held`, nesúdi
+ho), ak ho nenapísal tento účet ani účet z kontextu `vouched`; pod zadržaným
+priečinkom je zadržané všetko. Desktop posiela `vouched` a pri každom pulle
+vráti jadru všetko predtým zadržané; v Pythone ostáva len úložisko.
+Rozhodnutie: web a mobil `vouched` neposielajú, takže nezadržiavajú nič
+(nemajú trvalé úložisko zadržaných zápisov ani vlastný doklad o účtoch);
+ich správanie a vektory `authority.json` sú bez zmeny. Testy:
+`core/tests/authority_held.rs` (odpovede desktopového `held_back` z fa0c02f)
+a `tests/test_review8_unknown_parent_h2.py`.
+
 Rozpracovaný stav #480 je odložený v `git stash` na `r17-l`
 („R17 #480 WIP before unification pause“) a v `%TEMP%\r17_480_wip.patch`.

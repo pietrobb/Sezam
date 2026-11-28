@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import sqlite3
 from pathlib import Path
 
 from tests.test_review_web import _function, _run_source, pytestmark  # noqa: F401
@@ -80,6 +81,93 @@ def test_the_desktop_names_the_vectors_log_admins():
         assert sorted(log_admins(_LogRows(records[case["team"]]), team)) == case["team_admins"], case["name"]
         checked += 1
     assert checked
+
+
+class _Vault:
+    """The tables and meta records the desktop's judge reads, in memory."""
+
+    def __init__(self):
+        from sezam.vault import schema
+
+        self.c = sqlite3.connect(":memory:")
+        self.c.row_factory = sqlite3.Row
+        for sql in (schema.SYNC_CONFLICTS_SQL, schema.SCHEMA_SQL):
+            self.c.executescript(sql)
+        for sql in ("vault_meta (key TEXT PRIMARY KEY, value TEXT)", "team_log (seq INTEGER PRIMARY KEY, body TEXT)",
+                    "known_keys (user_id TEXT, fingerprint TEXT)", "outbox (object_id TEXT, object_type TEXT)"):
+            self.c.execute(f"CREATE TABLE IF NOT EXISTS {sql}")
+        self.meta: dict = {}
+
+    def fetchone(self, sql, params=()):
+        return self.c.execute(sql, params).fetchone()
+
+    def fetchall(self, sql, params=()):
+        return self.c.execute(sql, params).fetchall()
+
+    def get_meta_json(self, key):
+        return self.meta.get(key)
+
+    def set_meta_json(self, key, value):
+        self.meta[key] = value
+
+    get_meta, set_meta = get_meta_json, set_meta_json
+
+    def hold(self, rows: list[dict]) -> None:
+        """The previous snapshot as this device's applied rows."""
+        for o in rows:
+            meta = bytes.fromhex(o["head"])
+            if o["object_type"] == "node":
+                self.c.execute("INSERT INTO nodes (id, parent_id, encrypted_meta, dek_id, is_deleted) VALUES (?,?,?,?,?)",
+                               (o["id"], o["parent_ref"], meta, "x", o["is_deleted"]))
+            elif o["object_type"] == "entry":
+                if meta[:2] != b"\x01\x01":
+                    meta = meta[4:]
+                self.c.execute("INSERT INTO entries (id, node_id, encrypted_meta, encrypted_data, is_deleted) "
+                               "VALUES (?,?,?,?,?)", (o["id"], o["parent_ref"] or "", meta, b"", o["is_deleted"]))
+
+
+def test_the_desktop_gives_the_vectors_answers(monkeypatch):
+    """Its full resync's judge (sync_writers._unauthorized_writes) on every
+    case, the previous snapshot in its tables; a write it holds back below a
+    folder it does not know is not judged yet (review a159e97 H2). Cases with
+    an unsigned object are the web's (the desktop takes no unsigned write)."""
+    from sezam import teamlog
+    from sezam.vault import sync_writers
+    from sezam.vault.sync_client import SyncClient
+
+    checked = 0
+    for case in VECTORS["cases"]:
+        if any(o["signer"] is None for o in case["objects"]):
+            continue
+        vault = _Vault()
+        vault.hold(case["previous"] or [])
+        team = teamlog.TeamState.from_core(VECTORS["teams"][case["team"]]) if case["team"] is not None else None
+        if team is not None:
+            if case["team_admins"] is None:
+                # The case asked for the log's current admins.
+                monkeypatch.setattr(sync_writers, "log_admins", lambda _db, t: {
+                    u for u in t.members if teamlog.is_admin(t, u)})
+            else:
+                monkeypatch.setattr(sync_writers, "log_admins", lambda _db, t, a=case["team_admins"]: set(a))
+        vault.meta[sync_writers.WRITER_ACCOUNTS_META] = []
+
+        class Judge(sync_writers.WritersMixin):
+            _db = vault
+            _user_id = case["own_user_id"]
+            _order_pulled_objects = staticmethod(SyncClient._order_pulled_objects)
+
+            def _signer_id(self, obj):
+                return obj["signer"]
+
+            def team_state(self):
+                return team
+
+        objects = [{**o, "payload": base64.b64encode(bytes.fromhex(o["head"])).decode()} for o in case["objects"]]
+        got = Judge()._unauthorized_writes(objects, full=True)
+        held = set(vault.meta.get(sync_writers.DEFERRED_WRITES_META) or {})
+        assert got - held == set(case["blocked"]) - held, case["name"]
+        checked += 1
+    assert checked > 100
 
 
 def test_the_server_reads_the_vectors_header_key():
