@@ -83,14 +83,21 @@ const SezamTeamLog = (() => {
 
   // Review 8bc70f7 M8: a state the core gave is loaded there once, not sent
   // whole with every question.
-  function ask(state, fn, ...args) {
-    const questions = [{ fn, args }];
-    if (!state[CORE]) return call('team_log_ask', { state: toCore(state), questions })[0];
+  // The state as the core's other operations take it: `team_handle` or `team`.
+  function teamArgument(state) {
+    if (!state[CORE]) return { team: toCore(state) };
     if (state[HANDLE] === undefined) {
       Object.defineProperty(state, HANDLE, { value: call('team_log_load', { state: state[CORE] }) });
       if (loaded) loaded.register(state, state[HANDLE]);
     }
-    return call('team_log_ask', { handle: state[HANDLE], questions })[0];
+    return { team_handle: state[HANDLE] };
+  }
+
+  function ask(state, fn, ...args) {
+    const team = teamArgument(state);
+    const questions = [{ fn, args }];
+    if (team.team) return call('team_log_ask', { state: team.team, questions })[0];
+    return call('team_log_ask', { handle: team.team_handle, questions })[0];
   }
 
   const emptyState = () => fromCore(call('team_log_empty_state', {}));
@@ -242,7 +249,7 @@ const SezamTeamLog = (() => {
 
   return {
     FORMAT_VERSION, ZERO_HASH, TeamLogError, canonical, parseBody, recordHash, newKeyMessage, signRecord,
-    emptyState, stateToJson, applyRecord, replay, nextBody,
+    emptyState, stateToJson, applyRecord, replay, nextBody, teamArgument,
     isTeamFolder, currentKey, keyGeneration, isStale, maySeal, isAdmin, mayWrite, keyRecipients,
     mayHoldKey, envelopeValid, itemRefusal, tombstoneRefusal, moveRefusal, adminPolicyRefusal,
     signingKeyRetired, changeKey, readmitted, restorePartEnd, forkRefusal, forkAbandoned, REMADE_KINDS, resolveChange,

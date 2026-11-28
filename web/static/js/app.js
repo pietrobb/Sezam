@@ -7983,15 +7983,14 @@ function syncObjectRecord(obj) {
     };
 }
 
-// The DEK id a sealed folder meta or item meta names in its header.
+// The DEK id a sealed folder meta or item meta names in its header (the
+// core's rule, core/src/authority.rs: 57 bytes of the payload suffice).
 function sealingDekId(record) {
-    let bytes;
-    try { bytes = base64ToBytes(record.payload || ''); } catch { return null; }
-    if (record.object_type === 'entry' && !isEncryptedEnvelope(bytes)) {
-        bytes = bytes.slice(4);  // u32be(meta_len) || meta envelope || data envelope
-    }
-    if (bytes.length < 53) return null;
-    return new TextDecoder().decode(bytes.slice(3, 29)).replace(/\0/g, '');
+    let head;
+    try { head = base64ToBytes((record.payload || '').slice(0, 76)); } catch { return null; }
+    return globalThis.SezamSyncCore.call('authority_sealing_dek_id', {
+        object_type: record.object_type, head: bytesToHex(head),
+    });
 }
 
 // ── Signed team log (docs/DESIGN_TEAM_LOG.md §6, TL5) ──
@@ -9130,16 +9129,10 @@ function assertTeamLogAllowsWrite(vaultObj) {
  * (review 1141a20); an account the server calls admin is not one.
  */
 function webLogAdmins(teamLog) {
-    const TL = globalThis.SezamTeamLog;
-    const ever = new Set();
-    for (const record of teamLog.records) {
-        const body = TL.parseBody(record.body);
-        if (body.type === 'genesis') ever.add(body.author);
-        else if (['member.add', 'member.role'].includes(body.type) && body.data.role === 'admin') {
-            ever.add(body.data.user_id);
-        }
-    }
-    return new Set([...ever].filter(id => teamLog.team.members[id]?.active));
+    return new Set(globalThis.SezamSyncCore.call('authority_log_admins', {
+        bodies: teamLog.records.map(record => record.body),
+        ...globalThis.SezamTeamLog.teamArgument(teamLog.team),
+    }));
 }
 
 /** The team folder at or above node `nodeId` in `objects`, or null. */
@@ -9154,165 +9147,38 @@ function webTeamFolderAbove(objects, team, nodeId) {
     return null;
 }
 
-// Review 7c10379 H4: before b8c3cb8 the server let a read-only member write a
-// folder directly below the shared root, sealed with the root's shared key,
-// and items in it ('IT - new VPN login') that colleagues saw as the company's
-// own; a lying server can serve such objects again. Following the server's
-// _has_write_authority by signatures (not the unsigned owner_id): directly
-// below a top-level folder writes this account, an account that signed what
-// only an admin may push (a top-level folder, envelope, key archive, folder
-// key, audit record), a member with a write grant on a key of that folder,
-// and - a folder only - its author under a key of the author's own (a
-// personal folder). Inside a member's personal folder everything is sealed
-// with that member's keys. Returns the ids not to show, and all below them.
-//
-// TL5 (docs/DESIGN_TEAM_LOG.md §4.3.4): once the organisation has a team log
-// (`team`), a folder or item in a team folder is decided by the log alone,
-// by the server's own rule (SezamTeamLog.itemRefusal, sealing=false):
-// its signer may write there and it is sealed with the folder's current key,
-// or with the author's own key and write access. A removal (tombstone, or a
-// move out of a team folder: finding 205) needs write access where it was in
-// `previous` (the snapshot before this pull). Write envelopes and accounts
-// the server takes for admins decide nothing there. The ids the log refused
-// are in `.byTeamLog` too: the caller keeps what it showed before.
-//
-// Review 1141a20 H5/H6 (the phone since 215aa1f): with a log, outside team
-// folders only `teamAdmins` (default: the log's current admins; the caller
-// passes webLogAdmins) are admins - no signed envelope or top-level folder
-// makes an account the server invented one, no unsigned access_level grants
-// write, a top-level folder is an admin's or its signer's own tree, and below
-// the first level of the organisation's tree only an admin writes.
+// Which pulled folders and items not to show (and all below them): the
+// core's rule, core/src/authority.rs (docs/CORE_UNIFICATION.md U5; review
+// 7c10379 H4, a159e97 H4, 1141a20 H5/H6, TL5, TL7). `previous`: the snapshot
+// before this pull; `teamAdmins`: the admins outside team folders with a log
+// (webLogAdmins). The ids the log refused are in `.byTeamLog` too: the caller
+// keeps what it showed before.
 function unauthorizedWrites(syncObjects, ownUserId, team = null, previous = null, teamAdmins = null) {
-    const TL = globalThis.SezamTeamLog;
-    const records = Object.values(syncObjects || {});
-    const signer = rec => rec.signer || rec.owner_id || null;
-    const admins = new Set();
-    const personalDekSigners = {};
-    const dekFolders = {};
-    for (const rec of records) {
-        const kind = rec.object_type;
-        if (['envelope', 'dek_archive', 'audit'].includes(kind)) {
-            admins.add(signer(rec));
-        } else if (kind === 'dek') {
-            if (rec.parent_ref) {
-                admins.add(signer(rec));
-                dekFolders[rec.id] = rec.parent_ref;
-            } else {
-                personalDekSigners[rec.id] = signer(rec);
-            }
-        }
-    }
-    for (const rec of records) {
-        if (rec.object_type !== 'node' || rec.parent_ref) continue;
-        // Only an admin writes a top-level node sealed with a folder's key.
-        // TL7: one sealed with a key of its signer's own that names no folder
-        // is that account's own tree (a member's personal root); no admin.
-        const dekId = sealingDekId(rec);
-        if (dekId === null || personalDekSigners[dekId] !== signer(rec)) admins.add(signer(rec));
-    }
-    const grants = team ? [] : records
-        .filter(rec => rec.object_type === 'envelope' && !rec.is_deleted && rec.access_level === 'write');
-    if (team) {
-        admins.clear();
-        const logged = teamAdmins || Object.keys(team.members).filter(id => TL.isAdmin(team, id));
-        for (const id of logged) admins.add(id);
-    }
-    const grantKey = rec => `${rec.target_user_id}|${dekFolders[rec.parent_ref] || ''}`;
-    const writeGrants = new Set(grants.map(grantKey));
-    const ownWriteGrants = new Set(grants.filter(rec => signer(rec) === ownUserId).map(grantKey));
-    const node = id => {
-        const rec = syncObjects[id];
-        return rec && rec.object_type === 'node' ? rec : null;
-    };
-    const byTeamLog = new Set();
-    const known = dekId => dekId !== null && Object.hasOwn(team.dekIndex, dekId);
-    // undefined: the log does not decide; null: valid; else why not.
-    const teamRefusal = rec => {
-        const author = signer(rec);
-        const folder = webTeamFolderAbove(syncObjects, team, rec.parent_ref);
-        const before = previous?.[rec.id];
-        const held = before && !before.is_deleted ? before : null;
-        if (rec.is_deleted) {
-            const stored = held ? sealingDekId(held) : null;
-            if (folder === null && !known(stored)) return undefined;
-            return TL.tombstoneRefusal(team, author, stored);
-        }
-        const dekId = sealingDekId(rec);
-        // TL7: one's own personal object may leave for the personal root
-        // (only its author holds that key to seal the next version).
-        const stored = held ? sealingDekId(held) : null;
-        const ownPersonal = stored !== null && stored === dekId && !known(stored);
-        const moved = TL.moveRefusal(
-            team, author, held ? webTeamFolderAbove(previous, team, held.parent_ref) : null, folder,
-            ownPersonal);
-        if (moved) return moved;
-        if (folder === null && !known(dekId)) return undefined;
-        const ownDek = dekId !== null && personalDekSigners[dekId] === author;
-        return TL.itemRefusal(team, author, rec.id, folder, dekId, ownDek, false);
-    };
-    const verdicts = {};   // id -> 'ok' | 'blocked'
-    const personalOwner = {};
-    const judge = (rec, depth = 0) => {
-        if (verdicts[rec.id]) return verdicts[rec.id];
-        const parent = rec.parent_ref ? node(rec.parent_ref) : null;
-        let verdict = 'ok';
-        const decided = team ? teamRefusal(rec) : undefined;
-        if (parent && depth < 64 && judge(parent, depth + 1) === 'blocked') {
-            verdict = 'blocked';
-            if (byTeamLog.has(parent.id)) byTeamLog.add(rec.id);
-        } else if (team && !rec.parent_ref && rec.object_type === 'node' && !rec.is_deleted) {
-            // A top-level folder is an admin's (the organisation's root) or
-            // its signer's own tree under a key of their own; not one the
-            // server re-signed under another account (review 1141a20 H5).
-            const author = signer(rec);
-            if (author !== ownUserId && !admins.has(author) &&
-                personalDekSigners[sealingDekId(rec)] !== author) verdict = 'blocked';
-        } else if (decided !== undefined) {
-            if (decided !== null) {
-                verdict = 'blocked';
-                byTeamLog.add(rec.id);
-            }
-        } else if (parent && depth < 64) {
-            const author = signer(rec);
-            const sealedBy = personalDekSigners[sealingDekId(rec)] || null;
-            if (parent.parent_ref) {
-                const owner = personalOwner[parent.id];
-                if (owner && owner !== ownUserId && !rec.is_deleted && sealedBy !== owner) verdict = 'blocked';
-                if (owner && rec.object_type === 'node') personalOwner[rec.id] = owner;
-                if (team && !owner && !rec.is_deleted && author !== ownUserId && !admins.has(author)) {
-                    // Review 1141a20 H6: below the first level of the
-                    // organisation's own tree (no team folder, no personal
-                    // tree) only its admin writes.
-                    verdict = 'blocked';
-                }
-            } else if (author === ownUserId) {
-                verdict = 'ok';
-            } else if (team ? admins.has(author) : signer(parent) === ownUserId
-                ? ownWriteGrants.has(`${author}|${parent.id}`)
-                : admins.has(author) || writeGrants.has(`${author}|${parent.id}`)) {
-                // Review a159e97 H4 / capability run 196 (desktop 7a9840b):
-                // directly below this account's own top-level folder an
-                // 'admin' (who signed something the server took from admins
-                // only) is the server's word; only a write grant this account
-                // made counts there.
-                verdict = 'ok';
-            } else if (rec.object_type === 'node' && sealedBy === author) {
-                personalOwner[rec.id] = author;
-            } else if (!rec.is_deleted) {
-                verdict = 'blocked';
-            }
-        }
-        verdicts[rec.id] = verdict;
-        return verdict;
-    };
-    const blocked = new Set();
-    for (const rec of records) {
-        if ((rec.object_type === 'node' || rec.object_type === 'entry') && judge(rec) === 'blocked') {
-            blocked.add(rec.id);
-        }
-    }
-    blocked.byTeamLog = byTeamLog;
+    const out = globalThis.SezamSyncCore.call('authority_unauthorized_writes', {
+        objects: authorityObjects(syncObjects),
+        own_user_id: ownUserId || null,
+        previous: previous ? authorityObjects(previous) : null,
+        team_admins: team && teamAdmins ? [...teamAdmins] : null,
+        ...(team ? globalThis.SezamTeamLog.teamArgument(team) : {}),
+    });
+    const blocked = new Set(out.blocked);
+    blocked.byTeamLog = new Set(out.by_team_log);
     return blocked;
+}
+
+// The fields core/src/authority.rs judges by (the signer that verified, the
+// unsigned owner_id when none did; the key a folder or item header names).
+function authorityObjects(syncObjects) {
+    return Object.values(syncObjects || {}).map(rec => ({
+        id: rec.id,
+        object_type: rec.object_type,
+        parent_ref: rec.parent_ref || null,
+        is_deleted: !!rec.is_deleted,
+        signer: rec.signer || rec.owner_id || null,
+        access_level: rec.access_level ?? null,
+        target_user_id: rec.target_user_id ?? null,
+        dek_id: ['node', 'entry'].includes(rec.object_type) ? sealingDekId(rec) : null,
+    }));
 }
 
 /**
