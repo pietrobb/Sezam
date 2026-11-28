@@ -139,6 +139,40 @@ Set<String> vouchedEntries(
   }
 }
 
+/// The current key and the archived ones of `GET /api/users/{id}/keys` its
+/// rotation certificates reach, as (signing, encryption) pairs in chain
+/// order; a malformed response is a [FormatException]. The rule is the
+/// core's (core/src/keyring.rs, capability review 716); the phone only
+/// verifies the signatures it names.
+List<(Uint8List, Uint8List)> keyRing(
+  String userId,
+  Uint8List currentSigningPk,
+  Uint8List currentEncryptionPk,
+  Object? archivedKeys,
+) {
+  final args = <String, Object?>{
+    'user_id': userId,
+    'current_signing_pk': bytesToHex(currentSigningPk),
+    'current_encryption_pk': bytesToHex(currentEncryptionPk),
+    'archived_keys': archivedKeys,
+  };
+  final checks = _core('key_ring_checks', args) as List;
+  final verified = [
+    for (final check in checks)
+      check is Map &&
+          check['public_key'] is String &&
+          _verifies(check, hexToBytes(check['public_key'] as String)),
+  ];
+  final out = _core('key_ring', {...args, 'verified': verified}) as List;
+  return [
+    for (final pair in out.cast<Map>())
+      (
+        hexToBytes(pair['signing_pk'] as String),
+        hexToBytes(pair['encryption_pk'] as String),
+      ),
+  ];
+}
+
 bool _verifies(Object? check, Uint8List publicKey) {
   if (check is! Map) return false;
   try {

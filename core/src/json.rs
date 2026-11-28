@@ -205,6 +205,7 @@ fn run(op: &str, input: &str) -> Result<Value, String> {
         _ => {
             match crate::teamlog::ops::run(op, input)
                 .or_else(|| crate::vouchers::run(op, input))
+                .or_else(|| crate::keyring::run(op, input))
                 .or_else(|| crate::authority::run(op, input))
                 .or_else(|| crate::formats::run(op, input))
                 .or_else(|| crate::messages::run(op, input))

@@ -44,7 +44,7 @@ from .sync_common import (
     FULL_RESYNC_HINT,
     IDENTITY_KEY_ROTATED,
     KDF_REPORTED_META_KEY,
-    key_ring_from_response,
+    key_ring,
     key_rotation_message,
     KeyEpochStale,
     logger,
@@ -943,7 +943,7 @@ class SyncClient(
             ring = (change.signing_pk,)
         self._signing_key_rings[change.user_id] = ring
 
-    _key_ring_from_response = staticmethod(key_ring_from_response)
+    _key_ring_from_response = staticmethod(key_ring)
 
     def _authorized_our_rotation(self, signing_pk: bytes, encryption_pk: bytes) -> bool:
         """Whether these keys signed this device's pending identity rotation."""

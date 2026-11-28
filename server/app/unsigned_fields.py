@@ -135,7 +135,7 @@ FIELDS: dict[str, Field] = {
         SIGNED,
         "each key is certified by its successor; retired_seq is not read: a retired key counts only for "
         "what the current key's voucher lists name (goal #443)",
-        ("vault.sync_common:key_ring_from_response", "vault.sync_vouchers:VoucherMixin._remember_retired_keys",
+        ("vault.sync_common:key_ring", "vault.sync_vouchers:VoucherMixin._remember_retired_keys",
          "vault.sync_vouchers:VoucherMixin._vouched")),
     "GET /api/users/{user_id}/key-vouchers .signing_pk": Field(
         UNREAD, "the lists are checked against the signer's pinned current key, not this one"),
@@ -573,7 +573,7 @@ CLIENT_FIELDS: dict[str, dict[str, Field]] = {
             HINT, "pinned with the signing key", ("getUserSigningPks", "getVerifiedEncryptionPkForRekey")),
         "GET /api/users/{user_id}/keys .archived_keys": Field(
             SIGNED, "certified by their successor as on the desktop; retired_seq is not read: " + _NO_BOUND,
-            ("getUserSigningPks", "verifyArchivedKeyChain", "fetchVouchedEntries")),
+            ("getUserSigningPks", "keyRing", "fetchVouchedEntries")),
         "GET /api/users/{user_id}/key-vouchers .signing_pk": Field(
             UNREAD, "the lists are checked against the signer's pinned current key, not this one"),
         "GET /api/users/{user_id}/key-vouchers .lists": _signed("vouchedEntries", "fetchVouchedEntries"),

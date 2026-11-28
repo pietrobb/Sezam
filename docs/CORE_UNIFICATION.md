@@ -168,6 +168,26 @@ odmietne (server ho predtým orezal na 26 bajtov). Vektory
 `core/tests/signed_messages_vectors.rs`, `tests/test_signed_messages_vectors.py`
 (desktop, server, web) a `mobile/test/signed_messages_vectors_test.dart`.
 
+Kľúčový krúžok účtu (U9, capability review 716, `core/src/keyring.rs`): ktorým
+archivovaným podpisovým kľúčom z `GET /api/users/{id}/keys` klient verí
+(reťaz certifikátov rotácie od nástupcu, pri uloženej autorizácii aj podpis
+starého kľúča, review 688edcb V4). Predtým tri kópie (desktop
+`key_ring_from_response`, web `verifyArchivedKeyChain`, mobil slučka v
+`sync_service.dart`), ktoré na tú istú odpoveď odpovedali rôzne. Rozhodnutie:
+archív bez `successor_signing_pk` alebo `rotation_signature` (chýba, null,
+prázdny) je legacy a preskočí sa; akékoľvek iné chybné pole certifikovaného
+archívu (chýbajúci alebo nesediaci `key_fingerprint`, kľúč nie 32 bajtov, zlý
+hex, pole nie reťazec) odmietne celú odpoveď; najviac 64 archívov (toľko server
+posiela, `routers/users.py`), 65 sa odmietne. Predtým desktop prijal 65 a
+archív bez odtlačku potichu preskočil, web a mobil odmietli. Jadro parsuje a
+menuje podpisy (`key_ring_checks`), klient ich overí svojím libsodium a jadro
+prejde reťaz (`key_ring`, dvojice podpis/šifrovací kľúč v poradí reťaze; web
+odtiaľ berie aj šifrovacie kľúče). Obaly: desktop `sync_common.key_ring`, web
+`keyRing`, mobil `keyRing` (`key_vouchers.dart`). Vektory s ručne písanými
+odpoveďami `tests/vectors/key_ring.json` (`tests/key_ring_vectors.py`) v
+`core/tests/key_ring_vectors.rs`, `tests/test_key_ring_vectors.py` (desktop,
+web) a `mobile/test/key_ring_vectors_test.dart`.
+
 Audit záznam (U6d, `core/src/audit.rs`): podpisované bajty (`audit_message`),
 sync payload (`audit_payload`, kanonický JSON ako Python `json.dumps` s
 `ensure_ascii`), parse stiahnutého záznamu (`audit_parse`: úplný, kanonický,

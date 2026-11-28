@@ -158,6 +158,8 @@ def test_the_core_has_its_operations():
         "may_write",
         "revive_folders",
         "team_log_rotated_seals",
+        "key_ring",  # capability review 716
+        "key_ring_checks",
     ):
         assert op in ops, op
 

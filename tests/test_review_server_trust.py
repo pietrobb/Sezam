@@ -94,26 +94,18 @@ def test_web_verifies_the_same_certificate_chain():
     helpers = marker + src.split(marker, 1)[1].split("async function getUserSigningPks", 1)[0]
 
     oldest, middle, current, attacker = _key(), _key(), _key(), _key()
-    candidates = [
-        (oldest, middle, _certify(oldest, middle)),
-        (middle, current, _certify(middle, current)),
-        (attacker, current, _certify(attacker, attacker)),  # not signed by current
-    ]
     data = {
         "current": [current[1].hex(), current[2].hex()],
-        "candidates": [
-            [old[1].hex(), old[2].hex(), succ[1].hex(), cert.hex()]
-            for old, succ, cert in candidates
+        "archives": [
+            _archive(oldest, middle, _certify(oldest, middle)),
+            _archive(middle, current, _certify(middle, current)),
+            _archive(attacker, current, _certify(attacker, attacker)),  # not signed by current
         ],
     }
     script = f"""(() => {{
 const data = {json.dumps(data)};
-const candidates = data.candidates.map(([s, e, succ, cert]) => ({{
-  signingPk: hexToBytes(s), encryptionPk: hexToBytes(e),
-  successorHex: succ, certificate: hexToBytes(cert),
-}}));
-const keys = verifyArchivedKeyChain('{USER_ID}', hexToBytes(data.current[0]),
-  hexToBytes(data.current[1]), candidates, sodium);
-return keys.map(bytesToHex);
+const ring = keyRing('{USER_ID}', hexToBytes(data.current[0]),
+  hexToBytes(data.current[1]), data.archives, sodium);
+return ring.map(pair => bytesToHex(pair.signingPk));
 }})()"""
     assert _run_source(helpers, script) == [current[1].hex(), middle[1].hex(), oldest[1].hex()]

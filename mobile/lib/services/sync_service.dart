@@ -317,98 +317,18 @@ class SyncService {
         throw const FormatException('public keys must be 32 bytes');
       }
 
-      final archives = remote['archived_keys'] ?? const [];
-      if (archives is! List || archives.length > 64) {
-        throw const FormatException('malformed archived key list');
-      }
-      final candidates = <_ArchivedKeyCandidate>[];
-      for (final archive in archives) {
-        if (archive is! Map<String, dynamic>) {
-          throw const FormatException('malformed archived key');
-        }
-        // Uncertified legacy archives are never trusted.
-        final successorHex = archive['successor_signing_pk'];
-        final certificateHex = archive['rotation_signature'];
-        if (successorHex is! String || certificateHex is! String) continue;
-        final archivedSigningPk = hexToBytes(archive['signing_pk'] as String);
-        final archivedEncryptionPk = hexToBytes(
-          archive['encryption_pk'] as String,
-        );
-        if (archivedSigningPk.length != 32 ||
-            archivedEncryptionPk.length != 32) {
-          throw const FormatException('archived public keys must be 32 bytes');
-        }
-        final archivedFingerprint = CryptoService().computeFingerprint(
-          archivedSigningPk,
-          archivedEncryptionPk,
-        );
-        if (archive['key_fingerprint'] != archivedFingerprint) {
-          throw const FormatException('archived key fingerprint mismatch');
-        }
-        final authorizationHex = archive['authorization_signature'];
-        if (authorizationHex != null && authorizationHex is! String) {
-          throw const FormatException('malformed archived key authorization');
-        }
-        candidates.add(
-          _ArchivedKeyCandidate(
-            signingPk: archivedSigningPk,
-            encryptionPk: archivedEncryptionPk,
-            successorSigningPk: hexToBytes(successorHex),
-            certificate: hexToBytes(certificateHex),
-            authorization:
-                authorizationHex is String && authorizationHex.isNotEmpty
-                ? hexToBytes(authorizationHex)
-                : null,
-          ),
-        );
-      }
       // Trust an archived key only through a rotation certificate signed by
-      // its successor (the current key or an already trusted archive), so
-      // the server cannot inject historical keys. The current key is the
-      // root; callers below reject the response if it is not trusted.
-      final trusted = <MapEntry<Uint8List, Uint8List>>[
-        MapEntry(signingPk, encryptionPk),
-      ];
-      var progress = true;
-      while (progress) {
-        progress = false;
-        for (final c in candidates) {
-          if (trusted.any((t) => _sameBytes(t.key, c.signingPk))) continue;
-          MapEntry<Uint8List, Uint8List>? successor;
-          for (final t in trusted) {
-            if (_sameBytes(t.key, c.successorSigningPk)) successor = t;
-          }
-          if (successor == null || c.certificate.length != 64) continue;
-          final message = keyRotationMessage(
-            ownerId,
-            c.signingPk,
-            c.encryptionPk,
-            successor.key,
-            successor.value,
-          );
-          final valid = CryptoService().verifyDetached(
-            signature: c.certificate,
-            message: message,
-            publicKey: successor.key,
-          );
-          if (!valid) continue;
-          // Review 688edcb V4: when the server kept the old key's own
-          // authorization of the rotation, it must verify as well.
-          final authorization = c.authorization;
-          if (authorization != null &&
-              (authorization.length != 64 ||
-                  !CryptoService().verifyDetached(
-                    signature: authorization,
-                    message: message,
-                    publicKey: c.signingPk,
-                  ))) {
-            continue;
-          }
-          trusted.add(MapEntry(c.signingPk, c.encryptionPk));
-          archivedSigningKeys.add(c.signingPk);
-          progress = true;
-        }
-      }
+      // its successor (core/src/keyring.rs). The current key is the root;
+      // callers below reject the response if it is not trusted.
+      archivedSigningKeys.addAll([
+        for (final (archived, _) in keyRing(
+          ownerId,
+          signingPk,
+          encryptionPk,
+          remote['archived_keys'],
+        ).skip(1))
+          archived,
+      ]);
     } catch (e) {
       throw SyncIntegrityException(
         'REJECT owner $ownerId — malformed public keys: $e',
@@ -3512,19 +3432,3 @@ Uint8List rejoinMessage(
       })
       as String,
 );
-
-class _ArchivedKeyCandidate {
-  _ArchivedKeyCandidate({
-    required this.signingPk,
-    required this.encryptionPk,
-    required this.successorSigningPk,
-    required this.certificate,
-    this.authorization,
-  });
-
-  final Uint8List signingPk;
-  final Uint8List encryptionPk;
-  final Uint8List successorSigningPk;
-  final Uint8List certificate;
-  final Uint8List? authorization;
-}

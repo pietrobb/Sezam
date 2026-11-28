@@ -1,0 +1,2090 @@
+{
+ "_comment": "Key ring vectors (capability review 716): which archived keys of GET /api/users/{id}/keys are trusted, built by tests/key_ring_vectors.py with hand-written answers. The desktop, the web and the phone read this file; never regenerate it to make a client pass.",
+ "user_id": "01JACC0000000000000000000K",
+ "current": {
+  "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+  "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+ },
+ "cases": [
+  {
+   "name": "no archives",
+   "archived_keys": [],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    }
+   ]
+  },
+  {
+   "name": "no archived_keys field",
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    }
+   ]
+  },
+  {
+   "name": "an archive certified by the current key",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c"
+    }
+   ]
+  },
+  {
+   "name": "a chain served oldest first",
+   "archived_keys": [
+    {
+     "signing_pk": "18316c36db157e6df5b446491e07a2f2f5d6573e9f69e73be855ebe23876dca9",
+     "encryption_pk": "2176b5ec26512ce7db4401b0545d42bc2234dc1582a076ce58758022b68f356b",
+     "key_fingerprint": "ff06627811efded6499b35c4ca0afd3c1df793fa35b95024d9cb32cf167a09ea",
+     "successor_signing_pk": "e1e5cf2f8da609424ecba1cbdb1450af696473c66e1fb74f6641f4c1adced70d",
+     "rotation_signature": "4a7bbcf9029541ae9f88a8471c24a4df3b74d57e6d03e0572e1a4cd03ab2971713324fd9ad34280843a9193c241b623e1c878272158016a58d70295840feae0d",
+     "authorization_signature": "a42ff9423330ab621968a7935bcd3820328c2982e4d4dbc2c731d1bbfc536cc6080c9f6c327cd713d5beba68175c526b995af823126b9ddcfbd4a9ed7c4a4909",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "e1e5cf2f8da609424ecba1cbdb1450af696473c66e1fb74f6641f4c1adced70d",
+     "encryption_pk": "b07ef40acde1969e57cc6bed228873aaee30d6953bea95e7fcff2b16e347991a",
+     "key_fingerprint": "6220cfae17e32390ea6cf9cfd358221e229246c12ddfa99c173e79da3b4b5643",
+     "successor_signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "rotation_signature": "5e6f82c029149b239f8df75453d40aa1df5c63ed4f4d119079e2c0a2a291eb0a7e49f8e7946bb28a856b4b3ce27afc163077042bb7ea9d61692edf0029cf6e06",
+     "authorization_signature": "954b489b03e335c49172bf4f33e75e33343d42a8fe23bc1dc66a31dd785c522360d5d5462bec9ed68749a188f63c5c007ad436594f3a4cbaab9f39adedb8a009",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c"
+    },
+    {
+     "signing_pk": "e1e5cf2f8da609424ecba1cbdb1450af696473c66e1fb74f6641f4c1adced70d",
+     "encryption_pk": "b07ef40acde1969e57cc6bed228873aaee30d6953bea95e7fcff2b16e347991a"
+    },
+    {
+     "signing_pk": "18316c36db157e6df5b446491e07a2f2f5d6573e9f69e73be855ebe23876dca9",
+     "encryption_pk": "2176b5ec26512ce7db4401b0545d42bc2234dc1582a076ce58758022b68f356b"
+    }
+   ]
+  },
+  {
+   "name": "a chain served newest first",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "e1e5cf2f8da609424ecba1cbdb1450af696473c66e1fb74f6641f4c1adced70d",
+     "encryption_pk": "b07ef40acde1969e57cc6bed228873aaee30d6953bea95e7fcff2b16e347991a",
+     "key_fingerprint": "6220cfae17e32390ea6cf9cfd358221e229246c12ddfa99c173e79da3b4b5643",
+     "successor_signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "rotation_signature": "5e6f82c029149b239f8df75453d40aa1df5c63ed4f4d119079e2c0a2a291eb0a7e49f8e7946bb28a856b4b3ce27afc163077042bb7ea9d61692edf0029cf6e06",
+     "authorization_signature": "954b489b03e335c49172bf4f33e75e33343d42a8fe23bc1dc66a31dd785c522360d5d5462bec9ed68749a188f63c5c007ad436594f3a4cbaab9f39adedb8a009",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "18316c36db157e6df5b446491e07a2f2f5d6573e9f69e73be855ebe23876dca9",
+     "encryption_pk": "2176b5ec26512ce7db4401b0545d42bc2234dc1582a076ce58758022b68f356b",
+     "key_fingerprint": "ff06627811efded6499b35c4ca0afd3c1df793fa35b95024d9cb32cf167a09ea",
+     "successor_signing_pk": "e1e5cf2f8da609424ecba1cbdb1450af696473c66e1fb74f6641f4c1adced70d",
+     "rotation_signature": "4a7bbcf9029541ae9f88a8471c24a4df3b74d57e6d03e0572e1a4cd03ab2971713324fd9ad34280843a9193c241b623e1c878272158016a58d70295840feae0d",
+     "authorization_signature": "a42ff9423330ab621968a7935bcd3820328c2982e4d4dbc2c731d1bbfc536cc6080c9f6c327cd713d5beba68175c526b995af823126b9ddcfbd4a9ed7c4a4909",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c"
+    },
+    {
+     "signing_pk": "e1e5cf2f8da609424ecba1cbdb1450af696473c66e1fb74f6641f4c1adced70d",
+     "encryption_pk": "b07ef40acde1969e57cc6bed228873aaee30d6953bea95e7fcff2b16e347991a"
+    },
+    {
+     "signing_pk": "18316c36db157e6df5b446491e07a2f2f5d6573e9f69e73be855ebe23876dca9",
+     "encryption_pk": "2176b5ec26512ce7db4401b0545d42bc2234dc1582a076ce58758022b68f356b"
+    }
+   ]
+  },
+  {
+   "name": "an archive without its old key's authorization",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": null,
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c"
+    }
+   ]
+  },
+  {
+   "name": "an empty authorization counts as none",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c"
+    }
+   ]
+  },
+  {
+   "name": "a legacy archive without a certificate",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    }
+   ]
+  },
+  {
+   "name": "a legacy archive with null certificate fields",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": null,
+     "rotation_signature": null,
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    }
+   ]
+  },
+  {
+   "name": "a legacy archive does not stop the chain after it",
+   "archived_keys": [
+    {
+     "signing_pk": "e1e5cf2f8da609424ecba1cbdb1450af696473c66e1fb74f6641f4c1adced70d",
+     "encryption_pk": "b07ef40acde1969e57cc6bed228873aaee30d6953bea95e7fcff2b16e347991a",
+     "key_fingerprint": "6220cfae17e32390ea6cf9cfd358221e229246c12ddfa99c173e79da3b4b5643",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": null,
+     "authorization_signature": "4432c8d2af378daac665f838af76b4db5169aa79be19e2437217451a00613775577d0c041c60dc045d22857eddf5dadf7ea7d09c5b250adb3cd82c20eb1e4008",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c"
+    }
+   ]
+  },
+  {
+   "name": "a certificate signed by another key",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "019a2612a68b0fe89d7c2b6b6f3cb832111b8826258f4e05c267d9b81409e23465413878b6b82851c6a4ea5e3f07a918a3a34fd680f2b39919f2825ba753a001",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    }
+   ]
+  },
+  {
+   "name": "an authorization over another account's rotation",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "a58f0c6724beee1979f4dba36e72d90d2ae638476ee23b2fb6dc7d130de1b6e32724dd941bbdb30de4c44e51a361c154bc26c6da65b90c63032b0b8431d73b01",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    }
+   ]
+  },
+  {
+   "name": "a rotation certified for another account",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "24c1100e5b3d73f479ef8ee4f8b558470b20c0d1a07db6cda98211837743c6444384e04adad71b80e579af4d4d6cf123ee8d5c009c6a51d282d24c8b22820005",
+     "authorization_signature": "a58f0c6724beee1979f4dba36e72d90d2ae638476ee23b2fb6dc7d130de1b6e32724dd941bbdb30de4c44e51a361c154bc26c6da65b90c63032b0b8431d73b01",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    }
+   ]
+  },
+  {
+   "name": "a successor nobody trusts",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "42dd2658c84e172b1bfe3b0e1ee0c0bd72e8e00dc7731f4a414d953f57b90a82",
+     "rotation_signature": "019a2612a68b0fe89d7c2b6b6f3cb832111b8826258f4e05c267d9b81409e23465413878b6b82851c6a4ea5e3f07a918a3a34fd680f2b39919f2825ba753a001",
+     "authorization_signature": "770ac314f92f4cc38ec1081d7a6a605c4550a2c91d2edf8fdc980c3a6d2292865fc0d4af2f27c2763ef9bf8528df0339c4767224a2486ba3cc27ee81a07ab204",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    }
+   ]
+  },
+  {
+   "name": "a gap in the chain",
+   "archived_keys": [
+    {
+     "signing_pk": "18316c36db157e6df5b446491e07a2f2f5d6573e9f69e73be855ebe23876dca9",
+     "encryption_pk": "2176b5ec26512ce7db4401b0545d42bc2234dc1582a076ce58758022b68f356b",
+     "key_fingerprint": "ff06627811efded6499b35c4ca0afd3c1df793fa35b95024d9cb32cf167a09ea",
+     "successor_signing_pk": "e1e5cf2f8da609424ecba1cbdb1450af696473c66e1fb74f6641f4c1adced70d",
+     "rotation_signature": "4a7bbcf9029541ae9f88a8471c24a4df3b74d57e6d03e0572e1a4cd03ab2971713324fd9ad34280843a9193c241b623e1c878272158016a58d70295840feae0d",
+     "authorization_signature": "a42ff9423330ab621968a7935bcd3820328c2982e4d4dbc2c731d1bbfc536cc6080c9f6c327cd713d5beba68175c526b995af823126b9ddcfbd4a9ed7c4a4909",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c"
+    }
+   ]
+  },
+  {
+   "name": "a short certificate",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    }
+   ]
+  },
+  {
+   "name": "a short authorization",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    }
+   ]
+  },
+  {
+   "name": "the current key archived again",
+   "archived_keys": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60",
+     "key_fingerprint": "60f64a2a1304c16cc0417dc16a846b790efb771f266969e1d8587b6244dfa60d",
+     "successor_signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "rotation_signature": "7ecfd227896e21b94e64dccb95ed07a65ed4fddfeacec0b6b282aa462f15877a75a7a55371f8749d2653f1452c3eabe3275634c1fa7e91a73d954c7eb2ad0f0d",
+     "authorization_signature": "250d8a034934088a90241cbfe5d8edc6d1a1a3f5055eaff442e19ba4dab86a6f9b50fc48a083cfb5a2ec5756d006da6bf7e7410762fe9af6462301c34c45ee0d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c"
+    }
+   ]
+  },
+  {
+   "name": "a second copy of a trusted key with another encryption key",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "94b32d9d93483dc02a3246426acae9ae4a6e3645d029f4af8db5ed8f4fdf9658",
+     "key_fingerprint": "ed4a169cd4e145d114c6bc0eada179abb0fdf95c0f2a586df3a8c607acf4eaf1",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "e1e5cf2f8da609424ecba1cbdb1450af696473c66e1fb74f6641f4c1adced70d",
+     "encryption_pk": "b07ef40acde1969e57cc6bed228873aaee30d6953bea95e7fcff2b16e347991a",
+     "key_fingerprint": "6220cfae17e32390ea6cf9cfd358221e229246c12ddfa99c173e79da3b4b5643",
+     "successor_signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "rotation_signature": "5e6f82c029149b239f8df75453d40aa1df5c63ed4f4d119079e2c0a2a291eb0a7e49f8e7946bb28a856b4b3ce27afc163077042bb7ea9d61692edf0029cf6e06",
+     "authorization_signature": "954b489b03e335c49172bf4f33e75e33343d42a8fe23bc1dc66a31dd785c522360d5d5462bec9ed68749a188f63c5c007ad436594f3a4cbaab9f39adedb8a009",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c"
+    },
+    {
+     "signing_pk": "e1e5cf2f8da609424ecba1cbdb1450af696473c66e1fb74f6641f4c1adced70d",
+     "encryption_pk": "b07ef40acde1969e57cc6bed228873aaee30d6953bea95e7fcff2b16e347991a"
+    }
+   ]
+  },
+  {
+   "name": "upper-case hex",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1C141C9A781D69BBA770A6D16578CE39847CFD787722DEE48A60299B0CCA4E14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c"
+    }
+   ]
+  },
+  {
+   "name": "64 archives, as many as the server serves",
+   "archived_keys": [
+    {
+     "signing_pk": "731924970031b4c011a03dd5bb45fd1076cb41ad8ca37614b36fe17f9878ad2d",
+     "encryption_pk": "d88cf660e98d048e4b10bb05508e62c6f898ecd42fbd83c2666726b6e85bd871",
+     "key_fingerprint": "256c0a6894589415d78989154f8fc15b0f2360a4bef0d88b182e010bbce1297f",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "4651f33ab903ff59cc2e5889026872d06b9091cd15d4e9f2e1ef733c4470524892366ce0cb426be83116c4d961d0d876f33320d87bc8e7a74e97588bab3b420e",
+     "authorization_signature": "e2b658d58e5784bb0d65b8b23ab4c717c5edf963f10cefa4c7516368197a765097ee6b5be6c96e60a0740d13d5e8f3351371fff895dbac54555444958f732702",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "ed8c6f607b1dd483e1337c5f584a6a804f1b624081391ecb6888e5d02683772f",
+     "encryption_pk": "0f18d0748a4f09ad497fa354c26ac5ea1208d857946ed194390e7bede46fa708",
+     "key_fingerprint": "6510739864202c121c0bdd9245193abb1b1adb42527d46488219e08ea2ac7df4",
+     "successor_signing_pk": "731924970031b4c011a03dd5bb45fd1076cb41ad8ca37614b36fe17f9878ad2d",
+     "rotation_signature": "14376ad0cce8f6cd8844aaff871dbc6e522932c6788cf5f41e1e6233a331f56d0e4933388e1e1065bab7949135eeea0bbfe7ce6f99b612e21ea8dde598d1c40c",
+     "authorization_signature": "3bee3e9602f034f2d1f5b79aaa73fc08e0c3ffe1ec2353b6a2aee323f210997c57c5d527f91f91ff80992154811024c5967fe07312e5baa7e31bdadf4a902308",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "0d89cd94fb3badad81f4de3a67fd659b0bc5c1a30867b40a4389b81869280c8b",
+     "encryption_pk": "be6faf9c7416e6fa729995f5b0a28747d4ad8312579aab2c4aeff8be2f6a460d",
+     "key_fingerprint": "0a5d239756020161b1496894575c338da1191e679b5c8ae79f5502a749c053a9",
+     "successor_signing_pk": "ed8c6f607b1dd483e1337c5f584a6a804f1b624081391ecb6888e5d02683772f",
+     "rotation_signature": "3bd0d34724aa689d2da639e085b0626840d019aadd4fa433e2e12c5ad3456b2019ac01cf3a8e346d287425e0bfd61e1a8a36a745460d21146bf39a14dd8a600b",
+     "authorization_signature": "c3f0276cb101c44388f6fb4ed41b9fa3172b69da79a8c25bd4c69057273f004d1905501eea4c30c4d341405b88600b96af2aa6f592d7a9b353e6310762d53801",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "f03b4d82d70ce46b988ceff1d4394617e79ff3bdbcbfc31cbfeb3444d9c07d52",
+     "encryption_pk": "bd6ec08bfd2f178065f4e3b72dec8b4a0d3e78b7da5c27bebf8e71daef779b5b",
+     "key_fingerprint": "6484afd2a222a990d885028928eb710faa1afe5e4e621984e0c5ea2a3eb27046",
+     "successor_signing_pk": "0d89cd94fb3badad81f4de3a67fd659b0bc5c1a30867b40a4389b81869280c8b",
+     "rotation_signature": "155ae5d2a14197833633b93be20d97c1e2573d3299335dddb2991f13e759bf9ba3dba6201c2c6cf3416e6e1b02caebcbdb3415e6205d3b78b6e9e85babeed100",
+     "authorization_signature": "650381df5fc2bc560cf9e2c999cb80c41dc4f13bde0369946fa9e4b76a5023bfecdb5a90157194ebc47308372ec68f847091fd90f7f6b1489b5dcfcc59bcb708",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "bf48547932ee10197d9ced5df9ea7334cfbe4fa19aa6fe63ce81c8e10299d090",
+     "encryption_pk": "550c7fbaa288073ea68374f008fec717bdb7a622ab33da59ed9951c13f2d092a",
+     "key_fingerprint": "3fcbd3f547b8244c61cffa32ac4bb5bc1d8771f125e25057bf4fab7e6af43e50",
+     "successor_signing_pk": "f03b4d82d70ce46b988ceff1d4394617e79ff3bdbcbfc31cbfeb3444d9c07d52",
+     "rotation_signature": "de5c75626fab37056f75c9e6a20e240a1e1bebdb647c4c68afd7c1b8becf6df52d2e8895fa0b448e48a4f96e38778f5e2e61247c6a5a3b0927ac1100c6630801",
+     "authorization_signature": "7856e64bd9f00310c9a4462bf67c4a3aceeb6151aceafbdeb7f9e5b440ec65a636330833278e5846df1d612076b2ae5442b73f9652f23c09bc1e58c49524720b",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "1fe2d53abb9492de13f4799ff5b5c33ce63e510321cbe412daf9dfc7fed87965",
+     "encryption_pk": "ee699d086517f34cc8c31ec0d3b397bb0635c3247674f6c8c20e58aab8de1e2c",
+     "key_fingerprint": "04e355328fed0c94883d4067b7a75fd4d57c8e29b5f16f3e9735387a9511103f",
+     "successor_signing_pk": "bf48547932ee10197d9ced5df9ea7334cfbe4fa19aa6fe63ce81c8e10299d090",
+     "rotation_signature": "1a04cbe386bc86c4fb8094771fc8e57a6e3dbcad0d0dbe4ecf12a9dd01bc2c63bfc2f5f69a28f85b65d1c6e78eb513964d2985f4268e6194d0bbc3b579718402",
+     "authorization_signature": "b0d95949c263cff1816e0f2a8d8710a32f44fbfa867219b6948749a313f8b4557f8b2924ed8006f2631dcc905cacd6021a298cfac1b2f080606021e18a12310f",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "3cee4f601e411fde163544a2178a6bb3464669ea53d4bd8fcde0743584adac92",
+     "encryption_pk": "c57092aa17a5e3599bc34edf085a78b76989819eb5a85d83a855a398d3f2893c",
+     "key_fingerprint": "0d561563b5b7850612aebef762566761e8520fe7bf340330feca817dd2e22d56",
+     "successor_signing_pk": "1fe2d53abb9492de13f4799ff5b5c33ce63e510321cbe412daf9dfc7fed87965",
+     "rotation_signature": "8b403ce038a6397bc6d1874f97ad306ac6bcec7c1c8b377ed91c6b8cd9f457e9a981e46ad7758717bbebaaa68ba44b9d4a70563a8d84350016c33723f7595108",
+     "authorization_signature": "27d22fd745af6b7e5a8cea1f2bf841b48161f433f56c38e16300f41e53c97f9ce541f1de514dfc43f18f3b07cbbc2502e15c0278f68b2359243076b2d8d8940d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "05a72c3636ddb41ba1341b67e5c17c304a2ab7128c250c68f19b0acf6d102c38",
+     "encryption_pk": "563cce92a180d1961af9b3f3d577351d5197044f0697b37ced03bc587591d547",
+     "key_fingerprint": "a0040a10e6e4bf3d4c0302f22e7b0d50ec1e7808b2e60fa374f7b62c4fbf7a9c",
+     "successor_signing_pk": "3cee4f601e411fde163544a2178a6bb3464669ea53d4bd8fcde0743584adac92",
+     "rotation_signature": "2f4bf25d2a569781944b08745da375e24d91f6d4e8113efbe16363455f93b953682b3788c84213fe113016ac7af9cef0974ecaa24e8a2e09b6c10db79c7b8f07",
+     "authorization_signature": "d197892da5a6b53f5d98aeab6b9b95ad8ed2526ff307f94ee4ca5cb70d733e59b07eab114883e12f7328890b448d1a0b8495ea658cc9946c0f2fd3f9fab93905",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "29164bc884403737a4cf4626b736ff33f146e70f0628aeec6c4776c4c7040d81",
+     "encryption_pk": "2833db259a484957af2d33e4111a2012694646637683361928fa5a11591a863b",
+     "key_fingerprint": "9358733c8a76c7c9ab47f4baabddfcdb962f3bf944d9c23d9272c69e45ada192",
+     "successor_signing_pk": "05a72c3636ddb41ba1341b67e5c17c304a2ab7128c250c68f19b0acf6d102c38",
+     "rotation_signature": "3496e8af7c57cb1394de92190196e9884d74e94698be3df88a2c1bee70c84984578c379e129e099f996f6915cc3152a62a39fad316f16654c1fa73fcc147cb06",
+     "authorization_signature": "e224af007413690028ba0eafa95c7a693c979b4501906a8c9110d7c3176d340c5196d54ee8f7fdad540eb118de93b90a56e8f162dc6d0e117d925ff559e59403",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "4c9ae0442e69e5b907ce892b5b39f9a89ca728020193de58768d97b2c8306f00",
+     "encryption_pk": "2b67c9f639a7d916bb6e06a4a76c3946725ed3d3b7cc2ff12b57e5951b32c671",
+     "key_fingerprint": "4f4bea18f436212614a82380383bdbf5f99ee33165afe41753473e5af688f494",
+     "successor_signing_pk": "29164bc884403737a4cf4626b736ff33f146e70f0628aeec6c4776c4c7040d81",
+     "rotation_signature": "0b10644ab2b180281651604c4041b309bf777901f4cb312377e8e4353077c0569b3e05277b1584af7af39398d61668e89ea40138b9bbc793cfb9446b6186d201",
+     "authorization_signature": "939eb30a5698ca270038d84cb5423b4dc7d621e85a281a67101d5917e10917c5a10b897b69273b6ebe023f59acff922074bcc5c5fe7030975cb370daf8ed6d0b",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "03bea8a8c86677fcf669d4eac332df8ea3169f4774b90764e94bf393b921cc66",
+     "encryption_pk": "d41bd8368aab541b7b851435fec379700af32b2f535e18447d96138812d4e166",
+     "key_fingerprint": "bf8b8bfb361570a7b8cee61c718e6fd424452ae204a57b0486e4be8218863471",
+     "successor_signing_pk": "4c9ae0442e69e5b907ce892b5b39f9a89ca728020193de58768d97b2c8306f00",
+     "rotation_signature": "b506dae1094cc4546ea9bc9c4acb60a5f62bd18383ffd4036dccf8605fa915ced6595ce7b615373d661e024644ec07f67d98c76ff539847778476590cf164a0e",
+     "authorization_signature": "347888ff378ad1e88fa64ba5d61ad8dd798886b4783f81f75fbfa1cea60bc089802e3525257e26fa3292bf0fbc441e4069c65477dea22d2ba7f92e082f32420c",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "e99a75d6cb7ca51753f80550d49c1a7093304d05dd9ba0bc45cdd2b739c348a3",
+     "encryption_pk": "add3e34b2dd176fde4d29d95462d9800518174b9ac911826302780fc53a44e7c",
+     "key_fingerprint": "43b6e3ad1d61aa7ff676ab40fe2504291f6fe7caef47ebabe079b850137bc74e",
+     "successor_signing_pk": "03bea8a8c86677fcf669d4eac332df8ea3169f4774b90764e94bf393b921cc66",
+     "rotation_signature": "e9e4f032cae90acf652685585ff3fd413cfe9e8dc9474c8409e300d88810e6118dbd22700afb81bd31baee193d378727fd7450d177ff213f4c37fa366a282a0a",
+     "authorization_signature": "05c0095fceb57f3b49f9da44453ee925cdb621fc245a058de5b783f377cf3276dd500d068950e441090e3b4d438fcab4b42c01daa78dd35a83b11cc516d3940d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "308fa62f0224c97a7a4e7b9be61c5e0b376676e2d13b10f8d78f0cb1fc6ce8b4",
+     "encryption_pk": "c566d3ab66e95cc750df2d214b35c7c2aaf4a33788da63f564fbf68eb034e552",
+     "key_fingerprint": "d67a300e79e185e3c539e64fc74220ba1eefd5727f2dc19c38250107a0ad73a0",
+     "successor_signing_pk": "e99a75d6cb7ca51753f80550d49c1a7093304d05dd9ba0bc45cdd2b739c348a3",
+     "rotation_signature": "1ff4bdd6375ae54da27aec01cd53aa13656bd37507c9fdfac5a07c5f5f137270799e070391dee967628c080f2bda1a46ad09f9ec68b34ee6141ce4aa781c2702",
+     "authorization_signature": "a8d9469ce752f5954d7d0729d47bb8380ff5d11fac9d511b9ddd9d379e67e73ee6f7b3a055c34532babbfa877fc432f539713ebec8a477e66929e8ecb771ed0c",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "d1f921888b42808e46280e8e1d54790d1f0624a698a816bf2b5a2660cbac29c3",
+     "encryption_pk": "e9de757ef7b56504ed3c29ed3901d0055b7386e0366a47b11b3c99358236ea4d",
+     "key_fingerprint": "79f7078c25a1790743be27dc19133afa3643993d278b06d67ec01ac7e1fc1540",
+     "successor_signing_pk": "308fa62f0224c97a7a4e7b9be61c5e0b376676e2d13b10f8d78f0cb1fc6ce8b4",
+     "rotation_signature": "cf217463e4b74aa293621d8467920c747cf9ee04808b64a0a8a103bf14892ec87e77c88684e6ee45caa03ceff45d2f40209988963338c38f2edb57da2ec9d600",
+     "authorization_signature": "0a8bbc291f95a941899a59e3313c5cb45746474e7a0dfdd11bd19e62231301d0d408b85001d28a9a1a3ac3a687e20a0e00476f2a20caaeffe28c8296b245c900",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "ad97a03c12abbd5a936c6ebdc0360eab313d8a36dee546f0e95dda1c6be28f3c",
+     "encryption_pk": "8d4ed17fa40512895c91c6f293d4ad47a1db6bd4fa57bb7d4abec76d7129ce16",
+     "key_fingerprint": "d441a5237188f142f344e2277fdbd14b4b5136a658791fc7174d1639d7880534",
+     "successor_signing_pk": "d1f921888b42808e46280e8e1d54790d1f0624a698a816bf2b5a2660cbac29c3",
+     "rotation_signature": "00c63e2d9dcf839262395e62eb821007a42d14a70648f46f1053820af19cd25f0475d03713f0a121dbabcf8fab599f5a5da85b8ead1f71553991e9518e8e380d",
+     "authorization_signature": "b68163b81a53ba470c87ef8444021222334533acc1575d3a151ec170fe7dd2e6bac3930f3f7603b48cc5ab264755d14d4d14fa2b2e15ef2a7f1979f671fb310f",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "11df3808c651522921e9082c730ad997ce383e55b4ce81153c5bbc74bd4f1215",
+     "encryption_pk": "2bdf74906d1b8d56f6249b5e8059d5ab6dbe09c16d82df9d9560c05fe0a67c28",
+     "key_fingerprint": "3e1473cdf8e4392b9069eef7f3d41e275e592e403c692815a5eaf1344da08f1f",
+     "successor_signing_pk": "ad97a03c12abbd5a936c6ebdc0360eab313d8a36dee546f0e95dda1c6be28f3c",
+     "rotation_signature": "b8a4edf33596514a3af1ce439adb5fc41b32911461fc715d807a367292a9463615254c1121b2aed037da751fdeb87ac545c416208545568d13bb2c6063b43300",
+     "authorization_signature": "e96bac3f2ef962490c561950d865adb7032a32a16a7d7247d876918c111fe53f23dfe207582d312e32a0b8a82eb2d435d6e8590c321289e4baf718a699775e0d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "45b0b79f84c77f90839b585362dd2fac90d434a03a2568835a6d9b7b7d32ee77",
+     "encryption_pk": "66b46a7edac0db75524949e9b0b79c4727b1f552880a44cd4e3f7f60a748d60b",
+     "key_fingerprint": "dfbc591033671de32f6a003629f04c74a22f3670cb1939be16764e8c9da02ee5",
+     "successor_signing_pk": "11df3808c651522921e9082c730ad997ce383e55b4ce81153c5bbc74bd4f1215",
+     "rotation_signature": "211dfc401f50e72f20c5a829c4e53fb010bb3b84a22db385b78926afd0ccd694ef39a9db8a0775faff7f8f946e4dc6667e2601a2f74f7d239b2e1c35f7f53602",
+     "authorization_signature": "37cdaa999ec06d0b2105f42bb31441c868ce99cab9a6a5931c7bd7d62b9c2ff76349a4084eed5bead5aef49b12907b34b0a3f3d913f254e1033c1870eabc0a01",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "eb8119bd4e213d5b0a024c17e112f52928c9d746e6b99dca148aeb552307a721",
+     "encryption_pk": "927f89784ef1be7ec54161bc8f3634d0f9b3c6273984ae8a2c4cbdb5da183645",
+     "key_fingerprint": "f37526ae99b2fed232fb7f14fee4631c97084dafd316103d32ec159bb9132575",
+     "successor_signing_pk": "45b0b79f84c77f90839b585362dd2fac90d434a03a2568835a6d9b7b7d32ee77",
+     "rotation_signature": "b8438ccd82530fffead9d051ae60e1f126e8d9fec87678f8a0045673a20c9edd672d505ded1b47e42b7ac3cf44b6157420b23258aefbf4ac6c50a0d1d2637400",
+     "authorization_signature": "f3c235324efbf34fcad68adf891848a46f7027c9d58831b1ee32ec1aa831288ef0629e6d8de9f92e3529dcd473bd4f010f0b173045cf707311d162418b786d06",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "f310d5f0bba9f50d0759a4ca79e288c395f097c7ea57be95d3d56871fb032b43",
+     "encryption_pk": "0c6a7b0ed35fb20d6a9a9920f33a4134480802f8fd23ecc882148f3ca46ef15c",
+     "key_fingerprint": "90c2231c1e14904ed3b98763f59759f4f480bf2ab6a4d73df1d9462148a54c95",
+     "successor_signing_pk": "eb8119bd4e213d5b0a024c17e112f52928c9d746e6b99dca148aeb552307a721",
+     "rotation_signature": "8fae582d62fbd5243b29342adb4c6774624245a9b7ad46e08c62d5aa70eea2e3c70ec0fbdda0a269a2bfdcfcc80b4d5ee206b5ddee686070b85acb4c16ce990d",
+     "authorization_signature": "353d8d96418262f37cdfdb66a640500b4325d4a4df2100e5f2404f79336cb3d47b15a1e04daca0563740547108b8bb721e44462ffeb44f779851b3cfb0d43b00",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "e483b5a6799a527f65af53c472cb8ea170cd47ab32438c37cec4f74754306523",
+     "encryption_pk": "c810d9a206fea5ce68151dcbdc144741f6e6446c087f2077f3f62611e865884f",
+     "key_fingerprint": "61ce5c5f8d6be3579bca5d04ae1585adf130353be89f4645b0c18620f368a34f",
+     "successor_signing_pk": "f310d5f0bba9f50d0759a4ca79e288c395f097c7ea57be95d3d56871fb032b43",
+     "rotation_signature": "3a2302513bdcef0a43153b712053e9701c848eed272c3a1f61c95fa270086c1f16fa45b90c9849690ac64d27f506aa5e89445ceced034614babe0cc89d711c0b",
+     "authorization_signature": "b3d99ab4780ce7a2dbc972ba9053378507542eff480a7b62d415944ac347a9f4a4e5f27e9091aea1addf25adafef9c874471a3c84db1e2cef305ca6af45db300",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "26e7a5fcb7494944183a92ad374bfce0e64335a4c786c0a014ecaf4d94a10791",
+     "encryption_pk": "24555919036f6dc7a24e9ba238e03040c78d8da6bdecff53b8c6443df8af3f07",
+     "key_fingerprint": "b8bdf1670d4095f354dd76b0dec36bdef1a5a92de824dc7db265e2909a6a4b64",
+     "successor_signing_pk": "e483b5a6799a527f65af53c472cb8ea170cd47ab32438c37cec4f74754306523",
+     "rotation_signature": "8382424e13819f7d6b5e89aa6bf4366eaa661e4165eb95a418b3f8f4d261c98877dcd0ec99bccf8c4e175196cb7f0bd807c8877da124c570c47e2c74770ce904",
+     "authorization_signature": "5e8b462d7ed6f2c2ccce3c3002d0181d472b122fa0218e05801cd8ae4a64f6482f24636e750cd1d163e883298c2b7cb03b5c31f6f11576a40721784eac72860e",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "e389b39efd58e397ee7dd02d87716bf0ab91ef74cafec295d87daa5410772ed2",
+     "encryption_pk": "5c585b7d25f004816c45a6aed05983763f86fff0ce36b19457cac2ad5afc7921",
+     "key_fingerprint": "6ab300172a85a631d90d3cb306c78e9141d98c0f6f1fc7f42593568cb93e80a4",
+     "successor_signing_pk": "26e7a5fcb7494944183a92ad374bfce0e64335a4c786c0a014ecaf4d94a10791",
+     "rotation_signature": "cdca209ba31adb53d42163e872939bb94d36676960a09301d2163ff92c08af39e35a2afc10337100af9c52fc986498957c650d2cb4eb4745cb8eec20b1ea7b04",
+     "authorization_signature": "e6ae6bf983393d36ecb927061562821e07a2b9b6608155ae416c804518502ea5bb135aa72bbd99c43628ff6de25626fe3067f6362605972dfcca0dfcb5dfe304",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "7ada83d07f5513d7e72ac35c612f98cb0a7f553026b20e2cc945f37600cdd1ed",
+     "encryption_pk": "81e4b2cd2e1084b8e8522cc705641a2e56d22d62200e7a4acdd6c670003a6770",
+     "key_fingerprint": "2adddd6a0d2939d78dd9b85c12d52e1f138a5da470c8db0b0c33d17e70c92350",
+     "successor_signing_pk": "e389b39efd58e397ee7dd02d87716bf0ab91ef74cafec295d87daa5410772ed2",
+     "rotation_signature": "0a14870f30a6b087596d5d78bb10c11c102988cfaaca6626b315028c8f26ecec3a3a67b44a4920e3dc237a8258d7109615ac95615351cff75a6cd97e62c46b0c",
+     "authorization_signature": "e8652cd9d5555f59fbcae31d9f6e7719ef3664ece2cc02607fe44f15716c621381db8a8d25012d4d92d5859adee8545def4c3192035bac8f99b2f2814b899902",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "16e090575e39fa50e3984ee2c3c6412f5dbe454e5adbb862edec760126d45221",
+     "encryption_pk": "0ed437f2d635f1f8fe767f1453eb051e78726b4aa7474280b9246727d435dc1a",
+     "key_fingerprint": "91879f3595194e51a665d0f4e742d060363f8b37e23eaa4a01f722120a7a067e",
+     "successor_signing_pk": "7ada83d07f5513d7e72ac35c612f98cb0a7f553026b20e2cc945f37600cdd1ed",
+     "rotation_signature": "c58a7bd269880c090a33b2a24d11dea7df84adfce814c53608c0f1035be47a3d1ac21778d4c589fed76adaa3481b452c701535c89c52ad83b28e61bd74ee8d0a",
+     "authorization_signature": "088e5a9f322bdf56eab5848cfca7564c5ced0a9b90f65fe1305910aadd5f9458489dde3255aa28a9af4edfff059ba7a4c185402041b31380ea1e6cc125b6e302",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "99814cb794d9b2efa5767f2d6b9a13595ca6930ea9f1de0ffaa9ab848d398d36",
+     "encryption_pk": "d48b5255ad9bcb8046638a0fba0a84daba88c7dad56be6ec08db2e330fb6752e",
+     "key_fingerprint": "a479e1363857d9e702cbb88bd86f0c634b30e8f2c558e05abf3bf18cecb4fa86",
+     "successor_signing_pk": "16e090575e39fa50e3984ee2c3c6412f5dbe454e5adbb862edec760126d45221",
+     "rotation_signature": "d6b7624dd90636038df764485c31232d8f004c69d2f717f85cce46ff7a30eddaca0b95ddd88ceaf03f016eb7901942a64b158268a5cee752d9bc8dcb1dad3109",
+     "authorization_signature": "b50b32f629ce2a53ac38c31479d64bcd9e3449c685d84ff16c86456878eadce2f63e0340d47645c35f5bb9562380ce1f3561b5e1412b143d27d287d94e232809",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "b659b3c07dc4d9cf884cff54ea22f52524a72ba1a0ab00804e41a6e3386da3c7",
+     "encryption_pk": "289081797d5ae467bc8dcc283d5619b5c0e99ca52890d26091de461ca7ba0118",
+     "key_fingerprint": "0d343bccee13ff6af8d09555d9577e6e6f1d4dd1ebba6d6695ba68adf6e4d34b",
+     "successor_signing_pk": "99814cb794d9b2efa5767f2d6b9a13595ca6930ea9f1de0ffaa9ab848d398d36",
+     "rotation_signature": "cb01d49303f2d999ab1318fddcfbe7f0d60e210a1c07772a1b46395f9350603690bde78ad205aa819e333316c44299ae9261291f82dc903c04d0ef03bfffc002",
+     "authorization_signature": "39fb62dbf0ae7b93e1c043e18b07a20c074d41c2c92011c45a4b9e8a424d6919194b8ba2d7ddd3b7e4fb2ea742a96a2eef337917417eec2f42d9f4df39897508",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "5d9ad3cce8dab8e34e25f63d92e86aba8a0dff8091ad824156165ddd33cb159a",
+     "encryption_pk": "044a9067dd4f23073e6248ce48b35cf26131f43ba42d6ca77793899643e4f769",
+     "key_fingerprint": "ce5b9d76c1e5fa24d511cc32dc45bda6e43f4f140313fcec34416550e2b922c6",
+     "successor_signing_pk": "b659b3c07dc4d9cf884cff54ea22f52524a72ba1a0ab00804e41a6e3386da3c7",
+     "rotation_signature": "b58cad8ef8ef1d110d3ba54d65c6f0d0abb2c58b407ded105c1e12941230dd7f765325438b64a34f50fdd4d3f14e940e001b0bafce43951ec102658770ec2304",
+     "authorization_signature": "7711474b7c4c3e6d71bfcd637194470823a20057f0d2de7fedc7396df4b1eb623bf164d5ded1214593fc477d4ef022e8dd4429417f459830ed648ed91df44705",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "b968fe89d328bdfd71114eb1c70c35f015ebf64959a51983cd6b260acb025586",
+     "encryption_pk": "33634d308623714827bafafb5756acf7e124659f234b21f2284137229a0f4221",
+     "key_fingerprint": "42d519f3cd31885a29fd0b0fbc1cfa7ab2714544167216e5a73cecb358b09e07",
+     "successor_signing_pk": "5d9ad3cce8dab8e34e25f63d92e86aba8a0dff8091ad824156165ddd33cb159a",
+     "rotation_signature": "402cfc9083271fcbe2c3757c2a88518c8ec6a88c338d952cb719c4e1258ea03c4ee18b434292fe21e5527674d4d79c94fc069d83de98cbe8f7e22f02558b8c0d",
+     "authorization_signature": "53f1756945098889256f439c9f17cb3f66ff68d0953b17ab72eb10b17215175532b317ec779ea7e76f3ee90c388f4470b3efba273d03241b9b80f5a6068c620e",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "1c9f7e7a943c81d3d70bf1c8055e9ebdd7359c56c1a9948b1eda99aa154b333d",
+     "encryption_pk": "31a9215de6ba7c9b1a5c1017300c1d6dcae0ffd12b5483206fe585d3ab1bf05c",
+     "key_fingerprint": "086f9f0cbd293e632bd2b89c9bf622c80696e4d27812ff98233221ab741e800b",
+     "successor_signing_pk": "b968fe89d328bdfd71114eb1c70c35f015ebf64959a51983cd6b260acb025586",
+     "rotation_signature": "520ccff263c56350e5dfe2d4dfa15ede157afc6b9e37af74d82ddcd6fae325352b6f9fa84a4e07d0486401e31c038f1a3258adf8783f2a37e755640742adc105",
+     "authorization_signature": "ebb4afbecb6055126b319c041c81bd0ab2d3f64b4fc8895000d5ddd5c476d5dcd9fafcbef12709dc6042b1cd0de8ccc0573a618eb590767701ae216f18e8020d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "dbbb68aff1db611713ccd495b91ea6e3e6f69efe06dbb83a8f2fec41494fa969",
+     "encryption_pk": "8da67a45229be317b7563e59cee2b0e048a54f5fa60aeb36820bf02a56e6b657",
+     "key_fingerprint": "38dd17d39f500514a1ec3d122abbb045eeabd689e88204b2399d486ab1198476",
+     "successor_signing_pk": "1c9f7e7a943c81d3d70bf1c8055e9ebdd7359c56c1a9948b1eda99aa154b333d",
+     "rotation_signature": "c60b80f9e4a92972237f86599510e90d64bd3ff81e2242732851901332e128d0fb717305c9c24391efa3c59c9ee9e34877c647d72c64a7acaaf7806af659dd0b",
+     "authorization_signature": "5de44e9acb81e318c446265454a420472449d829e3caa4d14d19b0bc914e5b052fbacdad10f9406caaba0f90a351c5b0137b0fe036dbf55abd8e85f330261603",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "a7303540ede459e235c0d067995629271ce40be713843cdd1ac95c166e2962b5",
+     "encryption_pk": "52aa4a7e68fe1bb76d5d08701ed733b78c4fece7a791b6a67af05b268b492c20",
+     "key_fingerprint": "7a2f4c09e14e30e2726c74aabb2c9016f42598263679b56a54a7929127a8dc03",
+     "successor_signing_pk": "dbbb68aff1db611713ccd495b91ea6e3e6f69efe06dbb83a8f2fec41494fa969",
+     "rotation_signature": "286fcb6120e66f22bb4de7b9d113c93a3ae000f7a724c54b0d1530bd9935004fb2101991ff4c1970f2d762e32db742566c9e70ff6cb3bfd39e207b0396c13e0f",
+     "authorization_signature": "b2c947f424e8a430682c37c930772d3111751a3735856d4b51f0e196c777666eb72f06a229206df451d12a11f7ea87c886e50b02499b0819d1d682df82452a0d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "c27ce06d99f5f8dce39a2639a8e02398875e6fbef71184d8d3e742347b1341d3",
+     "encryption_pk": "7602aa1951a9bdeadb6f273409498685c661e1c523dcf2ace5d7ad9fb84cfc21",
+     "key_fingerprint": "47163dcb3e576e0097c3c1c5a21ca26b5e16aa6a23b6c966b0c4fdce32921813",
+     "successor_signing_pk": "a7303540ede459e235c0d067995629271ce40be713843cdd1ac95c166e2962b5",
+     "rotation_signature": "c0bd6ab9bd3520fc48167a0ff39d5902ecde190b73eb86d69448e30c6b25e8ad88998073de894c7e5a0b5b4377dfc9e83405086a5b7bad03a2ef6a5d8c718404",
+     "authorization_signature": "8d7dfa915f8cbe320b5bd7ccf3c5bb9b91358b215986f4242baf3601b72a7d4cafa79d47faca8d66c407f0f3a819c323fa9b8a5c052126b3f9f67b3cfb1b3201",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "a2b1450494c0b030c1b96e0ac8b750d5397d7466edcc28262d6f06817d054694",
+     "encryption_pk": "d09065313fb5499f5e49dcb6d5002b5add394f0b31a17b59ed59a95b97ff4025",
+     "key_fingerprint": "927fe9c2711a5464853c0688f63058cca228388d34372046d97eeeba7140f95d",
+     "successor_signing_pk": "c27ce06d99f5f8dce39a2639a8e02398875e6fbef71184d8d3e742347b1341d3",
+     "rotation_signature": "aebdad7eb6da1787ed974016e5f712302ecddcf8cbc8ee8a447a5d28c834f3a0f41d134f92d3fc20786105c5726a5fd7ae29edae1d551beb1ee8bcb594e0dc04",
+     "authorization_signature": "8f627f33c81d134fcf1f6a0f7ec1f17b10eecbc91b8ad02960297be2d48fa23c69920191890d7615ecdec9037df86842027a6fae11d808b0d42d8057f2445007",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "3e5edeb088897f3ca2e8f2e2175e891c36fecf96867a45a682603b20bb5f5c56",
+     "encryption_pk": "f90a6b7ee60d5421a4f0f2aa52569727206647451bae7d730bd83cc7dac76731",
+     "key_fingerprint": "fcf0d03bafb883c32ac4260c21d08be0785f222851f3ae7d9c85315fe4fb9eeb",
+     "successor_signing_pk": "a2b1450494c0b030c1b96e0ac8b750d5397d7466edcc28262d6f06817d054694",
+     "rotation_signature": "fbd0e0de44939a62dbee5cdc7b40c878685076702b86d7a7e0be9e57a0bdb6a39543d0c7b11883ffc10862eed9c1e37ae2b3d8da58e887c32f13f233f70adf06",
+     "authorization_signature": "bb18636e0bf5bb0f9b014d05d2b1536f9034d29989f7c7c14fc5e9736150dbea55e7dab58acd8e0b6344cd40711878bb3bee11fbdd640356b1d30140d4e0150a",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "6608fc8d056d0cf1b7a2356f7a85eafa2d927f49f850d4556c632a21136097f5",
+     "encryption_pk": "1e69d629852c49d75f1c372ad6685dc75cfd9a2bdc5cb3da68d18d221a14960c",
+     "key_fingerprint": "e910cd3921c5d33328d84a4fd2c5978e3f0a106bafde1825009065040e285277",
+     "successor_signing_pk": "3e5edeb088897f3ca2e8f2e2175e891c36fecf96867a45a682603b20bb5f5c56",
+     "rotation_signature": "7cbabae6d6e2a15bb510e4ce75c5d1e8de3cf065a24f6ce3c25563c2e99c86f27897172379ab70348bcfb28704cbdf809f46e2eacb27dd7b4a83d21955c7ef0b",
+     "authorization_signature": "5b83550ed1101c02e2f367ba293fbc4edb7dc929245b2659dbad19506c143c026061b84e3169b21daae06339aa3a3dd4b1c498df4504d74b3175546241c8910e",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "2277f791145884ee44dc1977a9a556f9efc4e2b84efba2437f4814bdafb04add",
+     "encryption_pk": "09a933ac8c3063aeb1254cefc0e06210b2971b295be6465f7de123068851716f",
+     "key_fingerprint": "b45b8a57b1e435d4bda108ce4265bbc17474d0839816d4a90bde0c51d3f4aa94",
+     "successor_signing_pk": "6608fc8d056d0cf1b7a2356f7a85eafa2d927f49f850d4556c632a21136097f5",
+     "rotation_signature": "617d16058e091fba6b0df88c9845645a8c739ece7b2f3765ebbf5973e15a06e0c72ddfaccde46c66afab8cf66842b3b97ad76e77903ea06ee86aa48c126cb50e",
+     "authorization_signature": "0642fe9ba3468f6ec9e3fea8795ade114e3b6457863c28bdcaa4f0011ef8e778044678e4cff63ea616ec75cee6122102db01c0a44846defaeb7a2debb447030c",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "0e3a246dc0d823d1fa91f888685d40cb325ee04f5442278e91dfcfc606486858",
+     "encryption_pk": "95d6940d8973e4defcbef18d395789408fc3881f265e9b5d0dd362a3bb59c126",
+     "key_fingerprint": "dd3f6bab3b3998c86cf780761b07c0231dc531d7064785697477127d2cdbc99a",
+     "successor_signing_pk": "2277f791145884ee44dc1977a9a556f9efc4e2b84efba2437f4814bdafb04add",
+     "rotation_signature": "ae0d2d70a37b55cc3a2415cb752d217c8f8843f7ba1c102124c067d1eecf590c18c0fe4ab9551e484184606a96e122813699c89ab1000698e0b64aca0d215406",
+     "authorization_signature": "f467640a3acd048497192ce452a8f84a027c8209f83f8bbbb8bca8441591b0be25741334a79931f739db6aeef5f607cde69d2ae60a7e79eda272af910dd14c01",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "5d2503b7963079139ed5fc722c9ef510a5741e71712dcd7bc1a8a8db8dc4b993",
+     "encryption_pk": "83e24d84bea3a0ce3d21d1fb655f1c0202094bfe815af04d59c81adf152cde12",
+     "key_fingerprint": "1ed871cf5e59764f0074bc7777bab9ac29cb44b96a5a58365b1b5e2e5945c5ef",
+     "successor_signing_pk": "0e3a246dc0d823d1fa91f888685d40cb325ee04f5442278e91dfcfc606486858",
+     "rotation_signature": "1a7d8effa948f2e7ca4d21b6157138c3ba207514956835ffdeedd14c0ff2b4058161d245614fb1abe90fefe7909542595c7222d3c28ab65801d09f0887063300",
+     "authorization_signature": "6fb48ce87f7b9e4072177dbc03604d5f3a8d8f6a30a54007b6e472128948e16b50c1228f5001d9f93fbb2a82efe53ae3c9b13a3c40645509ea1c0141ab021e04",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "85790253f693a5891918ae78dc4ed21358abd7d1d4e6dc3aa65a6c73ee74c9e3",
+     "encryption_pk": "cf0212adff716b021ea3e65f7bdac3b87cff07264ad76d2fdb654e5bebe98d1f",
+     "key_fingerprint": "ffc70f48a74e80439507fa8a4a02e3873b4f94baf73d5b91e61a50bc0eb94755",
+     "successor_signing_pk": "5d2503b7963079139ed5fc722c9ef510a5741e71712dcd7bc1a8a8db8dc4b993",
+     "rotation_signature": "2f2cf6763dfc5116f3b47d5c49c05b982edfbdc6a28ccc28132e49b2b7a32939205abae4d5897cf86afda043fb5b0d8acaf5c83b27170b52647d5f3ba7bdbf0a",
+     "authorization_signature": "a1d0f1a8f0b36aefb989797e73b606796cf0b3e55d41de09747657bfa96409b733957ea17ad089dd8ddaa5de65be2cacfed6b3b9a7557940d08505228e78a205",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "fe1f1994a3f324e6979bc8a4a9b01ff7f789036e4cf93d05e322b41fcd910bf7",
+     "encryption_pk": "bc1258264b6ce326a61299e3da3d2a975f3c07affcdcb649899c4de4a4d54640",
+     "key_fingerprint": "b5d88ad29afcca61da4543f65f8d5bdf235195764edeac4af18bed1ecc532f3d",
+     "successor_signing_pk": "85790253f693a5891918ae78dc4ed21358abd7d1d4e6dc3aa65a6c73ee74c9e3",
+     "rotation_signature": "8f5b0634a57c749796716a5c87c6ab89c90ad3539bf6908494c113ae921546a7e95e21fe36918527b0a09b47b7e787aa3bc84cbcae46a7d57ee203c3c9b7730c",
+     "authorization_signature": "411fd95f206d0c86167670825f6f2d90d91bc1df3ff4d05a9d568ec76593e694dbb0a2a8b018e7e9f751f8ff511990b7e8ace5e0861a22dcdf2c384c55d60909",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "cb8f715f17bceaf7feb1d5b809a8451d1bf5c039af51e5c161e6f0afacbe8503",
+     "encryption_pk": "dce6f76c754f2cdbff5f1e02c65f2709e0c8531014d35053c6b7496df765561c",
+     "key_fingerprint": "dac8810386e96adfd42bd96281518a4c5e92ede8053097d7ee301ad9d9344a03",
+     "successor_signing_pk": "fe1f1994a3f324e6979bc8a4a9b01ff7f789036e4cf93d05e322b41fcd910bf7",
+     "rotation_signature": "dcc6b3bb1b689aeb5cfd8e43b2ec6d1dbcac153004f33210551b7a0cd543a221ea20319affc4538ef9716b7465e897a6b22db99eddf48bba0ffce43d61a41b0b",
+     "authorization_signature": "adaccbf0bc8b2ba908ee900f232194f03bb1d1c7a0632df5e04c6ce6833df13a1525a897e5f9a89123bb425ddb89645f8d9dca3c266f2d23b60fb622db97690b",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "788b67ed11994f9eaba6f3ca4fd31e697dd6c10189f5eb0bcfa9fc8623bbea22",
+     "encryption_pk": "b09bc8eace7d4c4055e274481ef16b35a0e22331b76d1bd45c4fe8591638fb31",
+     "key_fingerprint": "3b46e062c55d0af7e7ee3bf187cea231b31f509afdb32fc7bebe788d5450e97d",
+     "successor_signing_pk": "cb8f715f17bceaf7feb1d5b809a8451d1bf5c039af51e5c161e6f0afacbe8503",
+     "rotation_signature": "14409404fee4b6286fdaf9cc39b1b64849143cf0f6059c5000e6507c588588ea81bf0c240d6417c4ea951fc72075d9dd06011bbdfdf43895b86ed6091417aa07",
+     "authorization_signature": "3ea383af88e90c132ad3b5a2b4e26d8113212fdcbe636098d752e8cd1c82671e8ac31cf6d6d02b21fe1e32db14e535a191166c00e6eb7eb83be653e49f4c8304",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "28a78181c8b47fc75477789157a291a0e8a8b6e2092afd3cc41d8eb71e9217a8",
+     "encryption_pk": "63900bd40a8e08aa8f55bbbd5a00df693761aeebdc57f6e86e222c4b49516509",
+     "key_fingerprint": "8990ff5bf79d51d419eddd153b0522ecf7e9bb9b1c9a3c5517bae5807de939e8",
+     "successor_signing_pk": "788b67ed11994f9eaba6f3ca4fd31e697dd6c10189f5eb0bcfa9fc8623bbea22",
+     "rotation_signature": "23bd13eea5dc977deb4f9ff7e0a35f7f934a77b7b0d7507f8eecded7ad5166b8b7731713d5c35e5b556c2c54d917a46d761393ddf105949035cc1424838dfb04",
+     "authorization_signature": "a88b7703de3e463bcd1edc1423027f54af37de507a77ac70d2f1c55e0bec76ea4f6be8bb158398226b40fc005ad711daf80047406ae93db45de564af1e54df06",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "61fb82192c769bc6b842293fe0ff765d45b66ce8c396b6907abffc1ac968db72",
+     "encryption_pk": "a73494a54e07874687b6ff1497534053eac0f2c7192b1285673c2b5255177e1b",
+     "key_fingerprint": "7d306968ac89f199dcb73a15f50536cc527648bcfede7b6a6ca0a0858b173c8b",
+     "successor_signing_pk": "28a78181c8b47fc75477789157a291a0e8a8b6e2092afd3cc41d8eb71e9217a8",
+     "rotation_signature": "be92dd1ea7ca5e94e6eb18d8970c3f0501b03448c967bc542bb3bb00329570aeab653bb6591e6b6d7e661f69e0f9f03887bec506c57ba3b5d38173664079660b",
+     "authorization_signature": "b597a314345b5dd104fee214729eb06d5c375ed9fa95ce450d0e5eb4ce83b6161960b37dc341939fc96971b91573a6c65b87d0b08f7832217cb06c3007c19100",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "a31a5f4bbe040d5c13db38dc172e335fcc466ce5695b6dd3a0e897940777426f",
+     "encryption_pk": "7ab2478db5c52df8bd9bb0e833f844bf03ad6a873e3efe6a7a5657ea6b006045",
+     "key_fingerprint": "a74ac1e710b54ccfb295669fe87011da8bb86275193d604aa9bacbcba163cfed",
+     "successor_signing_pk": "61fb82192c769bc6b842293fe0ff765d45b66ce8c396b6907abffc1ac968db72",
+     "rotation_signature": "a1aa0eb9272f2d31368e0c969c6a07cfc83b3e50ff10f123af28ccebaecbeed7f0ea9f70c089b53202e6c8138447f1f4a054d2e47f79be92b97f76f94d3ede04",
+     "authorization_signature": "ce74f9e948f1524f048295525c8f74e43a81e1948600dc96792f8f2df1b0318536b2820071bf98b44395e01381e3c723ad7962f2ebe6afe4ef4101139e942608",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "01991e139a49106901e1bd25f7c6e5f12af5dbf7a605b821842b38e5b29a6f91",
+     "encryption_pk": "c24d4d5f7c3016b988efa5e06ca32a1c9e9bbc5a082993f68a55b4443e173254",
+     "key_fingerprint": "b980d5018a4d90ae82f69a667db34963ce4f264f84d7126465b466b4b15d7e7a",
+     "successor_signing_pk": "a31a5f4bbe040d5c13db38dc172e335fcc466ce5695b6dd3a0e897940777426f",
+     "rotation_signature": "01cf0ea2ee8b31790d1f1073c93a4fae2c333b0c1339d4788d0758bd30ee8d893a4484960ab654406d83c6e197cb5abe210c9214b7ef1c58d305ac7e1d1eea0d",
+     "authorization_signature": "d70be80ade0e5ab59db078190347d3e74c82a5589383567cee9e947f54e3f0213e448c12c3c96cfb9f12b727ef53176cb785910ddae4d00def5507fcaf0f9b02",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "52a5be38c2748eab96a318c75fa6830fddd0688f1c27e339923d96f032d4b6dd",
+     "encryption_pk": "3960c478bb33f89ab8c29775a92f43a4fc53c2f6b6ce0d50988c8a7fc37b3967",
+     "key_fingerprint": "6960750d65cce5221b927b7dbea429b1e746a1d18dac51c6cce4a85ca51e53be",
+     "successor_signing_pk": "01991e139a49106901e1bd25f7c6e5f12af5dbf7a605b821842b38e5b29a6f91",
+     "rotation_signature": "663592adc523565e57d797a7b5c8d3b054deeeedc85b3be6401107ca879bd03bd91ec2b20a440d3f080a25c2301f9b66b1e2b8009f364e7c1e88c300c2178a0e",
+     "authorization_signature": "8108ebccbd63a401d74523f735e698e818fc106ec6f68d46ebe07b69c8ec1ec924dafe2bbe94f3df71190e53569599a0007feb006f664614cbff995163cef008",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "29f6b9790c26bdd9e072ee2e3a0c6ac82fb3bbb0d4a754b5d2ae2e745ecec21a",
+     "encryption_pk": "7f6c7cd23ba53f49a148559faa74915187c505a208e9f05fe84cc76e98d01f6f",
+     "key_fingerprint": "bf0b30c03cd4afd52c90588f343f61f2290c297418872ae8b1f5f143aca740b9",
+     "successor_signing_pk": "52a5be38c2748eab96a318c75fa6830fddd0688f1c27e339923d96f032d4b6dd",
+     "rotation_signature": "c0ee9ec02a978f03758f9356797b2037b1df438bbabd2fdf808d4ed18b4ee5b70cbe6cb1cb85671cd068059978da88a11bfb74781c0e180e0274693a6e1bb40a",
+     "authorization_signature": "9d8aa9c26ef73b645f2e2b36184092a5a1f5d04a4d3cbd232219b49a94db04ba976b05e740054264fd832a89044b9cea3c59a901bb1d4e12d0021441ea2f6407",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "1f81dc5bb7c14e5e93a73f88e67a5fb1eb4cd31e7307ea120710407e03a0c7d7",
+     "encryption_pk": "dae03e756b4e695059c3e461948212d59709082cb286580fd1d8c85ec2750b18",
+     "key_fingerprint": "073b55db68ac9f3238d71a1a3b64229193af2e8dd1b7ebd679cd6ac66145f5d0",
+     "successor_signing_pk": "29f6b9790c26bdd9e072ee2e3a0c6ac82fb3bbb0d4a754b5d2ae2e745ecec21a",
+     "rotation_signature": "a2710dcec9ff8b339e3e30c798ad5d791baeed58d14c258c973196b483d33784972936c8bfb992085787d7b9e6f32908929ae8061e77a32db7c5cf6412a86509",
+     "authorization_signature": "ae369f5fb647e118f5ada7a31a32731f0fe49d708a46b44b70287109679fc30a20a7c516f10da269a5ec9485c47cf8c203aae0089406bc2c0dd408804bf59a0d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "d392cbc7e4e1389f66b6da9c654bcad6e6bde47dbb2a07c4dd692d0d61927d08",
+     "encryption_pk": "45c198010137a50a527c3f32c78f3db096fdb53da49f3d4993746675d0aa4e3a",
+     "key_fingerprint": "1b7c98eda38dce3e84e8e5d20047991e6559800efa1d258e285937f7577ac071",
+     "successor_signing_pk": "1f81dc5bb7c14e5e93a73f88e67a5fb1eb4cd31e7307ea120710407e03a0c7d7",
+     "rotation_signature": "9f320843d0fbddad0d126eebbc8eeb8f14e4853623083280fc6805ad85c4c61e30da89ebae5383a998c2f3434ed4ea05cf812d1f9fc69917bb73369fee9ef30f",
+     "authorization_signature": "2b5b3a771fed01877ea6dd542c8c355895c260cd3026ab8f3cc43c3b8196b065787917d7072ff3aa01de754d4482ab94e8415193182e3809b3cf774fb509f103",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "71353e8aed54408e8b805cf5e0a4a8f2a3e7c2628f6f533de9a09cd531a8531a",
+     "encryption_pk": "0df651a8373fb7f1ea56561b04926efbdc841abdd14deccb7740529aa9bdcc1f",
+     "key_fingerprint": "2bef56a4adca8e2c0f83b3f0a36ba9b2e5241b6917a747342e5e983de6372b2e",
+     "successor_signing_pk": "d392cbc7e4e1389f66b6da9c654bcad6e6bde47dbb2a07c4dd692d0d61927d08",
+     "rotation_signature": "c1ef418e568f20adc2dd38473daa5cb483fb4f013f713075c5cb0d11240559886deff88c605dfdc1cc4c86825afdb739967d52a39edeb7676dd18ea468d22002",
+     "authorization_signature": "7b04d85525660f6cff9d8e9973f0922fe590f392dc5d6df79238dd65fb87ec831836acc65708480d3ae826adaeec8d37f1df5a42c658fdb41d5e9dfee9bef701",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "27275959379f135dd5cfea9c62cbbb1a2ec5c82d3231999028810b23b73acc29",
+     "encryption_pk": "fe4b9d783bac42641d208b060a5ac7a6df853c7c2f29cf22b1d822eae012c81e",
+     "key_fingerprint": "77d390f1e04e95037d4cae9f7dcd7bf2edcb9c3f0ebbf6afa4bb11eeb2b9e078",
+     "successor_signing_pk": "71353e8aed54408e8b805cf5e0a4a8f2a3e7c2628f6f533de9a09cd531a8531a",
+     "rotation_signature": "b34c9416ae7d4083afd98ac9f4a7936be053b4c72165227d7cb072130630102fbc090194f162fb40555ed31df2856857973789a26efd5b36e67d95a6b724ad0a",
+     "authorization_signature": "ddd3f83cab3ec623b15bb68384b320ff31ea87b356913e74d133a62950ae702690e870c965556d6ea8203e87632903553e20a0b218e2e56f5ea5d33797786503",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "013983f728919fa78988764cdeaae3484d3f4f5f6e812e59db4aba0cffb6af69",
+     "encryption_pk": "3c3bbc83d1326f84b76700649a1dac6da486091075165a4f49a65f6887eca540",
+     "key_fingerprint": "a448f5d57aaf83a0ebc9caf8e0c6e0879172a8da3c81cc05c691326aab95edcf",
+     "successor_signing_pk": "27275959379f135dd5cfea9c62cbbb1a2ec5c82d3231999028810b23b73acc29",
+     "rotation_signature": "903f872bcae26cc44e2cc0245646901301185009f8cba0f98fb62dab63b72e5ecba795e1f368977164e38231e5412aa9d67b09a42d39750dbd1eeaf6e2c0bf01",
+     "authorization_signature": "50110d0565a8ed25aa79956fef9301e49f1b1153b9e5a4db8aacea88391e54007c1420cd833f0aab9bfa0887d55349fc6ec10349b936e45a7e8a1176173f6501",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "5017b06154d1ce3d6b632d59fc96bf72c9839b7abab66bea1e6dc9d0e150dff1",
+     "encryption_pk": "72f5631143c170c82e8fcc2af9f415caa2af228bcbe8bba6635cfecb00395204",
+     "key_fingerprint": "09ae271465beebb74718b747bf3b743b4218836806a2cd42be115e19f4015fa1",
+     "successor_signing_pk": "013983f728919fa78988764cdeaae3484d3f4f5f6e812e59db4aba0cffb6af69",
+     "rotation_signature": "c4d6d7c753dc7059f98c67d943aed4525bcf81aefa3aee148115addec9a7ed4467c57a01f690cbe0b7dddf5ab3d23739a438490b835fe96aa9a404775143a501",
+     "authorization_signature": "0e0915113e1669dcfc94ba0d28e3a47d51ae5fbadde438c82e4ab9abbc692f38a9029b5c61b4606e8e3c45bc9a699b7d85a6d7d197c3d53da1ae3c40a12aa406",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "74db96af1e7bcadb126d9695ff0b3c7787688d74dc45a4e8b6565f4a49087e8c",
+     "encryption_pk": "f039cf0757e2b3768c486b9b94842356c5bd789444866938ee311cd091b0463d",
+     "key_fingerprint": "86d10cc83edfbffb24d580d6295a588299559ceddc887e36f5f439dbd0b8cd8f",
+     "successor_signing_pk": "5017b06154d1ce3d6b632d59fc96bf72c9839b7abab66bea1e6dc9d0e150dff1",
+     "rotation_signature": "acc0ec7f44e3b5704d2af8bbe851b72599e27f914d661eb85425c387719a27feafeeec15a99b79e52e723cfa9b9c94c34558370d9a0efbec1a6bf353095e6906",
+     "authorization_signature": "3b7f99659861edb7ffb2e1c077907789bdf197955a75bfa83d4baadf7104c2a7edc19102719fa80c1ee2b80a99ef6a3546da684664c04c0fc4622ebabf723600",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "77e7b960aa89dc407791c8a604bbd7f64cece33edd2f51978b01f23e06c3d973",
+     "encryption_pk": "d3c711121484123e873f1fb058701e6104567654e9be1482c5d71db1dbf3e67b",
+     "key_fingerprint": "8bfe9d74818742efb565491ba21c87282ae237659c94d8cb892341eda418ebb3",
+     "successor_signing_pk": "74db96af1e7bcadb126d9695ff0b3c7787688d74dc45a4e8b6565f4a49087e8c",
+     "rotation_signature": "7232b60fcb57adf6cc31a7737821e58c95e0dfbbd93eaf653d9d1422dafdbb0db45f96c65c367282a2122e538a4d367bf1490c6bede936753e515e1ec368770e",
+     "authorization_signature": "fc0cd36a385148e3f326ec0ec51353e0b6d7f7f9807a460d2f1ec2ee93adabcd6ee9b9cedd3ac1f427ba1839b97fe207093355a4c03c41bf49e9f9d869c55603",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "5702c6cf8e7ab38b87e57dc3f7801b51b2d1a20a51bb892be11d394e21538de7",
+     "encryption_pk": "2ffb351b8ee453d37e9ca7df53ec40f7068364358eea2682ec73df13fb55bd24",
+     "key_fingerprint": "640ac57a96218d2ac5d64a6fed3d08d09cebbf0db8115831f09ccf9bf883377e",
+     "successor_signing_pk": "77e7b960aa89dc407791c8a604bbd7f64cece33edd2f51978b01f23e06c3d973",
+     "rotation_signature": "480a5bea937fed714364af3b12885f1b5e7f5dc8f73a2d0ec978cc43428760a798a8d5a984a86d287b6b2611d113293b8730b640fc17fcb10fb35fdf3c77a20c",
+     "authorization_signature": "a1c3ec7c63cfca977433293cd687192fd8bbaab182116f54a965b9bbf29c319f1fb3d19ea43030aa79ad0ea77af0aec3f122d75dbe15fb9cc3a030181d5a5108",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "bd9d8661cb8620b18f6baac8db2e7ac60676dff12f96a7838e52f2d578f6ec53",
+     "encryption_pk": "1651644f1042e5441879e18b03836ca9eabc9d24df6ee88dc75f45bf08f01942",
+     "key_fingerprint": "62c0490b4e730d967025f90bf70883f4c1437acbcc13189e6b777e530c14dee3",
+     "successor_signing_pk": "5702c6cf8e7ab38b87e57dc3f7801b51b2d1a20a51bb892be11d394e21538de7",
+     "rotation_signature": "68424ffe2e10f28d04e92f7d83ebf9d955e2c6c155f74126a50dcc877f1a6e340bac74af5f1da3869760e390e38287967b068f399ad52a632eb50488dddc6e0a",
+     "authorization_signature": "01606f3b2cd07d9cc5cee98e8a1bf72e185de8ead2997947de6c44b8b2f844cbabb1d5e4279ed8645b09079fde00761f0114009bd2a4042db127d2b339cc3505",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "4ed3ebb18c497cfa7f27282bd65528677fbd2eb62c2b81619fb0eeccfac58ba4",
+     "encryption_pk": "cc57fd8c79bc85786a7872dda481bc23c0cf2b813f5968651a2c9bbde2d22f7c",
+     "key_fingerprint": "9e022f9bd672641a70ba2cb33b4efdd7c65426e2279d1465dc5d35b572e3a463",
+     "successor_signing_pk": "bd9d8661cb8620b18f6baac8db2e7ac60676dff12f96a7838e52f2d578f6ec53",
+     "rotation_signature": "73cf12a705e0f63785185de5087d2136121e7628f88a523bcfb530ba04625337821668cdf8cd9aa980540c1ec3d9a8184416154fd300fe257d3931195639c40f",
+     "authorization_signature": "318b6fc2e4a97f389ac955dc4897855a7882bdb702db1537b46516f1c9fcb9cd952c2cf193d77e2e0c5db1390de7e15418f0b7fc9ad7b03eb0cfa47792af6b05",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "3391074d90650aebb7f516656cee30881f4097d7e140d7bcf948d7ebeb0663ca",
+     "encryption_pk": "5e1341a838ff4861dcd3729472d5fc05784c90291730001e418cf29fae900365",
+     "key_fingerprint": "87c516abaa4795fdf26978cc968de0fd55fef94d49bd7c01d5acab225d15a097",
+     "successor_signing_pk": "4ed3ebb18c497cfa7f27282bd65528677fbd2eb62c2b81619fb0eeccfac58ba4",
+     "rotation_signature": "257a96b8ecae5c2ccce0f399920dc26bc74c83ae1c51f0499eecbd004fac4f112a5ddce5083f99871f07056c61e471e2e89459cd3bf6062df2112282b120d00c",
+     "authorization_signature": "4906f97aa5fa40ac6441e55827d28ae4499593411912b5cb4837be848f5f4b6d0aa922383354d061f391c9cf1899075a68c9454cb06a46c78f89d74ba25f6004",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "78fe0698d53f7d4f7a5a73d3babeeb28ba6a474d5cfc6d80cae21039a95517a4",
+     "encryption_pk": "d6a5e470d253b96e43b62817ea2cd38d065666905877da47f7ea2887b4b5152a",
+     "key_fingerprint": "4fa881e0cae2c1440cfbca7a0b99a47284d73ca9d7cce05a6ffb880aa8cd5b80",
+     "successor_signing_pk": "3391074d90650aebb7f516656cee30881f4097d7e140d7bcf948d7ebeb0663ca",
+     "rotation_signature": "2469f5104b4bcfcc671e15d7843307afa851439eabc478a9b798bae1f8314dc468cc1cd0cac060b74e581a68b4cbdcf1890c3a32c08b1373f2354b9487288303",
+     "authorization_signature": "eaf26391a0b842426fa8eee0370af413464367babdcce3e0781efd3a1786479cd0bda7a1e40ab24768ee624512ad361617755c9902660597df8f0ad25d046e09",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "7f0f2f14d734119873354b8a127591b3b16f4175382d0dcb31fcd4bf8fb273d9",
+     "encryption_pk": "21c8435c5feef63a219e1a725892fb40f70e1b6c62e8a00afa34d0654fdf756d",
+     "key_fingerprint": "53809ae0a32dfdae0054778a05fbdbb2add1fe52100c84adf061f767b8b058a7",
+     "successor_signing_pk": "78fe0698d53f7d4f7a5a73d3babeeb28ba6a474d5cfc6d80cae21039a95517a4",
+     "rotation_signature": "048b11edd8e30e93e2d6fa1f84bf97665d3f28e8c5076bcc1894199db88e557d4fe717651979a856e5182b3977ff70865ce78285b6a51b4c0ac240ce49b56c0e",
+     "authorization_signature": "325077179ed1ebfaf5db4fc871ae694e2397fe40532a38ab6ca4320f64c4ff0fd93650d2881c3214130ac658522f09b887374769860e5c02a542b73f03fea006",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "2cefcd06cdaefc92c031c6bf1995478dcf7d274a91ea5eba8165d30c483e51f3",
+     "encryption_pk": "1986387c20fdd376c4e63150b67c9aa3542b4d6cc3a744047796b4f845829016",
+     "key_fingerprint": "29b73031616bec77fc21fbe94842d1918b4024b41c147a148558c0f95e98935c",
+     "successor_signing_pk": "7f0f2f14d734119873354b8a127591b3b16f4175382d0dcb31fcd4bf8fb273d9",
+     "rotation_signature": "862a754520783d4aeb49d3d592263bf61f668933f9baa9125edab7d458edea14b466cf81c704f4452152613647142d4ee9882fa15a12f19dc52ff5effb0eb709",
+     "authorization_signature": "c531ea7cd9927dbf00f071a4319b6ba1d9d361662676f1cf3db89b81ed0ac80ef31b3554a60b1cea122cbd90073357de3a03d109eca76e7cd9513a8188f9d502",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "48bd2de534005554483f7d4c97ad020e42f111258b3cc5c581c951ba4beedc2c",
+     "encryption_pk": "b9c65d35a5ece3998fc1c7159b7b8c9aa3ce314d2b3e1e397378c8e8f1fb1f12",
+     "key_fingerprint": "f9aea762e0bef808ce40f25a280247082731382655198972e006140fee4ad724",
+     "successor_signing_pk": "2cefcd06cdaefc92c031c6bf1995478dcf7d274a91ea5eba8165d30c483e51f3",
+     "rotation_signature": "4ef5d2d761b306defa5e0df7c20d42b0c0a70d83f2acaee22082032fd55ada43059bcac172f3920a72e6a108469ad936c5ca9c7e6505357c41e1c7aaba745004",
+     "authorization_signature": "ec8f5c174f0e40cb896ffb93319a6f727ec628ab1c10560ed6861ac05af40a50f6e1b409ce3ab29b8c1f363996043044a599280c4f157f724adac57ab46fbb02",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": [
+    {
+     "signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "encryption_pk": "b9ae939bfdb4a5e89c69b2648cc2106d31ef03a7c7c8b5cc34739cc56c122b60"
+    },
+    {
+     "signing_pk": "731924970031b4c011a03dd5bb45fd1076cb41ad8ca37614b36fe17f9878ad2d",
+     "encryption_pk": "d88cf660e98d048e4b10bb05508e62c6f898ecd42fbd83c2666726b6e85bd871"
+    },
+    {
+     "signing_pk": "ed8c6f607b1dd483e1337c5f584a6a804f1b624081391ecb6888e5d02683772f",
+     "encryption_pk": "0f18d0748a4f09ad497fa354c26ac5ea1208d857946ed194390e7bede46fa708"
+    },
+    {
+     "signing_pk": "0d89cd94fb3badad81f4de3a67fd659b0bc5c1a30867b40a4389b81869280c8b",
+     "encryption_pk": "be6faf9c7416e6fa729995f5b0a28747d4ad8312579aab2c4aeff8be2f6a460d"
+    },
+    {
+     "signing_pk": "f03b4d82d70ce46b988ceff1d4394617e79ff3bdbcbfc31cbfeb3444d9c07d52",
+     "encryption_pk": "bd6ec08bfd2f178065f4e3b72dec8b4a0d3e78b7da5c27bebf8e71daef779b5b"
+    },
+    {
+     "signing_pk": "bf48547932ee10197d9ced5df9ea7334cfbe4fa19aa6fe63ce81c8e10299d090",
+     "encryption_pk": "550c7fbaa288073ea68374f008fec717bdb7a622ab33da59ed9951c13f2d092a"
+    },
+    {
+     "signing_pk": "1fe2d53abb9492de13f4799ff5b5c33ce63e510321cbe412daf9dfc7fed87965",
+     "encryption_pk": "ee699d086517f34cc8c31ec0d3b397bb0635c3247674f6c8c20e58aab8de1e2c"
+    },
+    {
+     "signing_pk": "3cee4f601e411fde163544a2178a6bb3464669ea53d4bd8fcde0743584adac92",
+     "encryption_pk": "c57092aa17a5e3599bc34edf085a78b76989819eb5a85d83a855a398d3f2893c"
+    },
+    {
+     "signing_pk": "05a72c3636ddb41ba1341b67e5c17c304a2ab7128c250c68f19b0acf6d102c38",
+     "encryption_pk": "563cce92a180d1961af9b3f3d577351d5197044f0697b37ced03bc587591d547"
+    },
+    {
+     "signing_pk": "29164bc884403737a4cf4626b736ff33f146e70f0628aeec6c4776c4c7040d81",
+     "encryption_pk": "2833db259a484957af2d33e4111a2012694646637683361928fa5a11591a863b"
+    },
+    {
+     "signing_pk": "4c9ae0442e69e5b907ce892b5b39f9a89ca728020193de58768d97b2c8306f00",
+     "encryption_pk": "2b67c9f639a7d916bb6e06a4a76c3946725ed3d3b7cc2ff12b57e5951b32c671"
+    },
+    {
+     "signing_pk": "03bea8a8c86677fcf669d4eac332df8ea3169f4774b90764e94bf393b921cc66",
+     "encryption_pk": "d41bd8368aab541b7b851435fec379700af32b2f535e18447d96138812d4e166"
+    },
+    {
+     "signing_pk": "e99a75d6cb7ca51753f80550d49c1a7093304d05dd9ba0bc45cdd2b739c348a3",
+     "encryption_pk": "add3e34b2dd176fde4d29d95462d9800518174b9ac911826302780fc53a44e7c"
+    },
+    {
+     "signing_pk": "308fa62f0224c97a7a4e7b9be61c5e0b376676e2d13b10f8d78f0cb1fc6ce8b4",
+     "encryption_pk": "c566d3ab66e95cc750df2d214b35c7c2aaf4a33788da63f564fbf68eb034e552"
+    },
+    {
+     "signing_pk": "d1f921888b42808e46280e8e1d54790d1f0624a698a816bf2b5a2660cbac29c3",
+     "encryption_pk": "e9de757ef7b56504ed3c29ed3901d0055b7386e0366a47b11b3c99358236ea4d"
+    },
+    {
+     "signing_pk": "ad97a03c12abbd5a936c6ebdc0360eab313d8a36dee546f0e95dda1c6be28f3c",
+     "encryption_pk": "8d4ed17fa40512895c91c6f293d4ad47a1db6bd4fa57bb7d4abec76d7129ce16"
+    },
+    {
+     "signing_pk": "11df3808c651522921e9082c730ad997ce383e55b4ce81153c5bbc74bd4f1215",
+     "encryption_pk": "2bdf74906d1b8d56f6249b5e8059d5ab6dbe09c16d82df9d9560c05fe0a67c28"
+    },
+    {
+     "signing_pk": "45b0b79f84c77f90839b585362dd2fac90d434a03a2568835a6d9b7b7d32ee77",
+     "encryption_pk": "66b46a7edac0db75524949e9b0b79c4727b1f552880a44cd4e3f7f60a748d60b"
+    },
+    {
+     "signing_pk": "eb8119bd4e213d5b0a024c17e112f52928c9d746e6b99dca148aeb552307a721",
+     "encryption_pk": "927f89784ef1be7ec54161bc8f3634d0f9b3c6273984ae8a2c4cbdb5da183645"
+    },
+    {
+     "signing_pk": "f310d5f0bba9f50d0759a4ca79e288c395f097c7ea57be95d3d56871fb032b43",
+     "encryption_pk": "0c6a7b0ed35fb20d6a9a9920f33a4134480802f8fd23ecc882148f3ca46ef15c"
+    },
+    {
+     "signing_pk": "e483b5a6799a527f65af53c472cb8ea170cd47ab32438c37cec4f74754306523",
+     "encryption_pk": "c810d9a206fea5ce68151dcbdc144741f6e6446c087f2077f3f62611e865884f"
+    },
+    {
+     "signing_pk": "26e7a5fcb7494944183a92ad374bfce0e64335a4c786c0a014ecaf4d94a10791",
+     "encryption_pk": "24555919036f6dc7a24e9ba238e03040c78d8da6bdecff53b8c6443df8af3f07"
+    },
+    {
+     "signing_pk": "e389b39efd58e397ee7dd02d87716bf0ab91ef74cafec295d87daa5410772ed2",
+     "encryption_pk": "5c585b7d25f004816c45a6aed05983763f86fff0ce36b19457cac2ad5afc7921"
+    },
+    {
+     "signing_pk": "7ada83d07f5513d7e72ac35c612f98cb0a7f553026b20e2cc945f37600cdd1ed",
+     "encryption_pk": "81e4b2cd2e1084b8e8522cc705641a2e56d22d62200e7a4acdd6c670003a6770"
+    },
+    {
+     "signing_pk": "16e090575e39fa50e3984ee2c3c6412f5dbe454e5adbb862edec760126d45221",
+     "encryption_pk": "0ed437f2d635f1f8fe767f1453eb051e78726b4aa7474280b9246727d435dc1a"
+    },
+    {
+     "signing_pk": "99814cb794d9b2efa5767f2d6b9a13595ca6930ea9f1de0ffaa9ab848d398d36",
+     "encryption_pk": "d48b5255ad9bcb8046638a0fba0a84daba88c7dad56be6ec08db2e330fb6752e"
+    },
+    {
+     "signing_pk": "b659b3c07dc4d9cf884cff54ea22f52524a72ba1a0ab00804e41a6e3386da3c7",
+     "encryption_pk": "289081797d5ae467bc8dcc283d5619b5c0e99ca52890d26091de461ca7ba0118"
+    },
+    {
+     "signing_pk": "5d9ad3cce8dab8e34e25f63d92e86aba8a0dff8091ad824156165ddd33cb159a",
+     "encryption_pk": "044a9067dd4f23073e6248ce48b35cf26131f43ba42d6ca77793899643e4f769"
+    },
+    {
+     "signing_pk": "b968fe89d328bdfd71114eb1c70c35f015ebf64959a51983cd6b260acb025586",
+     "encryption_pk": "33634d308623714827bafafb5756acf7e124659f234b21f2284137229a0f4221"
+    },
+    {
+     "signing_pk": "1c9f7e7a943c81d3d70bf1c8055e9ebdd7359c56c1a9948b1eda99aa154b333d",
+     "encryption_pk": "31a9215de6ba7c9b1a5c1017300c1d6dcae0ffd12b5483206fe585d3ab1bf05c"
+    },
+    {
+     "signing_pk": "dbbb68aff1db611713ccd495b91ea6e3e6f69efe06dbb83a8f2fec41494fa969",
+     "encryption_pk": "8da67a45229be317b7563e59cee2b0e048a54f5fa60aeb36820bf02a56e6b657"
+    },
+    {
+     "signing_pk": "a7303540ede459e235c0d067995629271ce40be713843cdd1ac95c166e2962b5",
+     "encryption_pk": "52aa4a7e68fe1bb76d5d08701ed733b78c4fece7a791b6a67af05b268b492c20"
+    },
+    {
+     "signing_pk": "c27ce06d99f5f8dce39a2639a8e02398875e6fbef71184d8d3e742347b1341d3",
+     "encryption_pk": "7602aa1951a9bdeadb6f273409498685c661e1c523dcf2ace5d7ad9fb84cfc21"
+    },
+    {
+     "signing_pk": "a2b1450494c0b030c1b96e0ac8b750d5397d7466edcc28262d6f06817d054694",
+     "encryption_pk": "d09065313fb5499f5e49dcb6d5002b5add394f0b31a17b59ed59a95b97ff4025"
+    },
+    {
+     "signing_pk": "3e5edeb088897f3ca2e8f2e2175e891c36fecf96867a45a682603b20bb5f5c56",
+     "encryption_pk": "f90a6b7ee60d5421a4f0f2aa52569727206647451bae7d730bd83cc7dac76731"
+    },
+    {
+     "signing_pk": "6608fc8d056d0cf1b7a2356f7a85eafa2d927f49f850d4556c632a21136097f5",
+     "encryption_pk": "1e69d629852c49d75f1c372ad6685dc75cfd9a2bdc5cb3da68d18d221a14960c"
+    },
+    {
+     "signing_pk": "2277f791145884ee44dc1977a9a556f9efc4e2b84efba2437f4814bdafb04add",
+     "encryption_pk": "09a933ac8c3063aeb1254cefc0e06210b2971b295be6465f7de123068851716f"
+    },
+    {
+     "signing_pk": "0e3a246dc0d823d1fa91f888685d40cb325ee04f5442278e91dfcfc606486858",
+     "encryption_pk": "95d6940d8973e4defcbef18d395789408fc3881f265e9b5d0dd362a3bb59c126"
+    },
+    {
+     "signing_pk": "5d2503b7963079139ed5fc722c9ef510a5741e71712dcd7bc1a8a8db8dc4b993",
+     "encryption_pk": "83e24d84bea3a0ce3d21d1fb655f1c0202094bfe815af04d59c81adf152cde12"
+    },
+    {
+     "signing_pk": "85790253f693a5891918ae78dc4ed21358abd7d1d4e6dc3aa65a6c73ee74c9e3",
+     "encryption_pk": "cf0212adff716b021ea3e65f7bdac3b87cff07264ad76d2fdb654e5bebe98d1f"
+    },
+    {
+     "signing_pk": "fe1f1994a3f324e6979bc8a4a9b01ff7f789036e4cf93d05e322b41fcd910bf7",
+     "encryption_pk": "bc1258264b6ce326a61299e3da3d2a975f3c07affcdcb649899c4de4a4d54640"
+    },
+    {
+     "signing_pk": "cb8f715f17bceaf7feb1d5b809a8451d1bf5c039af51e5c161e6f0afacbe8503",
+     "encryption_pk": "dce6f76c754f2cdbff5f1e02c65f2709e0c8531014d35053c6b7496df765561c"
+    },
+    {
+     "signing_pk": "788b67ed11994f9eaba6f3ca4fd31e697dd6c10189f5eb0bcfa9fc8623bbea22",
+     "encryption_pk": "b09bc8eace7d4c4055e274481ef16b35a0e22331b76d1bd45c4fe8591638fb31"
+    },
+    {
+     "signing_pk": "28a78181c8b47fc75477789157a291a0e8a8b6e2092afd3cc41d8eb71e9217a8",
+     "encryption_pk": "63900bd40a8e08aa8f55bbbd5a00df693761aeebdc57f6e86e222c4b49516509"
+    },
+    {
+     "signing_pk": "61fb82192c769bc6b842293fe0ff765d45b66ce8c396b6907abffc1ac968db72",
+     "encryption_pk": "a73494a54e07874687b6ff1497534053eac0f2c7192b1285673c2b5255177e1b"
+    },
+    {
+     "signing_pk": "a31a5f4bbe040d5c13db38dc172e335fcc466ce5695b6dd3a0e897940777426f",
+     "encryption_pk": "7ab2478db5c52df8bd9bb0e833f844bf03ad6a873e3efe6a7a5657ea6b006045"
+    },
+    {
+     "signing_pk": "01991e139a49106901e1bd25f7c6e5f12af5dbf7a605b821842b38e5b29a6f91",
+     "encryption_pk": "c24d4d5f7c3016b988efa5e06ca32a1c9e9bbc5a082993f68a55b4443e173254"
+    },
+    {
+     "signing_pk": "52a5be38c2748eab96a318c75fa6830fddd0688f1c27e339923d96f032d4b6dd",
+     "encryption_pk": "3960c478bb33f89ab8c29775a92f43a4fc53c2f6b6ce0d50988c8a7fc37b3967"
+    },
+    {
+     "signing_pk": "29f6b9790c26bdd9e072ee2e3a0c6ac82fb3bbb0d4a754b5d2ae2e745ecec21a",
+     "encryption_pk": "7f6c7cd23ba53f49a148559faa74915187c505a208e9f05fe84cc76e98d01f6f"
+    },
+    {
+     "signing_pk": "1f81dc5bb7c14e5e93a73f88e67a5fb1eb4cd31e7307ea120710407e03a0c7d7",
+     "encryption_pk": "dae03e756b4e695059c3e461948212d59709082cb286580fd1d8c85ec2750b18"
+    },
+    {
+     "signing_pk": "d392cbc7e4e1389f66b6da9c654bcad6e6bde47dbb2a07c4dd692d0d61927d08",
+     "encryption_pk": "45c198010137a50a527c3f32c78f3db096fdb53da49f3d4993746675d0aa4e3a"
+    },
+    {
+     "signing_pk": "71353e8aed54408e8b805cf5e0a4a8f2a3e7c2628f6f533de9a09cd531a8531a",
+     "encryption_pk": "0df651a8373fb7f1ea56561b04926efbdc841abdd14deccb7740529aa9bdcc1f"
+    },
+    {
+     "signing_pk": "27275959379f135dd5cfea9c62cbbb1a2ec5c82d3231999028810b23b73acc29",
+     "encryption_pk": "fe4b9d783bac42641d208b060a5ac7a6df853c7c2f29cf22b1d822eae012c81e"
+    },
+    {
+     "signing_pk": "013983f728919fa78988764cdeaae3484d3f4f5f6e812e59db4aba0cffb6af69",
+     "encryption_pk": "3c3bbc83d1326f84b76700649a1dac6da486091075165a4f49a65f6887eca540"
+    },
+    {
+     "signing_pk": "5017b06154d1ce3d6b632d59fc96bf72c9839b7abab66bea1e6dc9d0e150dff1",
+     "encryption_pk": "72f5631143c170c82e8fcc2af9f415caa2af228bcbe8bba6635cfecb00395204"
+    },
+    {
+     "signing_pk": "74db96af1e7bcadb126d9695ff0b3c7787688d74dc45a4e8b6565f4a49087e8c",
+     "encryption_pk": "f039cf0757e2b3768c486b9b94842356c5bd789444866938ee311cd091b0463d"
+    },
+    {
+     "signing_pk": "77e7b960aa89dc407791c8a604bbd7f64cece33edd2f51978b01f23e06c3d973",
+     "encryption_pk": "d3c711121484123e873f1fb058701e6104567654e9be1482c5d71db1dbf3e67b"
+    },
+    {
+     "signing_pk": "5702c6cf8e7ab38b87e57dc3f7801b51b2d1a20a51bb892be11d394e21538de7",
+     "encryption_pk": "2ffb351b8ee453d37e9ca7df53ec40f7068364358eea2682ec73df13fb55bd24"
+    },
+    {
+     "signing_pk": "bd9d8661cb8620b18f6baac8db2e7ac60676dff12f96a7838e52f2d578f6ec53",
+     "encryption_pk": "1651644f1042e5441879e18b03836ca9eabc9d24df6ee88dc75f45bf08f01942"
+    },
+    {
+     "signing_pk": "4ed3ebb18c497cfa7f27282bd65528677fbd2eb62c2b81619fb0eeccfac58ba4",
+     "encryption_pk": "cc57fd8c79bc85786a7872dda481bc23c0cf2b813f5968651a2c9bbde2d22f7c"
+    },
+    {
+     "signing_pk": "3391074d90650aebb7f516656cee30881f4097d7e140d7bcf948d7ebeb0663ca",
+     "encryption_pk": "5e1341a838ff4861dcd3729472d5fc05784c90291730001e418cf29fae900365"
+    },
+    {
+     "signing_pk": "78fe0698d53f7d4f7a5a73d3babeeb28ba6a474d5cfc6d80cae21039a95517a4",
+     "encryption_pk": "d6a5e470d253b96e43b62817ea2cd38d065666905877da47f7ea2887b4b5152a"
+    },
+    {
+     "signing_pk": "7f0f2f14d734119873354b8a127591b3b16f4175382d0dcb31fcd4bf8fb273d9",
+     "encryption_pk": "21c8435c5feef63a219e1a725892fb40f70e1b6c62e8a00afa34d0654fdf756d"
+    },
+    {
+     "signing_pk": "2cefcd06cdaefc92c031c6bf1995478dcf7d274a91ea5eba8165d30c483e51f3",
+     "encryption_pk": "1986387c20fdd376c4e63150b67c9aa3542b4d6cc3a744047796b4f845829016"
+    },
+    {
+     "signing_pk": "48bd2de534005554483f7d4c97ad020e42f111258b3cc5c581c951ba4beedc2c",
+     "encryption_pk": "b9c65d35a5ece3998fc1c7159b7b8c9aa3ce314d2b3e1e397378c8e8f1fb1f12"
+    }
+   ]
+  },
+  {
+   "name": "65 archives",
+   "archived_keys": [
+    {
+     "signing_pk": "731924970031b4c011a03dd5bb45fd1076cb41ad8ca37614b36fe17f9878ad2d",
+     "encryption_pk": "d88cf660e98d048e4b10bb05508e62c6f898ecd42fbd83c2666726b6e85bd871",
+     "key_fingerprint": "256c0a6894589415d78989154f8fc15b0f2360a4bef0d88b182e010bbce1297f",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "4651f33ab903ff59cc2e5889026872d06b9091cd15d4e9f2e1ef733c4470524892366ce0cb426be83116c4d961d0d876f33320d87bc8e7a74e97588bab3b420e",
+     "authorization_signature": "e2b658d58e5784bb0d65b8b23ab4c717c5edf963f10cefa4c7516368197a765097ee6b5be6c96e60a0740d13d5e8f3351371fff895dbac54555444958f732702",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "ed8c6f607b1dd483e1337c5f584a6a804f1b624081391ecb6888e5d02683772f",
+     "encryption_pk": "0f18d0748a4f09ad497fa354c26ac5ea1208d857946ed194390e7bede46fa708",
+     "key_fingerprint": "6510739864202c121c0bdd9245193abb1b1adb42527d46488219e08ea2ac7df4",
+     "successor_signing_pk": "731924970031b4c011a03dd5bb45fd1076cb41ad8ca37614b36fe17f9878ad2d",
+     "rotation_signature": "14376ad0cce8f6cd8844aaff871dbc6e522932c6788cf5f41e1e6233a331f56d0e4933388e1e1065bab7949135eeea0bbfe7ce6f99b612e21ea8dde598d1c40c",
+     "authorization_signature": "3bee3e9602f034f2d1f5b79aaa73fc08e0c3ffe1ec2353b6a2aee323f210997c57c5d527f91f91ff80992154811024c5967fe07312e5baa7e31bdadf4a902308",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "0d89cd94fb3badad81f4de3a67fd659b0bc5c1a30867b40a4389b81869280c8b",
+     "encryption_pk": "be6faf9c7416e6fa729995f5b0a28747d4ad8312579aab2c4aeff8be2f6a460d",
+     "key_fingerprint": "0a5d239756020161b1496894575c338da1191e679b5c8ae79f5502a749c053a9",
+     "successor_signing_pk": "ed8c6f607b1dd483e1337c5f584a6a804f1b624081391ecb6888e5d02683772f",
+     "rotation_signature": "3bd0d34724aa689d2da639e085b0626840d019aadd4fa433e2e12c5ad3456b2019ac01cf3a8e346d287425e0bfd61e1a8a36a745460d21146bf39a14dd8a600b",
+     "authorization_signature": "c3f0276cb101c44388f6fb4ed41b9fa3172b69da79a8c25bd4c69057273f004d1905501eea4c30c4d341405b88600b96af2aa6f592d7a9b353e6310762d53801",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "f03b4d82d70ce46b988ceff1d4394617e79ff3bdbcbfc31cbfeb3444d9c07d52",
+     "encryption_pk": "bd6ec08bfd2f178065f4e3b72dec8b4a0d3e78b7da5c27bebf8e71daef779b5b",
+     "key_fingerprint": "6484afd2a222a990d885028928eb710faa1afe5e4e621984e0c5ea2a3eb27046",
+     "successor_signing_pk": "0d89cd94fb3badad81f4de3a67fd659b0bc5c1a30867b40a4389b81869280c8b",
+     "rotation_signature": "155ae5d2a14197833633b93be20d97c1e2573d3299335dddb2991f13e759bf9ba3dba6201c2c6cf3416e6e1b02caebcbdb3415e6205d3b78b6e9e85babeed100",
+     "authorization_signature": "650381df5fc2bc560cf9e2c999cb80c41dc4f13bde0369946fa9e4b76a5023bfecdb5a90157194ebc47308372ec68f847091fd90f7f6b1489b5dcfcc59bcb708",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "bf48547932ee10197d9ced5df9ea7334cfbe4fa19aa6fe63ce81c8e10299d090",
+     "encryption_pk": "550c7fbaa288073ea68374f008fec717bdb7a622ab33da59ed9951c13f2d092a",
+     "key_fingerprint": "3fcbd3f547b8244c61cffa32ac4bb5bc1d8771f125e25057bf4fab7e6af43e50",
+     "successor_signing_pk": "f03b4d82d70ce46b988ceff1d4394617e79ff3bdbcbfc31cbfeb3444d9c07d52",
+     "rotation_signature": "de5c75626fab37056f75c9e6a20e240a1e1bebdb647c4c68afd7c1b8becf6df52d2e8895fa0b448e48a4f96e38778f5e2e61247c6a5a3b0927ac1100c6630801",
+     "authorization_signature": "7856e64bd9f00310c9a4462bf67c4a3aceeb6151aceafbdeb7f9e5b440ec65a636330833278e5846df1d612076b2ae5442b73f9652f23c09bc1e58c49524720b",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "1fe2d53abb9492de13f4799ff5b5c33ce63e510321cbe412daf9dfc7fed87965",
+     "encryption_pk": "ee699d086517f34cc8c31ec0d3b397bb0635c3247674f6c8c20e58aab8de1e2c",
+     "key_fingerprint": "04e355328fed0c94883d4067b7a75fd4d57c8e29b5f16f3e9735387a9511103f",
+     "successor_signing_pk": "bf48547932ee10197d9ced5df9ea7334cfbe4fa19aa6fe63ce81c8e10299d090",
+     "rotation_signature": "1a04cbe386bc86c4fb8094771fc8e57a6e3dbcad0d0dbe4ecf12a9dd01bc2c63bfc2f5f69a28f85b65d1c6e78eb513964d2985f4268e6194d0bbc3b579718402",
+     "authorization_signature": "b0d95949c263cff1816e0f2a8d8710a32f44fbfa867219b6948749a313f8b4557f8b2924ed8006f2631dcc905cacd6021a298cfac1b2f080606021e18a12310f",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "3cee4f601e411fde163544a2178a6bb3464669ea53d4bd8fcde0743584adac92",
+     "encryption_pk": "c57092aa17a5e3599bc34edf085a78b76989819eb5a85d83a855a398d3f2893c",
+     "key_fingerprint": "0d561563b5b7850612aebef762566761e8520fe7bf340330feca817dd2e22d56",
+     "successor_signing_pk": "1fe2d53abb9492de13f4799ff5b5c33ce63e510321cbe412daf9dfc7fed87965",
+     "rotation_signature": "8b403ce038a6397bc6d1874f97ad306ac6bcec7c1c8b377ed91c6b8cd9f457e9a981e46ad7758717bbebaaa68ba44b9d4a70563a8d84350016c33723f7595108",
+     "authorization_signature": "27d22fd745af6b7e5a8cea1f2bf841b48161f433f56c38e16300f41e53c97f9ce541f1de514dfc43f18f3b07cbbc2502e15c0278f68b2359243076b2d8d8940d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "05a72c3636ddb41ba1341b67e5c17c304a2ab7128c250c68f19b0acf6d102c38",
+     "encryption_pk": "563cce92a180d1961af9b3f3d577351d5197044f0697b37ced03bc587591d547",
+     "key_fingerprint": "a0040a10e6e4bf3d4c0302f22e7b0d50ec1e7808b2e60fa374f7b62c4fbf7a9c",
+     "successor_signing_pk": "3cee4f601e411fde163544a2178a6bb3464669ea53d4bd8fcde0743584adac92",
+     "rotation_signature": "2f4bf25d2a569781944b08745da375e24d91f6d4e8113efbe16363455f93b953682b3788c84213fe113016ac7af9cef0974ecaa24e8a2e09b6c10db79c7b8f07",
+     "authorization_signature": "d197892da5a6b53f5d98aeab6b9b95ad8ed2526ff307f94ee4ca5cb70d733e59b07eab114883e12f7328890b448d1a0b8495ea658cc9946c0f2fd3f9fab93905",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "29164bc884403737a4cf4626b736ff33f146e70f0628aeec6c4776c4c7040d81",
+     "encryption_pk": "2833db259a484957af2d33e4111a2012694646637683361928fa5a11591a863b",
+     "key_fingerprint": "9358733c8a76c7c9ab47f4baabddfcdb962f3bf944d9c23d9272c69e45ada192",
+     "successor_signing_pk": "05a72c3636ddb41ba1341b67e5c17c304a2ab7128c250c68f19b0acf6d102c38",
+     "rotation_signature": "3496e8af7c57cb1394de92190196e9884d74e94698be3df88a2c1bee70c84984578c379e129e099f996f6915cc3152a62a39fad316f16654c1fa73fcc147cb06",
+     "authorization_signature": "e224af007413690028ba0eafa95c7a693c979b4501906a8c9110d7c3176d340c5196d54ee8f7fdad540eb118de93b90a56e8f162dc6d0e117d925ff559e59403",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "4c9ae0442e69e5b907ce892b5b39f9a89ca728020193de58768d97b2c8306f00",
+     "encryption_pk": "2b67c9f639a7d916bb6e06a4a76c3946725ed3d3b7cc2ff12b57e5951b32c671",
+     "key_fingerprint": "4f4bea18f436212614a82380383bdbf5f99ee33165afe41753473e5af688f494",
+     "successor_signing_pk": "29164bc884403737a4cf4626b736ff33f146e70f0628aeec6c4776c4c7040d81",
+     "rotation_signature": "0b10644ab2b180281651604c4041b309bf777901f4cb312377e8e4353077c0569b3e05277b1584af7af39398d61668e89ea40138b9bbc793cfb9446b6186d201",
+     "authorization_signature": "939eb30a5698ca270038d84cb5423b4dc7d621e85a281a67101d5917e10917c5a10b897b69273b6ebe023f59acff922074bcc5c5fe7030975cb370daf8ed6d0b",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "03bea8a8c86677fcf669d4eac332df8ea3169f4774b90764e94bf393b921cc66",
+     "encryption_pk": "d41bd8368aab541b7b851435fec379700af32b2f535e18447d96138812d4e166",
+     "key_fingerprint": "bf8b8bfb361570a7b8cee61c718e6fd424452ae204a57b0486e4be8218863471",
+     "successor_signing_pk": "4c9ae0442e69e5b907ce892b5b39f9a89ca728020193de58768d97b2c8306f00",
+     "rotation_signature": "b506dae1094cc4546ea9bc9c4acb60a5f62bd18383ffd4036dccf8605fa915ced6595ce7b615373d661e024644ec07f67d98c76ff539847778476590cf164a0e",
+     "authorization_signature": "347888ff378ad1e88fa64ba5d61ad8dd798886b4783f81f75fbfa1cea60bc089802e3525257e26fa3292bf0fbc441e4069c65477dea22d2ba7f92e082f32420c",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "e99a75d6cb7ca51753f80550d49c1a7093304d05dd9ba0bc45cdd2b739c348a3",
+     "encryption_pk": "add3e34b2dd176fde4d29d95462d9800518174b9ac911826302780fc53a44e7c",
+     "key_fingerprint": "43b6e3ad1d61aa7ff676ab40fe2504291f6fe7caef47ebabe079b850137bc74e",
+     "successor_signing_pk": "03bea8a8c86677fcf669d4eac332df8ea3169f4774b90764e94bf393b921cc66",
+     "rotation_signature": "e9e4f032cae90acf652685585ff3fd413cfe9e8dc9474c8409e300d88810e6118dbd22700afb81bd31baee193d378727fd7450d177ff213f4c37fa366a282a0a",
+     "authorization_signature": "05c0095fceb57f3b49f9da44453ee925cdb621fc245a058de5b783f377cf3276dd500d068950e441090e3b4d438fcab4b42c01daa78dd35a83b11cc516d3940d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "308fa62f0224c97a7a4e7b9be61c5e0b376676e2d13b10f8d78f0cb1fc6ce8b4",
+     "encryption_pk": "c566d3ab66e95cc750df2d214b35c7c2aaf4a33788da63f564fbf68eb034e552",
+     "key_fingerprint": "d67a300e79e185e3c539e64fc74220ba1eefd5727f2dc19c38250107a0ad73a0",
+     "successor_signing_pk": "e99a75d6cb7ca51753f80550d49c1a7093304d05dd9ba0bc45cdd2b739c348a3",
+     "rotation_signature": "1ff4bdd6375ae54da27aec01cd53aa13656bd37507c9fdfac5a07c5f5f137270799e070391dee967628c080f2bda1a46ad09f9ec68b34ee6141ce4aa781c2702",
+     "authorization_signature": "a8d9469ce752f5954d7d0729d47bb8380ff5d11fac9d511b9ddd9d379e67e73ee6f7b3a055c34532babbfa877fc432f539713ebec8a477e66929e8ecb771ed0c",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "d1f921888b42808e46280e8e1d54790d1f0624a698a816bf2b5a2660cbac29c3",
+     "encryption_pk": "e9de757ef7b56504ed3c29ed3901d0055b7386e0366a47b11b3c99358236ea4d",
+     "key_fingerprint": "79f7078c25a1790743be27dc19133afa3643993d278b06d67ec01ac7e1fc1540",
+     "successor_signing_pk": "308fa62f0224c97a7a4e7b9be61c5e0b376676e2d13b10f8d78f0cb1fc6ce8b4",
+     "rotation_signature": "cf217463e4b74aa293621d8467920c747cf9ee04808b64a0a8a103bf14892ec87e77c88684e6ee45caa03ceff45d2f40209988963338c38f2edb57da2ec9d600",
+     "authorization_signature": "0a8bbc291f95a941899a59e3313c5cb45746474e7a0dfdd11bd19e62231301d0d408b85001d28a9a1a3ac3a687e20a0e00476f2a20caaeffe28c8296b245c900",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "ad97a03c12abbd5a936c6ebdc0360eab313d8a36dee546f0e95dda1c6be28f3c",
+     "encryption_pk": "8d4ed17fa40512895c91c6f293d4ad47a1db6bd4fa57bb7d4abec76d7129ce16",
+     "key_fingerprint": "d441a5237188f142f344e2277fdbd14b4b5136a658791fc7174d1639d7880534",
+     "successor_signing_pk": "d1f921888b42808e46280e8e1d54790d1f0624a698a816bf2b5a2660cbac29c3",
+     "rotation_signature": "00c63e2d9dcf839262395e62eb821007a42d14a70648f46f1053820af19cd25f0475d03713f0a121dbabcf8fab599f5a5da85b8ead1f71553991e9518e8e380d",
+     "authorization_signature": "b68163b81a53ba470c87ef8444021222334533acc1575d3a151ec170fe7dd2e6bac3930f3f7603b48cc5ab264755d14d4d14fa2b2e15ef2a7f1979f671fb310f",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "11df3808c651522921e9082c730ad997ce383e55b4ce81153c5bbc74bd4f1215",
+     "encryption_pk": "2bdf74906d1b8d56f6249b5e8059d5ab6dbe09c16d82df9d9560c05fe0a67c28",
+     "key_fingerprint": "3e1473cdf8e4392b9069eef7f3d41e275e592e403c692815a5eaf1344da08f1f",
+     "successor_signing_pk": "ad97a03c12abbd5a936c6ebdc0360eab313d8a36dee546f0e95dda1c6be28f3c",
+     "rotation_signature": "b8a4edf33596514a3af1ce439adb5fc41b32911461fc715d807a367292a9463615254c1121b2aed037da751fdeb87ac545c416208545568d13bb2c6063b43300",
+     "authorization_signature": "e96bac3f2ef962490c561950d865adb7032a32a16a7d7247d876918c111fe53f23dfe207582d312e32a0b8a82eb2d435d6e8590c321289e4baf718a699775e0d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "45b0b79f84c77f90839b585362dd2fac90d434a03a2568835a6d9b7b7d32ee77",
+     "encryption_pk": "66b46a7edac0db75524949e9b0b79c4727b1f552880a44cd4e3f7f60a748d60b",
+     "key_fingerprint": "dfbc591033671de32f6a003629f04c74a22f3670cb1939be16764e8c9da02ee5",
+     "successor_signing_pk": "11df3808c651522921e9082c730ad997ce383e55b4ce81153c5bbc74bd4f1215",
+     "rotation_signature": "211dfc401f50e72f20c5a829c4e53fb010bb3b84a22db385b78926afd0ccd694ef39a9db8a0775faff7f8f946e4dc6667e2601a2f74f7d239b2e1c35f7f53602",
+     "authorization_signature": "37cdaa999ec06d0b2105f42bb31441c868ce99cab9a6a5931c7bd7d62b9c2ff76349a4084eed5bead5aef49b12907b34b0a3f3d913f254e1033c1870eabc0a01",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "eb8119bd4e213d5b0a024c17e112f52928c9d746e6b99dca148aeb552307a721",
+     "encryption_pk": "927f89784ef1be7ec54161bc8f3634d0f9b3c6273984ae8a2c4cbdb5da183645",
+     "key_fingerprint": "f37526ae99b2fed232fb7f14fee4631c97084dafd316103d32ec159bb9132575",
+     "successor_signing_pk": "45b0b79f84c77f90839b585362dd2fac90d434a03a2568835a6d9b7b7d32ee77",
+     "rotation_signature": "b8438ccd82530fffead9d051ae60e1f126e8d9fec87678f8a0045673a20c9edd672d505ded1b47e42b7ac3cf44b6157420b23258aefbf4ac6c50a0d1d2637400",
+     "authorization_signature": "f3c235324efbf34fcad68adf891848a46f7027c9d58831b1ee32ec1aa831288ef0629e6d8de9f92e3529dcd473bd4f010f0b173045cf707311d162418b786d06",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "f310d5f0bba9f50d0759a4ca79e288c395f097c7ea57be95d3d56871fb032b43",
+     "encryption_pk": "0c6a7b0ed35fb20d6a9a9920f33a4134480802f8fd23ecc882148f3ca46ef15c",
+     "key_fingerprint": "90c2231c1e14904ed3b98763f59759f4f480bf2ab6a4d73df1d9462148a54c95",
+     "successor_signing_pk": "eb8119bd4e213d5b0a024c17e112f52928c9d746e6b99dca148aeb552307a721",
+     "rotation_signature": "8fae582d62fbd5243b29342adb4c6774624245a9b7ad46e08c62d5aa70eea2e3c70ec0fbdda0a269a2bfdcfcc80b4d5ee206b5ddee686070b85acb4c16ce990d",
+     "authorization_signature": "353d8d96418262f37cdfdb66a640500b4325d4a4df2100e5f2404f79336cb3d47b15a1e04daca0563740547108b8bb721e44462ffeb44f779851b3cfb0d43b00",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "e483b5a6799a527f65af53c472cb8ea170cd47ab32438c37cec4f74754306523",
+     "encryption_pk": "c810d9a206fea5ce68151dcbdc144741f6e6446c087f2077f3f62611e865884f",
+     "key_fingerprint": "61ce5c5f8d6be3579bca5d04ae1585adf130353be89f4645b0c18620f368a34f",
+     "successor_signing_pk": "f310d5f0bba9f50d0759a4ca79e288c395f097c7ea57be95d3d56871fb032b43",
+     "rotation_signature": "3a2302513bdcef0a43153b712053e9701c848eed272c3a1f61c95fa270086c1f16fa45b90c9849690ac64d27f506aa5e89445ceced034614babe0cc89d711c0b",
+     "authorization_signature": "b3d99ab4780ce7a2dbc972ba9053378507542eff480a7b62d415944ac347a9f4a4e5f27e9091aea1addf25adafef9c874471a3c84db1e2cef305ca6af45db300",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "26e7a5fcb7494944183a92ad374bfce0e64335a4c786c0a014ecaf4d94a10791",
+     "encryption_pk": "24555919036f6dc7a24e9ba238e03040c78d8da6bdecff53b8c6443df8af3f07",
+     "key_fingerprint": "b8bdf1670d4095f354dd76b0dec36bdef1a5a92de824dc7db265e2909a6a4b64",
+     "successor_signing_pk": "e483b5a6799a527f65af53c472cb8ea170cd47ab32438c37cec4f74754306523",
+     "rotation_signature": "8382424e13819f7d6b5e89aa6bf4366eaa661e4165eb95a418b3f8f4d261c98877dcd0ec99bccf8c4e175196cb7f0bd807c8877da124c570c47e2c74770ce904",
+     "authorization_signature": "5e8b462d7ed6f2c2ccce3c3002d0181d472b122fa0218e05801cd8ae4a64f6482f24636e750cd1d163e883298c2b7cb03b5c31f6f11576a40721784eac72860e",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "e389b39efd58e397ee7dd02d87716bf0ab91ef74cafec295d87daa5410772ed2",
+     "encryption_pk": "5c585b7d25f004816c45a6aed05983763f86fff0ce36b19457cac2ad5afc7921",
+     "key_fingerprint": "6ab300172a85a631d90d3cb306c78e9141d98c0f6f1fc7f42593568cb93e80a4",
+     "successor_signing_pk": "26e7a5fcb7494944183a92ad374bfce0e64335a4c786c0a014ecaf4d94a10791",
+     "rotation_signature": "cdca209ba31adb53d42163e872939bb94d36676960a09301d2163ff92c08af39e35a2afc10337100af9c52fc986498957c650d2cb4eb4745cb8eec20b1ea7b04",
+     "authorization_signature": "e6ae6bf983393d36ecb927061562821e07a2b9b6608155ae416c804518502ea5bb135aa72bbd99c43628ff6de25626fe3067f6362605972dfcca0dfcb5dfe304",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "7ada83d07f5513d7e72ac35c612f98cb0a7f553026b20e2cc945f37600cdd1ed",
+     "encryption_pk": "81e4b2cd2e1084b8e8522cc705641a2e56d22d62200e7a4acdd6c670003a6770",
+     "key_fingerprint": "2adddd6a0d2939d78dd9b85c12d52e1f138a5da470c8db0b0c33d17e70c92350",
+     "successor_signing_pk": "e389b39efd58e397ee7dd02d87716bf0ab91ef74cafec295d87daa5410772ed2",
+     "rotation_signature": "0a14870f30a6b087596d5d78bb10c11c102988cfaaca6626b315028c8f26ecec3a3a67b44a4920e3dc237a8258d7109615ac95615351cff75a6cd97e62c46b0c",
+     "authorization_signature": "e8652cd9d5555f59fbcae31d9f6e7719ef3664ece2cc02607fe44f15716c621381db8a8d25012d4d92d5859adee8545def4c3192035bac8f99b2f2814b899902",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "16e090575e39fa50e3984ee2c3c6412f5dbe454e5adbb862edec760126d45221",
+     "encryption_pk": "0ed437f2d635f1f8fe767f1453eb051e78726b4aa7474280b9246727d435dc1a",
+     "key_fingerprint": "91879f3595194e51a665d0f4e742d060363f8b37e23eaa4a01f722120a7a067e",
+     "successor_signing_pk": "7ada83d07f5513d7e72ac35c612f98cb0a7f553026b20e2cc945f37600cdd1ed",
+     "rotation_signature": "c58a7bd269880c090a33b2a24d11dea7df84adfce814c53608c0f1035be47a3d1ac21778d4c589fed76adaa3481b452c701535c89c52ad83b28e61bd74ee8d0a",
+     "authorization_signature": "088e5a9f322bdf56eab5848cfca7564c5ced0a9b90f65fe1305910aadd5f9458489dde3255aa28a9af4edfff059ba7a4c185402041b31380ea1e6cc125b6e302",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "99814cb794d9b2efa5767f2d6b9a13595ca6930ea9f1de0ffaa9ab848d398d36",
+     "encryption_pk": "d48b5255ad9bcb8046638a0fba0a84daba88c7dad56be6ec08db2e330fb6752e",
+     "key_fingerprint": "a479e1363857d9e702cbb88bd86f0c634b30e8f2c558e05abf3bf18cecb4fa86",
+     "successor_signing_pk": "16e090575e39fa50e3984ee2c3c6412f5dbe454e5adbb862edec760126d45221",
+     "rotation_signature": "d6b7624dd90636038df764485c31232d8f004c69d2f717f85cce46ff7a30eddaca0b95ddd88ceaf03f016eb7901942a64b158268a5cee752d9bc8dcb1dad3109",
+     "authorization_signature": "b50b32f629ce2a53ac38c31479d64bcd9e3449c685d84ff16c86456878eadce2f63e0340d47645c35f5bb9562380ce1f3561b5e1412b143d27d287d94e232809",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "b659b3c07dc4d9cf884cff54ea22f52524a72ba1a0ab00804e41a6e3386da3c7",
+     "encryption_pk": "289081797d5ae467bc8dcc283d5619b5c0e99ca52890d26091de461ca7ba0118",
+     "key_fingerprint": "0d343bccee13ff6af8d09555d9577e6e6f1d4dd1ebba6d6695ba68adf6e4d34b",
+     "successor_signing_pk": "99814cb794d9b2efa5767f2d6b9a13595ca6930ea9f1de0ffaa9ab848d398d36",
+     "rotation_signature": "cb01d49303f2d999ab1318fddcfbe7f0d60e210a1c07772a1b46395f9350603690bde78ad205aa819e333316c44299ae9261291f82dc903c04d0ef03bfffc002",
+     "authorization_signature": "39fb62dbf0ae7b93e1c043e18b07a20c074d41c2c92011c45a4b9e8a424d6919194b8ba2d7ddd3b7e4fb2ea742a96a2eef337917417eec2f42d9f4df39897508",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "5d9ad3cce8dab8e34e25f63d92e86aba8a0dff8091ad824156165ddd33cb159a",
+     "encryption_pk": "044a9067dd4f23073e6248ce48b35cf26131f43ba42d6ca77793899643e4f769",
+     "key_fingerprint": "ce5b9d76c1e5fa24d511cc32dc45bda6e43f4f140313fcec34416550e2b922c6",
+     "successor_signing_pk": "b659b3c07dc4d9cf884cff54ea22f52524a72ba1a0ab00804e41a6e3386da3c7",
+     "rotation_signature": "b58cad8ef8ef1d110d3ba54d65c6f0d0abb2c58b407ded105c1e12941230dd7f765325438b64a34f50fdd4d3f14e940e001b0bafce43951ec102658770ec2304",
+     "authorization_signature": "7711474b7c4c3e6d71bfcd637194470823a20057f0d2de7fedc7396df4b1eb623bf164d5ded1214593fc477d4ef022e8dd4429417f459830ed648ed91df44705",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "b968fe89d328bdfd71114eb1c70c35f015ebf64959a51983cd6b260acb025586",
+     "encryption_pk": "33634d308623714827bafafb5756acf7e124659f234b21f2284137229a0f4221",
+     "key_fingerprint": "42d519f3cd31885a29fd0b0fbc1cfa7ab2714544167216e5a73cecb358b09e07",
+     "successor_signing_pk": "5d9ad3cce8dab8e34e25f63d92e86aba8a0dff8091ad824156165ddd33cb159a",
+     "rotation_signature": "402cfc9083271fcbe2c3757c2a88518c8ec6a88c338d952cb719c4e1258ea03c4ee18b434292fe21e5527674d4d79c94fc069d83de98cbe8f7e22f02558b8c0d",
+     "authorization_signature": "53f1756945098889256f439c9f17cb3f66ff68d0953b17ab72eb10b17215175532b317ec779ea7e76f3ee90c388f4470b3efba273d03241b9b80f5a6068c620e",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "1c9f7e7a943c81d3d70bf1c8055e9ebdd7359c56c1a9948b1eda99aa154b333d",
+     "encryption_pk": "31a9215de6ba7c9b1a5c1017300c1d6dcae0ffd12b5483206fe585d3ab1bf05c",
+     "key_fingerprint": "086f9f0cbd293e632bd2b89c9bf622c80696e4d27812ff98233221ab741e800b",
+     "successor_signing_pk": "b968fe89d328bdfd71114eb1c70c35f015ebf64959a51983cd6b260acb025586",
+     "rotation_signature": "520ccff263c56350e5dfe2d4dfa15ede157afc6b9e37af74d82ddcd6fae325352b6f9fa84a4e07d0486401e31c038f1a3258adf8783f2a37e755640742adc105",
+     "authorization_signature": "ebb4afbecb6055126b319c041c81bd0ab2d3f64b4fc8895000d5ddd5c476d5dcd9fafcbef12709dc6042b1cd0de8ccc0573a618eb590767701ae216f18e8020d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "dbbb68aff1db611713ccd495b91ea6e3e6f69efe06dbb83a8f2fec41494fa969",
+     "encryption_pk": "8da67a45229be317b7563e59cee2b0e048a54f5fa60aeb36820bf02a56e6b657",
+     "key_fingerprint": "38dd17d39f500514a1ec3d122abbb045eeabd689e88204b2399d486ab1198476",
+     "successor_signing_pk": "1c9f7e7a943c81d3d70bf1c8055e9ebdd7359c56c1a9948b1eda99aa154b333d",
+     "rotation_signature": "c60b80f9e4a92972237f86599510e90d64bd3ff81e2242732851901332e128d0fb717305c9c24391efa3c59c9ee9e34877c647d72c64a7acaaf7806af659dd0b",
+     "authorization_signature": "5de44e9acb81e318c446265454a420472449d829e3caa4d14d19b0bc914e5b052fbacdad10f9406caaba0f90a351c5b0137b0fe036dbf55abd8e85f330261603",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "a7303540ede459e235c0d067995629271ce40be713843cdd1ac95c166e2962b5",
+     "encryption_pk": "52aa4a7e68fe1bb76d5d08701ed733b78c4fece7a791b6a67af05b268b492c20",
+     "key_fingerprint": "7a2f4c09e14e30e2726c74aabb2c9016f42598263679b56a54a7929127a8dc03",
+     "successor_signing_pk": "dbbb68aff1db611713ccd495b91ea6e3e6f69efe06dbb83a8f2fec41494fa969",
+     "rotation_signature": "286fcb6120e66f22bb4de7b9d113c93a3ae000f7a724c54b0d1530bd9935004fb2101991ff4c1970f2d762e32db742566c9e70ff6cb3bfd39e207b0396c13e0f",
+     "authorization_signature": "b2c947f424e8a430682c37c930772d3111751a3735856d4b51f0e196c777666eb72f06a229206df451d12a11f7ea87c886e50b02499b0819d1d682df82452a0d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "c27ce06d99f5f8dce39a2639a8e02398875e6fbef71184d8d3e742347b1341d3",
+     "encryption_pk": "7602aa1951a9bdeadb6f273409498685c661e1c523dcf2ace5d7ad9fb84cfc21",
+     "key_fingerprint": "47163dcb3e576e0097c3c1c5a21ca26b5e16aa6a23b6c966b0c4fdce32921813",
+     "successor_signing_pk": "a7303540ede459e235c0d067995629271ce40be713843cdd1ac95c166e2962b5",
+     "rotation_signature": "c0bd6ab9bd3520fc48167a0ff39d5902ecde190b73eb86d69448e30c6b25e8ad88998073de894c7e5a0b5b4377dfc9e83405086a5b7bad03a2ef6a5d8c718404",
+     "authorization_signature": "8d7dfa915f8cbe320b5bd7ccf3c5bb9b91358b215986f4242baf3601b72a7d4cafa79d47faca8d66c407f0f3a819c323fa9b8a5c052126b3f9f67b3cfb1b3201",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "a2b1450494c0b030c1b96e0ac8b750d5397d7466edcc28262d6f06817d054694",
+     "encryption_pk": "d09065313fb5499f5e49dcb6d5002b5add394f0b31a17b59ed59a95b97ff4025",
+     "key_fingerprint": "927fe9c2711a5464853c0688f63058cca228388d34372046d97eeeba7140f95d",
+     "successor_signing_pk": "c27ce06d99f5f8dce39a2639a8e02398875e6fbef71184d8d3e742347b1341d3",
+     "rotation_signature": "aebdad7eb6da1787ed974016e5f712302ecddcf8cbc8ee8a447a5d28c834f3a0f41d134f92d3fc20786105c5726a5fd7ae29edae1d551beb1ee8bcb594e0dc04",
+     "authorization_signature": "8f627f33c81d134fcf1f6a0f7ec1f17b10eecbc91b8ad02960297be2d48fa23c69920191890d7615ecdec9037df86842027a6fae11d808b0d42d8057f2445007",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "3e5edeb088897f3ca2e8f2e2175e891c36fecf96867a45a682603b20bb5f5c56",
+     "encryption_pk": "f90a6b7ee60d5421a4f0f2aa52569727206647451bae7d730bd83cc7dac76731",
+     "key_fingerprint": "fcf0d03bafb883c32ac4260c21d08be0785f222851f3ae7d9c85315fe4fb9eeb",
+     "successor_signing_pk": "a2b1450494c0b030c1b96e0ac8b750d5397d7466edcc28262d6f06817d054694",
+     "rotation_signature": "fbd0e0de44939a62dbee5cdc7b40c878685076702b86d7a7e0be9e57a0bdb6a39543d0c7b11883ffc10862eed9c1e37ae2b3d8da58e887c32f13f233f70adf06",
+     "authorization_signature": "bb18636e0bf5bb0f9b014d05d2b1536f9034d29989f7c7c14fc5e9736150dbea55e7dab58acd8e0b6344cd40711878bb3bee11fbdd640356b1d30140d4e0150a",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "6608fc8d056d0cf1b7a2356f7a85eafa2d927f49f850d4556c632a21136097f5",
+     "encryption_pk": "1e69d629852c49d75f1c372ad6685dc75cfd9a2bdc5cb3da68d18d221a14960c",
+     "key_fingerprint": "e910cd3921c5d33328d84a4fd2c5978e3f0a106bafde1825009065040e285277",
+     "successor_signing_pk": "3e5edeb088897f3ca2e8f2e2175e891c36fecf96867a45a682603b20bb5f5c56",
+     "rotation_signature": "7cbabae6d6e2a15bb510e4ce75c5d1e8de3cf065a24f6ce3c25563c2e99c86f27897172379ab70348bcfb28704cbdf809f46e2eacb27dd7b4a83d21955c7ef0b",
+     "authorization_signature": "5b83550ed1101c02e2f367ba293fbc4edb7dc929245b2659dbad19506c143c026061b84e3169b21daae06339aa3a3dd4b1c498df4504d74b3175546241c8910e",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "2277f791145884ee44dc1977a9a556f9efc4e2b84efba2437f4814bdafb04add",
+     "encryption_pk": "09a933ac8c3063aeb1254cefc0e06210b2971b295be6465f7de123068851716f",
+     "key_fingerprint": "b45b8a57b1e435d4bda108ce4265bbc17474d0839816d4a90bde0c51d3f4aa94",
+     "successor_signing_pk": "6608fc8d056d0cf1b7a2356f7a85eafa2d927f49f850d4556c632a21136097f5",
+     "rotation_signature": "617d16058e091fba6b0df88c9845645a8c739ece7b2f3765ebbf5973e15a06e0c72ddfaccde46c66afab8cf66842b3b97ad76e77903ea06ee86aa48c126cb50e",
+     "authorization_signature": "0642fe9ba3468f6ec9e3fea8795ade114e3b6457863c28bdcaa4f0011ef8e778044678e4cff63ea616ec75cee6122102db01c0a44846defaeb7a2debb447030c",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "0e3a246dc0d823d1fa91f888685d40cb325ee04f5442278e91dfcfc606486858",
+     "encryption_pk": "95d6940d8973e4defcbef18d395789408fc3881f265e9b5d0dd362a3bb59c126",
+     "key_fingerprint": "dd3f6bab3b3998c86cf780761b07c0231dc531d7064785697477127d2cdbc99a",
+     "successor_signing_pk": "2277f791145884ee44dc1977a9a556f9efc4e2b84efba2437f4814bdafb04add",
+     "rotation_signature": "ae0d2d70a37b55cc3a2415cb752d217c8f8843f7ba1c102124c067d1eecf590c18c0fe4ab9551e484184606a96e122813699c89ab1000698e0b64aca0d215406",
+     "authorization_signature": "f467640a3acd048497192ce452a8f84a027c8209f83f8bbbb8bca8441591b0be25741334a79931f739db6aeef5f607cde69d2ae60a7e79eda272af910dd14c01",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "5d2503b7963079139ed5fc722c9ef510a5741e71712dcd7bc1a8a8db8dc4b993",
+     "encryption_pk": "83e24d84bea3a0ce3d21d1fb655f1c0202094bfe815af04d59c81adf152cde12",
+     "key_fingerprint": "1ed871cf5e59764f0074bc7777bab9ac29cb44b96a5a58365b1b5e2e5945c5ef",
+     "successor_signing_pk": "0e3a246dc0d823d1fa91f888685d40cb325ee04f5442278e91dfcfc606486858",
+     "rotation_signature": "1a7d8effa948f2e7ca4d21b6157138c3ba207514956835ffdeedd14c0ff2b4058161d245614fb1abe90fefe7909542595c7222d3c28ab65801d09f0887063300",
+     "authorization_signature": "6fb48ce87f7b9e4072177dbc03604d5f3a8d8f6a30a54007b6e472128948e16b50c1228f5001d9f93fbb2a82efe53ae3c9b13a3c40645509ea1c0141ab021e04",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "85790253f693a5891918ae78dc4ed21358abd7d1d4e6dc3aa65a6c73ee74c9e3",
+     "encryption_pk": "cf0212adff716b021ea3e65f7bdac3b87cff07264ad76d2fdb654e5bebe98d1f",
+     "key_fingerprint": "ffc70f48a74e80439507fa8a4a02e3873b4f94baf73d5b91e61a50bc0eb94755",
+     "successor_signing_pk": "5d2503b7963079139ed5fc722c9ef510a5741e71712dcd7bc1a8a8db8dc4b993",
+     "rotation_signature": "2f2cf6763dfc5116f3b47d5c49c05b982edfbdc6a28ccc28132e49b2b7a32939205abae4d5897cf86afda043fb5b0d8acaf5c83b27170b52647d5f3ba7bdbf0a",
+     "authorization_signature": "a1d0f1a8f0b36aefb989797e73b606796cf0b3e55d41de09747657bfa96409b733957ea17ad089dd8ddaa5de65be2cacfed6b3b9a7557940d08505228e78a205",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "fe1f1994a3f324e6979bc8a4a9b01ff7f789036e4cf93d05e322b41fcd910bf7",
+     "encryption_pk": "bc1258264b6ce326a61299e3da3d2a975f3c07affcdcb649899c4de4a4d54640",
+     "key_fingerprint": "b5d88ad29afcca61da4543f65f8d5bdf235195764edeac4af18bed1ecc532f3d",
+     "successor_signing_pk": "85790253f693a5891918ae78dc4ed21358abd7d1d4e6dc3aa65a6c73ee74c9e3",
+     "rotation_signature": "8f5b0634a57c749796716a5c87c6ab89c90ad3539bf6908494c113ae921546a7e95e21fe36918527b0a09b47b7e787aa3bc84cbcae46a7d57ee203c3c9b7730c",
+     "authorization_signature": "411fd95f206d0c86167670825f6f2d90d91bc1df3ff4d05a9d568ec76593e694dbb0a2a8b018e7e9f751f8ff511990b7e8ace5e0861a22dcdf2c384c55d60909",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "cb8f715f17bceaf7feb1d5b809a8451d1bf5c039af51e5c161e6f0afacbe8503",
+     "encryption_pk": "dce6f76c754f2cdbff5f1e02c65f2709e0c8531014d35053c6b7496df765561c",
+     "key_fingerprint": "dac8810386e96adfd42bd96281518a4c5e92ede8053097d7ee301ad9d9344a03",
+     "successor_signing_pk": "fe1f1994a3f324e6979bc8a4a9b01ff7f789036e4cf93d05e322b41fcd910bf7",
+     "rotation_signature": "dcc6b3bb1b689aeb5cfd8e43b2ec6d1dbcac153004f33210551b7a0cd543a221ea20319affc4538ef9716b7465e897a6b22db99eddf48bba0ffce43d61a41b0b",
+     "authorization_signature": "adaccbf0bc8b2ba908ee900f232194f03bb1d1c7a0632df5e04c6ce6833df13a1525a897e5f9a89123bb425ddb89645f8d9dca3c266f2d23b60fb622db97690b",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "788b67ed11994f9eaba6f3ca4fd31e697dd6c10189f5eb0bcfa9fc8623bbea22",
+     "encryption_pk": "b09bc8eace7d4c4055e274481ef16b35a0e22331b76d1bd45c4fe8591638fb31",
+     "key_fingerprint": "3b46e062c55d0af7e7ee3bf187cea231b31f509afdb32fc7bebe788d5450e97d",
+     "successor_signing_pk": "cb8f715f17bceaf7feb1d5b809a8451d1bf5c039af51e5c161e6f0afacbe8503",
+     "rotation_signature": "14409404fee4b6286fdaf9cc39b1b64849143cf0f6059c5000e6507c588588ea81bf0c240d6417c4ea951fc72075d9dd06011bbdfdf43895b86ed6091417aa07",
+     "authorization_signature": "3ea383af88e90c132ad3b5a2b4e26d8113212fdcbe636098d752e8cd1c82671e8ac31cf6d6d02b21fe1e32db14e535a191166c00e6eb7eb83be653e49f4c8304",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "28a78181c8b47fc75477789157a291a0e8a8b6e2092afd3cc41d8eb71e9217a8",
+     "encryption_pk": "63900bd40a8e08aa8f55bbbd5a00df693761aeebdc57f6e86e222c4b49516509",
+     "key_fingerprint": "8990ff5bf79d51d419eddd153b0522ecf7e9bb9b1c9a3c5517bae5807de939e8",
+     "successor_signing_pk": "788b67ed11994f9eaba6f3ca4fd31e697dd6c10189f5eb0bcfa9fc8623bbea22",
+     "rotation_signature": "23bd13eea5dc977deb4f9ff7e0a35f7f934a77b7b0d7507f8eecded7ad5166b8b7731713d5c35e5b556c2c54d917a46d761393ddf105949035cc1424838dfb04",
+     "authorization_signature": "a88b7703de3e463bcd1edc1423027f54af37de507a77ac70d2f1c55e0bec76ea4f6be8bb158398226b40fc005ad711daf80047406ae93db45de564af1e54df06",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "61fb82192c769bc6b842293fe0ff765d45b66ce8c396b6907abffc1ac968db72",
+     "encryption_pk": "a73494a54e07874687b6ff1497534053eac0f2c7192b1285673c2b5255177e1b",
+     "key_fingerprint": "7d306968ac89f199dcb73a15f50536cc527648bcfede7b6a6ca0a0858b173c8b",
+     "successor_signing_pk": "28a78181c8b47fc75477789157a291a0e8a8b6e2092afd3cc41d8eb71e9217a8",
+     "rotation_signature": "be92dd1ea7ca5e94e6eb18d8970c3f0501b03448c967bc542bb3bb00329570aeab653bb6591e6b6d7e661f69e0f9f03887bec506c57ba3b5d38173664079660b",
+     "authorization_signature": "b597a314345b5dd104fee214729eb06d5c375ed9fa95ce450d0e5eb4ce83b6161960b37dc341939fc96971b91573a6c65b87d0b08f7832217cb06c3007c19100",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "a31a5f4bbe040d5c13db38dc172e335fcc466ce5695b6dd3a0e897940777426f",
+     "encryption_pk": "7ab2478db5c52df8bd9bb0e833f844bf03ad6a873e3efe6a7a5657ea6b006045",
+     "key_fingerprint": "a74ac1e710b54ccfb295669fe87011da8bb86275193d604aa9bacbcba163cfed",
+     "successor_signing_pk": "61fb82192c769bc6b842293fe0ff765d45b66ce8c396b6907abffc1ac968db72",
+     "rotation_signature": "a1aa0eb9272f2d31368e0c969c6a07cfc83b3e50ff10f123af28ccebaecbeed7f0ea9f70c089b53202e6c8138447f1f4a054d2e47f79be92b97f76f94d3ede04",
+     "authorization_signature": "ce74f9e948f1524f048295525c8f74e43a81e1948600dc96792f8f2df1b0318536b2820071bf98b44395e01381e3c723ad7962f2ebe6afe4ef4101139e942608",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "01991e139a49106901e1bd25f7c6e5f12af5dbf7a605b821842b38e5b29a6f91",
+     "encryption_pk": "c24d4d5f7c3016b988efa5e06ca32a1c9e9bbc5a082993f68a55b4443e173254",
+     "key_fingerprint": "b980d5018a4d90ae82f69a667db34963ce4f264f84d7126465b466b4b15d7e7a",
+     "successor_signing_pk": "a31a5f4bbe040d5c13db38dc172e335fcc466ce5695b6dd3a0e897940777426f",
+     "rotation_signature": "01cf0ea2ee8b31790d1f1073c93a4fae2c333b0c1339d4788d0758bd30ee8d893a4484960ab654406d83c6e197cb5abe210c9214b7ef1c58d305ac7e1d1eea0d",
+     "authorization_signature": "d70be80ade0e5ab59db078190347d3e74c82a5589383567cee9e947f54e3f0213e448c12c3c96cfb9f12b727ef53176cb785910ddae4d00def5507fcaf0f9b02",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "52a5be38c2748eab96a318c75fa6830fddd0688f1c27e339923d96f032d4b6dd",
+     "encryption_pk": "3960c478bb33f89ab8c29775a92f43a4fc53c2f6b6ce0d50988c8a7fc37b3967",
+     "key_fingerprint": "6960750d65cce5221b927b7dbea429b1e746a1d18dac51c6cce4a85ca51e53be",
+     "successor_signing_pk": "01991e139a49106901e1bd25f7c6e5f12af5dbf7a605b821842b38e5b29a6f91",
+     "rotation_signature": "663592adc523565e57d797a7b5c8d3b054deeeedc85b3be6401107ca879bd03bd91ec2b20a440d3f080a25c2301f9b66b1e2b8009f364e7c1e88c300c2178a0e",
+     "authorization_signature": "8108ebccbd63a401d74523f735e698e818fc106ec6f68d46ebe07b69c8ec1ec924dafe2bbe94f3df71190e53569599a0007feb006f664614cbff995163cef008",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "29f6b9790c26bdd9e072ee2e3a0c6ac82fb3bbb0d4a754b5d2ae2e745ecec21a",
+     "encryption_pk": "7f6c7cd23ba53f49a148559faa74915187c505a208e9f05fe84cc76e98d01f6f",
+     "key_fingerprint": "bf0b30c03cd4afd52c90588f343f61f2290c297418872ae8b1f5f143aca740b9",
+     "successor_signing_pk": "52a5be38c2748eab96a318c75fa6830fddd0688f1c27e339923d96f032d4b6dd",
+     "rotation_signature": "c0ee9ec02a978f03758f9356797b2037b1df438bbabd2fdf808d4ed18b4ee5b70cbe6cb1cb85671cd068059978da88a11bfb74781c0e180e0274693a6e1bb40a",
+     "authorization_signature": "9d8aa9c26ef73b645f2e2b36184092a5a1f5d04a4d3cbd232219b49a94db04ba976b05e740054264fd832a89044b9cea3c59a901bb1d4e12d0021441ea2f6407",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "1f81dc5bb7c14e5e93a73f88e67a5fb1eb4cd31e7307ea120710407e03a0c7d7",
+     "encryption_pk": "dae03e756b4e695059c3e461948212d59709082cb286580fd1d8c85ec2750b18",
+     "key_fingerprint": "073b55db68ac9f3238d71a1a3b64229193af2e8dd1b7ebd679cd6ac66145f5d0",
+     "successor_signing_pk": "29f6b9790c26bdd9e072ee2e3a0c6ac82fb3bbb0d4a754b5d2ae2e745ecec21a",
+     "rotation_signature": "a2710dcec9ff8b339e3e30c798ad5d791baeed58d14c258c973196b483d33784972936c8bfb992085787d7b9e6f32908929ae8061e77a32db7c5cf6412a86509",
+     "authorization_signature": "ae369f5fb647e118f5ada7a31a32731f0fe49d708a46b44b70287109679fc30a20a7c516f10da269a5ec9485c47cf8c203aae0089406bc2c0dd408804bf59a0d",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "d392cbc7e4e1389f66b6da9c654bcad6e6bde47dbb2a07c4dd692d0d61927d08",
+     "encryption_pk": "45c198010137a50a527c3f32c78f3db096fdb53da49f3d4993746675d0aa4e3a",
+     "key_fingerprint": "1b7c98eda38dce3e84e8e5d20047991e6559800efa1d258e285937f7577ac071",
+     "successor_signing_pk": "1f81dc5bb7c14e5e93a73f88e67a5fb1eb4cd31e7307ea120710407e03a0c7d7",
+     "rotation_signature": "9f320843d0fbddad0d126eebbc8eeb8f14e4853623083280fc6805ad85c4c61e30da89ebae5383a998c2f3434ed4ea05cf812d1f9fc69917bb73369fee9ef30f",
+     "authorization_signature": "2b5b3a771fed01877ea6dd542c8c355895c260cd3026ab8f3cc43c3b8196b065787917d7072ff3aa01de754d4482ab94e8415193182e3809b3cf774fb509f103",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "71353e8aed54408e8b805cf5e0a4a8f2a3e7c2628f6f533de9a09cd531a8531a",
+     "encryption_pk": "0df651a8373fb7f1ea56561b04926efbdc841abdd14deccb7740529aa9bdcc1f",
+     "key_fingerprint": "2bef56a4adca8e2c0f83b3f0a36ba9b2e5241b6917a747342e5e983de6372b2e",
+     "successor_signing_pk": "d392cbc7e4e1389f66b6da9c654bcad6e6bde47dbb2a07c4dd692d0d61927d08",
+     "rotation_signature": "c1ef418e568f20adc2dd38473daa5cb483fb4f013f713075c5cb0d11240559886deff88c605dfdc1cc4c86825afdb739967d52a39edeb7676dd18ea468d22002",
+     "authorization_signature": "7b04d85525660f6cff9d8e9973f0922fe590f392dc5d6df79238dd65fb87ec831836acc65708480d3ae826adaeec8d37f1df5a42c658fdb41d5e9dfee9bef701",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "27275959379f135dd5cfea9c62cbbb1a2ec5c82d3231999028810b23b73acc29",
+     "encryption_pk": "fe4b9d783bac42641d208b060a5ac7a6df853c7c2f29cf22b1d822eae012c81e",
+     "key_fingerprint": "77d390f1e04e95037d4cae9f7dcd7bf2edcb9c3f0ebbf6afa4bb11eeb2b9e078",
+     "successor_signing_pk": "71353e8aed54408e8b805cf5e0a4a8f2a3e7c2628f6f533de9a09cd531a8531a",
+     "rotation_signature": "b34c9416ae7d4083afd98ac9f4a7936be053b4c72165227d7cb072130630102fbc090194f162fb40555ed31df2856857973789a26efd5b36e67d95a6b724ad0a",
+     "authorization_signature": "ddd3f83cab3ec623b15bb68384b320ff31ea87b356913e74d133a62950ae702690e870c965556d6ea8203e87632903553e20a0b218e2e56f5ea5d33797786503",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "013983f728919fa78988764cdeaae3484d3f4f5f6e812e59db4aba0cffb6af69",
+     "encryption_pk": "3c3bbc83d1326f84b76700649a1dac6da486091075165a4f49a65f6887eca540",
+     "key_fingerprint": "a448f5d57aaf83a0ebc9caf8e0c6e0879172a8da3c81cc05c691326aab95edcf",
+     "successor_signing_pk": "27275959379f135dd5cfea9c62cbbb1a2ec5c82d3231999028810b23b73acc29",
+     "rotation_signature": "903f872bcae26cc44e2cc0245646901301185009f8cba0f98fb62dab63b72e5ecba795e1f368977164e38231e5412aa9d67b09a42d39750dbd1eeaf6e2c0bf01",
+     "authorization_signature": "50110d0565a8ed25aa79956fef9301e49f1b1153b9e5a4db8aacea88391e54007c1420cd833f0aab9bfa0887d55349fc6ec10349b936e45a7e8a1176173f6501",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "5017b06154d1ce3d6b632d59fc96bf72c9839b7abab66bea1e6dc9d0e150dff1",
+     "encryption_pk": "72f5631143c170c82e8fcc2af9f415caa2af228bcbe8bba6635cfecb00395204",
+     "key_fingerprint": "09ae271465beebb74718b747bf3b743b4218836806a2cd42be115e19f4015fa1",
+     "successor_signing_pk": "013983f728919fa78988764cdeaae3484d3f4f5f6e812e59db4aba0cffb6af69",
+     "rotation_signature": "c4d6d7c753dc7059f98c67d943aed4525bcf81aefa3aee148115addec9a7ed4467c57a01f690cbe0b7dddf5ab3d23739a438490b835fe96aa9a404775143a501",
+     "authorization_signature": "0e0915113e1669dcfc94ba0d28e3a47d51ae5fbadde438c82e4ab9abbc692f38a9029b5c61b4606e8e3c45bc9a699b7d85a6d7d197c3d53da1ae3c40a12aa406",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "74db96af1e7bcadb126d9695ff0b3c7787688d74dc45a4e8b6565f4a49087e8c",
+     "encryption_pk": "f039cf0757e2b3768c486b9b94842356c5bd789444866938ee311cd091b0463d",
+     "key_fingerprint": "86d10cc83edfbffb24d580d6295a588299559ceddc887e36f5f439dbd0b8cd8f",
+     "successor_signing_pk": "5017b06154d1ce3d6b632d59fc96bf72c9839b7abab66bea1e6dc9d0e150dff1",
+     "rotation_signature": "acc0ec7f44e3b5704d2af8bbe851b72599e27f914d661eb85425c387719a27feafeeec15a99b79e52e723cfa9b9c94c34558370d9a0efbec1a6bf353095e6906",
+     "authorization_signature": "3b7f99659861edb7ffb2e1c077907789bdf197955a75bfa83d4baadf7104c2a7edc19102719fa80c1ee2b80a99ef6a3546da684664c04c0fc4622ebabf723600",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "77e7b960aa89dc407791c8a604bbd7f64cece33edd2f51978b01f23e06c3d973",
+     "encryption_pk": "d3c711121484123e873f1fb058701e6104567654e9be1482c5d71db1dbf3e67b",
+     "key_fingerprint": "8bfe9d74818742efb565491ba21c87282ae237659c94d8cb892341eda418ebb3",
+     "successor_signing_pk": "74db96af1e7bcadb126d9695ff0b3c7787688d74dc45a4e8b6565f4a49087e8c",
+     "rotation_signature": "7232b60fcb57adf6cc31a7737821e58c95e0dfbbd93eaf653d9d1422dafdbb0db45f96c65c367282a2122e538a4d367bf1490c6bede936753e515e1ec368770e",
+     "authorization_signature": "fc0cd36a385148e3f326ec0ec51353e0b6d7f7f9807a460d2f1ec2ee93adabcd6ee9b9cedd3ac1f427ba1839b97fe207093355a4c03c41bf49e9f9d869c55603",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "5702c6cf8e7ab38b87e57dc3f7801b51b2d1a20a51bb892be11d394e21538de7",
+     "encryption_pk": "2ffb351b8ee453d37e9ca7df53ec40f7068364358eea2682ec73df13fb55bd24",
+     "key_fingerprint": "640ac57a96218d2ac5d64a6fed3d08d09cebbf0db8115831f09ccf9bf883377e",
+     "successor_signing_pk": "77e7b960aa89dc407791c8a604bbd7f64cece33edd2f51978b01f23e06c3d973",
+     "rotation_signature": "480a5bea937fed714364af3b12885f1b5e7f5dc8f73a2d0ec978cc43428760a798a8d5a984a86d287b6b2611d113293b8730b640fc17fcb10fb35fdf3c77a20c",
+     "authorization_signature": "a1c3ec7c63cfca977433293cd687192fd8bbaab182116f54a965b9bbf29c319f1fb3d19ea43030aa79ad0ea77af0aec3f122d75dbe15fb9cc3a030181d5a5108",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "bd9d8661cb8620b18f6baac8db2e7ac60676dff12f96a7838e52f2d578f6ec53",
+     "encryption_pk": "1651644f1042e5441879e18b03836ca9eabc9d24df6ee88dc75f45bf08f01942",
+     "key_fingerprint": "62c0490b4e730d967025f90bf70883f4c1437acbcc13189e6b777e530c14dee3",
+     "successor_signing_pk": "5702c6cf8e7ab38b87e57dc3f7801b51b2d1a20a51bb892be11d394e21538de7",
+     "rotation_signature": "68424ffe2e10f28d04e92f7d83ebf9d955e2c6c155f74126a50dcc877f1a6e340bac74af5f1da3869760e390e38287967b068f399ad52a632eb50488dddc6e0a",
+     "authorization_signature": "01606f3b2cd07d9cc5cee98e8a1bf72e185de8ead2997947de6c44b8b2f844cbabb1d5e4279ed8645b09079fde00761f0114009bd2a4042db127d2b339cc3505",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "4ed3ebb18c497cfa7f27282bd65528677fbd2eb62c2b81619fb0eeccfac58ba4",
+     "encryption_pk": "cc57fd8c79bc85786a7872dda481bc23c0cf2b813f5968651a2c9bbde2d22f7c",
+     "key_fingerprint": "9e022f9bd672641a70ba2cb33b4efdd7c65426e2279d1465dc5d35b572e3a463",
+     "successor_signing_pk": "bd9d8661cb8620b18f6baac8db2e7ac60676dff12f96a7838e52f2d578f6ec53",
+     "rotation_signature": "73cf12a705e0f63785185de5087d2136121e7628f88a523bcfb530ba04625337821668cdf8cd9aa980540c1ec3d9a8184416154fd300fe257d3931195639c40f",
+     "authorization_signature": "318b6fc2e4a97f389ac955dc4897855a7882bdb702db1537b46516f1c9fcb9cd952c2cf193d77e2e0c5db1390de7e15418f0b7fc9ad7b03eb0cfa47792af6b05",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "3391074d90650aebb7f516656cee30881f4097d7e140d7bcf948d7ebeb0663ca",
+     "encryption_pk": "5e1341a838ff4861dcd3729472d5fc05784c90291730001e418cf29fae900365",
+     "key_fingerprint": "87c516abaa4795fdf26978cc968de0fd55fef94d49bd7c01d5acab225d15a097",
+     "successor_signing_pk": "4ed3ebb18c497cfa7f27282bd65528677fbd2eb62c2b81619fb0eeccfac58ba4",
+     "rotation_signature": "257a96b8ecae5c2ccce0f399920dc26bc74c83ae1c51f0499eecbd004fac4f112a5ddce5083f99871f07056c61e471e2e89459cd3bf6062df2112282b120d00c",
+     "authorization_signature": "4906f97aa5fa40ac6441e55827d28ae4499593411912b5cb4837be848f5f4b6d0aa922383354d061f391c9cf1899075a68c9454cb06a46c78f89d74ba25f6004",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "78fe0698d53f7d4f7a5a73d3babeeb28ba6a474d5cfc6d80cae21039a95517a4",
+     "encryption_pk": "d6a5e470d253b96e43b62817ea2cd38d065666905877da47f7ea2887b4b5152a",
+     "key_fingerprint": "4fa881e0cae2c1440cfbca7a0b99a47284d73ca9d7cce05a6ffb880aa8cd5b80",
+     "successor_signing_pk": "3391074d90650aebb7f516656cee30881f4097d7e140d7bcf948d7ebeb0663ca",
+     "rotation_signature": "2469f5104b4bcfcc671e15d7843307afa851439eabc478a9b798bae1f8314dc468cc1cd0cac060b74e581a68b4cbdcf1890c3a32c08b1373f2354b9487288303",
+     "authorization_signature": "eaf26391a0b842426fa8eee0370af413464367babdcce3e0781efd3a1786479cd0bda7a1e40ab24768ee624512ad361617755c9902660597df8f0ad25d046e09",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "7f0f2f14d734119873354b8a127591b3b16f4175382d0dcb31fcd4bf8fb273d9",
+     "encryption_pk": "21c8435c5feef63a219e1a725892fb40f70e1b6c62e8a00afa34d0654fdf756d",
+     "key_fingerprint": "53809ae0a32dfdae0054778a05fbdbb2add1fe52100c84adf061f767b8b058a7",
+     "successor_signing_pk": "78fe0698d53f7d4f7a5a73d3babeeb28ba6a474d5cfc6d80cae21039a95517a4",
+     "rotation_signature": "048b11edd8e30e93e2d6fa1f84bf97665d3f28e8c5076bcc1894199db88e557d4fe717651979a856e5182b3977ff70865ce78285b6a51b4c0ac240ce49b56c0e",
+     "authorization_signature": "325077179ed1ebfaf5db4fc871ae694e2397fe40532a38ab6ca4320f64c4ff0fd93650d2881c3214130ac658522f09b887374769860e5c02a542b73f03fea006",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "2cefcd06cdaefc92c031c6bf1995478dcf7d274a91ea5eba8165d30c483e51f3",
+     "encryption_pk": "1986387c20fdd376c4e63150b67c9aa3542b4d6cc3a744047796b4f845829016",
+     "key_fingerprint": "29b73031616bec77fc21fbe94842d1918b4024b41c147a148558c0f95e98935c",
+     "successor_signing_pk": "7f0f2f14d734119873354b8a127591b3b16f4175382d0dcb31fcd4bf8fb273d9",
+     "rotation_signature": "862a754520783d4aeb49d3d592263bf61f668933f9baa9125edab7d458edea14b466cf81c704f4452152613647142d4ee9882fa15a12f19dc52ff5effb0eb709",
+     "authorization_signature": "c531ea7cd9927dbf00f071a4319b6ba1d9d361662676f1cf3db89b81ed0ac80ef31b3554a60b1cea122cbd90073357de3a03d109eca76e7cd9513a8188f9d502",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "48bd2de534005554483f7d4c97ad020e42f111258b3cc5c581c951ba4beedc2c",
+     "encryption_pk": "b9c65d35a5ece3998fc1c7159b7b8c9aa3ce314d2b3e1e397378c8e8f1fb1f12",
+     "key_fingerprint": "f9aea762e0bef808ce40f25a280247082731382655198972e006140fee4ad724",
+     "successor_signing_pk": "2cefcd06cdaefc92c031c6bf1995478dcf7d274a91ea5eba8165d30c483e51f3",
+     "rotation_signature": "4ef5d2d761b306defa5e0df7c20d42b0c0a70d83f2acaee22082032fd55ada43059bcac172f3920a72e6a108469ad936c5ca9c7e6505357c41e1c7aaba745004",
+     "authorization_signature": "ec8f5c174f0e40cb896ffb93319a6f727ec628ab1c10560ed6861ac05af40a50f6e1b409ce3ab29b8c1f363996043044a599280c4f157f724adac57ab46fbb02",
+     "retired_seq": 7
+    },
+    {
+     "signing_pk": "57b17aaaae83c93dd75ce19ff4e41de4fce92acc2b1525707efa52b904d5151c",
+     "encryption_pk": "85a21a76ca458187df4d17faf5690a008cb6d0d03587e38cbe7bba896ab69a3f",
+     "key_fingerprint": "ec6badd8ff8431ba59a9e4232e8e7db03e919331db500ef117ea627e4fed01e1",
+     "successor_signing_pk": "48bd2de534005554483f7d4c97ad020e42f111258b3cc5c581c951ba4beedc2c",
+     "rotation_signature": "22027a95f96a0e0f66df16272ff665891682e678d453ac566a842fb73abeb0f9bac47bd96d06c54c8e6b3a66f09c773a13066754eb17e7e2c72f441bb119a403",
+     "authorization_signature": "772f33ff1ca9ea5723034ba7ae76c38397461c98f61937433b852b6dbbcc00dd287d3c3883c5740ae2c9841a7335bcde5f6a14ca9af0df8a0752005676b8540f",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": "error"
+  },
+  {
+   "name": "a certified archive without key_fingerprint",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": "error"
+  },
+  {
+   "name": "a fingerprint that does not match",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": "error"
+  },
+  {
+   "name": "an archived key of 31 bytes",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": "error"
+  },
+  {
+   "name": "an archived key that is not hex",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": "error"
+  },
+  {
+   "name": "a successor key of 31 bytes",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "00000000000000000000000000000000000000000000000000000000000000",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": "error"
+  },
+  {
+   "name": "a certificate field that is not a string",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": 7,
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   ],
+   "trusted": "error"
+  },
+  {
+   "name": "an authorization that is not a string",
+   "archived_keys": [
+    {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": [
+      1
+     ],
+     "retired_seq": 7
+    }
+   ],
+   "trusted": "error"
+  },
+  {
+   "name": "an archive that is not an object",
+   "archived_keys": [
+    "x"
+   ],
+   "trusted": "error"
+  },
+  {
+   "name": "archived_keys that is not a list",
+   "archived_keys": {
+    "0": {
+     "signing_pk": "b906a13d1c4035d90aae30a1f7c92db11657cf2e7a9c8538c70f45f372f87f2c",
+     "encryption_pk": "f926e7dc0e9bf052e2fb7a54aa84e4a82380f56f0f37684aea0bc20d3f71661c",
+     "key_fingerprint": "bbaedb3ec449494631ed84b992eb8d915203d6dacddb4bc24171b29b11d20919",
+     "successor_signing_pk": "1c141c9a781d69bba770a6d16578ce39847cfd787722dee48a60299b0cca4e14",
+     "rotation_signature": "7882c4abebb4e92d2bba202077b7d6317aaa27e1202bc068b54bd7fb9c03307aa22cda5fd3931cd7890d9c3e5747fabfedd94284fa022a0628b89637fad7a200",
+     "authorization_signature": "16b94f0e462042f1ac7931eda85a81679a59f54da948f2d7f10f7c45033153998950d581d594406422f5edf027883cda0d212d15ab6a558b6b6cce8874bb480d",
+     "retired_seq": 7
+    }
+   },
+   "trusted": "error"
+  }
+ ]
+}

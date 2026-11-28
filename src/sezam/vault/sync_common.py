@@ -446,70 +446,37 @@ def _batch_conflicts(exc: Exception) -> list[dict]:
     return [c for c in conflicts if isinstance(c, dict)] if isinstance(conflicts, list) else []
 
 
-def key_ring_from_response(
+def key_ring(
     user_id: str,
     current_signing_pk: bytes,
     current_encryption_pk: bytes,
     response: dict,
 ) -> tuple[bytes, ...]:
-    """Current key plus archived keys reachable by rotation certificates.
+    """Current signing key plus the archived ones reachable by rotation
+    certificates, in chain order; ValueError on a malformed response.
 
-    An archived key is trusted only if its successor key (the current one
-    or an already trusted archive) signed key_rotation_message(), so the
-    server cannot inject "historical" keys to forge old records. When the
-    server has the old key's authorization of that rotation (rotations
-    since review 688edcb V4), it must verify too. Which objects an archived
-    key may still vouch for is named by the current key's voucher lists
-    (sync_vouchers, goal #443).
+    The rule is the core's (core/src/keyring.rs, capability review 716, the
+    copy the web and the phone use); this only verifies the signatures it
+    names. Which objects an archived key may still vouch for is named by the
+    current key's voucher lists (sync_vouchers, goal #443).
     """
-    archives = response.get("archived_keys", [])
-    if not isinstance(archives, list):
-        raise ValueError("Malformed archived key list")
-
-    candidates = []
-    for archive in archives:
-        if not isinstance(archive, dict):
-            raise ValueError("Malformed archived key")
-        fields = [archive.get(name) for name in (
-            "signing_pk", "encryption_pk", "key_fingerprint",
-            "successor_signing_pk", "rotation_signature",
-        )]
-        if not all(isinstance(value, str) for value in fields):
-            continue  # uncertified legacy archive: never trusted
-        signing_pk, encryption_pk = bytes.fromhex(fields[0]), bytes.fromhex(fields[1])
-        if len(signing_pk) != 32 or len(encryption_pk) != 32:
-            raise ValueError("Archived public keys must be 32 bytes")
-        if hashlib.sha256(signing_pk + encryption_pk).hexdigest() != fields[2]:
-            raise ValueError("Archived key fingerprint mismatch")
-        authorization = archive.get("authorization_signature")
-        if authorization is not None and not isinstance(authorization, str):
-            raise ValueError("Malformed archived key authorization")
-        candidates.append((
-            signing_pk, encryption_pk, bytes.fromhex(fields[3]), bytes.fromhex(fields[4]),
-            bytes.fromhex(authorization) if authorization else None,
-        ))
-
-    trusted = {current_signing_pk: current_encryption_pk}
-    keys = [current_signing_pk]
-    progress = True
-    while progress:
-        progress = False
-        for signing_pk, encryption_pk, successor_pk, cert, authorization in candidates:
-            if signing_pk in trusted or successor_pk not in trusted:
-                continue
-            message = key_rotation_message(
-                user_id, signing_pk, encryption_pk, successor_pk, trusted[successor_pk]
+    args = {
+        "user_id": user_id,
+        "current_signing_pk": bytes(current_signing_pk).hex(),
+        "current_encryption_pk": bytes(current_encryption_pk).hex(),
+        "archived_keys": response.get("archived_keys"),
+    }
+    verified = []
+    for check in sync_core.call("key_ring_checks", **args):
+        try:
+            VerifyKey(bytes.fromhex(check["public_key"])).verify(
+                bytes.fromhex(check["message"]), bytes.fromhex(check["signature"])
             )
-            try:
-                VerifyKey(successor_pk).verify(message, cert)
-                if authorization is not None:
-                    VerifyKey(signing_pk).verify(message, authorization)
-            except Exception:
-                continue
-            trusted[signing_pk] = encryption_pk
-            keys.append(signing_pk)
-            progress = True
-    return tuple(keys)
+            verified.append(True)
+        except Exception:
+            verified.append(False)
+    trusted = sync_core.call("key_ring", verified=verified, **args)
+    return tuple(bytes.fromhex(pair["signing_pk"]) for pair in trusted)
 
 
 def withdraw_from_removed_members(db, team, user_id: str) -> None:

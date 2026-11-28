@@ -9124,45 +9124,29 @@ async function fetchVouchedEntries(userId, currentHex, _sodium) {
     return vouchedEntries(userId, hexToBytes(currentHex), lists, _sodium);
 }
 
-function verifyArchivedKeyChain(userId, currentSigningPk, currentEncryptionPk, candidates, _sodium) {
-    const trusted = new Map([[bytesToHex(currentSigningPk), currentEncryptionPk]]);
-    const keys = [currentSigningPk];
-    let progress = true;
-    while (progress) {
-        progress = false;
-        for (const c of candidates) {
-            const signingHex = bytesToHex(c.signingPk);
-            if (trusted.has(signingHex) || !trusted.has(c.successorHex)) continue;
-            const message = keyRotationMessage(
-                userId, c.signingPk, c.encryptionPk,
-                hexToBytes(c.successorHex), trusted.get(c.successorHex)
+// The current key and the archived ones its rotation certificates reach, as
+// [{signingPk, encryptionPk}] in chain order; throws on a malformed response.
+// The rule is the core's (core/src/keyring.rs, capability review 716); the
+// page only verifies the signatures it names.
+function keyRing(userId, currentSigningPk, currentEncryptionPk, archivedKeys, _sodium) {
+    const args = {
+        user_id: userId,
+        current_signing_pk: bytesToHex(currentSigningPk),
+        current_encryption_pk: bytesToHex(currentEncryptionPk),
+        archived_keys: archivedKeys ?? null,
+    };
+    const verified = globalThis.SezamSyncCore.call('key_ring_checks', args).map((check) => {
+        try {
+            return _sodium.crypto_sign_verify_detached(
+                hexToBytes(check.signature), hexToBytes(check.message), hexToBytes(check.public_key)
             );
-            let valid = false;
-            try {
-                valid = c.certificate.length === 64 && _sodium.crypto_sign_verify_detached(
-                    c.certificate, message, hexToBytes(c.successorHex)
-                );
-            } catch {
-                valid = false;
-            }
-            // Review 688edcb V4: the old key's own authorization of the
-            // rotation, when the server kept it, must verify as well.
-            if (valid && c.authorization) {
-                try {
-                    valid = c.authorization.length === 64 && _sodium.crypto_sign_verify_detached(
-                        c.authorization, message, c.signingPk
-                    );
-                } catch {
-                    valid = false;
-                }
-            }
-            if (!valid) continue;
-            trusted.set(signingHex, c.encryptionPk);
-            keys.push(c.signingPk);
-            progress = true;
+        } catch {
+            return false;
         }
-    }
-    return keys;
+    });
+    return globalThis.SezamSyncCore.call('key_ring', { ...args, verified }).map((pair) => ({
+        signingPk: hexToBytes(pair.signing_pk), encryptionPk: hexToBytes(pair.encryption_pk),
+    }));
 }
 
 async function getUserSigningPks(userId) {
@@ -9177,37 +9161,9 @@ async function getUserSigningPks(userId) {
         if (current.length !== 32 || currentEncryption.length !== 32) {
             throw new Error('Current public keys must be 32 bytes');
         }
-        const archives = data.archived_keys || [];
-        if (!Array.isArray(archives) || archives.length > 64) {
-            throw new Error('Malformed archived key list');
-        }
-        const candidates = [];
-        for (const archive of archives) {
-            // Uncertified legacy archives are never trusted.
-            if (!archive.successor_signing_pk || !archive.rotation_signature) continue;
-            const signingPk = hexToBytes(archive.signing_pk || '');
-            const encryptionPk = hexToBytes(archive.encryption_pk || '');
-            if (signingPk.length !== 32 || encryptionPk.length !== 32) {
-                throw new Error('Archived public keys must be 32 bytes');
-            }
-            const fingerprint = await displayFingerprint(signingPk, encryptionPk);
-            if (fingerprint.hex !== archive.key_fingerprint) {
-                throw new Error('Archived key fingerprint mismatch');
-            }
-            if (archive.authorization_signature != null && typeof archive.authorization_signature !== 'string') {
-                throw new Error('Malformed archived key authorization');
-            }
-            candidates.push({
-                signingPk, encryptionPk,
-                successorHex: String(archive.successor_signing_pk).toLowerCase(),
-                certificate: hexToBytes(archive.rotation_signature),
-                authorization: archive.authorization_signature
-                    ? hexToBytes(archive.authorization_signature) : null,
-            });
-        }
-        const keys = candidates.length
-            ? verifyArchivedKeyChain(userId, current, currentEncryption, candidates, await ensureSodium())
-            : [current];
+        await globalThis.SezamSyncCore.ready;  // the key ring's rule (keyRing)
+        const ring = keyRing(userId, current, currentEncryption, data.archived_keys, await ensureSodium());
+        const keys = ring.map(pair => pair.signingPk);
 
         const currentSigningHex = bytesToHex(current);
         const currentEncryptionHex = bytesToHex(currentEncryption);
@@ -9241,11 +9197,9 @@ async function getUserSigningPks(userId) {
         state.voucherKeys = { ...state.voucherKeys, [userId]: currentSigningHex };
         // X25519 keys paired with the trusted signing keys (current first),
         // used to authenticate DEK envelopes from this user.
-        const encryptionBySigning = new Map([[currentSigningHex, currentEncryption]]);
-        for (const c of candidates) encryptionBySigning.set(bytesToHex(c.signingPk), c.encryptionPk);
         state.userEncryptionKeys = {
             ...state.userEncryptionKeys,
-            [userId]: keys.map(pk => encryptionBySigning.get(bytesToHex(pk))).filter(Boolean),
+            [userId]: ring.map(pair => pair.encryptionPk),
         };
         return keys;
     } catch (err) {
