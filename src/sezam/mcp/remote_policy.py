@@ -15,10 +15,9 @@ it applied. Rules:
 - An epoch already applied is not applied again, so ``sezam ai on`` after a
   remote brake sticks; a replayed old policy changes nothing.
 
-Signed message (Ed25519, shared with the server and the mobile client,
-pinned in tests/vectors/cross_client.json)::
-
-    b"sezam-ai-policy-v1" || user_id (26 B ASCII) || u8(enabled) || u64be(epoch)
+Signed message (Ed25519): the core's ai_policy_message, the same bytes for
+the server and the phone (docs/CORE_UNIFICATION.md U6c, pinned in
+tests/vectors/signed_messages.json and cross_client.json).
 """
 
 from __future__ import annotations
@@ -33,7 +32,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
 
-from ..vault import ai_access
+from ..vault import ai_access, sync_core
 
 if TYPE_CHECKING:
     from ..vault.crud import Vault
@@ -41,7 +40,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-POLICY_CONTEXT = b"sezam-ai-policy-v1"
 APPLIED_KEY = ai_access.REMOTE_APPLIED_KEY
 POLL_SECONDS = 30.0
 MAX_EPOCH = 2**63 - 1
@@ -59,24 +57,17 @@ class RemotePolicy:
 
 
 def policy_message(user_id: str, enabled: bool, epoch: int) -> bytes:
-    user = user_id.encode("ascii")
-    if len(user) != 26:
-        raise ValueError("user_id must be a 26-character ULID")
-    if not 1 <= epoch <= MAX_EPOCH:
-        raise ValueError("epoch out of range")
-    return POLICY_CONTEXT + user + bytes([1 if enabled else 0]) + epoch.to_bytes(8, "big")
-
-
-ANCHOR_CONTEXT = b"sezam-ai-anchor-v1"
+    """The core's; one it cannot build raises ValueError."""
+    return bytes.fromhex(sync_core.call(
+        "ai_policy_message", user_id=user_id, enabled=enabled, epoch=epoch,
+    ))
 
 
 def anchor_message(user_id: str, anchor: str, epoch: int, mac: str) -> bytes:
-    """What an anchor write is signed over (server/app/routers/ai_policy.py)."""
-    user = user_id.encode("ascii")
-    if len(user) != 26:
-        raise ValueError("user_id must be a 26-character ULID")
-    return (ANCHOR_CONTEXT + user + bytes.fromhex(anchor) + epoch.to_bytes(8, "big")
-            + bytes.fromhex(mac))
+    """What an anchor write is signed over (the core's, as the server's)."""
+    return bytes.fromhex(sync_core.call(
+        "ai_anchor_message", user_id=user_id, anchor=anchor, epoch=epoch, mac=mac,
+    ))
 
 
 def sign_policy(signing_key: SigningKey, user_id: str, enabled: bool, epoch: int) -> str:

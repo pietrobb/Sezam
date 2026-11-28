@@ -3,6 +3,9 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import 'crypto_service.dart' show hexToBytes;
+import 'sync_core.dart';
+
 /// Remote AI kill switch (AI broker TODO, section 1 phase 2).
 ///
 /// The phone publishes a signed `ai_policy` `{enabled: false, epoch}` through
@@ -12,9 +15,9 @@ import 'package:http/http.dart' as http;
 /// policy can turn AI access on again: that needs the master password on the
 /// computer. This side therefore only ever sends `enabled: false`.
 ///
-/// Signed message (shared with the desktop and the server, pinned in
-/// tests/vectors/cross_client.json):
-///   "sezam-ai-policy-v1" || user_id (26 B ASCII) || u8(enabled) || u64be(epoch)
+/// Signed message: the core's ai_policy_message, the bytes the desktop and
+/// the server check (docs/CORE_UNIFICATION.md U6c, pinned in
+/// tests/vectors/signed_messages.json and cross_client.json).
 class AiBrakeService {
   AiBrakeService.withClient(
     this._http, {
@@ -23,26 +26,20 @@ class AiBrakeService {
   }) : _sign = sign,
        _nowMs = nowMs ?? (() => DateTime.now().millisecondsSinceEpoch);
 
-  static const policyContext = 'sezam-ai-policy-v1';
-
   final http.Client _http;
   final Uint8List Function(Uint8List message) _sign;
   final int Function() _nowMs;
 
-  static Uint8List policyMessage(String userId, bool enabled, int epoch) {
-    final user = ascii.encode(userId);
-    if (user.length != 26) {
-      throw ArgumentError('userId must be a 26-character ULID');
-    }
-    if (epoch < 1) throw ArgumentError('epoch out of range');
-    final context = ascii.encode(policyContext);
-    final out = Uint8List(context.length + 26 + 1 + 8);
-    out.setRange(0, context.length, context);
-    out.setRange(context.length, context.length + 26, user);
-    out[context.length + 26] = enabled ? 1 : 0;
-    ByteData.sublistView(out).setUint64(context.length + 27, epoch, Endian.big);
-    return out;
-  }
+  /// One the core cannot build throws StateError.
+  static Uint8List policyMessage(String userId, bool enabled, int epoch) =>
+      hexToBytes(
+        syncCore('ai_policy_message', {
+              'user_id': userId,
+              'enabled': enabled,
+              'epoch': epoch,
+            })
+            as String,
+      );
 
   /// Turns AI access off on every computer of the account. Returns the
   /// published epoch: above the stored one and at least the current time in

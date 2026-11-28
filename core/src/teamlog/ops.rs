@@ -440,6 +440,13 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
                     &i.encryption_pk
                 )))
             }
+            "team_log_sig_message" => {
+                let i: BodyIn = parse(input)?;
+                if !i.body.is_ascii() {
+                    return Err("a record body is ASCII text".to_string());
+                }
+                json!(super::to_hex(&replay::sig_message(&i.body)))
+            }
             "team_log_empty_state" => json!(State::default()),
             _ => return Err(format!("unknown operation {op:?}")),
         })

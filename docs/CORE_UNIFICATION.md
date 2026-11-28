@@ -30,8 +30,8 @@ Skript `scripts/dupmap.py` (mená funkcií v ≥ 2 z desktop/web/mobil/server):
 | **A. Team log**: kanonický JSON, `parse_body`, `validate_body`, `record_hash`, replay, `member.keys` (claim keys, retired), dotazy autority (`is_admin`, `may_write`, `may_hold_key`, `key_recipients`, `current_key`, `key_generation`, `is_stale`, `may_seal`), odmietnutia (`item_refusal`, `tombstone_refusal`, `move_refusal`, `admin_policy_refusal`, `todays_rules_refusal`), `envelope_valid`, `superseded_envelope_valid`, fork (`fork_refusal`, `fork_abandoned`, `resolve_change`), restore (`readmitted`, `restore_part_end`), `next_body` | `teamlog.py` (873; server ho kopíruje v Dockerfile ako `teamlog_core.py`), `team_log_state.py`, `team_log_fork.py`, `team_log_withdrawn.py` | `teamlog.js` (686) + časti `app.js` | `team_log.dart` (919), `write_authority.dart` (369) | ≈ 2 500 × 3 |
 | **B. Autorita nad objektmi**: `sealing_dek_id`, `team_folder_above`, osobný strom (`in_personal_tree`, `is_personal_root`), `unauthorized_writes`, `log_admins`, `team_key_ids`, `held_genesis`, `named_by_team_log`, `team_log_refusal` | `sync_writers.py`, `personal_root.py`, `team_log_local.py`; server `sync.py`, `personal_tree.py`, `team_log.py` | `app.js` | `write_authority.dart`, `vault_service.dart`, `sync_service.dart` | ≈ 1 200 × 4 |
 | **C. Key vouchers** (N1, N6/N7): položka = digest podpísanej správy, `vouched_entries`, `lists_of`, pravidlo zlyhania podpisovateľa | `key_vouchers.py`, `sync_vouchers.py`; server `key_vouchers.py` | `app.js` | `key_vouchers.dart` | ≈ 500 × 4 |
-| **D. Podpisované správy a kanonické formáty**: `sign_auth_challenge`, `key_rotation_message`, `reseed_message`, `org_recovery_rewrap_message`, správa podpisu objektu (`verify_object_signature`), audit záznam (`parse_canonical_audit_record`, `validate_audit_dag`), `signed_fields` | `sync_common.py`, `reseed.py`, `key_rotation.py`, `sync_pull.py`, `sync_client.py`; server `auth.py`, `recovery.py` | `app.js` | `sync_service.dart`, `key_rotation.dart` | ≈ 800 × 3–4 |
-| **E. Dátové formáty bez tajomstiev**: AAD (`build_aad`), pre-anchor (`parse/merge/add/check`), `SZACCT01` bundle encode/decode, `padded_size`, `split_for_push`, `normalize_username`, `password_forms`/`canonical_password`, validácia KDF parametrov, `removal_archive_id`, Shamir GF(256) | `aead.py`, `padding.py`, `sync_limits.py`, `usernames.py`, `kdf.py`, `keys.py`, `dek.py`, `shamir.py`; server `schemas.py` | `app.js` | `crypto_service.dart`, `sync_limits.dart`, `password_forms.dart` | ≈ 900 × 3 |
+| **D. Podpisované správy a kanonické formáty**: `sign_auth_challenge`, `key_rotation_message`, `reseed_message`, `org_recovery_rewrap_message`, AI politika (kill switch) a AI kotva (`ai_policy_message`, `ai_anchor_message`), podpis záznamu team logu (`team_log_sig_message`), správa podpisu objektu (`verify_object_signature`), audit záznam (`parse_canonical_audit_record`, `validate_audit_dag`), `signed_fields` | `sync_common.py`, `reseed.py`, `key_rotation.py`, `sync_pull.py`, `sync_client.py`, `mcp/remote_policy.py`, `teamlog.py`; server `auth.py`, `recovery.py`, `routers/ai_policy.py` | `app.js`, `teamlog.js` | `sync_service.dart`, `key_rotation.dart`, `ai_brake_service.dart`, `team_log.dart` | ≈ 800 × 3–4 |
+| **E. Dátové formáty bez tajomstiev**: AAD (`build_aad`), pre-anchor (`parse/merge/add/check`), `SZACCT01` bundle encode/decode, `padded_size`, `split_for_push`, `normalize_username`, `password_forms`/`canonical_password`, validácia KDF parametrov, `removal_archive_id`, Shamir GF(256), `state_hash` (v2 aj legacy) | `aead.py`, `padding.py`, `sync_limits.py`, `usernames.py`, `kdf.py`, `keys.py`, `dek.py`, `shamir.py`; server `schemas.py` | `app.js` | `crypto_service.dart`, `sync_limits.dart`, `password_forms.dart` | ≈ 900 × 3 |
 | **F. Rozhodnutia sync orchestrácie nad team logom**: catch-up, follow fork, `fail_as_served`, re-send stratených zmien, `seal_to_rotated_members`, `revive_folders_of_unsent` | `team_log_local.py`, `team_log_fork.py`, `sync_rekey.py`, `sync_state.py` | `app.js` | `team_log_client.dart`, `sync_service.dart`, `vault_service.dart` | ≈ 1 500 × 3 |
 | G. Úložisko, UI, sieť, šifrovanie/KDF (libsodium) | zostáva na platforme | | | — |
 
@@ -203,6 +203,32 @@ stav z 8 miest (web a mobil ho zlúčili). Vektory `tests/vectors/account_bundle
 (z desktopu pred zmenou; merge podľa webu, `desktop_before` pri 8 prípadoch)
 v `core/tests/account_bundle_vectors.rs`, `tests/test_account_bundle_vectors.py`
 (desktop, web) a `mobile/test/account_bundle_vectors_test.dart`.
+
+AI politika, AI kotva a podpis záznamu team logu (U6f, capability run 703):
+inventár U6 ich vynechal. `ai_policy_message` a `ai_anchor_message` v
+`core/src/messages.rs` (user id presne 26 ASCII znakov, epocha 1..2**63-1,
+kotva a MAC po 32 bajtov); `team_log_sig_message` v `core/src/teamlog/ops.rs`
+(doména + ASCII text tela). Server (`routers/ai_policy.py`), desktop
+(`mcp/remote_policy.py`, `teamlog.sign_record`), web (`teamlog.js signRecord`)
+a mobil (`AiBrakeService.policyMessage`, `TeamLog.sigMessage`) volajú jadro;
+kontexty a domény v klientoch zmazané (desktopové `SIG/HASH/NEW_KEY_DOMAIN`
+ostali len v generátore `tests/team_log_vectors.py`). Oprava: serverová kópia
+skladala politiku aj pre epochu 0 (desktop a mobil ju odmietli; endpoint ju
+chránila len schéma). Vektory v `tests/vectors/signed_messages.json`
+(`ai_policy` 30 + 7 odmietnutí, `ai_anchor` 16 + 7, `team_log_sig` 3 + 1, z
+desktopu pred zmenou a rovné serverovej kópii).
+
+Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
+`web/static/js`, `mobile/lib`, po U6f): v jadre treba ešte `sezam-state-v2`
+(`state_hash`, tri kópie: `sync_common.compute_state_hash`/`legacy_state_hash`,
+app.js, `sync_service.dart computeStateHash`) a `sezam-rekey-archive/removed`
+(`removal_archive_id`). Zámerne mimo jadra, s tajomstvom (pravidlo 3):
+`sezam-pre-anchor-kek-v1` (SHA-256 nad KEK), `sezam-org-recovery-v1/v2` (HKDF
+soľ a AAD nad tajomstvom obnovy). Len na serveri, jedna kópia (nie duplikát
+medzi stranami): `sezam-auth-challenge-v1` a `sezam-recovery-unlock-v1` (HMAC
+a hash pod serverovým tajomstvom). `sezam-key-vouchers-v2` je v jadre
+(desktop má kópiu konštanty len v odtlačku vlastnej cache, `_voucher_fingerprint`). Ostatné výskyty sú mená
+súborov a vlákien.
 
 Známe zlyhanie mimo vetvy U: `tests/test_review13_handover_rekey.py::
 test_the_new_admin_rekeys_what_the_former_admin_held` (409 „target_user_id is

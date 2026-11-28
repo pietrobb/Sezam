@@ -18,6 +18,11 @@ from nacl.signing import SigningKey
 
 from sezam import teamlog as tl
 
+# The core's domains (core/src/teamlog/mod.rs), pinned in the vectors.
+SIG_DOMAIN = b"sezam-team-log-v1\x00"
+HASH_DOMAIN = b"sezam-team-log-hash-v1\x00"
+NEW_KEY_DOMAIN = b"sezam-team-log-newkey-v1\x00"
+
 VECTORS_PATH = Path(__file__).parent / "vectors" / "team_log.json"
 
 
@@ -93,7 +98,7 @@ class Log:
         return self._push(tl.sign_record(self.body(kind, author, data, **override), (signer or author).sk))
 
     def raw(self, text: str, signer: Actor) -> "Log":
-        sig = signer.sk.sign(tl.SIG_DOMAIN + text.encode("utf-8")).signature.hex()
+        sig = signer.sk.sign(SIG_DOMAIN + text.encode("utf-8")).signature.hex()
         return self._push({"body": text, "sig": sig})
 
     # shorthands
@@ -586,8 +591,8 @@ def build_vectors() -> dict:
             "answers and errors; never regenerate this file to make a client pass."
         ),
         "domains": {
-            "sig": tl.SIG_DOMAIN.decode("ascii"), "hash": tl.HASH_DOMAIN.decode("ascii"),
-            "new_key": tl.NEW_KEY_DOMAIN.decode("ascii"),
+            "sig": SIG_DOMAIN.decode("ascii"), "hash": HASH_DOMAIN.decode("ascii"),
+            "new_key": NEW_KEY_DOMAIN.decode("ascii"),
         },
         "scenarios": s,
     }

@@ -183,7 +183,6 @@ class TeamLog {
   final Ed25519Verify verify;
 
   static const formatVersion = 2;
-  static const sigDomain = 'sezam-team-log-v1\u0000';
   static final zeroHash = '0' * 64;
 
   static T _answer<T>(Object? out, String name) {
@@ -238,7 +237,7 @@ class TeamLog {
       bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
   static Uint8List sigMessage(String body) =>
-      Uint8List.fromList(ascii.encode(sigDomain + body));
+      fromHex(syncCore('team_log_sig_message', {'body': body}) as String);
 
   static String recordHash(Map<String, dynamic> record) =>
       syncCore('team_log_record_hash', {

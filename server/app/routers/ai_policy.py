@@ -11,9 +11,8 @@ on. The server still checks the signature against the account's current
 signing key and keeps the epoch strictly increasing, so it never stores or
 replays anything the owner did not sign.
 
-Signed message (shared with sezam.mcp.remote_policy and the mobile client)::
-
-    b"sezam-ai-policy-v1" || user_id (26 B ASCII) || u8(enabled) || u64be(epoch)
+Signed messages: the shared core's ai_policy_message and ai_anchor_message
+(docs/CORE_UNIFICATION.md U6c), the bytes the desktop and the phone sign.
 """
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
 
+from ..auth import _core_message
 from ..database import Database, run_transaction
 from ..dependencies import get_db, require_full_jwt
 from ..models.schemas import (
@@ -38,14 +38,8 @@ from ..models.schemas import (
 
 router = APIRouter(prefix="/api", tags=["ai-policy"])
 
-POLICY_CONTEXT = b"sezam-ai-policy-v1"
-
-
 def policy_message(user_id: str, enabled: bool, epoch: int) -> bytes:
-    user = user_id.encode("ascii")
-    if len(user) != 26:
-        raise ValueError("user_id must be a 26-character ULID")
-    return POLICY_CONTEXT + user + bytes([1 if enabled else 0]) + epoch.to_bytes(8, "big")
+    return _core_message("ai_policy_message", user_id=user_id, enabled=enabled, epoch=epoch)
 
 
 @router.put("/ai-policy", response_model=AIPolicyResponse)
@@ -121,16 +115,10 @@ async def get_ai_policy(
 MAX_ANCHORS_PER_USER = 32
 
 
-ANCHOR_CONTEXT = b"sezam-ai-anchor-v1"
-
-
 def anchor_message(user_id: str, anchor: str, epoch: int, mac: str) -> bytes:
-    """Shared with sezam.mcp.remote_policy.anchor_message."""
-    user = user_id.encode("ascii")
-    if len(user) != 26:
-        raise ValueError("user_id must be a 26-character ULID")
-    return (ANCHOR_CONTEXT + user + bytes.fromhex(anchor) + epoch.to_bytes(8, "big")
-            + bytes.fromhex(mac))
+    return _core_message(
+        "ai_anchor_message", user_id=user_id, anchor=anchor, epoch=epoch, mac=mac,
+    )
 
 
 @router.put("/ai-anchor", response_model=AIAnchorResponse)

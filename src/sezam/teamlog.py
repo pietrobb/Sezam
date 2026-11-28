@@ -29,9 +29,6 @@ CORE_VERSION = "0.3.0"
 # Wire constants of the format (the core holds the same).
 RULES_VERSIONS = (1, 2)
 FORMAT_VERSION = RULES_VERSIONS[-1]
-SIG_DOMAIN = b"sezam-team-log-v1\x00"
-HASH_DOMAIN = b"sezam-team-log-hash-v1\x00"
-NEW_KEY_DOMAIN = b"sezam-team-log-newkey-v1\x00"
 ZERO_HASH = "0" * 64
 MAX_INT = 2 ** 53 - 1
 ROLES = ("admin", "member")
@@ -226,7 +223,7 @@ def new_key_message(prev: str, user_id: str, signing_pk: str, encryption_pk: str
 
 def sign_record(body: dict, signing_key: SigningKey) -> dict:
     text = canonical(body, body.get("seq"))
-    sig = signing_key.sign(SIG_DOMAIN + text.encode("ascii")).signature
+    sig = signing_key.sign(bytes.fromhex(_call("team_log_sig_message", body=text))).signature
     return {"body": text, "sig": sig.hex()}
 
 

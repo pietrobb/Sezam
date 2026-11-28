@@ -57,7 +57,8 @@ impl Verifier for Counted {
     }
 }
 
-fn sig_message(body: &str) -> Vec<u8> {
+/// What a record's author signs: the domain and the canonical body text.
+pub fn sig_message(body: &str) -> Vec<u8> {
     [SIG_DOMAIN.as_bytes(), body.as_bytes()].concat()
 }
 

@@ -1,6 +1,7 @@
 //! tests/vectors/signed_messages.json in the core: the login, key rotation,
-//! reseed/rejoin and org-recovery rewrap messages every side signs or
-//! verifies through it (docs/CORE_UNIFICATION.md U6c).
+//! reseed/rejoin, org-recovery rewrap, AI policy, AI anchor and team log
+//! record messages every side signs or verifies through it
+//! (docs/CORE_UNIFICATION.md U6c).
 
 use serde_json::{json, Value};
 
@@ -40,6 +41,33 @@ fn every_message_matches_the_vectors() {
         check("org_recovery_rewrap_message", "org_recovery_rewrap"),
         15
     );
+    assert_eq!(check("ai_policy_message", "ai_policy"), 30);
+    assert_eq!(check("ai_anchor_message", "ai_anchor"), 16);
+    assert_eq!(check("team_log_sig_message", "team_log_sig"), 3);
+}
+
+/// Each refused case changes one field of the section's first case.
+fn refused(op: &str, section: &str) -> usize {
+    let v = vectors();
+    let base = without_message(&v[section][0]);
+    let cases = v[format!("{section}_refused")].as_array().unwrap().clone();
+    for case in &cases {
+        let mut input = base.clone();
+        for (k, val) in case.as_object().unwrap() {
+            if k != "why" {
+                input[k] = val.clone();
+            }
+        }
+        assert!(call(op, &input).get("error").is_some(), "{op} {case}");
+    }
+    cases.len()
+}
+
+#[test]
+fn an_ai_message_or_record_body_it_cannot_hold_is_refused() {
+    assert_eq!(refused("ai_policy_message", "ai_policy"), 7);
+    assert_eq!(refused("ai_anchor_message", "ai_anchor"), 7);
+    assert_eq!(refused("team_log_sig_message", "team_log_sig"), 1);
 }
 
 #[test]

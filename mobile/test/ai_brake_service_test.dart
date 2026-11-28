@@ -122,7 +122,7 @@ void main() {
   test('the message rejects a user id that is not 26 characters', () {
     expect(
       () => AiBrakeService.policyMessage('short', false, 1),
-      throwsArgumentError,
+      throwsStateError,
     );
   });
 }

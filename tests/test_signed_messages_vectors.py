@@ -1,6 +1,6 @@
 """tests/vectors/signed_messages.json on the desktop and the server: the login,
-key rotation, reseed/rejoin and org-recovery rewrap messages are the core's
-(docs/CORE_UNIFICATION.md U6c). core/tests/signed_messages_vectors.rs checks
+key rotation, reseed/rejoin, org-recovery rewrap, AI policy, AI anchor and team
+log record messages are the core's (docs/CORE_UNIFICATION.md U6c). core/tests/signed_messages_vectors.rs checks
 the core itself, mobile/test/signed_messages_vectors_test.dart the phone."""
 
 from __future__ import annotations
@@ -12,7 +12,10 @@ import pytest
 from nacl.signing import SigningKey
 
 from server.app import auth as server_auth
+from server.app.routers import ai_policy as server_ai
 from server.app.routers import recovery as server_recovery
+from sezam import teamlog
+from sezam.mcp import remote_policy
 from sezam.vault import key_rotation, reseed, sync_common
 
 V = json.loads(
@@ -88,6 +91,44 @@ def test_a_rewrap_the_message_cannot_hold_is_refused(case):
         with pytest.raises(ValueError):
             build(args["user_id"], args["key_epoch"], args["threshold"], args["total_shares"],
                   bytes.fromhex(args["wrapped_kek"]))
+
+
+@pytest.mark.parametrize("case", V["ai_policy"])
+def test_ai_policy_message(case):
+    for build in (server_ai.policy_message, remote_policy.policy_message):
+        assert build(case["user_id"], case["enabled"], case["epoch"]).hex() == case["message"]
+
+
+@pytest.mark.parametrize("case", V["ai_policy_refused"], ids=lambda c: c["why"])
+def test_an_ai_policy_the_message_cannot_hold_is_refused(case):
+    """Epoch 0 included: the server's own copy used to build it."""
+    args = dict(V["ai_policy"][0], **case)
+    for build in (server_ai.policy_message, remote_policy.policy_message):
+        with pytest.raises(ValueError):
+            build(args["user_id"], args["enabled"], args["epoch"])
+
+
+@pytest.mark.parametrize("case", V["ai_anchor"])
+def test_ai_anchor_message(case):
+    args = (case["user_id"], case["anchor"], case["epoch"], case["mac"])
+    for build in (server_ai.anchor_message, remote_policy.anchor_message):
+        assert build(*args).hex() == case["message"]
+
+
+@pytest.mark.parametrize("case", V["ai_anchor_refused"], ids=lambda c: c["why"])
+def test_an_ai_anchor_the_message_cannot_hold_is_refused(case):
+    args = dict(V["ai_anchor"][0], **case)
+    for build in (server_ai.anchor_message, remote_policy.anchor_message):
+        with pytest.raises(ValueError):
+            build(args["user_id"], args["anchor"], args["epoch"], args["mac"])
+
+
+@pytest.mark.parametrize("case", [c for c in V["team_log_sig"] if c["body"]])
+def test_a_team_log_record_is_signed_over_the_cores_message(case):
+    key = SigningKey(bytes(range(32)))
+    record = teamlog.sign_record(json.loads(case["body"]), key)
+    assert record["body"] == case["body"]
+    key.verify_key.verify(bytes.fromhex(case["message"]), bytes.fromhex(record["sig"]))
 
 
 def test_the_web_builds_every_message_through_the_core():

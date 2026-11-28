@@ -1,8 +1,9 @@
 //! Signed messages (docs/CORE_UNIFICATION.md U6, domain D): the bytes an
 //! identity or recovery key signs for a login, a key rotation, a reseed or
-//! rejoin and an org-recovery rewrap. One copy; it replaced the builders in
-//! server/app/auth.py, routers/recovery.py, the desktop (sync_common,
-//! reseed, key_rotation), app.js and the phone. Signing and verifying stay
+//! rejoin, an org-recovery rewrap, the remote AI policy and an AI anchor. One
+//! copy; it replaced the builders in server/app/auth.py, routers/recovery.py,
+//! routers/ai_policy.py, the desktop (sync_common, reseed, key_rotation,
+//! mcp/remote_policy), app.js and the phone (also ai_brake_service). Signing and verifying stay
 //! with each platform's libsodium.
 
 use serde_json::{json, Value};
@@ -18,6 +19,10 @@ pub const KEY_ROTATION_CONTEXT: &[u8] = b"sezam-key-rotation-v1";
 pub const RESEED_CONTEXT: &[u8] = b"sezam-reseed-v1";
 pub const REJOIN_CONTEXT: &[u8] = b"sezam-rejoin-v1";
 pub const ORG_RECOVERY_REWRAP_CONTEXT: &[u8] = b"sezam-org-recovery-rewrap-v1\x00";
+pub const AI_POLICY_CONTEXT: &[u8] = b"sezam-ai-policy-v1";
+pub const AI_ANCHOR_CONTEXT: &[u8] = b"sezam-ai-anchor-v1";
+/// The server keeps an AI epoch in a signed 64-bit column.
+pub const AI_MAX_EPOCH: u64 = i64::MAX as u64;
 
 /// What a key signs to answer a login challenge: context || challenge, and
 /// only a challenge of the server's fixed layout, so a server cannot have it
@@ -102,6 +107,43 @@ pub fn org_recovery_rewrap_message(
     .concat())
 }
 
+/// An AI policy or anchor is signed for exactly one account (a 26-character
+/// ULID, as it is) and for an epoch of 1 to [AI_MAX_EPOCH]. The server's copy
+/// took epoch 0; the desktop's and the phone's refused it.
+fn ai_user(user_id: &str, epoch: u64) -> Result<&[u8], String> {
+    if user_id.len() != 26 || !user_id.is_ascii() {
+        return Err("user_id must be a 26-character ULID".to_string());
+    }
+    if !(1..=AI_MAX_EPOCH).contains(&epoch) {
+        return Err("epoch out of range".to_string());
+    }
+    Ok(user_id.as_bytes())
+}
+
+/// What the owner's signing key signs to publish the remote AI kill switch.
+pub fn ai_policy_message(user_id: &str, enabled: bool, epoch: u64) -> Result<Vec<u8>, String> {
+    let user = ai_user(user_id, epoch)?;
+    Ok([
+        AI_POLICY_CONTEXT,
+        user,
+        &[u8::from(enabled)],
+        &epoch.to_be_bytes(),
+    ]
+    .concat())
+}
+
+/// What the account's signing key signs to raise one vault's 'off' anchor;
+/// the anchor id and its MAC are 32 bytes each (keyed by the vault's KEK).
+pub fn ai_anchor_message(
+    user_id: &str,
+    anchor: &[u8; 32],
+    epoch: u64,
+    mac: &[u8; 32],
+) -> Result<Vec<u8>, String> {
+    let user = ai_user(user_id, epoch)?;
+    Ok([AI_ANCHOR_CONTEXT, user, anchor, &epoch.to_be_bytes(), mac].concat())
+}
+
 fn arg<'a>(input: &'a Value, name: &str) -> Result<&'a Value, String> {
     input.get(name).ok_or_else(|| format!("{name} is missing"))
 }
@@ -153,6 +195,8 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
             | "key_rotation_message"
             | "reseed_message"
             | "org_recovery_rewrap_message"
+            | "ai_policy_message"
+            | "ai_anchor_message"
     ) {
         return None;
     }
@@ -187,6 +231,19 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
                 u8_arg(&input, "threshold")?,
                 u8_arg(&input, "total_shares")?,
                 &bytes_arg(&input, "wrapped_kek")?,
+            ),
+            "ai_policy_message" => ai_policy_message(
+                str_arg(&input, "user_id")?,
+                arg(&input, "enabled")?
+                    .as_bool()
+                    .ok_or("enabled must be a boolean")?,
+                u64_arg(&input, "epoch")?,
+            ),
+            "ai_anchor_message" => ai_anchor_message(
+                str_arg(&input, "user_id")?,
+                &key_arg(&input, "anchor")?,
+                u64_arg(&input, "epoch")?,
+                &key_arg(&input, "mac")?,
             ),
             _ => unreachable!(),
         }

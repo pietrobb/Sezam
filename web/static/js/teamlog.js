@@ -9,7 +9,6 @@
 
 const SezamTeamLog = (() => {
   const FORMAT_VERSION = 2;
-  const SIG_DOMAIN = 'sezam-team-log-v1\0';
   const ZERO_HASH = '0'.repeat(64);
 
   class TeamLogError extends Error {
@@ -28,7 +27,6 @@ const SezamTeamLog = (() => {
     return out[name];
   }
 
-  const ascii = (text) => Uint8Array.from(text, (c) => c.charCodeAt(0));
   const fromHex = (hex) => Uint8Array.from(hex.match(/../g) || [], (b) => parseInt(b, 16));
   const toHex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   const setOf = (names) => Object.fromEntries(names.map((name) => [name, true]));
@@ -130,7 +128,8 @@ const SezamTeamLog = (() => {
 
   function signRecord(body, signingSk, sodium) {
     const text = canonical(body, body.seq ?? null);
-    return { body: text, sig: toHex(sodium.crypto_sign_detached(ascii(SIG_DOMAIN + text), signingSk)) };
+    const message = fromHex(call('team_log_sig_message', { body: text }));
+    return { body: text, sig: toHex(sodium.crypto_sign_detached(message, signingSk)) };
   }
 
   const stateToJson = (state) => ask(state, 'state_json');

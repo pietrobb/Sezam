@@ -8,8 +8,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sezam_mobile/services/ai_brake_service.dart';
 import 'package:sezam_mobile/services/crypto_service.dart';
 import 'package:sezam_mobile/services/sync_service.dart';
+import 'package:sezam_mobile/services/team_log.dart';
 
 void main() {
   final vectors =
@@ -79,6 +81,44 @@ void main() {
         throwsArgumentError,
         reason: hex,
       );
+    }
+  });
+
+  test('the AI policy message is the core\'s', () {
+    for (final v in cases('ai_policy')) {
+      final message = AiBrakeService.policyMessage(
+        v['user_id'] as String,
+        v['enabled'] as bool,
+        v['epoch'] as int,
+      );
+      expect(bytesToHex(message), v['message'], reason: '$v');
+    }
+    final good = cases('ai_policy').first;
+    for (final v in cases('ai_policy_refused')) {
+      final epoch = v['epoch'];
+      // 2^63 does not fit a Dart int.
+      if (epoch is! int?) continue;
+      expect(
+        () => AiBrakeService.policyMessage(
+          (v['user_id'] ?? good['user_id']) as String,
+          false,
+          epoch ?? good['epoch'] as int,
+        ),
+        throwsStateError,
+        reason: v['why'] as String,
+      );
+    }
+  });
+
+  test('a team log record is signed over the core\'s message', () {
+    for (final v in cases('team_log_sig')) {
+      expect(
+        TeamLog.toHex(TeamLog.sigMessage(v['body'] as String)),
+        v['message'],
+      );
+    }
+    for (final v in cases('team_log_sig_refused')) {
+      expect(() => TeamLog.sigMessage(v['body'] as String), throwsStateError);
     }
   });
 }
