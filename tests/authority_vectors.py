@@ -36,6 +36,42 @@ OWN = "01JOWN00000000000000000001"
 STRANGER = "01JSTRANGER000000000000001"
 
 
+# Where the clients had drifted apart and the reference is not the web's: each
+# (the web's text, the decided rule, why). The desktop's tests/r18 differential
+# against these vectors found them (docs/CORE_UNIFICATION.md U5).
+DECISIONS = (
+    (
+        """        } else if (team && !rec.parent_ref && rec.object_type === 'node' && !rec.is_deleted) {""",
+        """        } else if (decided !== undefined) {
+            if (decided !== null) {
+                verdict = 'blocked';
+                byTeamLog.add(rec.id);
+            }
+        } else if (team && !rec.parent_ref && rec.object_type === 'node' && !rec.is_deleted) {""",
+        "the log decides first, a top-level folder too (desktop): a team folder's own meta, "
+        "one sealed with a team folder's key",
+    ),
+    (
+        """                if (owner && owner !== ownUserId && !rec.is_deleted && sealedBy !== owner) verdict = 'blocked';""",
+        """                if (owner && owner !== ownUserId && sealedBy !== owner &&
+                    (!rec.is_deleted || (team && author !== owner))) verdict = 'blocked';""",
+        "with a log only the owner removes from a personal tree (desktop)",
+    ),
+    (
+        """                if (team && !owner && !rec.is_deleted && author !== ownUserId && !admins.has(author)) {""",
+        """                if (team && !owner && author !== ownUserId && !admins.has(author)) {""",
+        "below the first level of the organisation's tree only an admin removes too (desktop, H6)",
+    ),
+)
+
+
+def _decided(app: str) -> str:
+    for old, new, _why in DECISIONS:
+        assert app.count(old) == 1, old
+        app = app.replace(old, new)
+    return app
+
+
 def _function(src: str, name: str) -> str:
     start = src.index(f"function {name}(")
     depth = 0
@@ -180,6 +216,7 @@ def main() -> None:
 
     app = subprocess.run(["git", "show", f"{REFERENCE}:web/static/js/app.js"], cwd=ROOT,
                          capture_output=True, check=True).stdout.decode("utf-8")
+    app = _decided(app)
     scenarios = {s["name"]: s for s in json.loads(VECTORS_PATH.read_text(encoding="utf-8"))["scenarios"]}
     records = [scenarios[name]["records"] for name in TEAM_SCENARIOS]
     teams = [_core("team_log_replay", records=r, state=None, verified=len(r))["state"] for r in records]
@@ -213,6 +250,7 @@ def main() -> None:
     OUT.write_text(json.dumps({
         "_comment": __doc__.split("\n\n")[1].replace("\n", " "),
         "reference": f"{REFERENCE}:web/static/js/app.js",
+        "decisions": [why for _old, _new, why in DECISIONS],
         "teams": teams,
         "cases": cases,
     }, indent=None, separators=(",", ":")) + "\n", encoding="utf-8", newline="\n")

@@ -239,6 +239,14 @@ impl<'a> Ctx<'a> {
                 return true;
             }
         }
+        // The log decides first, a top-level folder too (a team folder's
+        // own meta, one sealed with a team folder's key; the desktop's rule).
+        if let Some(refusal) = decided {
+            if refusal.is_some() {
+                j.by_team_log.insert(rec.id.clone());
+            }
+            return refusal.is_some();
+        }
         if self.team.is_some()
             && rec.parent().is_none()
             && rec.object_type == "node"
@@ -251,12 +259,6 @@ impl<'a> Ctx<'a> {
                 && !self.admins.contains(author)
                 && self.sealed_by(rec) != Some(author);
         }
-        if let Some(refusal) = decided {
-            if refusal.is_some() {
-                j.by_team_log.insert(rec.id.clone());
-            }
-            return refusal.is_some();
-        }
         let Some(parent) = parent else {
             return false;
         };
@@ -265,8 +267,11 @@ impl<'a> Ctx<'a> {
             let owner = j.personal_owner.get(&parent.id).cloned();
             let mut blocked = false;
             if let Some(owner) = &owner {
+                // With a log only the owner removes from a personal tree.
+                let removal_allowed =
+                    rec.is_deleted && (self.team.is_none() || author.as_deref() == Some(owner));
                 if self.own_user_id.as_deref() != Some(owner.as_str())
-                    && !rec.is_deleted
+                    && !removal_allowed
                     && sealed.as_deref() != Some(owner.as_str())
                 {
                     blocked = true;
@@ -277,13 +282,12 @@ impl<'a> Ctx<'a> {
             }
             if self.team.is_some()
                 && owner.is_none()
-                && !rec.is_deleted
                 && !self.is_own(author)
                 && !self.admins.contains(author)
             {
                 // Review 1141a20 H6: below the first level of the
                 // organisation's own tree (no team folder, no personal tree)
-                // only its admin writes.
+                // only its admin writes or removes.
                 blocked = true;
             }
             return blocked;

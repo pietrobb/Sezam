@@ -87,5 +87,13 @@ opravovali sa 3–4-krát.
 Každý krok je samostatný commit (alebo malá séria) s testami. Počas vývoja
 len lint a cielené testy, celé suite iba v U9.
 
+Rozhodnutia U5 (kde sa klienti rozišli, `tests/authority_vectors.py`
+`DECISIONS`, platí pravidlo desktopu): log rozhoduje prvý aj o objekte na
+najvyššej úrovni; s logom z osobného stromu odstraňuje len jeho vlastník; pod
+prvou úrovňou stromu organizácie aj odstránenie len admin (H6). Cykly rodičov
+jadro blokuje celé (desktop závisel od poradia). Čo desktop vie z vlastnej
+databázy (zadržané uzly, osobné stromy, granty, vlastné horné priečinky),
+dostane jadro ako kontext, keď sa desktop prepne.
+
 Rozpracovaný stav #480 je odložený v `git stash` na `r17-l`
 („R17 #480 WIP before unification pause“) a v `%TEMP%\r17_480_wip.patch`.
