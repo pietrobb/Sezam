@@ -10557,6 +10557,11 @@ function gfDiv(a, b) {
 
 function shamirSplit(secret, threshold, numShares) {
     // secret: Uint8Array, returns: [[index, Uint8Array], ...]
+    // Refusals as the desktop's split_secret (tests/vectors/shamir.json).
+    if (!Number.isInteger(threshold) || threshold < 2) throw new Error('Threshold must be at least 2');
+    if (!Number.isInteger(numShares) || numShares < threshold) throw new Error('Number of shares must be >= threshold');
+    if (numShares > 255) throw new Error('Maximum 255 shares');
+    if (!secret || secret.length === 0) throw new Error('Secret must not be empty');
     const shareBytes = Array.from(
         { length: numShares },
         () => new Uint8Array(secret.length),
@@ -10580,7 +10585,15 @@ function shamirSplit(secret, threshold, numShares) {
 
 function shamirReconstruct(shares) {
     // shares: [[index, Uint8Array], ...]
+    // Refusals as the desktop's reconstruct_secret: a short share was read
+    // as zeros and gave a wrong key without an error.
+    if (!Array.isArray(shares) || shares.length < 2) throw new Error('At least 2 shares required for reconstruction');
     const len = shares[0][1].length;
+    for (const [idx, bytes] of shares) {
+        if (bytes.length !== len) throw new Error(`Share ${idx} has length ${bytes.length}, expected ${len}`);
+        if (!Number.isInteger(idx) || idx < 1 || idx > 255) throw new Error(`Share index must be 1-255, got ${idx}`);
+    }
+    if (new Set(shares.map(s => s[0])).size !== shares.length) throw new Error('Duplicate share indices detected');
     const result = new Uint8Array(len);
     for (let b = 0; b < len; b++) {
         let value = 0;

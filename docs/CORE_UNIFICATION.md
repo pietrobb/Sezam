@@ -264,6 +264,22 @@ prípadov, 160 kontrol, 10 odmietnutí, z desktopu pred zmenou) v
 `core/tests/rekey_archive_vectors.rs` a `tests/test_rekey_archive_vectors.py`
 (desktop, web).
 
+`password_forms` a Shamir GF(256) (U6j): výnimka z riadku E podľa pravidla 3 —
+`password_forms`/`canonical_password` berú hlavné heslo a Shamir pracuje s
+podielmi obnovovacieho kľúča, preto zostávajú na platformách a jadro ich
+nemá. Kópie drží rovnaké zdieľaný súbor vektorov, ktorý musí prejsť každá
+strana: `tests/vectors/password_forms.json` (20 hesiel: NFC/NFD, singletony
+Å/Ω, Hangul, výnimky kompozície, NBSP a ligatúra bez NFKC, mimo BMP) v
+`tests/test_password_forms_shamir_vectors.py` (desktop, web) a
+`mobile/test/password_forms_vectors_test.dart` (mobil);
+`tests/vectors/shamir.json` (7 rozdelení s danými koeficientmi, 28 zložení,
+5 + 7 odmietnutí) na desktope a webe (mobil org recovery nemá). Zjednotené:
+webové `shamirSplit`/`shamirReconstruct` neodmietali zlé parametre ani
+podiely (kratší podiel sa čítal ako nuly a dal zlý kľúč bez chyby, index 0
+alebo 256, jediný podiel); teraz odmietajú ako desktop. Obe pravidlá vektorov
+sú tým pádom mimo ráčny U8 (nie sú v `core/src/json.rs`); U8 ich stráži
+testom, že tieto súbory vektorov existujú a testy každej strany ich čítajú.
+
 Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
 `web/static/js`, `mobile/lib`, po U6i): všetky podpisované a hashované formáty
 bez tajomstva sú v jadre. Zámerne mimo jadra, s tajomstvom (pravidlo 3):
