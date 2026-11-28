@@ -229,7 +229,12 @@ platia obe naraz takto:
 - **Vynútenie:**
   - Klienti len zbierajú vstupy a vykonávajú výsledok.
   - Python, JS a Dart replay sa zmažú, prípadne zostanú len ako testovací orákulum.
+    Hotové (S3): zmazané; orákulom sú spoločné vektory `tests/vectors/*.json`.
   - Tabuľka „rozhodnutie → akcia“ je jedna a pokrytá testom na každom klientovi.
+  - Ráčna `tests/test_core_ratchet.py` (CI): funkcia na desktope, serveri, webe
+    alebo mobile pomenovaná po operácii jadra (`core/src/json.rs` a tabuľky, na
+    ktoré nadväzuje), ktorá jadro nevolá, test zhodí; že zahryzne, overuje
+    vložená kópia pravidla na každej strane.
 - **Test:** conformance scenáre bežia na desktope, webe aj mobile. Každý nový
   scenár sa pridá trom klientom naraz.
 
@@ -251,7 +256,7 @@ platia obe naraz takto:
 |---|---|---|
 | S1 | **Mapa autority:** tabuľka všetkých operácií, ktoré menia autoritu alebo dáta (endpoint, CLI, GUI, MCP), s údajom, kto smie, akou funkciou sa to overuje a kde je test. Register v kóde a test, ktorý zlyhá pri nezaregistrovanej operácii. | INV-2 |
 | S2 | **Jedna autorizačná funkcia na serveri** pre append, restore, migráciu, odovzdanie roly, rejoin, reseed a zápisy objektov. Výnimky sa smú len pridať do tabuľky v S1, nie roztrúsiť v kóde. | INV-1, INV-2 |
-| S3 | **Prehranie denníka a autorita do Rust jadra** (`teamlog` → `core/`), duplicitné implementácie zmazať. | INV-9, K4 |
+| S3 | **Prehranie denníka a autorita do Rust jadra** (`teamlog` → `core/`), duplicitné implementácie zmazať. **Hotové** (vetva U, docs/CORE_UNIFICATION.md U1–U8): team log, autorita nad objektmi, key vouchers, podpisované správy, formáty bez tajomstiev a rozhodnutia orchestrácie nad team logom sú v `sezam-sync-core` pre desktop, server (PyO3), web (WASM) a mobil (FFI); kópie zmazané, ráčna `tests/test_core_ratchet.py`. Na platformách so zdôvodnením zostáva len narábanie s tajomstvami (šifrovanie, KDF, `password_forms`, Shamir) pod zdieľanými vektormi. | INV-9, K4 |
 | S4 | **Zoznam nepodpísaných polí** (INV-3) ako súbor v repe a pravidlo state machine, ktoré klame v každom z nich. | INV-3, INV-4 |
 | S5 | **Revízia výnimiek:** pre každú (`own_cleanup`, `_rotation_lost_here`, výnimka pre bývalých adminov, pravidlá začiatku osobného stromu, presun vlastnej položky, legacy cesty bez denníka) rozhodnúť, či sa **zmaže**, **nahradí pravidlom v denníku**, alebo **zostane so zdôvodnením a property testom**. | K3 |
 | S6 | **Zrušiť režim „viac používateľov bez denníka“**, zmigrovať a legacy heuristiky zmazať. | INV-1, veľká časť povrchu |

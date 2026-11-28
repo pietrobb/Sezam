@@ -312,6 +312,9 @@ FUNCTIONS: dict[str, Op] = {
     "snapshots:take_snapshot": local("a snapshot of the vault file", "tests/test_review10_snapshots.py"),
     "snapshots:vault_salt": read(part_of=("sezam.cli:snapshot_list",)),
     "sync_common:pull_warnings": read("tests/test_sync_conflicts_review_m1.py"),
+    # U6f: the AI switch's signed messages are the core's (sezam-sync-core).
+    "sync_core:call": read(part_of=("sezam.mcp.remote_policy:policy_message",
+                                    "sezam.mcp.remote_policy:anchor_message")),
     "sync_common:server_error": read("tests/test_review6_server_error_codes.py"),
     "team_log_forget:forget_team_log_pin": local("forgets the pinned team log (only one the server lost, INV-8)",
                                                  "tests/test_inv8_forget_acts_only_on_lost.py"),

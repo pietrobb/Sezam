@@ -373,6 +373,25 @@ z desktopu pred zmenou) v `core/tests/team_log_local_refusal_vectors.rs`,
 `tests/test_team_log_local_refusal_vectors.py` (desktop, WASM) a
 `mobile/test/team_log_local_refusal_vectors_test.dart`.
 
+U7 hotové: conformance scenáre team logu (`tests/test_sync_conformance.py -k
+"member or rotat or team_log or restored or withholds_keys"`) na desktope,
+webe a mobile 22 prešlo, 5 preskočených (výnimky 4a: web bez grant a
+rotate_identity, mobil bez grant, revoke a rotate_identity).
+
+Ráčna (U8, `tests/test_core_ratchet.py`, beží v CI s `python -m pytest -q`):
+operácie jadra číta z tabuliek `run(op, …)` a `ask(state, name, …)` v
+`core/src/` (viac ako 90). Funkcia v `src/sezam`, `server/app`,
+`web/static/js` (bez `vendor/`) alebo `mobile/lib` pomenovaná po niektorej
+(snake_case aj camelCase, s predponou `team_log_`/`authority_` aj bez nej),
+ktorej telo nevolá jadro (`sync_core.call`, `SezamSyncCore.call`, `syncCore`,
+pomocníci obalov `call`/`ask`/`answer`, serverové `_core_message`, modul
+`sezam.teamlog`) ani funkciu toho istého súboru, ktorá ho volá, test zhodí.
+Že zahryzne, overuje vložená kópia pravidla do skutočného súboru každej strany
+(desktop, server, web `app.js` a `teamlog.js`, mobil). Výnimka s menom, no inou
+vecou: `sync_rekey.py` `current_key` (reťaz archívov odobratia tohto
+zariadenia, nie `current_key` team logu). Pravidlá na platformách (U6j) stráži
+tým, že `password_forms.json` a `shamir.json` existujú a testy strán ich čítajú.
+
 Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
 `web/static/js`, `mobile/lib`, po U6i): všetky podpisované a hashované formáty
 bez tajomstva sú v jadre. Zámerne mimo jadra, s tajomstvom (pravidlo 3):
