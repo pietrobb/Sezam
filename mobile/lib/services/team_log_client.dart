@@ -568,9 +568,7 @@ Future<LocalTeamLog?> syncTeamLog({
       refuse,
     );
   } on TeamLogMismatch catch (e) {
-    if (local == null ||
-        ownUserId == null ||
-        !const ['went_back', 'differs', 'does_not_replay'].contains(e.cause)) {
+    if (local == null || !TeamLog.forkFollows(e.cause)) {
       rethrow;
     }
     final LocalTeamLog? followed;
@@ -603,7 +601,7 @@ Future<LocalTeamLog?> syncTeamLog({
 /// what this phone holds. Review 18c300f R16-H1: the server keeps what a
 /// device of this account withdrew (a hand-over the server refused, a
 /// dropped rotation), so a fork is followed only as far as
-/// [TeamLog.forkRefusal] allows; a member's phone follows once every change
+/// the core allows (U7d); a member's phone follows once every change
 /// it saw is on the server's side (on 18c300f: 'does not replay' for good).
 /// Null: the mismatch stands; [_ForkRefused]: it stands, and why.
 Future<LocalTeamLog?> _followFork(
@@ -620,15 +618,6 @@ Future<LocalTeamLog?> _followFork(
 ) async {
   final headSeq = head['seq'];
   if (headSeq is! int || headSeq < 0) return null;
-  if (pin != null) {
-    final pinSeq = pin['seq'];
-    if (pinSeq is! int ||
-        pinSeq < 0 ||
-        pinSeq > local.team.headSeq ||
-        TeamLog.recordHash(local.records[pinSeq]) != pin['hash']) {
-      return null;
-    }
-  }
   final served = <Map<String, dynamic>>[];
   for (var page = 0; page < teamLogPages && served.length <= headSeq; page++) {
     final got = (await fetchPage(
@@ -637,47 +626,51 @@ Future<LocalTeamLog?> _followFork(
     if (got.isEmpty) break;
     served.addAll(got);
   }
-  var fork = 0;
-  while (fork < served.length &&
-      fork < local.records.length &&
-      TeamLog.recordHash(served[fork]) ==
-          TeamLog.recordHash(local.records[fork])) {
-    fork++;
-  }
-  if (fork == 0 || fork == served.length || fork == local.records.length)
-    return null;
+  // U7d: where it forks, whether it is followed and what is made again are
+  // the core's (core/src/teamlog/fork_follow.rs). [withdrawn]: what this
+  // phone sent and the server refused, and this account's records a fork
+  // it followed went on without.
+  final pins = [
+    if (pin != null && pin['seq'] is int)
+      {
+        'seq': pin['seq'],
+        'hashes': [pin['hash']],
+      },
+  ];
+  final split = TeamLog.forkSplit(
+    local.records,
+    served,
+    pins,
+    ownUserId,
+    ownKeys,
+    withdrawn,
+  );
+  if (split['refusal'] != null) throw _ForkRefused(split['refusal'] as String);
+  if (split['stand'] == true) return null;
+  final fork = split['fork'] as int;
   final TeamState team;
-  final List<int> missing;
   try {
-    // [withdrawn]: what this phone sent and the server refused, and this
-    // account's records a fork it followed went on without.
-    final (refusal, lostOwn) = TeamLog.forkRefusal(
-      local.records.sublist(fork),
-      served.sublist(fork),
-      ownUserId,
-      ownKeys,
-      withdrawn,
-    );
-    if (refusal != null) throw _ForkRefused(refusal);
-    missing = lostOwn;
     team = log.replay(served);
-  } on _ForkRefused {
-    rethrow;
   } catch (_) {
     return null;
   }
-  if (team.headSeq != headSeq ||
-      team.headHash != head['hash'] ||
-      TeamLog.adminPolicyRefusal(team) != null) {
-    return null;
-  }
+  // This phone keeps no unpushed identity rotation: a lost one is not
+  // linked again.
+  final take = TeamLog.forkTake(
+    team,
+    head,
+    local.records.sublist(fork),
+    split['missing'] as List,
+    ownUserId,
+    ownKeys,
+    null,
+  );
+  if (take['stand'] == true) return null;
+  final plan = take['follow'] as Map;
   // Capability finding 505 (desktop: _follow_fork): this account's records
   // left behind are withdrawn - a server serving them again later is not
   // followed (their changes went out again, or aside).
-  final abandoned = TeamLog.forkAbandoned(
-    local.records.sublist(fork),
-    ownUserId,
-  );
+  final abandoned = List<String>.from(plan['abandoned'] as List);
   Future<LocalTeamLog> follow(LocalTeamLog followed) async {
     if (abandoned.isNotEmpty) {
       if (withdraw == null)
@@ -689,18 +682,15 @@ Future<LocalTeamLog?> _followFork(
     return followed;
   }
 
-  if (missing.isEmpty) return follow(LocalTeamLog(served, team));
-  if (ownUserId == null || remake == null) return null;
   final bodies = [
-    for (final r in local.records.sublist(fork))
-      if (missing.contains(TeamLog.parseBody(r['body'], -1)['seq']))
-        TeamLog.parseBody(r['body'], -1),
+    for (final body in plan['remake'] as List)
+      Map<String, dynamic>.from(body as Map),
   ];
+  if (bodies.isEmpty) return follow(LocalTeamLog(served, team));
+  if (ownUserId == null || remake == null) return null;
   // Review 18c300f R16-M5 (desktop: _follow_fork queues them again): this
   // account's lost changes go out again on the server's head; the phone made
   // them, or nobody else holds them, and on 18c300f it waited for good.
-  if (bodies.any((body) => !TeamLog.remadeKinds.contains(body['type'])))
-    return null;
   var after = team;
   final records = <Map<String, dynamic>>[];
   String? setAside;

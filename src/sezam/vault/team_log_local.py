@@ -403,7 +403,7 @@ class TeamLogMixin:
                 return local
             return self._catch_up_team_log(local, pins, server_head, plan["fetch"])
         except TeamLogMismatch as exc:
-            if local is None or exc.cause not in ("went_back", "differs", "does_not_replay"):
+            if local is None or not sync_core.call("team_log_fork_follows", cause=exc.cause):
                 raise
             adopted, reason = team_log_fork.follow_fork(self, local, server_head)
             if adopted is None:

@@ -17,6 +17,7 @@
 pub mod canonical;
 pub mod follow;
 pub mod fork;
+pub mod fork_follow;
 pub mod ops;
 pub mod replay;
 pub mod resolve;

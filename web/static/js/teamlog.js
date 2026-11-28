@@ -200,11 +200,17 @@ const SezamTeamLog = (() => {
   // follows a fork (capability finding 505).
   const forkAbandoned = (lost, userId) => answer(call('team_log_abandoned', { lost, user_id: userId }), 'hashes');
 
-  // Review 18c300f R16-M5: the kinds of this account's lost changes a device
-  // makes again on the server's head (a genesis or member.keys is bound to the
-  // head it was signed on).
-  const REMADE_KINDS = ['member.add', 'member.role', 'member.remove', 'access.set', 'folder.key',
-                        'org.recovery', 'org.recovery.wrap'];
+  // U7d (core/src/teamlog/fork_follow.rs, tests/vectors/team_log_fork_follow.json):
+  // where a server log forks from this copy and whether it is followed
+  // ({stand}, {refusal} or {fork, missing, relink}); then, on the served
+  // records replayed, {stand} or {follow: {remake, link, abandoned}}.
+  const forkFollows = (cause) => call('team_log_fork_follows', { cause });
+  const forkSplit = (local, served, pins, userId, heldKeys, withdrawn) => call('team_log_fork_split', {
+    local, served, pins, user_id: userId, held_keys: heldKeys, withdrawn: [...withdrawn].sort(),
+  });
+  const forkTake = (state, head, lost, missing, userId, heldKeys, oldSigningPk) => call('team_log_fork_take', {
+    state: toCore(state), head, lost, missing, user_id: userId, held_keys: heldKeys, old_signing_pk: oldSigningPk,
+  });
 
   // The data a lost change is made again with on `state`, or null when the log
   // has it already; TeamLogError when it can never land (the core's,
@@ -218,7 +224,8 @@ const SezamTeamLog = (() => {
     emptyState, stateToJson, applyRecord, replay, nextBody, teamArgument,
     isTeamFolder, currentKey, keyGeneration, isStale, maySeal, isAdmin, mayWrite, keyRecipients,
     mayHoldKey, envelopeValid, itemRefusal, tombstoneRefusal, moveRefusal, adminPolicyRefusal,
-    signingKeyRetired, changeKey, readmitted, restorePartEnd, forkRefusal, forkAbandoned, REMADE_KINDS, resolveChange,
+    signingKeyRetired, changeKey, readmitted, restorePartEnd, forkRefusal, forkAbandoned, forkFollows, forkSplit, forkTake,
+    resolveChange,
   };
 })();
 

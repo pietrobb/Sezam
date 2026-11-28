@@ -458,6 +458,9 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
             "team_log_follow_served" => super::follow::served(parse(input)?),
             "team_log_follow_caught_up" => super::follow::caught_up(parse(input)?),
             "team_log_mismatch_causes" => super::follow::causes(),
+            "team_log_fork_follows" => super::fork_follow::follows(parse(input)?),
+            "team_log_fork_split" => super::fork_follow::split(parse(input)?),
+            "team_log_fork_take" => super::fork_follow::take(parse(input)?),
             "team_log_empty_state" => json!(State::default()),
             _ => return Err(format!("unknown operation {op:?}")),
         })

@@ -481,18 +481,54 @@ class TeamLog {
     ),
   );
 
-  /// Review 18c300f R16-M5: the kinds of this account's lost changes a
-  /// device makes again on the server's head (a genesis or member.keys is
-  /// bound to the head it was signed on).
-  static const remadeKinds = [
-    'member.add',
-    'member.role',
-    'member.remove',
-    'access.set',
-    'folder.key',
-    'org.recovery',
-    'org.recovery.wrap',
-  ];
+  /// U7d (core/src/teamlog/fork_follow.rs): whether a refusal with [cause]
+  /// looks for a fork at all.
+  static bool forkFollows(String? cause) =>
+      syncCore('team_log_fork_follows', {'cause': cause}) as bool;
+
+  /// U7d (tests/vectors/team_log_fork_follow.json): where a server log forks
+  /// from [local] and whether it is followed: {stand}, {refusal} or
+  /// {fork, missing, relink}.
+  static Map forkSplit(
+    List<Map<String, dynamic>> local,
+    List<Map<String, dynamic>> served,
+    List<Map<String, Object?>> pins,
+    String? userId,
+    List<String>? heldKeys,
+    Set<String> withdrawn,
+  ) =>
+      syncCore('team_log_fork_split', {
+            'local': local,
+            'served': served,
+            'pins': pins,
+            'user_id': userId,
+            'held_keys': heldKeys,
+            'withdrawn': withdrawn.toList()..sort(),
+          })
+          as Map;
+
+  /// U7d: on [s], the served records replayed: {stand}, or {follow: {remake,
+  /// link, abandoned}} - the lost changes to make again, the rotation to
+  /// link again, the hashes to withdraw.
+  static Map forkTake(
+    TeamState s,
+    Map<String, dynamic> head,
+    List<Map<String, dynamic>> lost,
+    List missing,
+    String? userId,
+    List<String>? heldKeys,
+    String? oldSigningPk,
+  ) =>
+      syncCore('team_log_fork_take', {
+            'state': s.toCore(),
+            'head': head,
+            'lost': lost,
+            'missing': missing,
+            'user_id': userId,
+            'held_keys': heldKeys,
+            'old_signing_pk': oldSigningPk,
+          })
+          as Map;
 
   /// The data a lost change is made again with on [s], or null when the log
   /// has it already; [TeamLogError] when it can never land (the core's,

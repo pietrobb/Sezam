@@ -8387,7 +8387,7 @@ async function syncWebTeamLog(head, local, pin, _sodium) {
         refuse(plan);  // went back, or differs at a head seen: maybe a fork to follow
         result = plan.same ? local : await catchUpWebTeamLog(head, local, pins, plan.fetch, _sodium, refuse);
     } catch (err) {
-        if (!local || !['went_back', 'differs', 'does_not_replay'].includes(err.teamLogCause)) throw err;
+        if (!local || !globalThis.SezamTeamLog.forkFollows(err.teamLogCause)) throw err;
         const followed = await followWebTeamLogFork(head, local, pin, _sodium);
         if (followed?.refusal) {
             throw teamLogMismatch(`${err.message.replace(/^TEAM LOG MISMATCH: the server's team log /, '')}; it forks from this browser's copy and is ` +
@@ -8411,15 +8411,13 @@ function webHeldTeamKeys(_sodium) {
  * one device of this account put back a shorter copy, so it forks from what
  * this browser holds. Review 18c300f R16-H1: the server keeps what it refused
  * (a hand-over the admin took back, a dropped rotation), so a fork is
- * followed only as far as SezamTeamLog.forkRefusal allows; a member's browser
+ * followed only as far as the core allows (U7d); a member's browser
  * follows once every change it saw is on the server's side. Returns
  * {records, team}, {refusal}, or null: the mismatch stands.
  */
 async function followWebTeamLogFork(head, local, pin, _sodium) {
     const TL = globalThis.SezamTeamLog;
     if (!Number.isSafeInteger(head.seq) || head.seq < 0) return null;
-    if (pin && (!Number.isSafeInteger(pin.seq) || pin.seq > local.team.headSeq ||
-            TL.recordHash(local.records[pin.seq], _sodium) !== pin.hash)) return null;
     const served = [];
     for (let page = 0; page < TEAM_LOG_PAGES && served.length <= head.seq; page++) {
         const resp = await apiFetch(`/api/team-log?since=${served.length - 1}`);
@@ -8427,39 +8425,38 @@ async function followWebTeamLogFork(head, local, pin, _sodium) {
         if (!got.length) break;
         served.push(...got);
     }
-    let fork = 0;
-    while (fork < served.length && fork < local.records.length &&
-           TL.recordHash(served[fork], _sodium) === TL.recordHash(local.records[fork], _sodium)) fork++;
-    if (fork === 0 || fork === served.length || fork === local.records.length) return null;
-    let verdict;
-    try {
-        verdict = TL.forkRefusal(local.records.slice(fork), served.slice(fork), state.userId || null,
-                                 webHeldTeamKeys(_sodium), (await loadWebTeamLedger(_sodium)).withdrawn, _sodium);
-    } catch {
-        return null;
-    }
-    if (verdict.refusal) return { refusal: verdict.refusal };
+    // U7d: where it forks, whether it is followed and what is made again
+    // are the core's (core/src/teamlog/fork_follow.rs).
+    const pins = pin && Number.isSafeInteger(pin.seq) ? [{ seq: pin.seq, hashes: [pin.hash] }] : [];
+    const held = webHeldTeamKeys(_sodium);
+    const split = TL.forkSplit(local.records, served, pins, state.userId || null, held,
+                               (await loadWebTeamLedger(_sodium)).withdrawn);
+    if (split.refusal) return { refusal: split.refusal };
+    if (split.stand) return null;
+    const lost = local.records.slice(split.fork);
     let team;
     try {
         team = TL.replay(served, _sodium);
     } catch {
         return null;
     }
-    if (team.headSeq !== head.seq || team.headHash !== head.hash || TL.adminPolicyRefusal(team)) return null;
-    const followed = verdict.missing.length
-        ? await remakeWebLostTeamChanges(local.records.slice(fork), verdict.missing, served, team, _sodium)
+    // This browser keeps no unpushed identity rotation: a lost one is not linked again.
+    const take = TL.forkTake(team, head, lost, split.missing, state.userId || null, held, null);
+    if (take.stand) return null;
+    const { remake, abandoned } = take.follow;
+    const followed = remake.length
+        ? await remakeWebLostTeamChanges(remake, served, team, _sodium)
         : { records: served, team };
     if (followed) {
         // Capability finding 505 (desktop: _follow_fork): this account's
         // records left behind are withdrawn - a server serving them again
         // later is not followed (their changes went out again, or aside).
-        const abandoned = TL.forkAbandoned(local.records.slice(fork), state.userId || null, _sodium);
         if (abandoned.length) {
             const ledger = await loadWebTeamLedger(_sodium);
             for (const hash of abandoned) { delete ledger.sent[hash]; ledger.withdrawn.add(hash); }
             await saveWebTeamLedger(ledger, _sodium);
         }
-        console.warn(`Followed the server's team log from record ${fork}, which forks from this browser's copy`);
+        console.warn(`Followed the server's team log from record ${split.fork}, which forks from this browser's copy`);
     }
     return followed;
 }
@@ -8473,11 +8470,9 @@ async function followWebTeamLogFork(head, local, pin, _sodium) {
  * {records, team}, or null: the mismatch stands (another device appended
  * meanwhile, or a change bound to the head it was signed on).
  */
-async function remakeWebLostTeamChanges(lost, missing, served, team, _sodium) {
+async function remakeWebLostTeamChanges(bodies, served, team, _sodium) {
     const TL = globalThis.SezamTeamLog;
     if (!state.userId || !state.keypair?.signingSk) return null;
-    const bodies = lost.map(record => TL.parseBody(record.body, null)).filter(body => missing.includes(body.seq));
-    if (bodies.some(body => !TL.REMADE_KINDS.includes(body.type))) return null;
     const records = [];
     let after = team;
     let reason = null;

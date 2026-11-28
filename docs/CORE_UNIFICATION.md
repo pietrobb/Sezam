@@ -319,6 +319,24 @@ stiahnutých záznamoch má prednosť pred chybou replayu ďalšej strany. Vekto
 `core/tests/team_log_follow_vectors.rs`, `tests/test_inv7_forget_offer.py`
 (desktop, web) a `mobile/test/team_log_mismatch_vectors_test.dart`.
 
+Nasledovanie forku (U7d, `core/src/teamlog/fork_follow.rs`): `team_log_fork_follows`
+(ktoré príčiny hľadajú fork: `went_back`, `differs`, `does_not_replay`),
+`team_log_fork_split` (piny kópie, bod forku podľa hashov, `fork_refusal` →
+`stand` / `refusal` / `fork {fork, missing, relink}`) a po replayi záznamov
+servera u klienta `team_log_fork_take` (hlava a hash, TL7, `REMADE_KINDS`,
+najviac jedno prepojenie rotácie a jeho podmienky z desktopového
+`rotation_linked_again`, `fork_abandoned` → `stand` / `follow {remake, link,
+abandoned}`). Desktop `team_log_fork.follow_fork`, web `followWebTeamLogFork`
+a mobil `_followFork` len sťahujú, overujú podpisy, robia zmeny znova a
+ukladajú; ich `REQUEUED_KINDS`/`REMADE_KINDS`/`remadeKinds`, porovnania
+hashov, kontroly pinu a hlavy a zoznamy príčin sú zmazané. Starý kľúč
+rotácie desktop číta len pri `relink`; desktop piny neposiela (pin má len
+poškodená kópia, a tá fork nenasleduje). Zjednotené: mobil skúša fork aj bez `ownUserId` ako desktop a web (jadro bez účtu dá
+`refusal` alebo `stand`). Vektory `tests/vectors/team_log_fork_follow.json`
+(23 prípadov z desktopu pred zmenou) v `core/tests/team_log_fork_follow_vectors.rs`,
+`tests/test_team_log_fork_follow_vectors.py` (desktop, web) a
+`mobile/test/team_log_fork_follow_vectors_test.dart`.
+
 Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
 `web/static/js`, `mobile/lib`, po U6i): všetky podpisované a hashované formáty
 bez tajomstva sú v jadre. Zámerne mimo jadra, s tajomstvom (pravidlo 3):
