@@ -18,6 +18,7 @@ pub mod canonical;
 pub mod fork;
 pub mod ops;
 pub mod replay;
+pub mod resolve;
 pub mod rules;
 
 use std::collections::{BTreeMap, BTreeSet};

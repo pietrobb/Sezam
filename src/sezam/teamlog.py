@@ -290,6 +290,13 @@ def is_team_folder(state: TeamState, folder: str) -> bool:
     return _ask(state, "is_team_folder", folder)
 
 
+def resolve_change(state: TeamState, kind: str, data: dict) -> Optional[dict]:
+    """The record data a queued ``kind`` change goes out with on ``state``, or
+    None when the log has it already; TeamLogError (founded_elsewhere,
+    removed_meanwhile, folder_key_moved, not_remade) when it can never land."""
+    return _answer(_ask(state, "resolve_change", kind, data), "data")
+
+
 def current_key(state: TeamState, folder: str) -> Optional[str]:
     return _ask(state, "current_key", folder)
 

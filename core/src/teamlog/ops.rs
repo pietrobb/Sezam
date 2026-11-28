@@ -320,6 +320,13 @@ pub fn ask(state: &State, name: &str, args: &[Value]) -> Result<Value, String> {
             n(3, 3)?;
             json!(rules::next_body(state, s(0)?, s(1)?, &args[2]))
         }
+        "resolve_change" => {
+            n(2, 2)?;
+            answer(
+                super::resolve::resolve_change(state, s(0)?, &args[1]),
+                "data",
+            )
+        }
         _ => return Err(format!("unknown team log question {name:?}")),
     })
 }

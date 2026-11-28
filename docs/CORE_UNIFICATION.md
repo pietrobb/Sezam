@@ -280,6 +280,21 @@ alebo 256, jediný podiel); teraz odmietajú ako desktop. Obe pravidlá vektorov
 sú tým pádom mimo ráčny U8 (nie sú v `core/src/json.rs`); U8 ich stráži
 testom, že tieto súbory vektorov existujú a testy každej strany ich čítajú.
 
+Stratená zmena urobená znova (U7a, `core/src/teamlog/resolve.rs`, otázka
+`resolve_change` v `team_log_ask`): dáta, s ktorými zmena z fronty ide na
+log, aký je teraz, alebo null, keď ju log už má; odmietnutia
+`founded_elsewhere`, `removed_meanwhile` (`_seen`), `folder_key_moved` a
+`not_remade`. Kľúče `_…` sú fronty a neodchádzajú. Desktop
+(`team_log_state.resolve_change` → `teamlog.resolve_change`), web
+(`TL.resolveChange`) a mobil (`TeamLog.resolveChange`) sú tenké obaly.
+Zjednotené: web a mobil nepoznali genesis ani member.keys (vyhodili
+`not_remade`; volajú ich len pre `REMADE_KINDS`, takže sa nič nezmenilo),
+desktop vrátil dáta druhu, ktorý log nemá; teraz `not_remade` všade.
+Vektory `tests/vectors/resolve_change.json` (82 prípadov na dvoch stavoch, z
+desktopu pred zmenou) v `core/tests/resolve_change_vectors.rs` a
+`tests/test_resolve_change_vectors.py`; web a mobil cez
+`tests/test_r16_fork_following.py` a `mobile/test/r16_fork_following_test.dart`.
+
 Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
 `web/static/js`, `mobile/lib`, po U6i): všetky podpisované a hashované formáty
 bez tajomstva sú v jadre. Zámerne mimo jadra, s tajomstvom (pravidlo 3):

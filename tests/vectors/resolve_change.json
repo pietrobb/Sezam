@@ -1,0 +1,1282 @@
+{
+ "_doc": "A queued team change made again on the log as it is now (docs/CORE_UNIFICATION.md U7a, core/src/teamlog/resolve.rs). expect.data null: the log has it already. Generated from the desktop's resolve_change before U7a; a kind the log does not have is refused not_remade (the desktop gave it back).",
+ "states": {
+  "team": {
+   "org": "acme",
+   "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+   "head_seq": 7,
+   "head_hash": "9999999999999999999999999999999999999999999999999999999999999999",
+   "members": {
+    "01HZAAAAAAAAAAAAAAAAAAAAAA": {
+     "signing_pk": "1111111111111111111111111111111111111111111111111111111111111111",
+     "encryption_pk": "2222222222222222222222222222222222222222222222222222222222222222",
+     "role": "admin",
+     "active": true
+    },
+    "01HZBBBBBBBBBBBBBBBBBBBBBB": {
+     "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+     "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+     "role": "member",
+     "active": true
+    },
+    "01HZCCCCCCCCCCCCCCCCCCCCCC": {
+     "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+     "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+     "role": "member",
+     "active": false
+    }
+   },
+   "folders": {
+    "01HZFFFFFFFFFFFFFFFFFFFFFF": [
+     {
+      "dek_id": "01HZJJJJJJJJJJJJJJJJJJJJJJ",
+      "author": "01HZAAAAAAAAAAAAAAAAAAAAAA"
+     },
+     {
+      "dek_id": "01HZKKKKKKKKKKKKKKKKKKKKKK",
+      "author": "01HZAAAAAAAAAAAAAAAAAAAAAA"
+     }
+    ],
+    "01HZGGGGGGGGGGGGGGGGGGGGGG": [
+     {
+      "dek_id": "01HZMMMMMMMMMMMMMMMMMMMMMM",
+      "author": "01HZAAAAAAAAAAAAAAAAAAAAAA"
+     }
+    ]
+   },
+   "access": {
+    "01HZFFFFFFFFFFFFFFFFFFFFFF": {
+     "01HZBBBBBBBBBBBBBBBBBBBBBB": "write"
+    },
+    "01HZGGGGGGGGGGGGGGGGGGGGGG": {
+     "01HZBBBBBBBBBBBBBBBBBBBBBB": "read"
+    }
+   },
+   "stale": {},
+   "seen_keys": {},
+   "dek_index": {
+    "01HZJJJJJJJJJJJJJJJJJJJJJJ": [
+     "01HZFFFFFFFFFFFFFFFFFFFFFF",
+     0
+    ],
+    "01HZKKKKKKKKKKKKKKKKKKKKKK": [
+     "01HZFFFFFFFFFFFFFFFFFFFFFF",
+     1
+    ],
+    "01HZMMMMMMMMMMMMMMMMMMMMMM": [
+     "01HZGGGGGGGGGGGGGGGGGGGGGG",
+     0
+    ]
+   },
+   "former_admins": {},
+   "rules": 2,
+   "org_recovery": {
+    "01HZAAAAAAAAAAAAAAAAAAAAAA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "org_recovery_wrap": {
+    "01HZAAAAAAAAAAAAAAAAAAAAAA": {
+     "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "epoch": 1
+    }
+   }
+  },
+  "empty": {
+   "org": "",
+   "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+   "head_seq": -1,
+   "head_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+   "members": {},
+   "folders": {},
+   "access": {},
+   "stale": {},
+   "seen_keys": {},
+   "dek_index": {},
+   "former_admins": {},
+   "rules": 0,
+   "org_recovery": {},
+   "org_recovery_wrap": {}
+  }
+ },
+ "cases": [
+  {
+   "state": "team",
+   "kind": "genesis",
+   "data": {
+    "org": "acme",
+    "founder": "01HZAAAAAAAAAAAAAAAAAAAAAA"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "genesis",
+   "data": {
+    "org": "other",
+    "founder": "01HZAAAAAAAAAAAAAAAAAAAAAA"
+   },
+   "expect": {
+    "refused": "founded_elsewhere",
+    "seq": 8
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+    "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+    "role": "member"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+    "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+    "role": "member"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+     "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+    "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+    "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888",
+    "role": "member"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+     "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+     "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+    "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+    "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+    "role": "member"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+     "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+     "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+    "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+    "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+    "role": "member",
+    "_seen": "removed"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+     "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+     "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+    "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+    "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+    "role": "member",
+    "_seen": "active"
+   },
+   "expect": {
+    "refused": "removed_meanwhile",
+    "seq": 8
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+    "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+    "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888",
+    "role": "member",
+    "_seen": "active"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+     "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+     "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+    "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+    "role": "member",
+    "_seen": "active"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.role",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "role": "member"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.role",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "role": "admin"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "role": "admin"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.role",
+   "data": {
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+    "role": "admin"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+     "role": "admin"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.remove",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.remove",
+   "data": {
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.remove",
+   "data": {
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.keys",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+    "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.keys",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+    "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+     "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.keys",
+   "data": {
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+    "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+    "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+     "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+     "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "level": "write"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "level": "read"
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "level": "read"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "level": null
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "level": null
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+    "level": null
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZHHHHHHHHHHHHHHHHHHHHHH",
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "level": "read"
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZHHHHHHHHHHHHHHHHHHHHHH",
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "level": "read"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+    "level": "read"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+    "level": null
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZAAAAAAAAAAAAAAAAAAAAAA",
+    "level": "write",
+    "_note": "queue only"
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+     "user_id": "01HZAAAAAAAAAAAAAAAAAAAAAA",
+     "level": "write"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "dek_id": "01HZKKKKKKKKKKKKKKKKKKKKKK",
+    "prev_dek_id": "01HZJJJJJJJJJJJJJJJJJJJJJJ"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+    "prev_dek_id": "01HZKKKKKKKKKKKKKKKKKKKKKK"
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+     "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+     "prev_dek_id": "01HZKKKKKKKKKKKKKKKKKKKKKK",
+     "gen": 2
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+    "prev_dek_id": "01HZJJJJJJJJJJJJJJJJJJJJJJ"
+   },
+   "expect": {
+    "refused": "folder_key_moved",
+    "seq": 8
+   }
+  },
+  {
+   "state": "team",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZGGGGGGGGGGGGGGGGGGGGGG",
+    "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+    "prev_dek_id": "01HZMMMMMMMMMMMMMMMMMMMMMM"
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZGGGGGGGGGGGGGGGGGGGGGG",
+     "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+     "prev_dek_id": "01HZMMMMMMMMMMMMMMMMMMMMMM",
+     "gen": 1
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZHHHHHHHHHHHHHHHHHHHHHH",
+    "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+    "prev_dek_id": null
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZHHHHHHHHHHHHHHHHHHHHHH",
+     "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+     "prev_dek_id": null,
+     "gen": 0
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZHHHHHHHHHHHHHHHHHHHHHH",
+    "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+    "prev_dek_id": "01HZJJJJJJJJJJJJJJJJJJJJJJ"
+   },
+   "expect": {
+    "refused": "folder_key_moved",
+    "seq": 8
+   }
+  },
+  {
+   "state": "team",
+   "kind": "org.recovery",
+   "data": {
+    "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "org.recovery",
+   "data": {
+    "recovery_pk": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "expect": {
+    "data": {
+     "recovery_pk": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "org.recovery",
+   "data": {
+    "recovery_pk": null
+   },
+   "expect": {
+    "data": {
+     "recovery_pk": null
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "org.recovery.wrap",
+   "data": {
+    "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "epoch": 1
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "org.recovery.wrap",
+   "data": {
+    "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "epoch": 2
+   },
+   "expect": {
+    "data": {
+     "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "epoch": 2
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "org.recovery.wrap",
+   "data": {
+    "epoch": 1,
+    "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "team",
+   "kind": "org.recovery.wrap",
+   "data": {
+    "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "epoch": 1,
+    "_queued": 3
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "genesis",
+   "data": {
+    "org": "acme",
+    "founder": "01HZAAAAAAAAAAAAAAAAAAAAAA"
+   },
+   "expect": {
+    "data": {
+     "org": "acme",
+     "founder": "01HZAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "genesis",
+   "data": {
+    "org": "other",
+    "founder": "01HZAAAAAAAAAAAAAAAAAAAAAA"
+   },
+   "expect": {
+    "data": {
+     "org": "other",
+     "founder": "01HZAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+    "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+    "role": "member"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+     "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+    "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+    "role": "member"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+     "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+    "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+    "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888",
+    "role": "member"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+     "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+     "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+    "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+    "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+    "role": "member"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+     "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+     "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+    "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+    "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+    "role": "member",
+    "_seen": "removed"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+     "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+     "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+    "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+    "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+    "role": "member",
+    "_seen": "active"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+     "signing_pk": "5555555555555555555555555555555555555555555555555555555555555555",
+     "encryption_pk": "6666666666666666666666666666666666666666666666666666666666666666",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+    "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+    "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888",
+    "role": "member",
+    "_seen": "active"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+     "signing_pk": "7777777777777777777777777777777777777777777777777777777777777777",
+     "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.add",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+    "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+    "role": "member",
+    "_seen": "active"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+     "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.role",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "role": "member"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "role": "member"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.role",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "role": "admin"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "role": "admin"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.role",
+   "data": {
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+    "role": "admin"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+     "role": "admin"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.remove",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.remove",
+   "data": {
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.remove",
+   "data": {
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD"
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.keys",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+    "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+     "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.keys",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+    "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+     "encryption_pk": "8888888888888888888888888888888888888888888888888888888888888888"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "member.keys",
+   "data": {
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+    "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+    "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444"
+   },
+   "expect": {
+    "data": {
+     "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+     "signing_pk": "3333333333333333333333333333333333333333333333333333333333333333",
+     "encryption_pk": "4444444444444444444444444444444444444444444444444444444444444444"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "level": "write"
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "level": "write"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "level": "read"
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "level": "read"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "level": null
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZDDDDDDDDDDDDDDDDDDDDDD",
+    "level": null
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZHHHHHHHHHHHHHHHHHHHHHH",
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+    "level": "read"
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZHHHHHHHHHHHHHHHHHHHHHH",
+     "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB",
+     "level": "read"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+    "level": "read"
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+     "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+     "level": "read"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZCCCCCCCCCCCCCCCCCCCCCC",
+    "level": null
+   },
+   "expect": {
+    "data": null
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "access.set",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "user_id": "01HZAAAAAAAAAAAAAAAAAAAAAA",
+    "level": "write",
+    "_note": "queue only"
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+     "user_id": "01HZAAAAAAAAAAAAAAAAAAAAAA",
+     "level": "write"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "dek_id": "01HZKKKKKKKKKKKKKKKKKKKKKK",
+    "prev_dek_id": "01HZJJJJJJJJJJJJJJJJJJJJJJ"
+   },
+   "expect": {
+    "refused": "folder_key_moved",
+    "seq": 0
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+    "prev_dek_id": "01HZKKKKKKKKKKKKKKKKKKKKKK"
+   },
+   "expect": {
+    "refused": "folder_key_moved",
+    "seq": 0
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZFFFFFFFFFFFFFFFFFFFFFF",
+    "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+    "prev_dek_id": "01HZJJJJJJJJJJJJJJJJJJJJJJ"
+   },
+   "expect": {
+    "refused": "folder_key_moved",
+    "seq": 0
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZGGGGGGGGGGGGGGGGGGGGGG",
+    "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+    "prev_dek_id": "01HZMMMMMMMMMMMMMMMMMMMMMM"
+   },
+   "expect": {
+    "refused": "folder_key_moved",
+    "seq": 0
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZHHHHHHHHHHHHHHHHHHHHHH",
+    "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+    "prev_dek_id": null
+   },
+   "expect": {
+    "data": {
+     "folder": "01HZHHHHHHHHHHHHHHHHHHHHHH",
+     "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+     "prev_dek_id": null,
+     "gen": 0
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "folder.key",
+   "data": {
+    "folder": "01HZHHHHHHHHHHHHHHHHHHHHHH",
+    "dek_id": "01HZNNNNNNNNNNNNNNNNNNNNNN",
+    "prev_dek_id": "01HZJJJJJJJJJJJJJJJJJJJJJJ"
+   },
+   "expect": {
+    "refused": "folder_key_moved",
+    "seq": 0
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "org.recovery",
+   "data": {
+    "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "data": {
+     "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "org.recovery",
+   "data": {
+    "recovery_pk": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "expect": {
+    "data": {
+     "recovery_pk": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "org.recovery",
+   "data": {
+    "recovery_pk": null
+   },
+   "expect": {
+    "data": {
+     "recovery_pk": null
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "org.recovery.wrap",
+   "data": {
+    "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "epoch": 1
+   },
+   "expect": {
+    "data": {
+     "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "epoch": 1
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "org.recovery.wrap",
+   "data": {
+    "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "epoch": 2
+   },
+   "expect": {
+    "data": {
+     "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "epoch": 2
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "org.recovery.wrap",
+   "data": {
+    "epoch": 1,
+    "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "data": {
+     "epoch": 1,
+     "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+   }
+  },
+  {
+   "state": "empty",
+   "kind": "org.recovery.wrap",
+   "data": {
+    "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "epoch": 1,
+    "_queued": 3
+   },
+   "expect": {
+    "data": {
+     "recovery_pk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "wrapped": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "epoch": 1
+    }
+   }
+  },
+  {
+   "state": "team",
+   "kind": "member.unknown",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB"
+   },
+   "expect": {
+    "refused": "not_remade",
+    "seq": 8
+   }
+  },
+  {
+   "state": "team",
+   "kind": "rules",
+   "data": {
+    "user_id": "01HZBBBBBBBBBBBBBBBBBBBBBB"
+   },
+   "expect": {
+    "refused": "not_remade",
+    "seq": 8
+   }
+  }
+ ]
+}

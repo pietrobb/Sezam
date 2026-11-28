@@ -629,66 +629,9 @@ def publishable_anchor(db, user_id: str, keypair) -> Optional[str]:
 
 
 def resolve_change(state: teamlog.TeamState, kind: str, data: dict) -> Optional[dict]:
-    """The record data for a queued change on ``state``, or None if the log has it.
-
-    A queued ``folder.key`` names the key and its predecessor; its generation
-    is counted here. When the folder moved on to another key meanwhile, the
-    change cannot land (two re-keys of one folder): TeamLogError.
-    """
-    member = state.members.get(data.get("user_id", ""))
-    seen = data.get("_seen")  # the member as the log had it when the change was queued
-    data = {k: v for k, v in data.items() if not k.startswith("_")}
-    if kind == "genesis":
-        if state.head_seq < 0:
-            return data
-        if state.org == data["org"]:
-            return None  # sent before, its reply lost
-        # Review 8595ec1: another device founded the log first; built onto it,
-        # this founding's access.set lowered members it gave write to read.
-        raise teamlog.TeamLogError(
-            "founded_elsewhere", state.head_seq + 1, "another device founded the team log first",
-        )
-    if kind == "member.add":
-        done = member is not None and member.active and (member.signing_pk, member.encryption_pk) == (
-            data["signing_pk"], data["encryption_pk"])
-        if not done and member is not None and not member.active and seen not in (None, "removed"):
-            # Review 8595ec1: queued before another device removed the member;
-            # sent now it would bring the member back.
-            raise teamlog.TeamLogError(
-                "removed_meanwhile", state.head_seq + 1, f"member {data['user_id']} was removed meanwhile",
-            )
-        return None if done else data
-    if kind == "member.role":
-        return None if member is not None and member.role == data["role"] else data
-    if kind == "member.remove":
-        return None if member is None or not member.active else data
-    if kind == "member.keys":
-        done = member is not None and (member.signing_pk, member.encryption_pk) == (
-            data["signing_pk"], data["encryption_pk"])
-        return None if done else data
-    if kind == "access.set":
-        # R17-N8 (state machine seed 20261127): a member's removal takes every
-        # access they had, also one still queued for them; sent after it, the
-        # access.set was refused (not_active) on every push for good.
-        removed = member is not None and not member.active and data["level"] is not None
-        current = state.access.get(data["folder"], {}).get(data["user_id"])
-        return None if removed or current == data["level"] else data
-    if kind == "folder.key":
-        if data["dek_id"] in state.dek_index:
-            return None
-        current = teamlog.current_key(state, data["folder"])
-        if current != data["prev_dek_id"]:
-            raise teamlog.TeamLogError(
-                "folder_key_moved", state.head_seq + 1,
-                f"folder {data['folder']} is at key {current}, not {data['prev_dek_id']}",
-            )
-        gens = state.folders.get(data["folder"])
-        return {**data, "gen": len(gens) if gens else 0}
-    if kind == "org.recovery":  # only queued by this device's admin, for a new key
-        return None if data["recovery_pk"] in state.org_recovery.values() else data
-    if kind == "org.recovery.wrap":  # R16-M5: made again after a fork lost it
-        return None if data in state.org_recovery_wrap.values() else data
-    return data
+    """The record data for a queued change on ``state``, or None if the log has it
+    (the core's, docs/CORE_UNIFICATION.md U7a). TeamLogError: it can never land."""
+    return teamlog.resolve_change(state, kind, data)
 
 
 def rekey_changes(state: Optional[teamlog.TeamState], batch: dict) -> list[list]:

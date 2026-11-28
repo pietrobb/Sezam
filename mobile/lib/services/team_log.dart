@@ -494,60 +494,15 @@ class TeamLog {
     'org.recovery.wrap',
   ];
 
-  /// The data a lost change is made again with on [s] (the desktop's
-  /// resolve_change, src/sezam/vault/team_log_state.py), or null when the
-  /// log has it already. A folder.key whose folder moved on to another key
-  /// throws. Orchestration: moves into the core in step U7.
+  /// The data a lost change is made again with on [s], or null when the log
+  /// has it already; [TeamLogError] when it can never land (the core's,
+  /// docs/CORE_UNIFICATION.md U7a).
   static Map<String, dynamic>? resolveChange(
     TeamState s,
     String kind,
     Map<String, dynamic> data,
   ) {
-    final member = s.members[data['user_id'] ?? ''];
-    switch (kind) {
-      case 'member.add':
-        return member != null &&
-                member.active &&
-                member.signingPk == data['signing_pk'] &&
-                member.encryptionPk == data['encryption_pk']
-            ? null
-            : data;
-      case 'member.role':
-        return member != null && member.role == data['role'] ? null : data;
-      case 'member.remove':
-        return member == null || !member.active ? null : data;
-      case 'access.set':
-        // R17-N8: a member's removal takes every access they had, also a queued one.
-        if (member != null && !member.active && data['level'] != null) {
-          return null;
-        }
-        return s.access[data['folder']]?[data['user_id']] == data['level']
-            ? null
-            : data;
-      case 'folder.key':
-        if (s.dekIndex.containsKey(data['dek_id'])) return null;
-        final current = currentKey(s, data['folder'] as String);
-        if (current != data['prev_dek_id']) {
-          throw TeamLogError(
-            'folder_key_moved',
-            s.headSeq + 1,
-            "folder ${data['folder']} is at key $current, not ${data['prev_dek_id']}",
-          );
-        }
-        return {...data, 'gen': s.folders[data['folder']]?.length ?? 0};
-      case 'org.recovery':
-        return s.orgRecovery.values.contains(data['recovery_pk']) ? null : data;
-      case 'org.recovery.wrap':
-        final wanted = canonical(data);
-        return s.orgRecoveryWrap.values.any((wrap) => canonical(wrap) == wanted)
-            ? null
-            : data;
-      default:
-        throw TeamLogError(
-          'not_remade',
-          s.headSeq + 1,
-          'a lost $kind is not made again',
-        );
-    }
+    final out = _answer<Object?>(s.ask('resolve_change', [kind, data]), 'data');
+    return out == null ? null : Map<String, dynamic>.from(out as Map);
   }
 }
