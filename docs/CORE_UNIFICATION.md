@@ -187,6 +187,23 @@ presne neudrží). Vektory `tests/vectors/audit.json` (z desktopu pred zmenou:
 `core/tests/audit_vectors.rs`, `tests/test_audit_vectors.py` (desktop, web) a
 `mobile/test/audit_vectors_test.dart`.
 
+Pre-anchor a SZACCT (U6e, `core/src/account.rs`): stavy hesiel pred kotvou
+(`pre_anchor_parse`, `pre_anchor_merge`, `pre_anchor_add`; rozsahy uložených
+KDF parametrov) a účtový balík (`account_bundle_encode` vráti verziu a chvost
+okolo kľúčov, `account_bundle_decode` druh balíka z dĺžky, verzie a bajtov od
+72). Kľúčový materiál do jadra nejde (pravidlo 3): kontrolu KEK
+(SHA-256 s labelom), privátne kľúče balíka a overenie pk legacy 96 B balíka
+robí platforma; balík kratší ako 104 B posiela len dĺžku. Desktop
+(`aead.parse/merge/add_pre_anchor`, `encode_account_keypair`,
+`decode_account_bundle`), web (`parsePreAnchor`, `mergePreAnchor`,
+`addPreAnchor`, `encode/decodeAccountKeypair`) a mobil (tie isté mená v
+`CryptoService`) volajú jadro. Oprava: desktopové `merge_pre_anchor` pridalo
+stav, ktorý druhá strana mala dvakrát, dvakrát a duplikát vytlačil skutočný
+stav z 8 miest (web a mobil ho zlúčili). Vektory `tests/vectors/account_bundle.json`
+(z desktopu pred zmenou; merge podľa webu, `desktop_before` pri 8 prípadoch)
+v `core/tests/account_bundle_vectors.rs`, `tests/test_account_bundle_vectors.py`
+(desktop, web) a `mobile/test/account_bundle_vectors_test.dart`.
+
 Známe zlyhanie mimo vetvy U: `tests/test_review13_handover_rekey.py::
 test_the_new_admin_rekeys_what_the_former_admin_held` (409 „target_user_id is
 admin only“) padá od R17 commitu e55ddb8 (7f9a191 zelené); opraviť pred U9.

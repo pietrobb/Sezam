@@ -277,42 +277,35 @@ def pre_anchor_check(kek: bytes | bytearray) -> bytes:
     return hashlib.sha256(_PRE_ANCHOR_LABEL + bytes(kek)).digest()
 
 
+def _core(op: str, **args):
+    from ..vault import sync_core
+
+    return sync_core.call(op, **args)
+
+
 def parse_pre_anchor(blob: bytes) -> list[tuple[bytes, int, int, int, bytes]]:
-    """``count u8 || entries`` -> [(salt, time_cost, memory_cost, parallelism, check)]."""
-    if not blob:
-        return []
-    count = blob[0]
-    if not 1 <= count <= PRE_ANCHOR_MAX or len(blob) != 1 + count * PRE_ANCHOR_ENTRY_LEN:
-        raise ValueError("Invalid account keypair pre-anchor states")
-    entries = []
-    for i in range(count):
-        entry = blob[1 + i * PRE_ANCHOR_ENTRY_LEN:1 + (i + 1) * PRE_ANCHOR_ENTRY_LEN]
-        time_cost, memory_cost, parallelism = struct.unpack(">III", entry[16:28])
-        if not (1 <= time_cost <= 20 and 8192 <= memory_cost <= 1048576 and 1 <= parallelism <= 16):
-            raise ValueError("Invalid account keypair pre-anchor KDF params")
-        entries.append((bytes(entry[:16]), time_cost, memory_cost, parallelism, bytes(entry[28:])))
-    return entries
+    """``count u8 || entries`` -> [(salt, time_cost, memory_cost, parallelism, check)]
+    (the core's rule, docs/CORE_UNIFICATION.md U6)."""
+    return [
+        (bytes.fromhex(e["salt"]), e["time_cost"], e["memory_cost"], e["parallelism"],
+         bytes.fromhex(e["check"]))
+        for e in _core("pre_anchor_parse", blob=bytes(blob).hex())
+    ]
 
 
 def merge_pre_anchor(kept: bytes, other: bytes) -> bytes:
     """``kept`` plus the states only ``other`` records, newest last, at most PRE_ANCHOR_MAX."""
-    entries = parse_pre_anchor(kept)
-    entries += [e for e in parse_pre_anchor(other) if e not in entries]
-    entries = entries[-PRE_ANCHOR_MAX:]
-    if not entries:
-        return b""
-    return bytes([len(entries)]) + b"".join(
-        s + struct.pack(">III", t, m, p) + c for s, t, m, p, c in entries
-    )
+    merged = _core("pre_anchor_merge", kept=bytes(kept).hex(), other=bytes(other).hex())
+    return bytes.fromhex(merged) if merged else b""
 
 
 def add_pre_anchor(blob: bytes, salt: bytes, time_cost: int, memory_cost: int, parallelism: int,
                    kek: bytes | bytearray) -> bytes:
     """``blob`` plus the password state (salt, params, KEK)."""
-    if len(salt) != 16:
-        raise ValueError("Invalid pre-anchor salt")
-    entry = bytes(salt) + struct.pack(">III", time_cost, memory_cost, parallelism) + pre_anchor_check(kek)
-    return merge_pre_anchor(blob, b"\x01" + entry)
+    return bytes.fromhex(_core(
+        "pre_anchor_add", blob=bytes(blob).hex(), salt=bytes(salt).hex(), time_cost=time_cost,
+        memory_cost=memory_cost, parallelism=parallelism, check=pre_anchor_check(kek).hex(),
+    ))
 
 
 def password_reopens_pre_anchor(password: str, blob: bytes) -> bool:
@@ -341,41 +334,38 @@ def encode_account_keypair(keypair_data: bytes | bytearray, confirmed_genesis: s
     Callers must establish trust independently before publishing this bundle.
     The outer KEYPAIR_WRAP authenticates the canonical account ID and KEK.
     """
-    if not isinstance(confirmed_genesis, str) or not re.fullmatch(r"[0-9a-f]{64}", confirmed_genesis):
-        raise ValueError("Invalid account keypair confirmed genesis")
     if len(keypair_data) not in (64, 96):
         raise ValueError("Invalid account keypair private keys")
-    parse_pre_anchor(pre_anchor)
+    if not isinstance(confirmed_genesis, str):
+        raise ValueError("Invalid account keypair confirmed genesis")
+    parts = _core("account_bundle_encode", confirmed_genesis=confirmed_genesis,
+                  pre_anchor=bytes(pre_anchor).hex())
     keys, _ = decode_account_keypair(keypair_data)
     try:
-        version = b"SZACCT02" if pre_anchor else b"SZACCT01"
-        return bytearray(version) + keys + bytes.fromhex(confirmed_genesis) + bytes(pre_anchor)
+        return bytearray.fromhex(parts["version"]) + keys + bytes.fromhex(parts["tail"])
     finally:
         keys[:] = bytes(len(keys))
 
 
 def decode_account_bundle(payload: bytes | bytearray) -> tuple[bytearray, Optional[str], bytes]:
     """(keys, genesis, pre-anchor states). Legacy keys are explicitly unanchored;
-    unknown bundles never downgrade."""
-    if len(payload) > 104 and payload[:8] == b"SZACCT02":
-        states = bytes(payload[104:])
-        parse_pre_anchor(states)
-        if not states:
-            raise ValueError("Invalid account keypair pre-anchor states")
-        return bytearray(payload[8:72]), payload[72:104].hex(), states
-    if len(payload) == 104:
-        if payload[:8] != b"SZACCT01":
-            raise ValueError("Invalid account keypair bundle version")
-        return bytearray(payload[8:72]), payload[72:].hex(), b""
-    if len(payload) == 64:
+    unknown bundles never downgrade (the core's rule; the keys stay here)."""
+    whole = len(payload) >= 104
+    kind = _core(
+        "account_bundle_decode", length=len(payload),
+        version=bytes(payload[:8]).hex() if whole else None,
+        tail=bytes(payload[72:]).hex() if whole else None,
+    )
+    states = bytes.fromhex(kind["pre_anchor"]) if kind["pre_anchor"] else b""
+    if kind["kind"] in ("anchored", "v1"):
+        return bytearray(payload[8:72]), kind["confirmed_genesis"], states
+    if kind["kind"] == "legacy64":
         return bytearray(payload), None, b""
-    if len(payload) == 96:
-        from nacl.signing import SigningKey
+    from nacl.signing import SigningKey
 
-        if bytes(SigningKey(bytes(payload[:32])).verify_key) != payload[32:64]:
-            raise ValueError("Invalid account keypair public key")
-        return bytearray(payload[:32] + payload[64:]), None, b""
-    raise ValueError("Invalid account keypair payload length")
+    if bytes(SigningKey(bytes(payload[:32])).verify_key) != payload[32:64]:
+        raise ValueError("Invalid account keypair public key")
+    return bytearray(payload[:32] + payload[64:]), None, b""
 
 
 def decode_account_keypair(payload: bytes | bytearray) -> tuple[bytearray, Optional[str]]:

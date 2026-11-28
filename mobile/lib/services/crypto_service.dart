@@ -501,68 +501,52 @@ class CryptoService {
   // password that opened it then. The anchored bundle (SZACCT02) records each
   // such password state as salt(16) || time, memory, lanes (u32be) ||
   // SHA-256(label || KEK); no client may move the account back to one.
-  static const preAnchorEntryLen = 60;
-  static const preAnchorMax = 8;
-
   Uint8List preAnchorCheck(Uint8List kek) =>
       sha256Bytes(Uint8List.fromList([...ascii.encode('sezam-pre-anchor-kek-v1'), ...kek]));
 
-  List<({Uint8List raw, Uint8List salt, int timeCost, int memoryCost, int parallelism, Uint8List check})>
-      parsePreAnchor(Uint8List? blob) {
-    if (blob == null || blob.isEmpty) return const [];
-    final count = blob[0];
-    if (count < 1 || count > preAnchorMax || blob.length != 1 + count * preAnchorEntryLen) {
-      throw const FormatException('Invalid account keypair pre-anchor states');
+  // The states' format is the core's (docs/CORE_UNIFICATION.md U6e); the
+  // check of a KEK is this phone's own hash. A refusal is a FormatException.
+  static Object? _bundleCore(String op, Map<String, Object?> args) {
+    try {
+      return syncCore(op, args);
+    } on StateError catch (e) {
+      throw FormatException(e.message);
     }
-    return [
-      for (var i = 0; i < count; i++)
-        () {
-          final raw = Uint8List.fromList(
-            blob.sublist(1 + i * preAnchorEntryLen, 1 + (i + 1) * preAnchorEntryLen),
-          );
-          final view = ByteData.sublistView(raw);
-          final entry = (
-            raw: raw,
-            salt: Uint8List.fromList(raw.sublist(0, 16)),
-            timeCost: view.getUint32(16, Endian.big),
-            memoryCost: view.getUint32(20, Endian.big),
-            parallelism: view.getUint32(24, Endian.big),
-            check: Uint8List.fromList(raw.sublist(28)),
-          );
-          if (entry.timeCost < 1 || entry.timeCost > 20 || entry.memoryCost < 8192 ||
-              entry.memoryCost > 1048576 || entry.parallelism < 1 || entry.parallelism > 16) {
-            throw const FormatException('Invalid account keypair pre-anchor KDF params');
-          }
-          return entry;
-        }(),
-    ];
   }
+
+  static String? _statesHex(Uint8List? blob) =>
+      blob == null || blob.isEmpty ? null : bytesToHex(blob);
+
+  List<({Uint8List raw, Uint8List salt, int timeCost, int memoryCost, int parallelism, Uint8List check})>
+      parsePreAnchor(Uint8List? blob) => [
+            for (final e in (_bundleCore('pre_anchor_parse', {'blob': _statesHex(blob)}) as List)
+                .cast<Map<String, dynamic>>())
+              (
+                raw: hexToBytes(e['raw'] as String),
+                salt: hexToBytes(e['salt'] as String),
+                timeCost: e['time_cost'] as int,
+                memoryCost: e['memory_cost'] as int,
+                parallelism: e['parallelism'] as int,
+                check: hexToBytes(e['check'] as String),
+              ),
+          ];
 
   /// [kept] plus the states only [other] records, newest last (never forgets one).
   Uint8List? mergePreAnchor(Uint8List? kept, Uint8List? other) {
-    final raws = parsePreAnchor(kept).map((e) => bytesToHex(e.raw)).toList();
-    for (final e in parsePreAnchor(other)) {
-      final hex = bytesToHex(e.raw);
-      if (!raws.contains(hex)) raws.add(hex);
-    }
-    final last = raws.length > preAnchorMax ? raws.sublist(raws.length - preAnchorMax) : raws;
-    if (last.isEmpty) return null;
-    return Uint8List.fromList([last.length, for (final hex in last) ...hexToBytes(hex)]);
+    final merged = _bundleCore('pre_anchor_merge', {'kept': _statesHex(kept), 'other': _statesHex(other)});
+    return merged == null ? null : hexToBytes(merged as String);
   }
 
   Uint8List? addPreAnchor(Uint8List? blob, Uint8List salt, int timeCost, int memoryCost,
-      int parallelism, Uint8List kek) {
-    if (salt.length != 16) throw const FormatException('Invalid pre-anchor salt');
-    final one = Uint8List(1 + preAnchorEntryLen);
-    one[0] = 1;
-    one.setRange(1, 17, salt);
-    final view = ByteData.sublistView(one);
-    view.setUint32(17, timeCost, Endian.big);
-    view.setUint32(21, memoryCost, Endian.big);
-    view.setUint32(25, parallelism, Endian.big);
-    one.setRange(29, 61, preAnchorCheck(kek));
-    return mergePreAnchor(blob, one);
-  }
+          int parallelism, Uint8List kek) =>
+      hexToBytes(_bundleCore('pre_anchor_add', {
+        'blob': _statesHex(blob),
+        'salt': bytesToHex(salt),
+        'time_cost': timeCost,
+        'memory_cost': memoryCost,
+        'parallelism': parallelism,
+        'check': bytesToHex(preAnchorCheck(kek)),
+      }) as String);
 
   /// Does [password] (any of its KDF forms) derive a recorded pre-anchor KEK?
   Future<bool> passwordReopensPreAnchor(String password, Uint8List? blob) async {
@@ -587,55 +571,48 @@ class CryptoService {
   // Callers establish trust independently; a legacy bundle has no anchor.
   Uint8List encodeAccountKeypair(Uint8List keys, String confirmedGenesis,
       [Uint8List? preAnchor]) {
-    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(confirmedGenesis) ||
-        (keys.length != 64 && keys.length != 96)) {
+    if (keys.length != 64 && keys.length != 96) {
       throw const FormatException(
         'Invalid account keypair keys or confirmed genesis',
       );
     }
-    final states = preAnchor != null && preAnchor.isNotEmpty ? preAnchor : null;
-    parsePreAnchor(states);
+    final parts = _bundleCore('account_bundle_encode', {
+      'confirmed_genesis': confirmedGenesis,
+      'pre_anchor': _statesHex(preAnchor),
+    }) as Map<String, dynamic>;
     final decoded = decodeAccountKeypair(keys);
     try {
       return Uint8List.fromList([
-        ...ascii.encode(states != null ? 'SZACCT02' : 'SZACCT01'),
+        ...hexToBytes(parts['version'] as String),
         ...decoded.keypairData,
-        ...hexToBytes(confirmedGenesis),
-        ...?states,
+        ...hexToBytes(parts['tail'] as String),
       ]);
     } finally {
       zeroize(decoded.keypairData);
     }
   }
 
+  /// The bundle's kind is the core's; the keys stay here (a bundle shorter
+  /// than 104 bytes is all key, so only its length goes).
   ({Uint8List keypairData, String? confirmedGenesis, Uint8List? preAnchor}) decodeAccountKeypair(
     Uint8List payload,
   ) {
-    if (payload.length > 104 &&
-        utf8.decode(payload.sublist(0, 8), allowMalformed: true) == 'SZACCT02') {
-      final preAnchor = Uint8List.fromList(payload.sublist(104));
-      if (parsePreAnchor(preAnchor).isEmpty) {
-        throw const FormatException('Invalid account keypair pre-anchor states');
-      }
-      return (
-        keypairData: Uint8List.fromList(payload.sublist(8, 72)),
-        confirmedGenesis: bytesToHex(payload.sublist(72, 104)),
-        preAnchor: preAnchor,
-      );
-    }
-    if (payload.length == 104) {
-      if (utf8.decode(payload.sublist(0, 8), allowMalformed: true) !=
-          'SZACCT01') {
-        throw const FormatException('Invalid account keypair bundle version');
-      }
-      return (
-        keypairData: Uint8List.fromList(payload.sublist(8, 72)),
-        confirmedGenesis: bytesToHex(payload.sublist(72)),
-        preAnchor: null,
-      );
-    }
-    if (payload.length == 64) {
-      return (keypairData: Uint8List.fromList(payload), confirmedGenesis: null, preAnchor: null);
+    final whole = payload.length >= 104;
+    final kind = _bundleCore('account_bundle_decode', {
+      'length': payload.length,
+      'version': whole ? bytesToHex(Uint8List.sublistView(payload, 0, 8)) : null,
+      'tail': whole ? bytesToHex(Uint8List.sublistView(payload, 72)) : null,
+    }) as Map<String, dynamic>;
+    switch (kind['kind']) {
+      case 'anchored' || 'v1':
+        final states = kind['pre_anchor'] as String?;
+        return (
+          keypairData: Uint8List.fromList(payload.sublist(8, 72)),
+          confirmedGenesis: kind['confirmed_genesis'] as String,
+          preAnchor: states == null ? null : hexToBytes(states),
+        );
+      case 'legacy64':
+        return (keypairData: Uint8List.fromList(payload), confirmedGenesis: null, preAnchor: null);
     }
     if (payload.length == 96) {
       final pk = signingPublicKeyFromSeed(

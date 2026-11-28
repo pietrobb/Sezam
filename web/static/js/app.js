@@ -438,56 +438,30 @@ function preAnchorCheck(kek, _sodium) {
     try { return _sodium.crypto_hash_sha256(input); } finally { _sodium.memzero(input); }
 }
 
+// The states' format is the core's (docs/CORE_UNIFICATION.md U6e); the check
+// of a KEK is this page's libsodium.
 function parsePreAnchor(blob) {
-    if (!blob || !blob.length) return [];
-    const count = blob[0];
-    if (count < 1 || count > PRE_ANCHOR_MAX || blob.length !== 1 + count * PRE_ANCHOR_ENTRY_LEN) {
-        throw new Error('Invalid account keypair pre-anchor states');
-    }
-    const entries = [];
-    for (let i = 0; i < count; i++) {
-        const raw = blob.slice(1 + i * PRE_ANCHOR_ENTRY_LEN, 1 + (i + 1) * PRE_ANCHOR_ENTRY_LEN);
-        const view = new DataView(raw.buffer);
-        const entry = {
-            raw, salt: raw.slice(0, 16), check: raw.slice(28),
-            time_cost: view.getUint32(16, false), memory_cost: view.getUint32(20, false),
-            parallelism: view.getUint32(24, false),
-        };
-        if (entry.time_cost < 1 || entry.time_cost > 20 || entry.memory_cost < 8192 ||
-                entry.memory_cost > 1048576 || entry.parallelism < 1 || entry.parallelism > 16) {
-            throw new Error('Invalid account keypair pre-anchor KDF params');
-        }
-        entries.push(entry);
-    }
-    return entries;
+    return globalThis.SezamSyncCore.call('pre_anchor_parse', { blob: (blob?.length ? bytesToHex(blob) : null) }).map(e => ({
+        raw: hexToBytes(e.raw), salt: hexToBytes(e.salt), check: hexToBytes(e.check),
+        time_cost: e.time_cost, memory_cost: e.memory_cost, parallelism: e.parallelism,
+    }));
 }
 
 // `kept` plus the states only `other` records, newest last (a rebind never forgets one).
 function mergePreAnchor(kept, other) {
-    const raws = parsePreAnchor(kept).map(e => bytesToHex(e.raw));
-    for (const e of parsePreAnchor(other)) {
-        const hex = bytesToHex(e.raw);
-        if (!raws.includes(hex)) raws.push(hex);
-    }
-    const last = raws.slice(-PRE_ANCHOR_MAX);
-    if (!last.length) return null;
-    const out = new Uint8Array(1 + last.length * PRE_ANCHOR_ENTRY_LEN);
-    out[0] = last.length;
-    last.forEach((hex, i) => out.set(hexToBytes(hex), 1 + i * PRE_ANCHOR_ENTRY_LEN));
-    return out;
+    const merged = globalThis.SezamSyncCore.call('pre_anchor_merge', {
+        kept: (kept?.length ? bytesToHex(kept) : null), other: (other?.length ? bytesToHex(other) : null),
+    });
+    return merged ? hexToBytes(merged) : null;
 }
 
 function addPreAnchor(blob, salt, params, kek, _sodium) {
-    if (!(salt instanceof Uint8Array) || salt.length !== 16) throw new Error('Invalid pre-anchor salt');
-    const one = new Uint8Array(1 + PRE_ANCHOR_ENTRY_LEN);
-    one[0] = 1;
-    one.set(salt, 1);
-    const view = new DataView(one.buffer);
-    view.setUint32(17, params.time_cost, false);
-    view.setUint32(21, params.memory_cost, false);
-    view.setUint32(25, params.parallelism, false);
-    one.set(preAnchorCheck(kek, _sodium), 29);
-    return mergePreAnchor(blob, one);
+    if (!(salt instanceof Uint8Array)) throw new Error('Invalid pre-anchor salt');
+    return hexToBytes(globalThis.SezamSyncCore.call('pre_anchor_add', {
+        blob: (blob?.length ? bytesToHex(blob) : null), salt: bytesToHex(salt), time_cost: params.time_cost,
+        memory_cost: params.memory_cost, parallelism: params.parallelism,
+        check: bytesToHex(preAnchorCheck(kek, _sodium)),
+    }));
 }
 
 // Does `password` (any of its KDF forms) derive a recorded pre-anchor KEK?
@@ -562,37 +536,38 @@ async function webKdfStateOf(userId, kek, _sodium) {
 }
 
 function encodeAccountKeypair(keypairData, confirmedGenesis, _sodium, preAnchor = null) {
-    if (typeof confirmedGenesis !== 'string' || !/^[0-9a-f]{64}$/.test(confirmedGenesis) ||
-            !(keypairData instanceof Uint8Array) || ![64, 96].includes(keypairData.length)) {
+    if (!(keypairData instanceof Uint8Array) || ![64, 96].includes(keypairData.length)) {
         throw new Error('Invalid account keypair keys or confirmed genesis');
     }
-    const states = preAnchor && preAnchor.length ? preAnchor : null;
-    parsePreAnchor(states);
+    const parts = globalThis.SezamSyncCore.call('account_bundle_encode', {
+        confirmed_genesis: confirmedGenesis, pre_anchor: (preAnchor?.length ? bytesToHex(preAnchor) : null),
+    });
+    const version = hexToBytes(parts.version), tail = hexToBytes(parts.tail);
     const decoded = decodeAccountKeypair(keypairData, _sodium);
     try {
-        const payload = new Uint8Array(104 + (states ? states.length : 0));
-        payload.set(new TextEncoder().encode(states ? 'SZACCT02' : 'SZACCT01'));
-        payload.set(decoded.keypairData, 8);
-        payload.set(hexToBytes(confirmedGenesis), 72);
-        if (states) payload.set(states, 104);
+        const payload = new Uint8Array(version.length + 64 + tail.length);
+        payload.set(version);
+        payload.set(decoded.keypairData, version.length);
+        payload.set(tail, version.length + 64);
         return payload;
     } finally { _sodium.memzero(decoded.keypairData); }
 }
 
+// The bundle's kind is the core's; the keys never leave this page (a bundle
+// shorter than 104 bytes is all key, so only its length goes).
 function decodeAccountKeypair(payload, _sodium) {
     if (!(payload instanceof Uint8Array)) throw new Error('Invalid account keypair payload');
-    if (payload.length > 104 && new TextDecoder().decode(payload.subarray(0, 8)) === 'SZACCT02') {
-        const preAnchor = payload.slice(104);
-        if (!parsePreAnchor(preAnchor).length) throw new Error('Invalid account keypair pre-anchor states');
-        return { keypairData: payload.slice(8, 72), confirmedGenesis: bytesToHex(payload.subarray(72, 104)), preAnchor };
+    const whole = payload.length >= 104;
+    const kind = globalThis.SezamSyncCore.call('account_bundle_decode', {
+        length: payload.length,
+        version: whole ? bytesToHex(payload.subarray(0, 8)) : null,
+        tail: whole ? bytesToHex(payload.subarray(72)) : null,
+    });
+    if (kind.kind === 'anchored' || kind.kind === 'v1') {
+        return { keypairData: payload.slice(8, 72), confirmedGenesis: kind.confirmed_genesis,
+                 preAnchor: kind.pre_anchor ? hexToBytes(kind.pre_anchor) : null };
     }
-    if (payload.length === 104) {
-        if (new TextDecoder().decode(payload.subarray(0, 8)) !== 'SZACCT01') {
-            throw new Error('Invalid account keypair bundle version');
-        }
-        return { keypairData: payload.slice(8, 72), confirmedGenesis: bytesToHex(payload.subarray(72)), preAnchor: null };
-    }
-    if (payload.length === 64) return { keypairData: payload.slice(), confirmedGenesis: null, preAnchor: null };
+    if (kind.kind === 'legacy64') return { keypairData: payload.slice(), confirmedGenesis: null, preAnchor: null };
     if (payload.length === 96) {
         const signing = _sodium.crypto_sign_seed_keypair(payload.subarray(0, 32));
         try {
