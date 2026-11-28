@@ -617,16 +617,20 @@ async def _sync_push(
                     (identity_pre.new_signing_pk, identity_pre.new_encryption_pk)
                     if identity_pre is not None else None
                 )
+                # U9: a handover's envelopes for the new admin come in the
+                # push of its member.role records; their sender is the admin
+                # of the log these records continue, not of the log after them.
+                is_admin = await authority.team_admin(cur, user_id, state=await team_log.load_state(cur))
                 team_state = await team_log.append(
                     cur, team_log_records, user_id,
                     pending_identity=identity_keys, prepared=log_prepared,
                 )
             else:
                 team_state = await team_log.load_state(cur)
+                is_admin = await authority.team_admin(cur, user_id, state=team_state)
             # Review R17-R9s (V5): whether this account is the admin, from the
-            # log as it stands under this lock (after this push's records);
-            # the request's answer is from before it (a handover meanwhile).
-            is_admin = await authority.team_admin(cur, user_id, state=team_state)
+            # log as it stands under this lock; the request's answer is from
+            # before it (a handover meanwhile).
             # Everything an identity rotated by this push could still have
             # signed carries a commit_seq up to here (review 688edcb V4).
             seq_before_push = int(counter_row[0]) - 1 if counter_row else 0

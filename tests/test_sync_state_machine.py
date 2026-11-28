@@ -1572,7 +1572,7 @@ class SyncMachine(RuleBasedStateMachine):
         # The server's current recovery: the stored blob or the key (and wrap)
         # the team log names. A stale one wraps the KEK of an older password.
         vault = self.devices[self.org[0]].vault
-        status = org_recovery_server._client(vault)._request("GET", "/api/org-recovery/status") or {}
+        status = org_recovery_server._client(vault)._request("GET", "/api/org-recovery/status", auth=True) or {}
         return (
             bool(status.get("configured")) and not status.get("stale")
             and status.get("recovery_signing_pk") == self.org[2].hex()
@@ -1798,9 +1798,11 @@ class SyncMachine(RuleBasedStateMachine):
         # With a team log the server's own rules refuse her envelope (only an
         # admin the log names seals a team key) and her folders; a lying
         # server skips them.
-        rules = {name: getattr(server_team_log, name) for name in ("envelope_refusal", "item_refusal")}
-        for name in rules:
-            setattr(server_team_log, name, lambda *_a, **_k: None)
+        # The folder rule is the core's push rule (U5g): (decided, refusal).
+        lies = {"envelope_refusal": None, "write_refusal": (False, None)}
+        rules = {name: getattr(server_team_log, name) for name in lies}
+        for name, lie in lies.items():
+            setattr(server_team_log, name, lambda *_a, _lie=lie, **_k: _lie)
         try:
             with users_row_deciding():  # and takes the users row, not the log, as the admin (INV-1)
                 reply = client._request("POST", "/api/sync", {

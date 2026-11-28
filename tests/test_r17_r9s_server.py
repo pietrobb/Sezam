@@ -103,6 +103,24 @@ async def test_a_handover_meanwhile_leaves_the_old_admins_push_no_admin_rights(
 
 
 @pytest.mark.asyncio
+async def test_a_handover_carries_the_new_admins_envelopes_in_its_own_push(app_client, mock_db):  # noqa: F811
+    """U9 (stateful seed TeamLogMachine@25): the envelopes of the keys the new
+    admin lacks go in the push of the member.role records (team_migration.
+    hand_over_admin). They are the old admin's, judged by the log the records
+    continue; the log after them refused them and no handover with one landed."""
+    team = Team(mock_db)
+    await _team_folder(app_client, team)
+    promote = team.record("member.role", ADMIN, {"user_id": BOB, "role": "admin"})
+    team.accept(promote)
+    demote = team.record("member.role", ADMIN, {"user_id": ADMIN, "role": "member"})
+    team.accept(demote)
+    envelope = _obj(team.sk[ADMIN], "01JV0000000000000000000009", "envelope", b"e" * 80,
+                    parent=K1, target=BOB, level="write")
+    resp = await _push(app_client, team, ADMIN, [envelope], [promote, demote])
+    assert resp.status_code == 200 and [a["id"] for a in resp.json()["accepted"]] == [envelope["id"]], resp.text
+
+
+@pytest.mark.asyncio
 async def test_a_team_log_page_is_limited_in_sql(app_client, mock_db, monkeypatch):  # noqa: F811
     team = Team(mock_db)
     await _team_folder(app_client, team)
