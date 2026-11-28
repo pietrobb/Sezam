@@ -203,20 +203,69 @@ Future<void> forgetConfirmedTeamGenesis(
   await _trustStorage.delete(key: 'sezam_confirmed_team_genesis:$userId');
 }
 
-/// The genesis an account bundle names, unless this phone left that log.
-Future<void> importAccountTeamGenesis(String userId, String genesis) async {
-  // Capability run 412: a pin or list that cannot be read pins nothing and
-  // never fails the unlock; the team is refused where it is used
-  // (local_damaged) until the founder is confirmed again. A readable pin of
-  // another log still refuses these keys before anything is written.
-  final forgotten = await _readableForgottenTeamGenesis(userId);
-  if (forgotten == null || forgotten.contains(genesis)) return;
-  try {
-    await readConfirmedTeamGenesis(userId);
-  } on TeamLogMismatch {
-    return;
+/// The core's {note, pin, conflict} for [genesis] named by account keys
+/// (core/src/teamlog/local.rs anchor_pin, capability run 709). [held]: the
+/// copy and checkpoint this phone holds (VaultService.heldTeamLogPins).
+/// Capability runs 411/412: a pin or list that cannot be read pins nothing
+/// and never fails the unlock; the team is refused where it is used
+/// (local_damaged) until the founder is confirmed again.
+Future<Map> anchorPin(
+  String userId,
+  String? genesis,
+  Map<String, Object?> held,
+) async {
+  var unreadable = held['unreadable'] as String?;
+  Future<T?> trust<T>(Future<T?> Function(String) read) async {
+    try {
+      return await read(userId);
+    } on TeamLogMismatch catch (e) {
+      unreadable ??= e.detail;
+      return null;
+    }
   }
-  await confirmTeamGenesis(userId, genesis);
+
+  final forgotten = await trust(readForgottenTeamGenesis);
+  final confirmed = await trust(readConfirmedTeamGenesis);
+  return syncCore('team_log_anchor_pin', {
+        'unreadable': unreadable,
+        'anchor': genesis,
+        'forgotten': forgotten ?? const <String>[],
+        'confirmed': confirmed,
+        'pins': held['pins'] ?? const [],
+        'held': held['held'],
+      })
+      as Map;
+}
+
+/// Keys this phone is taking: noted and pinned as at unlock, but a genesis
+/// that conflicts with what this phone pins or holds refuses them before
+/// anything is written.
+Future<void> importAccountTeamGenesis(
+  String userId,
+  String genesis, {
+  Map<String, Object?> held = const {},
+}) async {
+  _genesisHash(genesis);
+  if ((await anchorPin(userId, genesis, held))['conflict'] == true) {
+    throw TeamLogMismatch(
+      'names another genesis than the account keys (another server, or a log left elsewhere)',
+      'anchor_conflict',
+    );
+  }
+  await recordAccountTeamGenesis(userId, genesis, held: held);
+}
+
+/// Capability run 416: the anchor this phone's own keys named, before the
+/// server's keys named another, stays pinned as the core says.
+Future<void> keepAccountTeamGenesis(
+  String userId,
+  String genesis, {
+  Map<String, Object?> held = const {},
+}) async {
+  _genesisHash(genesis);
+  if ((await anchorPin(userId, genesis, held))['pin'] == true) {
+    await confirmTeamGenesis(userId, genesis);
+  }
 }
 
 // INV-7: the genesis the account keys name, noted at every unlock from the
@@ -225,33 +274,27 @@ Future<void> importAccountTeamGenesis(String userId, String genesis) async {
 String _accountAnchorKey(String userId) => 'sezam_account_team_anchor:$userId';
 
 /// At unlock: note the genesis the account keys name ([genesis], null: none)
-/// and pin it unless this phone pins another. Never refuses: a conflict is
-/// refused where the team is used, as anchor_conflict (VaultService).
-Future<void> recordAccountTeamGenesis(String userId, String? genesis) async {
-  List<String>? forgotten = const [];
-  if (genesis != null) {
-    _genesisHash(genesis);
-    // Capability run 411: unguarded, an unreadable list read "Wrong password".
-    forgotten = await _readableForgottenTeamGenesis(userId);
-    if (forgotten != null && forgotten.contains(genesis)) genesis = null;
-  }
-  if (genesis == null) {
+/// and pin it as the core says. Never refuses: a conflict is refused where
+/// the team is used, as anchor_conflict (VaultService).
+Future<void> recordAccountTeamGenesis(
+  String userId,
+  String? genesis, {
+  Map<String, Object?> held = const {},
+}) async {
+  if (genesis != null) _genesisHash(genesis);
+  final to = await anchorPin(userId, genesis, held);
+  final note = to['note'] as String?;
+  if (note == null) {
     await _trustStorage.delete(key: _accountAnchorKey(userId));
     return;
   }
+  // Pinned first: a store that fails there leaves an import's keys untaken
+  // with nothing written (sezam_key_import_crash_test).
+  if (to['pin'] == true) await confirmTeamGenesis(userId, note);
   await _trustStorage.write(
     key: _accountAnchorKey(userId),
-    value: jsonEncode({'user_id': userId, 'genesis_hash': genesis}),
+    value: jsonEncode({'user_id': userId, 'genesis_hash': note}),
   );
-  // An unreadable list may hold it: not pinned from the keys then (local_damaged).
-  if (forgotten == null) return;
-  String? confirmed;
-  try {
-    confirmed = await readConfirmedTeamGenesis(userId);
-  } on TeamLogMismatch {
-    return; // an unreadable pin is refused where the team is used (local_damaged)
-  }
-  if (confirmed == null) await confirmTeamGenesis(userId, genesis);
 }
 
 /// The genesis [recordAccountTeamGenesis] noted, unless this phone left it since.

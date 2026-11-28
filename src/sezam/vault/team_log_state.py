@@ -463,24 +463,32 @@ def local_refusal(db, anchor: Optional[str], forgotten: list[str], *, unreadable
     )
 
 
-def record_account_anchor(db, keypair) -> None:
-    """At unlock: note the genesis the account keys name, and pin it unless
-    this device holds or pins another (INV-7: then team operations are
-    refused as anchor_conflict, the unlock never is)."""
-    genesis = keypair.confirmed_genesis
+def anchor_pin(db, anchor: Optional[str]) -> dict:
+    """The core's {note, pin, conflict} for the genesis the account keys name
+    (core/src/teamlog/local.rs anchor_pin, capability run 709)."""
     forgotten = readable_forgotten_genesis(db)
-    if genesis is not None and genesis in (forgotten or []):
-        # The user left this log here; the server's bundle still names it.
-        keypair.confirmed_genesis, keypair.pre_anchor = None, b""
-        genesis = None
-    if genesis is None:
+    return sync_core.call(
+        "team_log_anchor_pin", unreadable=None if forgotten is not None else "list of logs left",
+        anchor=anchor, forgotten=forgotten or [], confirmed=db.get_meta(CONFIRMED_GENESIS_META),
+        pins=[db.get_meta(GENESIS_META)], held=_held(db),
+    )
+
+
+def record_account_anchor(db, keypair) -> None:
+    """At unlock: note the genesis the account keys name, and pin it as the
+    core says (INV-7: a conflict refuses team operations as anchor_conflict,
+    never the unlock)."""
+    to = anchor_pin(db, keypair.confirmed_genesis)
+    if to["note"] is None:
+        if keypair.confirmed_genesis is not None:
+            # The user left this log here; the server's bundle still names it.
+            keypair.confirmed_genesis, keypair.pre_anchor = None, b""
         # Legacy account keys convey no trust, even after a successful login.
         db.execute("DELETE FROM vault_meta WHERE key = ?", (ACCOUNT_ANCHOR_META,))
         return
-    db.set_meta(ACCOUNT_ANCHOR_META, genesis)
-    # An unreadable list may hold this genesis: not pinned from the keys then.
-    if forgotten is not None and local_refusal(db, genesis, forgotten) is None:
-        db.set_meta(CONFIRMED_GENESIS_META, genesis)
+    db.set_meta(ACCOUNT_ANCHOR_META, to["note"])
+    if to["pin"]:
+        db.set_meta(CONFIRMED_GENESIS_META, to["note"])
 
 
 def keep_identity_continuation(db, kek: bytes, user_id: str, old_private: bytes) -> None:
@@ -556,8 +564,7 @@ def member_keys_record(state: teamlog.TeamState, user_id: str, old, new) -> dict
 def import_account_anchor(db, keypair) -> None:
     """Adopt an authenticated bundle anchor without replacing local continuity:
     account keys from the server naming another log are not taken."""
-    genesis = keypair.confirmed_genesis
-    if local_refusal(db, genesis, readable_forgotten_genesis(db) or []) is not None:
+    if anchor_pin(db, keypair.confirmed_genesis)["conflict"]:
         raise TeamLogMismatch("The account anchor conflicts with this device's team log.", "anchor_conflict")
     record_account_anchor(db, keypair)
 

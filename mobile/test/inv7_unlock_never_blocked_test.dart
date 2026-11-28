@@ -271,8 +271,10 @@ void main() {
         expect(vault.teamLogRefusal?.cause, 'anchor_conflict');
         expect(vault.teamLogRefusal!.offersForget, isTrue);
         expect(await readAccountTeamGenesis(uid), otherGenesis);
-        expect(await readConfirmedTeamGenesis(uid), pinned ? genesis : otherGenesis,
-            reason: 'a pin held here is never replaced by the account keys');
+        // Capability run 709: nor is the copy held here (the core's anchor_pin,
+        // as on the desktop); the phone pinned the keys' genesis over it.
+        expect(await readConfirmedTeamGenesis(uid), pinned ? genesis : null,
+            reason: 'a pin or copy held here is never replaced by the account keys');
         await expectLater(
             vault.createEntry(parentRef: personal.id, name: 'offline', fields: const []), completes);
         vault.lock();

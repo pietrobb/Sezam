@@ -914,6 +914,40 @@ class VaultService {
     }
   }
 
+  /// What this phone holds for the core's anchor rule (core/src/teamlog/
+  /// local.rs anchor_pin, capability run 709), read before the vault opens:
+  /// the genesis its copy holds and the checkpoint's pin, the checkpoint
+  /// opened under one of [keks]. One none of them opens may pin another log:
+  /// nothing is pinned from the keys then (unreadable).
+  Future<Map<String, Object?>> heldTeamLogPins(
+    String userId,
+    List<Uint8List?> keks,
+  ) async {
+    try {
+      if (!await DatabaseService.vaultExists()) return const {};
+    } catch (_) {
+      return const {};
+    }
+    final held = _heldGenesis(await _db.getSetting(teamLogRecordsSetting));
+    final saved = await _db.getSyncState('sync_checkpoint:$userId');
+    String? pin;
+    String? unreadable = saved == null ? null : 'sync checkpoint';
+    for (final kek in keks) {
+      if (saved == null || unreadable == null) break;
+      if (kek == null) continue;
+      try {
+        final team = decodeSyncCheckpoint(saved, kek, userId)['team_log'];
+        pin = team is Map ? team['genesis_hash'] as String? : null;
+        unreadable = null;
+      } catch (_) {}
+    }
+    return {
+      'unreadable': unreadable,
+      'pins': [pin],
+      'held': held == null ? null : {'genesis': held},
+    };
+  }
+
   /// INV-7: why the team log is refused on this phone now (cause and way
   /// out), or null. While set, [teamLog] is null, no team key is opened, and
   /// only writes in the personal tree are taken.

@@ -2,10 +2,14 @@
 //! (docs/CORE_UNIFICATION.md step U7f, INV-7, capability run 707): a trust
 //! record it cannot open or a copy that is damaged (`local_damaged`), or
 //! account keys that name another log than the device holds or pins
-//! (`anchor_conflict`). Once for the desktop (`_local_team_state`,
-//! `record_account_anchor`, `import_account_anchor`), the page
-//! (`webLocalTeamLogRefusal`) and the phone (`_loadTeamLog`); they read and
-//! unseal what they hold and replay it with libsodium, never compare.
+//! (`anchor_conflict`), and (capability run 709) what a device does with the
+//! genesis its account keys name at unlock and import (`anchor_pin`). Once
+//! for the desktop (`_local_team_state`, `record_account_anchor`,
+//! `import_account_anchor`), the page (`webLocalTeamLogRefusal`,
+//! `importAccountTeamAnchor`, `keepTeamAnchor`) and the phone (`_loadTeamLog`,
+//! `recordAccountTeamGenesis`, `importAccountTeamGenesis`,
+//! `keepAccountTeamGenesis`); they read and unseal what they hold and replay
+//! it with libsodium, never compare.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -93,4 +97,22 @@ pub fn refusal_of(i: LocalIn) -> Value {
         return refusal("local_damaged", "copy", Some(why));
     }
     Value::Null
+}
+
+/// `{note, pin, conflict}` for the genesis the account keys name (`anchor`)
+/// at unlock or import (capability run 709): `note` is the anchor the device
+/// records (none when the keys name none or one this device left); `pin`
+/// whether it becomes the confirmed genesis: not while a trust record does
+/// not open (it may hold the anchor) nor when it conflicts; `conflict`: the
+/// device pins or holds another log (an import refuses the keys, an unlock
+/// never: the team is refused as anchor_conflict). A damaged copy
+/// (`copy_error`) changes none of it.
+pub fn anchor_pin(i: LocalIn) -> Value {
+    let note = i
+        .anchor
+        .as_deref()
+        .filter(|a| !i.forgotten.iter().any(|g| g == a));
+    let conflict = anchor_conflicts(&i);
+    let pin = note.is_some() && i.unreadable.is_none() && !conflict;
+    json!({"note": note, "pin": pin, "conflict": conflict})
 }

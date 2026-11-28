@@ -373,6 +373,24 @@ z desktopu pred zmenou) v `core/tests/team_log_local_refusal_vectors.rs`,
 `tests/test_team_log_local_refusal_vectors.py` (desktop, WASM) a
 `mobile/test/team_log_local_refusal_vectors_test.dart`.
 
+Pin z kľúčov účtu (U7f, capability run 709, `team_log_anchor_pin`): pri
+odomknutí a importe kľúčov jadro vráti `{note, pin, conflict}` — `note` je
+genesis kľúčov, ktorú si zariadenie zapíše (žiadna, ak ju opustilo), `pin`
+či sa stane potvrdenou genesis (nie pri zázname dôvery, ktorý sa neotvorí,
+ani pri konflikte; poškodená kópia na tom nič nemení) a `conflict` či
+zariadenie pinuje alebo drží iný log (import kľúče odmietne, odomknutie nikdy).
+Volajú ho desktop `record_account_anchor`/`import_account_anchor`, web
+`importAccountTeamAnchor`/`keepTeamAnchor` a mobil `recordAccountTeamGenesis`/
+`importAccountTeamGenesis`/`keepAccountTeamGenesis`; mobil mu dáva aj
+držanú kópiu a pin checkpointu (`VaultService.heldTeamLogPins`). Zmazané:
+štyri inline kontroly opustenej genesis a pravidlo mobilu „pinuj, keď nič nie
+je potvrdené“. Zjednotené (mobil a web ako desktop): kópia alebo checkpoint
+iného logu bránia pinu; import na mobile ich odmietne ako `anchor_conflict`.
+Vektory `tests/vectors/team_log_anchor_pin.json` (329 prípadov z desktopu na
+bb12402) v `core/tests/team_log_anchor_pin_vectors.rs`,
+`tests/test_team_log_anchor_pin_vectors.py` (desktop, WASM) a
+`mobile/test/team_log_anchor_pin_vectors_test.dart`.
+
 U7 hotové: conformance scenáre team logu (`tests/test_sync_conformance.py -k
 "member or rotat or team_log or restored or withholds_keys"`) na desktope,
 webe a mobile 22 prešlo, 5 preskočených (výnimky 4a: web bez grant a

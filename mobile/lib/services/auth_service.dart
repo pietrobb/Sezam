@@ -2806,6 +2806,9 @@ class AuthService {
         requireConfirmedGenesis(expectedGenesis, genesis);
       }
       final oldKek = previousKek ?? _vault.currentKek;
+      // Capability run 709: what this phone holds, for the core's anchor rule.
+      Future<Map<String, Object?>> held() =>
+          _vault.heldTeamLogPins(userId, [kek, oldKek]);
       var changed = oldKek == null
           ? null
           : await _changedAccountAnchor(userId, genesis, oldKek);
@@ -2821,8 +2824,7 @@ class AuthService {
         // anchored change had not landed): the server held no anchor to
         // strip. The keys are taken; the anchor stays pinned here.
         try {
-          if (await readConfirmedTeamGenesis(userId) == null)
-            await confirmTeamGenesis(userId, changed);
+          await keepAccountTeamGenesis(userId, changed, held: await held());
         } catch (_) {}
         changed = null;
       }
@@ -2834,19 +2836,20 @@ class AuthService {
       if (heldVault && expectedGenesis == null) {
         if (changed != null) {
           try {
-            if (await readConfirmedTeamGenesis(userId) == null)
-              await confirmTeamGenesis(userId, changed);
+            await keepAccountTeamGenesis(userId, changed, held: await held());
           } catch (_) {}
         }
         try {
-          await recordAccountTeamGenesis(userId, genesis);
+          await recordAccountTeamGenesis(userId, genesis, held: await held());
         } catch (_) {}
       } else if (changed != null) {
         throw const FormatException('Account anchor changed or removed');
       } else if (fromServer || expectedGenesis != null) {
         // Keys this phone is just taking from a server: one naming a genesis
         // this phone pins otherwise is refused before anything is written.
-        if (genesis != null) await importAccountTeamGenesis(userId, genesis);
+        if (genesis != null) {
+          await importAccountTeamGenesis(userId, genesis, held: await held());
+        }
       } else {
         // INV-7: keys this phone already holds naming another log never fail
         // the unlock (it read "Wrong password"); team operations refuse it
@@ -2854,7 +2857,7 @@ class AuthService {
         // that cannot be read or written; the team is refused where it is
         // used (local_damaged), only the decrypt above is a password error.
         try {
-          await recordAccountTeamGenesis(userId, genesis);
+          await recordAccountTeamGenesis(userId, genesis, held: await held());
         } catch (_) {}
       }
       return expandDesktopKeypair(
@@ -3086,7 +3089,14 @@ class AuthService {
       throw const FormatException('Account anchor changed or removed');
     }
     if (confirmedGenesis != null) {
-      await importAccountTeamGenesis(userObjectId, confirmedGenesis);
+      await importAccountTeamGenesis(
+        userObjectId,
+        confirmedGenesis,
+        held: await _vault.heldTeamLogPins(userObjectId, [
+          currentKek,
+          backupKek,
+        ]),
+      );
     }
     if ((await _sync.unreadableOwnDeks(backupKek, localUserId)).isEmpty) {
       return _vault.kekMatchesServer && _bytesEqual(currentKek, backupKek);

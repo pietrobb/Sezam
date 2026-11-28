@@ -7875,6 +7875,7 @@ async function saveConfirmedTeamGenesis(genesis, _sodium) {
     if ((prior && prior !== genesis) || (observed && observed !== genesis)) {
         throw new Error('TEAM LOG MISMATCH: the invitation conflicts with this browser\'s team anchor');
     }
+    if (prior === genesis) return;  // already confirmed: the stored record stays as it is
     const key = await syncCheckpointKey('device-v2', _sodium, true);
     if (userId !== state.userId || session !== state.sessionSerial) throw new Error('The anchor session has ended');
     const nonce = _sodium.randombytes_buf(_sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
@@ -7944,32 +7945,42 @@ async function saveForgottenTeamGenesis(list, _sodium) {
  * pinned unless this browser left it or pins one (run 416), never followed away from. */
 async function keepTeamAnchor(genesis, _sodium) {
     try {
-        if ((await loadForgottenTeamGenesis(_sodium)).includes(genesis)) return;
-        if (!await loadConfirmedTeamGenesis(_sodium)) await saveConfirmedTeamGenesis(genesis, _sodium);
+        if ((await anchorPin(genesis, _sodium)).pin) await saveConfirmedTeamGenesis(genesis, _sodium);
     } catch {
-        // INV-7: an anchor that does not open is refused where the team is used (local_damaged)
+        // INV-7: refused where the team is used (local_damaged), never the sign-in
     }
 }
 
-/** The genesis an account bundle names, unless this browser left that log. */
+/** The core's {note, pin, conflict} for `genesis` named by account keys
+ * (core/src/teamlog/local.rs anchor_pin, capability run 709). INV-7: a trust
+ * record that does not open pins nothing and is refused where the team is
+ * used (local_damaged), never the sign-in. */
+async function anchorPin(genesis, _sodium) {
+    let unreadable = state.teamLogDamaged ? String(state.teamLogDamaged.message) : null;
+    let forgotten = [], confirmed = null;
+    try {
+        forgotten = await loadForgottenTeamGenesis(_sodium);
+        confirmed = await loadConfirmedTeamGenesis(_sodium);
+    } catch (err) {
+        unreadable ??= String(err?.message || err);
+    }
+    const held = state.teamLog?.team?.genesisHash || null;
+    return globalThis.SezamSyncCore.call('team_log_anchor_pin', {
+        unreadable, anchor: genesis, forgotten, confirmed: confirmed || null,
+        pins: [state.syncCheckpoint?.team_log?.genesis_hash || null],
+        held: held ? { genesis: held } : null,
+    });
+}
+
+/** The genesis an account bundle names, pinned as the core says. INV-7: keys
+ * naming another log than this browser pins are refused where the team is
+ * used (anchor_conflict, webLocalTeamLogRefusal), never the sign-in. */
 async function importAccountTeamAnchor(_sodium) {
     const genesis = state.keypair?.confirmedGenesis;
     if (!genesis) return;
-    let forgotten, prior;
-    try {
-        forgotten = await loadForgottenTeamGenesis(_sodium);
-        prior = await loadConfirmedTeamGenesis(_sodium);
-    } catch {
-        return;  // INV-7: an anchor that does not open is refused where the team is used (local_damaged)
-    }
-    if (forgotten.includes(genesis)) {
-        state.keypair.confirmedGenesis = null;
-        return;
-    }
-    // INV-7: keys naming another log than this browser pins are refused where
-    // the team is used (anchor_conflict, webLocalTeamLogRefusal), never the sign-in.
-    if ((prior && prior !== genesis) || webLocalTeamLogRefusal()) return;
-    await saveConfirmedTeamGenesis(genesis, _sodium);
+    const to = await anchorPin(genesis, _sodium);
+    if (to.note === null) state.keypair.confirmedGenesis = null;  // this browser left that log
+    if (to.pin) await saveConfirmedTeamGenesis(genesis, _sodium);
 }
 
 function webPinnedTeamGenesis() {

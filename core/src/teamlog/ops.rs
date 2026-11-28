@@ -462,6 +462,7 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
                 serde_json::json!(super::local::held_genesis(&parse(input)?))
             }
             "team_log_local_refusal" => super::local::refusal_of(parse(input)?),
+            "team_log_anchor_pin" => super::local::anchor_pin(parse(input)?),
             "team_log_rotated_seals" => super::rotated::seals(parse(input)?)?,
             "team_log_fork_follows" => super::fork_follow::follows(parse(input)?),
             "team_log_fork_split" => super::fork_follow::split(parse(input)?),

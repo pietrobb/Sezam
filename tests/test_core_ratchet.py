@@ -152,6 +152,7 @@ def test_the_core_has_its_operations():
         "key_voucher_vouched",
         "aad",
         "team_log_local_refusal",
+        "team_log_anchor_pin",
         "resolve_change",
         "is_admin",
         "may_write",
