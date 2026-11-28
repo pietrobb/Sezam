@@ -3657,57 +3657,51 @@ async function sealToRotatedMembers(_sodium, session) {
     const teamLog = state.teamLog;
     if (!teamLog?.records?.length || !state.keypair?.encryptionSk) return false;
     const team = teamLog.team;
-    if (!TL.isAdmin(team, state.userId) || !webTeamLogTrusted(_sodium, teamLog)) return false;
     const markerId = `rotation_sealed:${state.userId}:${team.genesisHash}`;
     const marker = await idbKeysRequest('readonly', store => store.get(markerId));
     const done = Number.isInteger(marker?.seq) ? marker.seq : -1;
     if (done >= team.headSeq) return false;
-    if ((await pendingWebRevocations()).length) return false;  // a re-key seals to the log's recipients
-    const rotated = new Set();
-    for (const record of teamLog.records) {
-        const body = TL.parseBody(record.body);
-        if (body.seq > done && body.type === 'member.keys' && body.data.user_id !== state.userId) {
-            rotated.add(body.data.user_id);
-        }
-    }
+    // docs/CORE_UNIFICATION.md U7e: who gets an envelope, and whether the
+    // marker moves, is the core's (core/src/teamlog/rotated.rs). A pending
+    // re-key or revocation seals to the log's recipients itself.
+    const plan = TL.rotatedSeals(
+        team, done, teamLog.records.map(record => record.body), state.userId,
+        webTeamLogTrusted(_sodium, teamLog), (await pendingWebRevocations()).length > 0, [], null,
+    );
     const objects = [];
     const writeIds = [];
-    for (const folder of Object.keys(team.folders).sort()) {
-        const dekId = TL.currentKey(team, folder);
+    for (const { dek_id: dekId, user_id: userId, encryption_pk: pkHex, level } of plan.seal) {
         const dek = state.deks[dekId];
-        if (!TL.maySeal(team, folder) || !(dek instanceof Uint8Array) || dek.length !== 32) continue;
-        for (const [userId, pkHex, level] of TL.keyRecipients(team, folder)) {
-            if (!rotated.has(userId)) continue;
-            const recipientPk = hexToBytes(pkHex);
-            const sealed = Object.values(state.syncObjects || {}).some(env => {
-                if (env.object_type !== 'envelope' || env.is_deleted || env.parent_ref !== dekId ||
-                        env.target_user_id !== userId || env.access_level !== level ||
-                        (env.signer || env.owner_id) !== state.userId) return false;
-                try {
-                    const blob = base64ToBytes(env.payload);
-                    const n = _sodium.crypto_box_NONCEBYTES;
-                    const opened = _sodium.crypto_box_open_easy(
-                        blob.slice(n), blob.slice(0, n), recipientPk, state.keypair.encryptionSk
-                    );
-                    _sodium.memzero(opened);
-                    return true;
-                } catch {
-                    return false;
-                }
-            });
-            if (sealed) continue;
-            const nonce = _sodium.randombytes_buf(_sodium.crypto_box_NONCEBYTES);
-            const ciphertext = _sodium.crypto_box_easy(dek, nonce, recipientPk, state.keypair.encryptionSk);
-            const encryptedDek = new Uint8Array(nonce.length + ciphertext.length);
-            encryptedDek.set(nonce, 0);
-            encryptedDek.set(ciphertext, nonce.length);
-            const envelopeId = generateULID();
-            objects.push(await buildSignedSyncObject(_sodium, {
-                id: envelopeId, object_type: 'envelope', parent_ref: dekId,
-                target_user_id: userId, access_level: level, version: 1,
-            }, encryptedDek));
-            if (level === 'write') writeIds.push(envelopeId);
-        }
+        if (!(dek instanceof Uint8Array) || dek.length !== 32) continue;  // another admin holds it
+        const recipientPk = hexToBytes(pkHex);
+        const sealed = Object.values(state.syncObjects || {}).some(env => {
+            if (env.object_type !== 'envelope' || env.is_deleted || env.parent_ref !== dekId ||
+                    env.target_user_id !== userId || env.access_level !== level ||
+                    (env.signer || env.owner_id) !== state.userId) return false;
+            try {
+                const blob = base64ToBytes(env.payload);
+                const n = _sodium.crypto_box_NONCEBYTES;
+                const opened = _sodium.crypto_box_open_easy(
+                    blob.slice(n), blob.slice(0, n), recipientPk, state.keypair.encryptionSk
+                );
+                _sodium.memzero(opened);
+                return true;
+            } catch {
+                return false;
+            }
+        });
+        if (sealed) continue;
+        const nonce = _sodium.randombytes_buf(_sodium.crypto_box_NONCEBYTES);
+        const ciphertext = _sodium.crypto_box_easy(dek, nonce, recipientPk, state.keypair.encryptionSk);
+        const encryptedDek = new Uint8Array(nonce.length + ciphertext.length);
+        encryptedDek.set(nonce, 0);
+        encryptedDek.set(ciphertext, nonce.length);
+        const envelopeId = generateULID();
+        objects.push(await buildSignedSyncObject(_sodium, {
+            id: envelopeId, object_type: 'envelope', parent_ref: dekId,
+            target_user_id: userId, access_level: level, version: 1,
+        }, encryptedDek));
+        if (level === 'write') writeIds.push(envelopeId);
     }
     if (objects.length) {
         if (writeIds.length) {
@@ -3730,7 +3724,9 @@ async function sealToRotatedMembers(_sodium, session) {
             return false;
         }
     }
-    await idbKeysRequest('readwrite', store => store.put({ id: markerId, seq: team.headSeq }));
+    if (plan.advance) {
+        await idbKeysRequest('readwrite', store => store.put({ id: markerId, seq: team.headSeq }));
+    }
     return objects.length > 0;
 }
 
@@ -7513,13 +7509,23 @@ async function reviveFoldersOfUnsentWork(_sodium) {
     let revived = 0;
     const refused = new Set();
     for (let level = 0; level < 64; level++) {
-        const queued = Object.values(state.outbox);
-        const due = Object.values(state.syncObjects || {}).filter(held =>
-            held.object_type === 'node' && held.is_deleted && !state.outbox[held.id] &&
-            !refused.has(held.id) && queued.some(q => q.parent_ref === held.id && !q.is_deleted &&
-                ['node', 'entry'].includes(q.object_type)));
+        const workIn = [...new Set(Object.values(state.outbox)
+            .filter(q => !q.is_deleted && q.parent_ref && ['node', 'entry'].includes(q.object_type))
+            .map(q => q.parent_ref))];
+        const deleted = workIn.map(id => state.syncObjects?.[id]).filter(held =>
+            held?.object_type === 'node' && held.is_deleted && !state.outbox[held.id] && !refused.has(held.id));
+        // docs/CORE_UNIFICATION.md U7e: which come back, at which version (above
+        // every version this browser sent too, R16-Z SM18), is the core's.
+        const due = globalThis.SezamSyncCore.call('revive_folders', {
+            work_in: workIn,
+            deleted: deleted.map(held => ({
+                id: held.id, version: Number(held.version),
+                sent: Math.max(0, ...(state.outboxSent?.[held.id] || []).map(([v]) => v)) || null,
+            })),
+        });
         if (!due.length) break;
-        for (const held of due) {
+        for (const { id, version } of due) {
+            const held = state.syncObjects[id];
             const bytes = base64ToBytes(held.payload);
             const tombstone = Number(held.version);
             let meta = null;
@@ -7536,7 +7542,7 @@ async function reviveFoldersOfUnsentWork(_sodium) {
             }
             const folder = withWebBase(await sealVaultObject({
                 id: held.id, object_type: 'node', payloadData: meta, parent_ref: held.parent_ref || null,
-                version: tombstone + 1, dekId: payloadDekId(held), write_policy: held.write_policy,
+                version, dekId: payloadDekId(held), write_policy: held.write_policy,
             }));
             try {
                 assertTeamLogAllowsWrite(folder);

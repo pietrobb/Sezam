@@ -1,0 +1,151 @@
+{
+ "_comment": "U7e (docs/CORE_UNIFICATION.md): which folders deleted elsewhere come back for the queued work in them, and at which version (one round). Built by tests/rotated_revive_vectors.py from the desktop's _revive_folders_of_unsent on f399842. Never regenerate it to make a client pass.",
+ "cases": [
+  {
+   "name": "nothing_deleted",
+   "deleted": [],
+   "work_in": [
+    "01JF0000000000000000000001"
+   ],
+   "expect": []
+  },
+  {
+   "name": "no_work_in_it",
+   "deleted": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 3
+    }
+   ],
+   "work_in": [
+    "01JF0000000000000000000002"
+   ],
+   "expect": []
+  },
+  {
+   "name": "work_in_it",
+   "deleted": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 3
+    }
+   ],
+   "work_in": [
+    "01JF0000000000000000000001"
+   ],
+   "expect": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 4
+    }
+   ]
+  },
+  {
+   "name": "work_in_two",
+   "deleted": [
+    {
+     "id": "01JF0000000000000000000002",
+     "version": 5
+    },
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 3
+    }
+   ],
+   "work_in": [
+    "01JF0000000000000000000001",
+    "01JF0000000000000000000002",
+    "01JF0000000000000000000001"
+   ],
+   "expect": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 4
+    },
+    {
+     "id": "01JF0000000000000000000002",
+     "version": 6
+    }
+   ]
+  },
+  {
+   "name": "above_what_this_device_sent",
+   "deleted": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 3,
+     "sent": 4
+    }
+   ],
+   "work_in": [
+    "01JF0000000000000000000001"
+   ],
+   "expect": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 5
+    }
+   ]
+  },
+  {
+   "name": "sent_below_the_tombstone",
+   "deleted": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 6,
+     "sent": 4
+    }
+   ],
+   "work_in": [
+    "01JF0000000000000000000001"
+   ],
+   "expect": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 7
+    }
+   ]
+  },
+  {
+   "name": "sent_unknown",
+   "deleted": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 6,
+     "sent": null
+    }
+   ],
+   "work_in": [
+    "01JF0000000000000000000001"
+   ],
+   "expect": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 7
+    }
+   ]
+  },
+  {
+   "name": "one_of_two",
+   "deleted": [
+    {
+     "id": "01JF0000000000000000000001",
+     "version": 3
+    },
+    {
+     "id": "01JF0000000000000000000002",
+     "version": 2
+    }
+   ],
+   "work_in": [
+    "01JF0000000000000000000002"
+   ],
+   "expect": [
+    {
+     "id": "01JF0000000000000000000002",
+     "version": 3
+    }
+   ]
+  }
+ ]
+}

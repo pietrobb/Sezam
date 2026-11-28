@@ -1,0 +1,1874 @@
+{
+ "_comment": "U7e (docs/CORE_UNIFICATION.md): which team keys an admin device seals again to a member who rotated its identity, and whether the marker moves. Built by tests/rotated_revive_vectors.py from the desktop's _seal_to_rotated_members on f399842. Never regenerate it to make a client pass.",
+ "cases": [
+  {
+   "name": "nothing_rotated",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1",
+    "head_seq": 7,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d",
+      "role": "member",
+      "signing_pk": "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": -1,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [],
+    "advance": true
+   }
+  },
+  {
+   "name": "seen_to_the_head",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1",
+    "head_seq": 7,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d",
+      "role": "member",
+      "signing_pk": "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [],
+    "advance": false
+   }
+  },
+  {
+   "name": "member_rotated",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4",
+    "head_seq": 8,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [
+     {
+      "folder": "01JF0000000000000000000001",
+      "dek_id": "01JD0000000000000000000001",
+      "user_id": "01JM0000000000000000000002",
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "level": "write"
+     }
+    ],
+    "advance": true
+   }
+  },
+  {
+   "name": "member_rotated_seen_from_the_start",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4",
+    "head_seq": 8,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": -1,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [
+     {
+      "folder": "01JF0000000000000000000001",
+      "dek_id": "01JD0000000000000000000001",
+      "user_id": "01JM0000000000000000000002",
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "level": "write"
+     }
+    ],
+    "advance": true
+   }
+  },
+  {
+   "name": "member_rotated_before_done",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ],
+     "01JD0000000000000000000003": [
+      "01JF0000000000000000000002",
+      1
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      },
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000003"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "4ab08cf9334ee725f3c5b379c558919001d70741a480827986ccc1689a4dd3be",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 8,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000003\",\"folder\":\"01JF0000000000000000000002\",\"gen\":1,\"prev_dek_id\":\"01JD0000000000000000000002\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"folder.key\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [],
+    "advance": true
+   }
+  },
+  {
+   "name": "own_rotation",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "328509f4025a71857006f08e4a674cc2d2e93480071eb17be7fb45f650761b9f",
+    "head_seq": 8,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "role": "admin",
+      "signing_pk": "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d",
+      "role": "member",
+      "signing_pk": "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967": "01JM0000000000000000000001",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003",
+     "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793": "01JM0000000000000000000001"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967\",\"new_key_sig\":\"5b3a90b6eebeff3c521f6475cea9ec653a900dc03dd399e98951256e49b9ce3c1ec6ac7617886b9cbe2b31f8b9ec4b6abd42ccf97e8571e03d52092181a7a800\",\"signing_pk\":\"fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [],
+    "advance": true
+   }
+  },
+  {
+   "name": "two_members_rotated",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "3ad08779eccc8d77f64da40a7be398235ce5a071c2dad4af088c57abfa1c57ce",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "role": "member",
+      "signing_pk": "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967": "01JM0000000000000000000003",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003",
+     "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000003\",\"data\":{\"encryption_pk\":\"1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967\",\"new_key_sig\":\"4be3750b2df3b4b15a8587dd5eb557ea929086a2af133c57f0e028361208d8e46a5ad6dc4224594c24b2ca10f99f6cc454e9e2810d931fa7af019574fca36305\",\"signing_pk\":\"fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"member.keys\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [
+     {
+      "folder": "01JF0000000000000000000001",
+      "dek_id": "01JD0000000000000000000001",
+      "user_id": "01JM0000000000000000000002",
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "level": "write"
+     },
+     {
+      "folder": "01JF0000000000000000000001",
+      "dek_id": "01JD0000000000000000000001",
+      "user_id": "01JM0000000000000000000003",
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "level": "read"
+     },
+     {
+      "folder": "01JF0000000000000000000002",
+      "dek_id": "01JD0000000000000000000002",
+      "user_id": "01JM0000000000000000000003",
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "level": "read"
+     }
+    ],
+    "advance": true
+   }
+  },
+  {
+   "name": "blocked",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ],
+     "01JD0000000000000000000003": [
+      "01JF0000000000000000000002",
+      1
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      },
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000003"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "4ab08cf9334ee725f3c5b379c558919001d70741a480827986ccc1689a4dd3be",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000003\",\"folder\":\"01JF0000000000000000000002\",\"gen\":1,\"prev_dek_id\":\"01JD0000000000000000000002\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"folder.key\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": true,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [],
+    "advance": false
+   }
+  },
+  {
+   "name": "founder_not_confirmed",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ],
+     "01JD0000000000000000000003": [
+      "01JF0000000000000000000002",
+      1
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      },
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000003"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "4ab08cf9334ee725f3c5b379c558919001d70741a480827986ccc1689a4dd3be",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000003\",\"folder\":\"01JF0000000000000000000002\",\"gen\":1,\"prev_dek_id\":\"01JD0000000000000000000002\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"folder.key\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": false,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [],
+    "advance": false
+   }
+  },
+  {
+   "name": "member_device",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ],
+     "01JD0000000000000000000003": [
+      "01JF0000000000000000000002",
+      1
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      },
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000003"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "4ab08cf9334ee725f3c5b379c558919001d70741a480827986ccc1689a4dd3be",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000003\",\"folder\":\"01JF0000000000000000000002\",\"gen\":1,\"prev_dek_id\":\"01JD0000000000000000000002\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"folder.key\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000003",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [],
+    "advance": true
+   }
+  },
+  {
+   "name": "member_device_not_confirmed",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ],
+     "01JD0000000000000000000003": [
+      "01JF0000000000000000000002",
+      1
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      },
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000003"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "4ab08cf9334ee725f3c5b379c558919001d70741a480827986ccc1689a4dd3be",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000003\",\"folder\":\"01JF0000000000000000000002\",\"gen\":1,\"prev_dek_id\":\"01JD0000000000000000000002\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"folder.key\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000003",
+   "trusted": false,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [],
+    "advance": true
+   }
+  },
+  {
+   "name": "withheld",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "3ad08779eccc8d77f64da40a7be398235ce5a071c2dad4af088c57abfa1c57ce",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "role": "member",
+      "signing_pk": "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967": "01JM0000000000000000000003",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003",
+     "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000003\",\"data\":{\"encryption_pk\":\"1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967\",\"new_key_sig\":\"4be3750b2df3b4b15a8587dd5eb557ea929086a2af133c57f0e028361208d8e46a5ad6dc4224594c24b2ca10f99f6cc454e9e2810d931fa7af019574fca36305\",\"signing_pk\":\"fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"member.keys\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [
+    "01JM0000000000000000000003"
+   ],
+   "projected": null,
+   "expect": {
+    "seal": [
+     {
+      "folder": "01JF0000000000000000000001",
+      "dek_id": "01JD0000000000000000000001",
+      "user_id": "01JM0000000000000000000002",
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "level": "write"
+     }
+    ],
+    "advance": true
+   }
+  },
+  {
+   "name": "queued_removal_leaves_folders_stale",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "3ad08779eccc8d77f64da40a7be398235ce5a071c2dad4af088c57abfa1c57ce",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "role": "member",
+      "signing_pk": "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967": "01JM0000000000000000000003",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003",
+     "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000003\",\"data\":{\"encryption_pk\":\"1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967\",\"new_key_sig\":\"4be3750b2df3b4b15a8587dd5eb557ea929086a2af133c57f0e028361208d8e46a5ad6dc4224594c24b2ca10f99f6cc454e9e2810d931fa7af019574fca36305\",\"signing_pk\":\"fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"member.keys\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [
+    "01JM0000000000000000000003"
+   ],
+   "projected": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write"
+     },
+     "01JF0000000000000000000002": {}
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "3ad08779eccc8d77f64da40a7be398235ce5a071c2dad4af088c57abfa1c57ce",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": false,
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "role": "member",
+      "signing_pk": "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967": "01JM0000000000000000000003",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003",
+     "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793": "01JM0000000000000000000003"
+    },
+    "stale": {
+     "01JF0000000000000000000001": [
+      "01JM0000000000000000000003"
+     ],
+     "01JF0000000000000000000002": [
+      "01JM0000000000000000000003"
+     ]
+    }
+   },
+   "expect": {
+    "seal": [],
+    "advance": false
+   }
+  },
+  {
+   "name": "projected_unchanged",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "3ad08779eccc8d77f64da40a7be398235ce5a071c2dad4af088c57abfa1c57ce",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "role": "member",
+      "signing_pk": "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967": "01JM0000000000000000000003",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003",
+     "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000003\",\"data\":{\"encryption_pk\":\"1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967\",\"new_key_sig\":\"4be3750b2df3b4b15a8587dd5eb557ea929086a2af133c57f0e028361208d8e46a5ad6dc4224594c24b2ca10f99f6cc454e9e2810d931fa7af019574fca36305\",\"signing_pk\":\"fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"member.keys\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write",
+      "01JM0000000000000000000003": "read"
+     },
+     "01JF0000000000000000000002": {
+      "01JM0000000000000000000003": "read"
+     }
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "3ad08779eccc8d77f64da40a7be398235ce5a071c2dad4af088c57abfa1c57ce",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": true,
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "role": "member",
+      "signing_pk": "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967": "01JM0000000000000000000003",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003",
+     "fe01cf9abac7fbb6f94c7196b22d63e772f102de032287248768ba2ce1e0f793": "01JM0000000000000000000003"
+    },
+    "stale": {}
+   },
+   "expect": {
+    "seal": [
+     {
+      "folder": "01JF0000000000000000000001",
+      "dek_id": "01JD0000000000000000000001",
+      "user_id": "01JM0000000000000000000002",
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "level": "write"
+     },
+     {
+      "folder": "01JF0000000000000000000001",
+      "dek_id": "01JD0000000000000000000001",
+      "user_id": "01JM0000000000000000000003",
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "level": "read"
+     },
+     {
+      "folder": "01JF0000000000000000000002",
+      "dek_id": "01JD0000000000000000000002",
+      "user_id": "01JM0000000000000000000003",
+      "encryption_pk": "1ee5459bd4263b74c24f6b8da9588542e6f5689a6b584344b3bd61229eaa1967",
+      "level": "read"
+     }
+    ],
+    "advance": true
+   }
+  },
+  {
+   "name": "stale_folder",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write"
+     },
+     "01JF0000000000000000000002": {}
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "a764f02b4882d2b1719b4fd373121d35c08b915c105caab6d0d4a79c48c8f51d",
+    "head_seq": 9,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": false,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {
+     "01JF0000000000000000000001": [
+      "01JM0000000000000000000003"
+     ],
+     "01JF0000000000000000000002": [
+      "01JM0000000000000000000003"
+     ]
+    }
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"member.remove\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [],
+    "advance": true
+   }
+  },
+  {
+   "name": "stale_folder_rekeyed",
+   "state": {
+    "access": {
+     "01JF0000000000000000000001": {
+      "01JM0000000000000000000002": "write"
+     },
+     "01JF0000000000000000000002": {}
+    },
+    "dek_index": {
+     "01JD0000000000000000000001": [
+      "01JF0000000000000000000001",
+      0
+     ],
+     "01JD0000000000000000000002": [
+      "01JF0000000000000000000002",
+      0
+     ],
+     "01JD0000000000000000000003": [
+      "01JF0000000000000000000001",
+      1
+     ]
+    },
+    "folders": {
+     "01JF0000000000000000000001": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000001"
+      },
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000003"
+      }
+     ],
+     "01JF0000000000000000000002": [
+      {
+       "author": "01JM0000000000000000000001",
+       "dek_id": "01JD0000000000000000000002"
+      }
+     ]
+    },
+    "former_admins": {},
+    "genesis_hash": "759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676",
+    "head_hash": "efb731341a979f82c665d237d6844926bfc882591bc056e6fa439ed00aab5730",
+    "head_seq": 10,
+    "members": {
+     "01JM0000000000000000000001": {
+      "active": true,
+      "encryption_pk": "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934",
+      "role": "admin",
+      "signing_pk": "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70"
+     },
+     "01JM0000000000000000000002": {
+      "active": true,
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "role": "member",
+      "signing_pk": "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7"
+     },
+     "01JM0000000000000000000003": {
+      "active": false,
+      "encryption_pk": "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043",
+      "role": "member",
+      "signing_pk": "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223"
+     }
+    },
+    "org": "01JG0000000000000000000001",
+    "org_recovery": {},
+    "org_recovery_wrap": {},
+    "rules": 2,
+    "seen_keys": {
+     "03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043": "01JM0000000000000000000003",
+     "134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d": "01JM0000000000000000000002",
+     "470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7": "01JM0000000000000000000002",
+     "6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146": "01JM0000000000000000000002",
+     "cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70": "01JM0000000000000000000001",
+     "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a": "01JM0000000000000000000002",
+     "d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934": "01JM0000000000000000000001",
+     "f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223": "01JM0000000000000000000003"
+    },
+    "stale": {
+     "01JF0000000000000000000002": [
+      "01JM0000000000000000000003"
+     ]
+    }
+   },
+   "done": 7,
+   "bodies": [
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"d168cb4e4452870a5b4bcf6e02c7b8285d06eb4791213d30ab3feaf975ae2934\",\"org\":\"01JG0000000000000000000001\",\"signing_pk\":\"cc095fd068538b07d5c2c2baf654d70e2581c89bc87903e87bc72f4990a19b70\",\"user_id\":\"01JM0000000000000000000001\"},\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"genesis\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"134399a8f0bfb4f988125e3f4b09da2c0489b83402248b25604c299c9ce15f6d\",\"role\":\"member\",\"signing_pk\":\"6b269b230a587d0747bbd9470c6867b2ecc84861359f67f5c979e1a58a151146\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"759938b5d638fef30a03637cc19c81a37be1456ec50eb441e6fe9064f6460676\",\"seq\":1,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"encryption_pk\":\"03d713193af5cc06614ed57d395c2946274497cfd51c0872ec2e9907078c7043\",\"role\":\"member\",\"signing_pk\":\"f85f1398180595f61d60fb17f647ad1884c00513be29616845767152812e8223\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"4c6af3d1229a9362d57d71d61bf6425ce71366885aadc2c6ec17b4fb6a930fad\",\"seq\":2,\"type\":\"member.add\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000001\",\"folder\":\"01JF0000000000000000000001\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"8568d6717ac9183eeef193f7213ff03988ae5f0362472dfb0ac17e4276ba336e\",\"seq\":3,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"write\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"eb5dbc4b8c958bbce1b9e448996085448ecc7cb9ce8bfc564469f6d0e58ab2d8\",\"seq\":4,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000001\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"16d746c01500f3ccc1575b82620184ec9077c016a61e48144c8392cd43bcdc59\",\"seq\":5,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000002\",\"folder\":\"01JF0000000000000000000002\",\"gen\":0,\"prev_dek_id\":null},\"prev\":\"7fedcad6e7bb32e91f0a5261fccc2ed5b4ab9db3717407aebaeaf378d1433a2f\",\"seq\":6,\"type\":\"folder.key\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"folder\":\"01JF0000000000000000000002\",\"level\":\"read\",\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"7c6d5692e63c67e874377d0b0ad4da0b9381e553592d400776bf6de2d089d8dd\",\"seq\":7,\"type\":\"access.set\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000002\",\"data\":{\"encryption_pk\":\"ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a\",\"new_key_sig\":\"6d17380a74f88d358bf208e59b061bc887ed4edec0f8ab9fa902c2b497c23fd345f0302cd45d2e2a100fd5404340c0e4d6fa413756980818c37951d297e0e70e\",\"signing_pk\":\"470f3e242b254c001749be2afce7bc47dc74bc390d8bbedb5cb53f517ea1feb7\",\"user_id\":\"01JM0000000000000000000002\"},\"prev\":\"8a9a5db5333adc30d03dbca525a41ed8de22501b00a2587867244e51c93322d1\",\"seq\":8,\"type\":\"member.keys\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"user_id\":\"01JM0000000000000000000003\"},\"prev\":\"027a8afaaa14afc3bdcd681cffc0803aad86cbb2f122c5633bc43d62098f3dc4\",\"seq\":9,\"type\":\"member.remove\",\"v\":2}",
+    "{\"author\":\"01JM0000000000000000000001\",\"data\":{\"dek_id\":\"01JD0000000000000000000003\",\"folder\":\"01JF0000000000000000000001\",\"gen\":1,\"prev_dek_id\":\"01JD0000000000000000000001\"},\"prev\":\"a764f02b4882d2b1719b4fd373121d35c08b915c105caab6d0d4a79c48c8f51d\",\"seq\":10,\"type\":\"folder.key\",\"v\":2}"
+   ],
+   "user_id": "01JM0000000000000000000001",
+   "trusted": true,
+   "blocked": false,
+   "withheld": [],
+   "projected": null,
+   "expect": {
+    "seal": [
+     {
+      "folder": "01JF0000000000000000000001",
+      "dek_id": "01JD0000000000000000000003",
+      "user_id": "01JM0000000000000000000002",
+      "encryption_pk": "ccc5a5f472c7f61c84a5c4898c45ffc0cb37f313d69536914066be6f2c84dd5a",
+      "level": "write"
+     }
+    ],
+    "advance": true
+   }
+  }
+ ]
+}

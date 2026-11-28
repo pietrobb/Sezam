@@ -40,6 +40,7 @@ pub mod pull;
 pub mod reapply;
 pub mod rekey_archive;
 pub mod reseal;
+pub mod revive;
 pub mod teamlog;
 pub mod vouchers;
 

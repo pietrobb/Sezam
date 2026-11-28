@@ -212,6 +212,15 @@ const SezamTeamLog = (() => {
     state: toCore(state), head, lost, missing, user_id: userId, held_keys: heldKeys, old_signing_pk: oldSigningPk,
   });
 
+  // U7e (core/src/teamlog/rotated.rs, tests/vectors/rotated_seals.json): the
+  // team keys sealed again to members who rotated their identity since seq
+  // `done`, {seal: [{folder, dek_id, user_id, encryption_pk, level}], advance}.
+  const rotatedSeals = (state, done, bodies, userId, trusted, blocked, withheld, projected) =>
+    call('team_log_rotated_seals', {
+      state: toCore(state), done, bodies, user_id: userId, trusted, blocked,
+      withheld: [...withheld].sort(), projected: projected ? toCore(projected) : null,
+    });
+
   // The data a lost change is made again with on `state`, or null when the log
   // has it already; TeamLogError when it can never land (the core's,
   // docs/CORE_UNIFICATION.md U7a).
@@ -225,7 +234,7 @@ const SezamTeamLog = (() => {
     isTeamFolder, currentKey, keyGeneration, isStale, maySeal, isAdmin, mayWrite, keyRecipients,
     mayHoldKey, envelopeValid, itemRefusal, tombstoneRefusal, moveRefusal, adminPolicyRefusal,
     signingKeyRetired, changeKey, readmitted, restorePartEnd, forkRefusal, forkAbandoned, forkFollows, forkSplit, forkTake,
-    resolveChange,
+    resolveChange, rotatedSeals,
   };
 })();
 

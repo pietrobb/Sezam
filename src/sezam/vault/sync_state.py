@@ -517,36 +517,38 @@ class SyncStateMixin:
         tombstone, as the trash does, and goes out ahead of the item.
         """
         for _ in range(64):  # one level of folders per round
-            rows = self._db.fetchall(
-                "SELECT n.id, n.encrypted_meta, n.version FROM nodes n WHERE n.is_deleted = 1 "
-                "AND (EXISTS (SELECT 1 FROM entries e WHERE e.node_id = n.id "
-                f"AND {outbox.queued('e')} AND e.is_deleted = 0) "
-                "OR EXISTS (SELECT 1 FROM nodes c WHERE c.parent_id = n.id "
-                f"AND {outbox.queued('c')} AND c.is_deleted = 0))"
+            parents = (
+                f"SELECT e.node_id AS p FROM entries e WHERE {outbox.queued('e')} "
+                "AND e.is_deleted = 0 AND e.node_id IS NOT NULL UNION "
+                f"SELECT c.parent_id AS p FROM nodes c WHERE {outbox.queued('c')} "
+                "AND c.is_deleted = 0 AND c.parent_id IS NOT NULL"
             )
-            if not rows:
+            rows = {row["id"]: row for row in self._db.fetchall(
+                "SELECT n.id, n.encrypted_meta, n.version, "
+                "(SELECT MAX(version) FROM object_sent_version s WHERE s.object_id = n.id) AS sent "
+                f"FROM nodes n WHERE n.is_deleted = 1 AND n.id IN ({parents})"
+            )}
+            work_in = list(rows)  # the deleted ones among the parents of queued work
+            # docs/CORE_UNIFICATION.md U7e: which come back, at which version
+            # (above every version this device sent too, R16-Z SM18), is the
+            # core's (core/src/revive.rs).
+            due = sync_core.call(
+                "revive_folders", work_in=work_in,
+                deleted=[{"id": i, "version": r["version"], "sent": r["sent"]} for i, r in rows.items()],
+            )
+            if not due:
                 return
             if self._dek_mgr is None:
                 raise RuntimeError("Unlock the vault to keep work in a folder deleted elsewhere")
-            for row in rows:
+            for revive in due:
+                row = rows[revive["id"]]
                 blob = bytes(row["encrypted_meta"])
                 dek_id = parse_envelope(blob).dek_id
                 dek = self._dek_mgr.unlock_dek(bytes_to_ulid(dek_id))
                 meta = open_sealed(
                     blob, dek, row["id"], row["version"], BlobKind.NODE_META, deleted=True
                 )[0]
-                # R16-Z SM18: above every version this device sent, too, as
-                # _rebase_local does (SM22). A rename this device sent at the
-                # tombstone's version + 1 can be on the server (its reply lost
-                # or lied about); revived at that version, a second content of
-                # it went out, the server's copy no longer read as this
-                # device's own write, and the folder was refused on every push
-                # with no conflict left to settle.
-                sent = self._db.fetchone(
-                    "SELECT MAX(version) AS v FROM object_sent_version WHERE object_id = ?",
-                    (row["id"],),
-                )["v"]
-                version = max(row["version"], sent or 0) + 1
+                version = revive["version"]
                 outbox.queue_write(self._db, row["id"])
                 self._db.execute(
                     "UPDATE nodes SET encrypted_meta = ?, version = ?, is_deleted = 0 "

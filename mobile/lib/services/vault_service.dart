@@ -2009,7 +2009,25 @@ class VaultService {
       // Runs right after the pull's commit: the keys it brought (a re-key's
       // new generation) are not loaded yet.
       if (level == 0) await _loadDEKs();
-      for (final row in rows) {
+      // docs/CORE_UNIFICATION.md U7e: which come back, at which version
+      // (above every version this phone sent too, R16-Z SM18), is the
+      // core's (core/src/revive.rs).
+      final byId = {for (final row in rows) row['id'] as String: row};
+      final due =
+          syncCore('revive_folders', {
+                'work_in': byId.keys.toList(),
+                'deleted': [
+                  for (final row in rows)
+                    {
+                      'id': row['id'],
+                      'version': row['version'],
+                      'sent': await _db.highestSentVersion(row['id'] as String),
+                    },
+                ],
+              })
+              as List;
+      for (final revive in due.cast<Map>()) {
+        final row = byId[revive['id'] as String]!;
         final id = row['id'] as String;
         final payload = row['payload'] as Uint8List;
         final parentRef = row['parent_ref'] as String?;
@@ -2075,7 +2093,7 @@ class VaultService {
           refused.add(id);
           continue;
         }
-        final version = tombstone + 1;
+        final version = revive['version'] as int;
         final sealed = _crypto.encryptEnvelope(
           meta,
           dek,

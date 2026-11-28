@@ -21,6 +21,7 @@ pub mod fork_follow;
 pub mod ops;
 pub mod replay;
 pub mod resolve;
+pub mod rotated;
 pub mod rules;
 
 use std::collections::{BTreeMap, BTreeSet};

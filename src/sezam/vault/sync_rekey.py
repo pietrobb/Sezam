@@ -1095,72 +1095,59 @@ class RekeyMixin:
         it), once per member.keys record; the marker moves in the same
         transaction as the envelopes, which go out with their folder.
         """
-        from .. import teamlog
         from ..crypto.envelope_crypto import create_envelope, open_envelope
 
         if self._dek_mgr is None or self._keypair is None:
             return
         state = self.team_state()
-        if state is None or pending_states.blocker(self._db, pending_states.GRANT_AGAIN):
-            return  # a pending re-key seals its keys to the log's current recipients
-        done = int(self._db.get_meta(ROTATION_SEALED_META) or -1)
-        rotated = {
-            teamlog.parse_body(row["body"])["data"]["user_id"]
-            for row in self._db.fetchall(
-                "SELECT body FROM team_log WHERE seq > ? AND seq <= ? ORDER BY seq",
-                (done, state.head_seq),
-            )
-            if teamlog.parse_body(row["body"])["type"] == "member.keys"
-        } - {self._user_id}
-        if not rotated:
-            if done < state.head_seq:
-                self._db.set_meta(ROTATION_SEALED_META, str(state.head_seq))
+        if state is None:
             return
-        if teamlog.is_admin(state, self._user_id) and not self.team_log_trusted(state):
-            return  # nothing is sealed until the founder is confirmed; retried after
-        own_sk = self._keypair.to_nacl_private_key().encode()
-        withheld = queued_for_removal(self._db)
-        # docs/SYNC_SINGLE_SOURCE.md 3.5: a folder a queued removal leaves
-        # stale gets no envelope under the key that removal retires; its
-        # re-key seals to the rotated keys. Until then this is not done.
+        done = int(self._db.get_meta(ROTATION_SEALED_META) or -1)
+        if done >= state.head_seq:
+            return  # no record since: nothing to ask (team_log_trusted opens old keys)
+        bodies = [row["body"] for row in self._db.fetchall(
+            "SELECT body FROM team_log WHERE seq > ? AND seq <= ? ORDER BY seq",
+            (done, state.head_seq),
+        )]
         projected = projected_team_state(self._db, self._user_id)
-        waiting = False
+        # docs/CORE_UNIFICATION.md U7e: who gets an envelope, and whether the
+        # marker moves, is the core's (core/src/teamlog/rotated.rs).
+        plan = sync_core.call(
+            "team_log_rotated_seals", state=state.to_core(), done=done, bodies=bodies,
+            user_id=self._user_id, trusted=bool(self.team_log_trusted(state)),
+            blocked=bool(pending_states.blocker(self._db, pending_states.GRANT_AGAIN)),
+            withheld=sorted(queued_for_removal(self._db)),
+            projected=None if projected is None else projected.to_core(),
+        )
+        own_sk = self._keypair.to_nacl_private_key().encode()
         with self._db.transaction():
-            for folder in sorted(state.folders) if teamlog.is_admin(state, self._user_id) else ():
-                dek_id = teamlog.current_key(state, folder)
-                if teamlog.may_seal(state, folder) and not teamlog.may_seal(projected, folder):
-                    waiting = True
-                    continue
-                if not teamlog.may_seal(state, folder) or not self._db.fetchone(
-                    "SELECT 1 FROM deks WHERE id = ?", (dek_id,)
+            for seal in plan["seal"]:
+                dek_id, uid, level = seal["dek_id"], seal["user_id"], seal["level"]
+                if not self._db.fetchone("SELECT 1 FROM deks WHERE id = ?", (dek_id,)):
+                    continue  # another admin holds it
+                pk = bytes.fromhex(seal["encryption_pk"])
+                sealed = False
+                for env in self._db.fetchall(
+                    "SELECT encrypted_dek, access_level FROM access_envelopes "
+                    "WHERE dek_id = ? AND user_id = ? AND created_by = ?",
+                    (dek_id, uid, self._user_id),
                 ):
-                    continue  # a re-key seals to the current keys; another admin holds it
-                for uid, encryption_pk, level in teamlog.key_recipients(state, folder):
-                    if uid not in rotated or uid in withheld:
-                        continue
-                    pk = bytes.fromhex(encryption_pk)
-                    sealed = False
-                    for env in self._db.fetchall(
-                        "SELECT encrypted_dek, access_level FROM access_envelopes "
-                        "WHERE dek_id = ? AND user_id = ? AND created_by = ?",
-                        (dek_id, uid, self._user_id),
-                    ):
-                        try:
-                            open_envelope(bytes(env["encrypted_dek"]), own_sk, pk)[:] = bytes(32)
-                            sealed = sealed or env["access_level"] == level
-                        except CryptoError:
-                            pass
-                    if sealed:
-                        continue  # a retry after a crash, or a grant made after the rotation
-                    self._db.execute(
-                        "INSERT INTO access_envelopes "
-                        "(id, dek_id, user_id, created_by, access_level, encrypted_dek) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
-                        (new_ulid(), dek_id, uid, self._user_id, level,
-                         create_envelope(self._dek_mgr.unlock_dek(dek_id), own_sk, pk)),
-                    )
-                    outbox.queue_write(self._db, folder)
-            if not waiting:
+                    try:
+                        open_envelope(bytes(env["encrypted_dek"]), own_sk, pk)[:] = bytes(32)
+                        sealed = sealed or env["access_level"] == level
+                    except CryptoError:
+                        pass
+                if sealed:
+                    continue  # a retry after a crash, or a grant made after the rotation
+                self._db.execute(
+                    "INSERT INTO access_envelopes "
+                    "(id, dek_id, user_id, created_by, access_level, encrypted_dek) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (new_ulid(), dek_id, uid, self._user_id, level,
+                     create_envelope(self._dek_mgr.unlock_dek(dek_id), own_sk, pk)),
+                )
+                outbox.queue_write(self._db, seal["folder"])
+            if plan["advance"]:
                 self._db.set_meta(ROTATION_SEALED_META, str(state.head_seq))
 
     def _successor_dek(

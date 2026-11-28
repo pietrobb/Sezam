@@ -667,6 +667,24 @@ class DatabaseService {
     );
   }
 
+  /// The highest version this phone sent of [id] while it waited in the
+  /// queue, if it knows one (the queued write's body, as decide_pulled reads).
+  Future<int?> highestSentVersion(String id) async {
+    final db = await database;
+    final rows = await db.query(
+      'outbox',
+      columns: ['body'],
+      where: "kind = 'write' AND object_id = ?",
+      whereArgs: [id],
+    );
+    final sent = decodeSentVersions(
+      rows.isEmpty ? null : rows.first['body'] as String?,
+    );
+    return sent.isEmpty
+        ? null
+        : sent.map((s) => s.version).reduce((a, b) => a > b ? a : b);
+  }
+
   /// A folder deleted elsewhere back as [version] (a queued write on the
   /// tombstone it replaces, docs/SYNC_SINGLE_SOURCE.md point 4a). The queued
   /// work below it is queued again behind it: the server refuses an item

@@ -337,6 +337,26 @@ poškodená kópia, a tá fork nenasleduje). Zjednotené: mobil skúša fork aj 
 `tests/test_team_log_fork_follow_vectors.py` (desktop, web) a
 `mobile/test/team_log_fork_follow_vectors_test.dart`.
 
+Zapečatenie členovi po rotácii a oživenie priečinkov (U7e):
+`team_log_rotated_seals` (`core/src/teamlog/rotated.rs`: záznamy
+`member.keys` po značke, admin, potvrdený zakladateľ, čakajúci re-key,
+členovia, ktorých vyberá odoslanie čakajúce vo fronte, a priečinky, ktoré
+odoslanie z fronty nechá zastarané → `{seal: [{folder, dek_id, user_id,
+encryption_pk, level}], advance}`) a `revive_folders` (`core/src/revive.rs`:
+zmazané priečinky s prácou vo fronte, verzia nad náhrobkom aj nad každou
+verziou, ktorú zariadenie poslalo, R16-Z SM18). Desktop
+`_seal_to_rotated_members`/`_revive_folders_of_unsent`, web
+`sealToRotatedMembers`/`reviveFoldersOfUnsentWork` a mobil
+`reviveFoldersOfUnsent` len otvárajú a pečatia (kľúč, ktorý nedrží, a obálku,
+ktorú už zapečatil, preskočia), posielajú a posúvajú značku; mobil kľúče
+tímu nepečatí. Zjednotené (web a mobil ako desktop): oživený priečinok ide
+nad poslednú poslanú verziu (web a mobil dávali náhrobok + 1); webový
+neadmin posunie značku ako desktop (predtým ju nechal stáť). Vektory
+`tests/vectors/rotated_seals.json` (16 prípadov) a
+`tests/vectors/revive_folders.json` (8) z desktopu pred zmenou v
+`core/tests/rotated_revive_vectors.rs`, `tests/test_rotated_revive_vectors.py`
+(desktop, WASM) a `mobile/test/revive_folders_vectors_test.dart`.
+
 Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
 `web/static/js`, `mobile/lib`, po U6i): všetky podpisované a hashované formáty
 bez tajomstva sú v jadre. Zámerne mimo jadra, s tajomstvom (pravidlo 3):
