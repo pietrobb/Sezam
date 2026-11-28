@@ -90,7 +90,11 @@ len lint a cielené testy, celé suite iba v U9.
 Rozhodnutia U5 (kde sa klienti rozišli, `tests/authority_vectors.py`
 `DECISIONS`, platí pravidlo desktopu): log rozhoduje prvý aj o objekte na
 najvyššej úrovni; s logom z osobného stromu odstraňuje len jeho vlastník; pod
-prvou úrovňou stromu organizácie aj odstránenie len admin (H6). Cykly rodičov
+prvou úrovňou stromu organizácie aj odstránenie len admin (H6); priamo pod
+priečinkom najvyššej úrovne odstránenie potrebuje to isté ako zápis (náhrobok
+osobného priečinka je zapečatený kľúčom vlastníka). Nie je prevzaté: desktop s
+logom neberie adminov priamo pod vlastným horným priečinkom; zakladateľovi je
+to koreň organizácie a druhý admin by tam po odovzdaní nezapísal. Cykly rodičov
 jadro blokuje celé (desktop závisel od poradia). Čo desktop vie z vlastnej
 databázy (zadržané uzly, osobné stromy, granty, vlastné horné priečinky),
 dostane jadro ako kontext, keď sa desktop prepne.

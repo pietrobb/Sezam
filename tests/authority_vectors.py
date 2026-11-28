@@ -62,6 +62,20 @@ DECISIONS = (
         """                if (team && !owner && author !== ownUserId && !admins.has(author)) {""",
         "below the first level of the organisation's tree only an admin removes too (desktop, H6)",
     ),
+    (
+        """            } else if (!rec.is_deleted) {
+                verdict = 'blocked';
+            }
+        }
+        verdicts[rec.id] = verdict;""",
+        """            } else {
+                verdict = 'blocked';
+            }
+        }
+        verdicts[rec.id] = verdict;""",
+        "directly below a top-level folder a removal needs what a write needs; a personal "
+        "folder's tombstone is sealed with its owner's key (desktop)",
+    ),
 )
 
 

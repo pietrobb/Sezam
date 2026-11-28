@@ -315,7 +315,9 @@ impl<'a> Ctx<'a> {
             }
             return false;
         }
-        !rec.is_deleted
+        // A removal needs what a write needs: a personal folder's tombstone
+        // is sealed with its owner's key (the desktop's rule).
+        true
     }
 }
 
