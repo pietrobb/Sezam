@@ -38,6 +38,18 @@ def test_t1_dev_extras_cover_everything_the_test_suite_imports():
         assert dev.get(name) == version, f"{name}: dev={dev.get(name)} server={version}"
 
 
+def test_the_package_pins_the_core_it_is_built_with():
+    """CI run 46138332361: the core went to 0.3.0 (core/py) while the package
+    still pinned 0.2.0, so `pip install -e .` after `pip install ./core/py`
+    looked for 0.2.0 on PyPI and every Python job stopped before a test."""
+    from sezam.teamlog import CORE_VERSION
+
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    binding = tomllib.loads((ROOT / "core" / "py" / "pyproject.toml").read_text(encoding="utf-8"))
+    pinned = _pins(project["project"]["dependencies"])["sezam-sync-core"]
+    assert pinned == binding["project"]["version"] == CORE_VERSION
+
+
 def test_t6_ruff_is_configured_and_clean():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert "S110" in project["tool"]["ruff"]["lint"]["select"]
