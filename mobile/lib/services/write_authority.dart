@@ -10,11 +10,12 @@
 // a member with a write grant on a key of that folder, and - a folder only -
 // its author under a key of the author's own (a personal folder). Inside a
 // member's personal folder everything is sealed with that member's keys.
-// Desktop (sync_writers.py) and web (unauthorizedWrites) apply the same.
+// The rules are the core's (core/src/authority.rs, docs/CORE_UNIFICATION.md
+// U5); this file hands it the phone's rows.
 
-import 'dart:convert';
 import 'dart:typed_data';
 
+import 'sync_core.dart';
 import 'team_log.dart';
 
 /// The account that signed [row]: what the pull verified, for rows from
@@ -30,22 +31,22 @@ bool isOwnRow(Map<String, dynamic> row, String? ownUserId) {
       (signer == ownUserId || (row['signer_id'] == null && signer == 'local'));
 }
 
-bool _isEnvelope(Uint8List bytes) =>
-    bytes.length >= 53 && bytes[0] == 1 && bytes[1] == 1;
+String _hex(List<int> bytes) =>
+    bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
-/// The DEK id a sealed folder meta or item meta names in its header.
+/// The DEK id a sealed folder meta or item meta names in its header (the
+/// core's rule, core/src/authority.rs: 57 bytes of the payload suffice).
 String? sealingDekId(Map<String, dynamic> row) {
   final payload = row['payload'];
   if (payload is! Uint8List) return null;
-  var bytes = payload;
-  if (row['object_type'] == 'entry' && !_isEnvelope(bytes)) {
-    if (bytes.length < 4) return null;
-    bytes = bytes.sublist(4); // u32be(meta_len) || meta envelope || data
-  }
-  if (!_isEnvelope(bytes)) return null;
-  return ascii
-      .decode(bytes.sublist(3, 29), allowInvalid: true)
-      .replaceAll('\u0000', '');
+  final head = payload.length > 57
+      ? Uint8List.sublistView(payload, 0, 57)
+      : payload;
+  return syncCore('authority_sealing_dek_id', {
+        'object_type': row['object_type'],
+        'head': _hex(head),
+      })
+      as String?;
 }
 
 // ── Signed team log (TL5; docs/DESIGN_TEAM_LOG.md §4.3.4) ──
@@ -146,164 +147,61 @@ Map<String, String?> ownKeySigners(
 
 /// Accounts the log [records] ever made admin that are still active members
 /// of [team]: what they wrote outside team folders while admin stays valid
-/// after a handover (review 1141a20), an account the server calls admin is not.
-Set<String> logAdmins(List<Map<String, dynamic>> records, TeamState team) {
-  final ever = <String>{};
-  for (final record in records) {
-    final body = jsonDecode(record['body'] as String) as Map<String, dynamic>;
-    final data = body['data'] as Map<String, dynamic>;
-    final type = body['type'];
-    if (type == 'genesis') {
-      ever.add(body['author'] as String);
-    } else if ((type == 'member.add' || type == 'member.role') && data['role'] == 'admin') {
-      ever.add(data['user_id'] as String);
-    }
-  }
-  return {for (final id in ever) if (team.members[id]?.active == true) id};
+/// after a handover (review 1141a20), an account the server calls admin is
+/// not. The core's rule (core/src/authority.rs).
+Set<String> logAdmins(List<Map<String, dynamic>> records, TeamState team) => {
+  for (final id
+      in syncCore('authority_log_admins', {
+            'bodies': [for (final record in records) record['body']],
+            ...team.coreArgument(),
+          })
+          as List)
+    id as String,
+};
+
+/// The fields core/src/authority.rs judges [row] by: the account that
+/// signed it (as [isOwnRow] has it) and the key its header names.
+Map<String, Object?> _authorityObject(
+  Map<String, dynamic> row,
+  String? ownUserId,
+) {
+  final kind = row['object_type'] as String;
+  final parent = row['parent_ref'] as String?;
+  return {
+    'id': row['id'],
+    'object_type': kind,
+    'parent_ref': parent == null || parent.isEmpty ? null : parent,
+    'is_deleted': row['is_deleted'] == 1,
+    'signer': _signer(row, ownUserId),
+    'access_level': row['access_level'],
+    'target_user_id': row['target_user_id'],
+    'dek_id': kind == 'node' || kind == 'entry' ? sealingDekId(row) : null,
+  };
 }
 
-/// Ids of folders and items (and all below them) not to show. With [team]
-/// (the organisation's log), a team folder's content is the log's to decide,
-/// and outside team folders only [teamAdmins] (default: the log's current
-/// admin) count as admins: no signed envelope or top-level folder makes an
-/// account the server invented an admin, and no unsigned access_level grants
-/// write (review 1141a20 H6).
+/// Ids of folders and items (and all below them) not to show: the core's
+/// rule (core/src/authority.rs; review 7c10379 H4, a159e97 H4, 1141a20
+/// H5/H6, TL5, TL7). With [team] (the organisation's log) a team folder's
+/// content is the log's to decide, and outside team folders only
+/// [teamAdmins] (default: the log's current admins) count as admins.
 Set<String> unauthorizedWrites(
   List<Map<String, dynamic>> rows,
   String? ownUserId, {
   TeamState? team,
   Set<String>? teamAdmins,
 }) {
-  final byId = {for (final row in rows) row['id'] as String: row};
-  final ownKeys = team == null
-      ? const <String, String?>{}
-      : ownKeySigners(rows, ownUserId);
-  final admins = <String?>{};
-  final personalDekSigners = <String, String?>{};
-  final dekFolders = <String, String>{};
-  for (final row in rows) {
-    final kind = row['object_type'];
-    final parent = row['parent_ref'] as String?;
-    if (const {'envelope', 'dek_archive', 'audit'}.contains(kind)) {
-      admins.add(_signer(row, ownUserId));
-    } else if (kind == 'dek') {
-      if (parent != null) {
-        admins.add(_signer(row, ownUserId));
-        dekFolders[row['id'] as String] = parent;
-      } else {
-        personalDekSigners[row['id'] as String] = _signer(row, ownUserId);
-      }
-    }
-  }
-  // Only an admin writes a top-level node sealed with a folder's key. TL7:
-  // one sealed with a key of its signer's own that names no folder is that
-  // account's own tree (a member's personal root); it makes no admin. (A
-  // web-made org root is sealed so too: its admin counts by what else they
-  // signed, the envelopes that share it.)
-  for (final row in rows) {
-    if (row['object_type'] != 'node' || row['parent_ref'] != null) continue;
-    final signer = _signer(row, ownUserId);
-    final dekId = sealingDekId(row);
-    if (dekId == null || personalDekSigners[dekId] != signer) {
-      admins.add(signer);
-    }
-  }
-  final writeGrants = team != null
-      ? const <String>{}
-      : {
-          for (final row in rows)
-            if (row['object_type'] == 'envelope' &&
-                row['is_deleted'] != 1 &&
-                row['access_level'] == 'write')
-              '${row['target_user_id']}|${dekFolders[row['parent_ref']] ?? ''}',
-        };
-  if (team != null) {
-    admins
-      ..clear()
-      ..addAll(teamAdmins ??
-          {for (final id in team.members.keys) if (TeamLog.isAdmin(team, id)) id});
-  }
-  final verdicts = <String, bool>{}; // id -> blocked
-  final personalOwner = <String, String?>{};
-
-  bool blocked(Map<String, dynamic> row, int depth) {
-    final id = row['id'] as String;
-    final known = verdicts[id];
-    if (known != null) return known;
-    final parentId = row['parent_ref'] as String?;
-    final parent = parentId == null ? null : byId[parentId];
-    var result = false;
-    final underNode =
-        parent != null && parent['object_type'] == 'node' && depth < 64;
-    final decided = team == null
-        ? null
-        : teamLogVerdict(
-            row,
-            byId,
-            team,
-            ownKeys: ownKeys,
-            ownUserId: ownUserId,
-            sealing: false,
-          );
-    if (underNode && blocked(parent, depth + 1)) {
-      result = true;
-    } else if (team != null &&
-        parentId == null &&
-        row['object_type'] == 'node' &&
-        row['is_deleted'] != 1) {
-      // A top-level folder is the admin's (the organisation's root) or its
-      // signer's own tree under a key of their own; not one the server
-      // re-signed under another account (review 1141a20 H5).
-      final author = _signer(row, ownUserId);
-      result = author != ownUserId &&
-          !admins.contains(author) &&
-          personalDekSigners[sealingDekId(row)] != author;
-    } else if (decided != null && decided.decided) {
-      result = decided.refusal != null;
-    } else if (underNode) {
-      final author = _signer(row, ownUserId);
-      final sealedBy = personalDekSigners[sealingDekId(row)];
-      final deleted = row['is_deleted'] == 1;
-      if (parent['parent_ref'] != null) {
-        final owner = personalOwner[parentId];
-        if (owner != null &&
-            owner != ownUserId &&
-            !deleted &&
-            sealedBy != owner) {
-          result = true;
-        }
-        if (owner != null && row['object_type'] == 'node') {
-          personalOwner[id] = owner;
-        }
-        if (team != null &&
-            owner == null &&
-            !deleted &&
-            author != ownUserId &&
-            !admins.contains(author)) {
-          // Review 1141a20 H6: below the first level of the organisation's
-          // own tree (no team folder, no personal tree) only its admin writes.
-          result = true;
-        }
-      } else if (author == ownUserId ||
-          admins.contains(author) ||
-          writeGrants.contains('$author|$parentId')) {
-        result = false;
-      } else if (row['object_type'] == 'node' && sealedBy == author) {
-        personalOwner[id] = author;
-      } else if (!deleted) {
-        result = true;
-      }
-    }
-    verdicts[id] = result;
-    return result;
-  }
-
-  return {
-    for (final row in rows)
-      if ((row['object_type'] == 'node' || row['object_type'] == 'entry') &&
-          blocked(row, 0))
-        row['id'] as String,
-  };
+  final out =
+      syncCore('authority_unauthorized_writes', {
+            'objects': [
+              for (final row in rows) _authorityObject(row, ownUserId),
+            ],
+            'own_user_id': ownUserId,
+            if (team != null) ...team.coreArgument(),
+            if (team != null && teamAdmins != null)
+              'team_admins': teamAdmins.toList()..sort(),
+          })
+          as Map;
+  return {for (final id in out['blocked'] as List) id as String};
 }
 
 /// INV-7, rule 3 of the INV-5/INV-7 precedence (docs/ROOT_CAUSE_PLAN.md):
@@ -336,10 +234,15 @@ Set<String> refusedLogPersonalTree(
     final row = byId[id];
     final dekId = dekIds[id];
     String? key;
-    if (row != null && row['object_type'] == 'node' && dekId != null && own(row)) {
+    if (row != null &&
+        row['object_type'] == 'node' &&
+        dekId != null &&
+        own(row)) {
       final parent = row['parent_ref'] as String?;
       if (parent == null) {
-        key = personalNodes.contains(id) && heldDekIds.contains(dekId) ? dekId : null;
+        key = personalNodes.contains(id) && heldDekIds.contains(dekId)
+            ? dekId
+            : null;
       } else {
         final above = rootKey(parent);
         key = above == dekId ? above : null;
@@ -360,7 +263,9 @@ Set<String> refusedLogPersonalTree(
       final dekId = dekIds[id];
       if (key != null &&
           (dekId == key ||
-              (tier2Entries.contains(id) && dekId != null && heldDekIds.contains(dekId)))) {
+              (tier2Entries.contains(id) &&
+                  dekId != null &&
+                  heldDekIds.contains(dekId)))) {
         shown.add(id);
       }
     }

@@ -152,22 +152,24 @@ class TeamState {
     final questions = [
       {'fn': fn, 'args': args},
     ];
-    if (_core == null) {
-      return (syncCore('team_log_ask', {
-            'state': toCore(),
-            'questions': questions,
-          })
-          as List)[0];
-    }
+    final team = coreArgument();
+    return (syncCore('team_log_ask', {
+          if (team.containsKey('team')) 'state': team['team'],
+          if (team.containsKey('team_handle')) 'handle': team['team_handle'],
+          'questions': questions,
+        })
+        as List)[0];
+  }
+
+  /// This state as the core's other operations take it: `team_handle`
+  /// (loaded there once) or `team`.
+  Map<String, Object?> coreArgument() {
+    if (_core == null) return {'team': toCore()};
     if (_handle == null) {
       _handle = syncCore('team_log_load', {'state': _core}) as int;
       _loaded.attach(this, _handle!);
     }
-    return (syncCore('team_log_ask', {
-          'handle': _handle,
-          'questions': questions,
-        })
-        as List)[0];
+    return {'team_handle': _handle};
   }
 
   /// Comparable form used by the decision vectors.
