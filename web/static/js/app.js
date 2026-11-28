@@ -7801,37 +7801,13 @@ async function sealVaultObject(obj) {
  *   || u8(is_deleted) || u32be(version) || payload_hash(32B)
  */
 function signSyncObject(_sodium, id, objectType, parentRef, targetUserId, isDeleted, version, payloadHashBytes) {
-    const idBytes = idBytes26(id);
-    const otBytes = new TextEncoder().encode(objectType || '');
-    const prBytes = parentRef ? idBytes26(parentRef) : new Uint8Array(26);
-    const tuBytes = targetUserId ? idBytes26(targetUserId) : new Uint8Array(26);
-
-    // Build canonical data
-    const parts = [
-        idBytes,                             // 26B
-        new Uint8Array([otBytes.length]),     // 1B
-        otBytes,                             // variable
-        prBytes,                             // 26B
-        tuBytes,                             // 26B
-        new Uint8Array([isDeleted ? 1 : 0]), // 1B
-        new Uint8Array(new DataView(new ArrayBuffer(4)).buffer), // 4B version (set below)
-        payloadHashBytes,                    // 32B
-    ];
-
-    // Set version as u32be
-    const versionBuf = new ArrayBuffer(4);
-    new DataView(versionBuf).setUint32(0, version >>> 0, false);
-    parts[6] = new Uint8Array(versionBuf);
-
-    const totalLen = parts.reduce((acc, p) => acc + p.length, 0);
-    const canonical = new Uint8Array(totalLen);
-    let offset = 0;
-    for (const p of parts) {
-        canonical.set(p, offset);
-        offset += p.length;
-    }
-
-    // Sign with Ed25519
+    // R15 #428 (INV-3): a value the message cannot hold exactly is refused,
+    // never truncated into one the signature covers.
+    const canonical = signedObjectMessage({
+        id, object_type: objectType, parent_ref: parentRef, target_user_id: targetUserId,
+        is_deleted: isDeleted ? 1 : 0, version, payload_hash: bytesToHex(payloadHashBytes),
+    });
+    if (!canonical) throw new Error('A sync object field does not fit its signed message');
     return _sodium.crypto_sign_detached(canonical, state.keypair.signingSk);
 }
 
@@ -7867,29 +7843,16 @@ function verifyObjectSignature(obj, signingPk, _sodium) {
  * or null when a field cannot be held exactly (R15 #428, INV-3).
  */
 function signedObjectMessage(obj) {
-    const payloadHashBytes = hexToBytes(obj.payload_hash || '');
-    if (payloadHashBytes.length !== 32) return null;
-    const idBytes = idBytes26(obj.id);
-    const otBytes = new TextEncoder().encode(obj.object_type || '');
-    const prBytes = obj.parent_ref ? idBytes26(obj.parent_ref) : new Uint8Array(26);
-    const tuBytes = obj.target_user_id ? idBytes26(obj.target_user_id) : new Uint8Array(26);
-    const isDeleted = obj.is_deleted ?? 0;
-    const version = obj.version ?? 1;
-    if (![0, 1, false, true].includes(isDeleted)) return null;
-    if (!Number.isInteger(version) || version < 0 || version > 0xFFFFFFFF) return null;
-    const versionBuf = new ArrayBuffer(4);
-    new DataView(versionBuf).setUint32(0, version, false);
-    const parts = [
-        idBytes, new Uint8Array([otBytes.length]), otBytes, prBytes, tuBytes,
-        new Uint8Array([isDeleted ? 1 : 0]), new Uint8Array(versionBuf), payloadHashBytes,
-    ];
-    const canonical = new Uint8Array(parts.reduce((acc, p) => acc + p.length, 0));
-    let offset = 0;
-    for (const p of parts) {
-        canonical.set(p, offset);
-        offset += p.length;
+    const object = {
+        id: obj.id, object_type: obj.object_type || '', parent_ref: obj.parent_ref || null,
+        target_user_id: obj.target_user_id || null, is_deleted: obj.is_deleted ?? 0,
+        version: obj.version ?? 1, payload_hash: obj.payload_hash || '',
+    };
+    try {
+        return hexToBytes(globalThis.SezamSyncCore.call('key_voucher_signed_message', {object}));
+    } catch {
+        return null;
     }
-    return canonical;
 }
 
 /**

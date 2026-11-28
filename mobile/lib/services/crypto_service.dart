@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../models/vault_models.dart';
 import 'password_forms.dart';
+import 'sync_core.dart';
 
 /// Size a padded blob of [n] bytes takes (spec 2.6): the next power of two,
 /// at least 32; where that needs more padding than the u16 prefix holds, the
@@ -952,44 +953,26 @@ class CryptoService {
     required int version,
     required String payloadHashHex,
   }) {
-    // R15 #428 (INV-3): a value the u8/u32 fields cannot hold exactly is
-    // refused, never truncated into one a signature covers.
-    if (isDeleted != 0 && isDeleted != 1) {
-      throw ArgumentError.value(isDeleted, 'isDeleted', 'must be 0 or 1');
+    // R15 #428 (INV-3): a value the message cannot hold exactly is refused
+    // (ArgumentError), never truncated into one a signature covers. The
+    // core's key_voucher_signed_message builds it.
+    final Object? hex;
+    try {
+      hex = syncCore('key_voucher_signed_message', {
+        'object': {
+          'id': id,
+          'object_type': objectType,
+          'parent_ref': parentRef,
+          'target_user_id': targetUserId,
+          'is_deleted': isDeleted,
+          'version': version,
+          'payload_hash': payloadHashHex,
+        },
+      });
+    } on StateError catch (e) {
+      throw ArgumentError(e.message);
     }
-    if (version < 0 || version > 0xFFFFFFFF) {
-      throw ArgumentError.value(version, 'version', 'must fit a u32');
-    }
-    final idBytes = idBytes26(id);
-    final otBytes = utf8.encode(objectType);
-    final parentBytes =
-        parentRef != null ? idBytes26(parentRef) : Uint8List(26);
-    final targetBytes =
-        targetUserId != null ? idBytes26(targetUserId) : Uint8List(26);
-    final payloadHash = _hexToBytes(payloadHashHex);
-
-    final versionBytes = ByteData(4)..setUint32(0, version, Endian.big);
-
-    // Total: 26 + 1 + otBytes.length + 26 + 26 + 1 + 4 + 32
-    final result = Uint8List(26 + 1 + otBytes.length + 26 + 26 + 1 + 4 + 32);
-    var offset = 0;
-    result.setRange(offset, offset + 26, idBytes);
-    offset += 26;
-    result[offset] = otBytes.length;
-    offset += 1;
-    result.setRange(offset, offset + otBytes.length, otBytes);
-    offset += otBytes.length;
-    result.setRange(offset, offset + 26, parentBytes);
-    offset += 26;
-    result.setRange(offset, offset + 26, targetBytes);
-    offset += 26;
-    result[offset] = isDeleted;
-    offset += 1;
-    result.setRange(offset, offset + 4, versionBytes.buffer.asUint8List());
-    offset += 4;
-    result.setRange(offset, offset + 32, payloadHash);
-
-    return result;
+    return _hexToBytes(hex as String);
   }
 
   /// Sign a sync object with Ed25519.

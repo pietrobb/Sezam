@@ -380,7 +380,7 @@ def test_web_client_reproduces_the_shared_vectors():
         for name in (
             "validateCanonicalEnvelopeHeader", "buildAAD", "idBytes26", "unpadPlaintext",
             "decryptEnvelope", "unwrapDEK", "signSyncObject", "buildAuditCanonical",
-            "keyRotationMessage", "padPlaintext", "paddedSize", "encryptKeypairWrap", "decryptKeypairWrap",
+            "keyRotationMessage", "signedObjectMessage", "hexToBytes", "padPlaintext", "paddedSize", "encryptKeypairWrap", "decryptKeypairWrap",
             "expandDesktopKeypair", "base64ToBytes", "bytesToHex", "computeWebStateHash",
             "openDekEnvelope", "normalizeKdfParams", "deriveKEK", "deriveKEKViaWorker",
         )
@@ -399,6 +399,7 @@ const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(
 const check = (ok, what) => { if (!ok) throw new Error('vector mismatch: ' + what); };
 globalThis.__runVectors = async (V) => {
   await sodium.ready;
+  await SezamSyncCore.ready;
   const s = sodium;
   for (const v of V.aad) {
     check(toHex(buildAAD(v.blob_kind, v.dek_id, v.object_id, v.version)) === v.aad_hex, 'aad ' + v.blob_kind);
@@ -481,9 +482,9 @@ const context = {
 };
 context.window = context; context.self = context; context.globalThis = context;
 vm.createContext(context);
-for (const path of process.argv.slice(1, 4)) vm.runInContext(fs.readFileSync(path, 'utf8'), context);
+for (const path of process.argv.slice(1, 5)) vm.runInContext(fs.readFileSync(path, 'utf8'), context);
 vm.runInContext(fs.readFileSync(0, 'utf8'), context);
-const vectors = JSON.parse(fs.readFileSync(process.argv[4], 'utf8'));
+const vectors = JSON.parse(fs.readFileSync(process.argv[5], 'utf8'));
 context.__runVectors(vectors)
   .then((result) => process.stdout.write(result))
   .catch((error) => { console.error(error.message); process.exit(1); });
@@ -495,6 +496,7 @@ context.__runVectors(vectors)
             str(vendor / "libsodium-sumo.min.js"),
             str(vendor / "libsodium-wrappers.min.js"),
             str(vendor / "argon2-bundled.min.js"),
+            str(vendor / "sezam-sync-core.js"),
             str(VECTORS_PATH),
         ],
         input="\n".join([constants, functions, body]),

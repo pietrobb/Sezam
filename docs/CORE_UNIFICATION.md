@@ -136,6 +136,14 @@ predtým preskočil nekanonické. `held_genesis` a `named_by_team_log` ostávaj�
 na klientoch: sú to dotazy nad už replayovaným stavom alebo `record_hash`
 jadra, nie samostatné pravidlo.
 
+Podpis objektu (U6a): správu podpisu sync objektu (spec 8.2) skladá len
+jadro (`key_voucher_signed_message`, `vouchers::signed_message`). Web
+(`signSyncObject`, `signedObjectMessage`), mobil (`buildSyncSignatureData`)
+a server (`_verify_sync_signature`, predtým orezával dlhé id) ju volajú;
+desktop už od U5a. Pole, ktoré správa presne neudrží, sa odmietne (web
+predtým pri podpise verziu orezal `>>> 0`). Vektory
+`cross_client.json` `sync_signature` v `core/tests/cross_client_vectors.rs`.
+
 Známe zlyhanie mimo vetvy U: `tests/test_review13_handover_rekey.py::
 test_the_new_admin_rekeys_what_the_former_admin_held` (409 „target_user_id is
 admin only“) padá od R17 commitu e55ddb8 (7f9a191 zelené); opraviť pred U9.

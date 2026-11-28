@@ -77,7 +77,7 @@ HELPERS = [
     "withLegacyWebBase", "webOwnEarlierPush", "rememberWebSent", "webPushOrder", "webPulledIsStale", "heldCopyKey",
     "teamLogMismatch", "webLocalTeamLogRefusal", "webPersonalTree", "webInPersonalTree", "webIsAdmin", "webPinnedTeamGenesis",
     "rememberWebKdfState", "orgRecoveryKeys", "fetchOrgRecoveryBlob", "paddedSize", "bytesToHex",
-    "authorityObjects", "sealingDekId",
+    "authorityObjects", "sealingDekId", "signedObjectMessage", "hexToBytes",
 ]
 
 

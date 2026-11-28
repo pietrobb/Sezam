@@ -122,38 +122,20 @@ def _refuse_base_by_version_only(objects) -> None:
 def _verify_sync_signature(
     obj: SyncObject, signature_bytes: bytes, signing_pk: bytes
 ) -> bool:
-    """Verify Ed25519 signature on a sync object.
-
-    Canonical signed data (spec 8.2):
-      id(26B) || u8(len(object_type)) || object_type
-      || parent_ref_or_zero(26B) || target_user_id_or_zero(26B)
-      || u8(is_deleted) || u32be(version) || payload_hash(32B)
-    """
+    """Verify Ed25519 signature on a sync object over the bytes the core's
+    key_voucher_signed_message builds (spec 8.2); a field the message cannot
+    hold exactly verifies nothing."""
     from nacl.signing import VerifyKey
-    from nacl.exceptions import BadSignatureError
 
-    # Build canonical signed data
-    id_bytes = obj.id.encode("utf-8").ljust(26, b"\x00")[:26]
-    ot_bytes = obj.object_type.encode("utf-8")
-    parent_bytes = obj.parent_ref.encode("utf-8").ljust(26, b"\x00")[:26] if obj.parent_ref else b"\x00" * 26
-    target_bytes = obj.target_user_id.encode("utf-8").ljust(26, b"\x00")[:26] if obj.target_user_id else b"\x00" * 26
-    payload_hash_bytes = bytes.fromhex(obj.payload_hash)
-
-    canonical = (
-        id_bytes
-        + bytes([len(ot_bytes)]) + ot_bytes
-        + parent_bytes
-        + target_bytes
-        + bytes([obj.is_deleted])
-        + obj.version.to_bytes(4, "big")
-        + payload_hash_bytes
-    )
-
+    fields = {name: getattr(obj, name, None) for name in (
+        "id", "object_type", "parent_ref", "target_user_id", "is_deleted", "version", "payload_hash")}
+    out = json.loads(sezam_sync_core.call("key_voucher_signed_message", json.dumps({"object": fields})))
+    if "ok" not in out:
+        return False
     try:
-        vk = VerifyKey(signing_pk)
-        vk.verify(canonical, signature_bytes)
+        VerifyKey(signing_pk).verify(bytes.fromhex(out["ok"]), signature_bytes)
         return True
-    except (BadSignatureError, Exception):
+    except Exception:
         return False
 
 
