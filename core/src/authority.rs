@@ -275,18 +275,18 @@ impl<'a> Ctx<'a> {
 
     /// None: the log does not decide; Some(None): valid; Some(Some(why)).
     fn team_refusal(&self, team: &State, rec: &Obj) -> Option<Option<&'static str>> {
-        let held = self
-            .prev
-            .as_ref()
-            .and_then(|p| p.get(&rec.id))
-            .filter(|h| !h.is_deleted);
+        let copy = self.prev.as_ref().and_then(|p| p.get(&rec.id));
+        let held = copy.filter(|h| !h.is_deleted);
         let left = held.and_then(|h| self.prev.as_ref()?.team_folder_above(team, h.parent()));
         let own_dek = rec.dek_id.is_some() && self.sealed_by(rec) == Some(&rec.signer);
+        // U9 (SM18): a tombstone over one held here is judged by the key that
+        // copy is sealed with, as a live one's is: who removed a team folder's
+        // object again needs the log's write access there too.
         team_write_verdict(
             team,
             rec,
             self.snap.team_folder_above(team, rec.parent()).as_deref(),
-            held,
+            if rec.is_deleted { copy } else { held },
             left.as_deref(),
             own_dek,
             None,
