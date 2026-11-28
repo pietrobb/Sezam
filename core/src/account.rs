@@ -11,6 +11,7 @@
 
 use serde_json::{json, Value};
 
+use crate::kdf;
 use crate::teamlog::{from_hex, to_hex};
 
 /// salt(16) || time u32be || memory u32be || lanes u32be || check(32)
@@ -33,9 +34,10 @@ pub fn pre_anchor_entries(blob: &[u8]) -> Result<Vec<&[u8]>, String> {
     let entries: Vec<&[u8]> = blob[1..].chunks(PRE_ANCHOR_ENTRY_LEN).collect();
     for entry in &entries {
         let (time, memory, lanes) = params_of(entry);
-        if !((1..=20).contains(&time)
-            && (8192..=1_048_576).contains(&memory)
-            && (1..=16).contains(&lanes))
+        let (time, memory, lanes) = (u64::from(time), u64::from(memory), u64::from(lanes));
+        if !((kdf::RECORDED_TIME.0..=kdf::RECORDED_TIME.1).contains(&time)
+            && (kdf::RECORDED_MEMORY_MIN..=kdf::STORED_MAX_MEMORY).contains(&memory)
+            && (kdf::RECORDED_LANES.0..=kdf::RECORDED_LANES.1).contains(&lanes))
         {
             return Err("Invalid account keypair pre-anchor KDF params".into());
         }

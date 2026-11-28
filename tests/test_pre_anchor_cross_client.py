@@ -134,7 +134,7 @@ def _web(vectors: dict) -> dict:
         "padPlaintext", "paddedSize", "unpadPlaintext", "bytesToHex", "hexToBytes",
     ))
     constants = "\n".join(_web_constant(source, n) for n in (
-        "ENVELOPE_ALG", "SCHEMA_VERSION", "BLOB_KIND", "ARGON2_HARD_FLOOR", "ARGON2_ACCOUNT_MAX",
+        "ENVELOPE_ALG", "SCHEMA_VERSION", "BLOB_KIND",
         "PRE_ANCHOR_ENTRY_LEN", "PRE_ANCHOR_MAX", "ACCOUNT_BUNDLE_LENGTHS",
     ))
     vendor = ROOT / "web/static/js/vendor"

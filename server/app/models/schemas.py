@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import time
-from typing import Annotated, Any, Literal, Optional
+from typing import Annotated, Any, ClassVar, Literal, Optional
 
 import sezam_sync_core
 from argon2 import Type, extract_parameters
@@ -145,8 +145,6 @@ class RecoverRequest(BaseModel):
     unlock_code: Optional[str] = Field(default=None, pattern=r"^[0-9a-fA-F]{20}$")
 
 
-ACCOUNT_KDF_MAX_MEMORY_KIB = 262_144  # 256 MiB
-
 
 class AccountKdfParams(BaseModel):
     """Argon2id parameters that derive an account's KEK + auth proof.
@@ -156,20 +154,31 @@ class AccountKdfParams(BaseModel):
     """
 
     model_config = ConfigDict(extra="ignore")
+    _stored: ClassVar[bool] = False
 
-    time_cost: int = Field(ge=2, le=20)
-    # One cap for the server and every client (lockout review #6): mobile
-    # cannot derive above 256 MiB, so an account stored with more locked it out.
-    memory_cost: int = Field(ge=65_536, le=ACCOUNT_KDF_MAX_MEMORY_KIB)  # KiB
-    parallelism: int = Field(ge=1, le=8)
+    # The bounds are the core's (core/src/kdf.rs), one copy for the server and
+    # every client; one cap (lockout review #6): mobile cannot derive above
+    # 256 MiB, so an account stored with more locked it out.
+    time_cost: int
+    memory_cost: int  # KiB
+    parallelism: int
     hash_len: Literal[64] = 64
+
+    @model_validator(mode="after")
+    def _within_core_bounds(self):
+        fields = ("time_cost", "memory_cost", "parallelism", "hash_len")
+        out = json.loads(sezam_sync_core.call("account_kdf_refusal", json.dumps(
+            {**{k: getattr(self, k) for k in fields}, "stored": self._stored})))
+        if out.get("error") or out.get("ok") is not None:
+            raise ValueError(f"Argon2 params {out.get('error') or out['ok']}")
+        return self
 
 
 class StoredAccountKdfParams(AccountKdfParams):
     """Read side: params stored before the 256 MiB cap are still reported as
     they are (any other value would derive a KEK that opens nothing)."""
 
-    memory_cost: int = Field(ge=65_536, le=1_048_576)
+    _stored: ClassVar[bool] = True
 
 
 DEFAULT_ACCOUNT_KDF = {

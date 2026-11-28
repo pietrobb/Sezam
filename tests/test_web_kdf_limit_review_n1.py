@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from server.app.models.schemas import AccountKdfParams
-from tests.node_support import node_cmd, requires_node
+from tests.node_support import node_cmd, requires_node, with_sync_core
 
 APP_JS = Path(__file__).resolve().parents[1] / "web" / "static" / "js" / "app.js"
 I18N_JS = APP_JS.with_name("i18n.js")
@@ -31,18 +31,9 @@ def _function(src: str, name: str) -> str:
     return src[match.start(): match.end() + (end.start() if end else len(src))]
 
 
-def _constant(src: str, name: str) -> str:
-    if f"const {name} =" not in src:
-        return f"const {name} = undefined;"
-    start = src.index(f"const {name} =")
-    return src[start: src.index(";", start) + 1]
-
-
 def _run(body: str) -> dict:
     src = APP_JS.read_text(encoding="utf-8")
     script = "\n".join([
-        _constant(src, "ARGON2_HARD_FLOOR"),
-        _constant(src, "ARGON2_ACCOUNT_MAX"),
         "const t = key => key;",
         "console.warn = () => {};",
         _function(src, "normalizeKdfParams"),
@@ -51,26 +42,37 @@ def _run(body: str) -> dict:
         body,
     ])
     proc = subprocess.run(
-        [node_cmd(), "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=30
+        [node_cmd(), "-e", with_sync_core(script)], capture_output=True, text=True, encoding="utf-8", timeout=30
     )
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)
 
 
-def _limit(field: str) -> int:
-    return next(m.le for m in AccountKdfParams.model_fields[field].metadata if hasattr(m, "le"))
+def _server_takes(params: dict) -> bool:
+    try:
+        AccountKdfParams.model_validate(params)
+    except ValueError:
+        return False
+    return True
 
 
 pytestmark = requires_node
 
 
+_EDGES = [
+    {"time_cost": t, "memory_cost": m, "parallelism": n}
+    for t in (1, 2, 20, 21) for m in (65535, 65536, 262144, 262145) for n in (0, 1, 8, 9)
+]
+
+
 def test_web_ceiling_is_the_server_account_ceiling():
-    out = _run("console.log(JSON.stringify(ARGON2_ACCOUNT_MAX));")
-    assert out == {
-        "time": _limit("time_cost"),
-        "mem": _limit("memory_cost"),
-        "parallelism": _limit("parallelism"),
-    }
+    """One copy of the bounds (core/src/kdf.rs): the web takes what the server takes."""
+    out = _run(f"""
+const edges = {json.dumps(_EDGES)};
+console.log(JSON.stringify(edges.map(p => {{ try {{ normalizeKdfParams(p); return true; }} catch (e) {{ return false; }} }})));
+""")
+    assert out == [_server_takes(p) for p in _EDGES]
+    assert sum(out) == 8
 
 
 def test_params_beyond_the_ceiling_are_refused():

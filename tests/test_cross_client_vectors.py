@@ -387,8 +387,7 @@ def test_web_client_reproduces_the_shared_vectors():
     constants = "\n".join(
         _web_constant(app, name)
         for name in (
-            "ENVELOPE_ALG", "SCHEMA_VERSION", "BLOB_KIND", "ARGON2_HARD_FLOOR",
-            "ARGON2_ACCOUNT_MAX",
+            "ENVELOPE_ALG", "SCHEMA_VERSION", "BLOB_KIND",
         )
     )
     body = r"""

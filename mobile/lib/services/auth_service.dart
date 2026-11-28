@@ -76,9 +76,6 @@ class AccountKdf {
   const AccountKdf(this.timeCost, this.memoryCost, this.parallelism);
 }
 
-/// Account Argon2 memory cap (KiB) shared with the server and every client.
-const accountKdfMaxMemoryCost = 262144;
-
 /// Lockout review N3: " alice" is the server account "alice" (the server
 /// strips too); an older install may have stored the untrimmed name.
 /// Review 688edcb N3: trimmed of the union of what Python, JS and Dart trim
@@ -94,9 +91,10 @@ const preAnchorPasswordRefused =
     'could still give a new device the older keys under it. Choose a password never used before.';
 
 /// Per-account params (server >= 1.1) with fallback to the legacy global web
-/// defaults. Bounds mirror the server policy so a hostile server cannot make
-/// the device derive with absurd costs, and nothing is derived or stored with
-/// params the keypair state below would later refuse (lockout review #6).
+/// defaults. The core's bounds (core/src/kdf.rs), the server's too, so a
+/// hostile server cannot make the device derive with absurd costs, and
+/// nothing is derived or stored with params the keypair state below would
+/// later refuse (lockout review #6).
 AccountKdf accountKdfParams(Map<String, dynamic> meta) {
   final raw =
       (meta['argon2_params'] ?? meta['argon2_web_params'])
@@ -109,12 +107,13 @@ AccountKdf accountKdfParams(Map<String, dynamic> meta) {
   if (timeCost is! int || memoryCost is! int || parallelism is! int) {
     throw const FormatException('Server did not return the account KDF params');
   }
-  if (timeCost < 2 ||
-      timeCost > 20 ||
-      memoryCost < 65536 ||
-      memoryCost > accountKdfMaxMemoryCost ||
-      parallelism < 1 ||
-      parallelism > 8) {
+  final refusal = syncCore('account_kdf_refusal', {
+    'time_cost': timeCost,
+    'memory_cost': memoryCost,
+    'parallelism': parallelism,
+    if (raw!.containsKey('hash_len')) 'hash_len': raw['hash_len'],
+  });
+  if (refusal != null) {
     throw const FormatException('Server returned unsafe Argon2 parameters');
   }
   return AccountKdf(timeCost, memoryCost, parallelism);
@@ -158,20 +157,18 @@ void _validateSezamKeyMetadata({
   required Uint8List signingPublicKey,
   required Uint8List encryptionPublicKey,
   required Uint8List encryptedEnvelope,
-  int maxMemoryCost = accountKdfMaxMemoryCost,
+  bool stored = false,
 }) {
-  if (argon2Salt.length < 16 || argon2Salt.length > 64) {
-    throw const FormatException('Invalid .sezam-key Argon2 salt length');
-  }
-  if (timeCost < 1 || timeCost > 20) {
-    throw const FormatException('Invalid .sezam-key Argon2 time cost');
-  }
-  if (memoryCost < 8192 || memoryCost > maxMemoryCost) {
-    throw const FormatException('Invalid .sezam-key Argon2 memory cost');
-  }
-  if (parallelism < 1 || parallelism > 16) {
-    throw const FormatException('Invalid .sezam-key Argon2 parallelism');
-  }
+  // The core's bounds (core/src/kdf.rs); stored: a pending migration of
+  // params from before the 256 MiB cap.
+  final refusal = syncCore('sezam_key_kdf_refusal', {
+    'salt_len': argon2Salt.length,
+    'time_cost': timeCost,
+    'memory_cost': memoryCost,
+    'parallelism': parallelism,
+    'stored': stored,
+  });
+  if (refusal != null) throw FormatException(refusal as String);
   if (!_canonicalUserObjectIdPattern.hasMatch(kekDekId) ||
       !_canonicalUserObjectIdPattern.hasMatch(userObjectId)) {
     throw const FormatException('Invalid .sezam-key object ID');
@@ -3613,7 +3610,7 @@ class AuthService {
     final migration = jsonDecode(encoded) as Map<String, dynamic>;
     // A journal written before the 256 MiB cap holds params this device
     // already derived with: finish it instead of failing every unlock.
-    _validatePendingKeypairMigration(migration, maxMemoryCost: 1048576);
+    _validatePendingKeypairMigration(migration, stored: true);
     final userObjectId = migration['user_id'] as String;
     final encryptedKeypairHex = migration['encrypted_keypair'] as String;
     final argon2SaltHex = migration['argon2_salt'] as String?;
@@ -3644,7 +3641,7 @@ class AuthService {
 
   void _validatePendingKeypairMigration(
     Map<String, dynamic> migration, {
-    int maxMemoryCost = accountKdfMaxMemoryCost,
+    bool stored = false,
   }) {
     final userObjectId = requireCanonicalUserObjectId(migration);
     final encryptedKeypairHex = migration['encrypted_keypair'];
@@ -3677,7 +3674,7 @@ class AuthService {
         signingPublicKey: Uint8List(32),
         encryptionPublicKey: Uint8List(32),
         encryptedEnvelope: encryptedKeypair,
-        maxMemoryCost: maxMemoryCost,
+        stored: stored,
       );
     }
   }

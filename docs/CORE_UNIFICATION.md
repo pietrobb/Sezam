@@ -231,6 +231,25 @@ NUL. Vektory: `cross_client.json` (`state_hash`, `state_hash_v2`) na všetkých
 stranách a `formats.json` (`state_hash` 5 prípadov + `state_hash_refused` 12, z
 desktopu pred zmenou) v `core/tests/formats_vectors.rs`.
 
+KDF parametre (U6g-kdf, `core/src/kdf.rs`): hranice Argon2id raz.
+`account_kdf_refusal` (účet: čas 2..20, pamäť 64..256 MiB, `stored` do 1 GiB
+pre parametre spred stropu, vlákna 1..8, `hash_len` 64; `local` = parametre,
+s ktorými bol trezor vyrobený, znížia dno ako v review d615826) a
+`sezam_key_kdf_refusal` (.sezam-key: soľ 16..64, čas 1..20, pamäť od 8 MiB po
+strop, vlákna 1..16). Server (`AccountKdfParams`/`StoredAccountKdfParams`
+validátor), desktop (`server_account_kdf`, `_validate_sezam_key_kdf`), web
+(`normalizeKdfParams`, `validateSezamKeyKdf`, `passwordReopensPreAnchor`) a
+mobil (`accountKdfParams`, `_validateSezamKeyMetadata`) volajú jadro;
+`WEB_FLOOR_*`, `ARGON2_HARD_FLOOR/ACCOUNT_MAX`, `accountKdfMaxMemoryCost`
+zmazané. Derivácia ostáva na platforme. Zjednotené: web slabšie parametre
+zdvihol na dno (KEK, ktorý účet nemá) a chýbajúce doplnil, teraz ich odmietne
+ako mobil; desktop nemal strop (vlákna 9, 1 GiB pri zmene hesla inde prijal);
+mobil ignoroval `hash_len`. Vektory `tests/vectors/kdf.json` (1955 účet + 2595
+.sezam-key, zo servera/desktopu pred zmenou) v `core/tests/kdf_vectors.rs`,
+`tests/test_kdf_vectors.py` (server, desktop, web) a
+`mobile/test/kdf_vectors_test.dart`. Web testy, ktoré vyberajú funkcie z
+`app.js`, načítajú jadro cez `tests/node_support.with_sync_core`.
+
 Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
 `web/static/js`, `mobile/lib`, po U6g): v jadre treba ešte
 `sezam-rekey-archive/removed` (`removal_archive_id`). Zámerne mimo jadra, s tajomstvom (pravidlo 3):
@@ -247,6 +266,11 @@ admin only“) padá od R17 commitu e55ddb8 (7f9a191 zelené); opraviť pred U9.
 Tiež `tests/test_review6_sync_client_split.py::test_no_sync_module_grows_back_past_the_limit`:
 `sync_client.py` má 1319 riadkov (limit 1300) od R17 commitu 35626b4; pred U9
 zmenšiť (jadro z neho môže ubrať pri U7).
+Tiež `tests/test_sync_state_machine.py::test_sync_state_machine_team_founder_takes_over_an_org_recovery_without_the_anchor`
+(„A: push failed (before)“ po rotácii identity) padá aj s desktopom a serverom z
+1b2b7f7; a `mobile/test/lockout_review_test.dart` „#5 .sezam-key import …
+another account or keypair“ padá pri CRLF checkoute (výrez tela `importSezamKey`
+končí na `\r\n`).
 
 Rozpracovaný stav #480 je odložený v `git stash` na `r17-l`
 („R17 #480 WIP before unification pause“) a v `%TEMP%\r17_480_wip.patch`.

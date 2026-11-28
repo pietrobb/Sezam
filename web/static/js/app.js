@@ -468,9 +468,8 @@ function addPreAnchor(blob, salt, params, kek, _sodium) {
 // A state below the browser's Argon2 floor cannot be derived here: refused.
 async function passwordReopensPreAnchor(password, blob, _sodium) {
     for (const e of parsePreAnchor(blob)) {
-        if (e.time_cost < ARGON2_HARD_FLOOR.time || e.memory_cost < ARGON2_HARD_FLOOR.mem ||
-                e.parallelism < ARGON2_HARD_FLOOR.parallelism) return true;
         const params = { time_cost: e.time_cost, memory_cost: e.memory_cost, parallelism: e.parallelism, hash_len: 64 };
+        if (globalThis.SezamSyncCore.call('account_kdf_refusal', params) !== null) return true;
         for (const form of passwordForms(password)) {
             const derived = await deriveKEK(form, e.salt, params, { exact: true });
             try {
@@ -677,21 +676,12 @@ function recoverFailureMessage(err) {
 }
 
 function validateSezamKeyKdf(salt, params) {
-    if (!(salt instanceof Uint8Array) || salt.length < 16 || salt.length > 64) {
-        throw new Error('Invalid .sezam-key Argon2 salt length');
-    }
-    if (!Number.isInteger(params.time_cost) || params.time_cost < ARGON2_HARD_FLOOR.time ||
-            params.time_cost > 20) {
-        throw new Error('Invalid .sezam-key Argon2 time cost');
-    }
-    if (!Number.isInteger(params.memory_cost) ||
-            params.memory_cost < ARGON2_HARD_FLOOR.mem || params.memory_cost > 262144) {
-        throw new Error('Invalid .sezam-key Argon2 memory cost');
-    }
-    if (!Number.isInteger(params.parallelism) || params.parallelism < 1 ||
-            params.parallelism > 16 || params.hash_len !== 64) {
-        throw new Error('Invalid .sezam-key Argon2 parameters');
-    }
+    const refusal = globalThis.SezamSyncCore.call('sezam_key_kdf_refusal', {
+        salt_len: salt instanceof Uint8Array ? salt.length : null,
+        time_cost: params.time_cost, memory_cost: params.memory_cost,
+        parallelism: params.parallelism, hash_len: params.hash_len ?? null,
+    });
+    if (refusal !== null) throw new Error(refusal);
 }
 
 function buildSezamKeyBackup(
@@ -5166,27 +5156,19 @@ function updatePasswordStrength(password) {
 
 // ── Crypto: Argon2id KDF ──
 
-// Hard floor: web client never accepts params weaker than this (spec 7.2)
-const ARGON2_HARD_FLOOR = { time: 2, mem: 65536, parallelism: 1 }; // time=2, mem=64MB
-// Ceiling shared with the server's account KDF params (schemas.py): a server
-// cannot make the browser allocate or spin beyond what an account may use.
-const ARGON2_ACCOUNT_MAX = { time: 20, mem: 262144, parallelism: 8 }; // 256 MiB
-
-// Server params with hard-floor enforcement (spec 7.2), in the server's
-// per-account format so the exact params can be uploaded with the keypair.
+// Account params within the core's bounds (core/src/kdf.rs, spec 7.2 floor,
+// the account ceiling): refused, never raised to the floor (that derives a
+// KEK the account does not have) or guessed. In the server's per-account
+// format so the exact params can be uploaded with the keypair. Without
+// params: the defaults this browser creates accounts with.
 function normalizeKdfParams(serverParams) {
-    let time = 3, mem = 131072, parallelism = 4; // defaults matching spec
-    if (serverParams) {
-        time = Math.max(serverParams.time_cost || 2, ARGON2_HARD_FLOOR.time);
-        mem = Math.max(serverParams.memory_cost || 131072, ARGON2_HARD_FLOOR.mem);
-        parallelism = Math.max(serverParams.parallelism || 1, ARGON2_HARD_FLOOR.parallelism);
-    }
-    if (![time, mem, parallelism].every(Number.isInteger) ||
-            time > ARGON2_ACCOUNT_MAX.time || mem > ARGON2_ACCOUNT_MAX.mem ||
-            parallelism > ARGON2_ACCOUNT_MAX.parallelism) {
+    const p = serverParams || { time_cost: 3, memory_cost: 131072, parallelism: 4 };
+    const params = { time_cost: p.time_cost, memory_cost: p.memory_cost, parallelism: p.parallelism };
+    if (p.hash_len !== undefined) params.hash_len = p.hash_len;
+    if (globalThis.SezamSyncCore.call('account_kdf_refusal', params) !== null) {
         throw new Error(t('error.kdf_params_unsupported'));
     }
-    return { time_cost: time, memory_cost: mem, parallelism, hash_len: 64 };
+    return { ...params, hash_len: 64 };
 }
 
 // KDF params of an existing account (per-user since server v1.1); legacy

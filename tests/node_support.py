@@ -8,14 +8,26 @@ function" deep in a harness; now it is skipped and says why.
 from __future__ import annotations
 
 import functools
+import json
 import re
 import shutil
 import socket
 import subprocess
+from pathlib import Path
 
 import pytest
 
 MIN_NODE = (24, 7)
+SYNC_CORE_JS = Path(__file__).resolve().parents[1] / "web" / "static" / "js" / "vendor" / "sezam-sync-core.js"
+
+
+def with_sync_core(script: str) -> str:
+    """``script`` run once the web's sync core (WASM) is loaded, as the page
+    loads it before app.js."""
+    return (
+        f"globalThis.SezamSyncCore = eval(require('fs').readFileSync({json.dumps(str(SYNC_CORE_JS))}, 'utf8')"
+        " + ';SezamSyncCore');\nSezamSyncCore.ready.then(() => {\n" + script + "\n});\n"
+    )
 
 
 @functools.lru_cache(maxsize=1)

@@ -135,14 +135,17 @@ class KeyPair:
 
 
 def _validate_sezam_key_kdf(salt: bytes, params: Argon2Params) -> None:
-    if not 16 <= len(salt) <= 64 or params.salt_len != len(salt):
+    """The core's .sezam-key bounds (core/src/kdf.rs)."""
+    from ..vault import sync_core
+
+    if params.salt_len != len(salt):
         raise ValueError("Invalid .sezam-key Argon2 salt length")
-    if not 1 <= params.time_cost <= 20:
-        raise ValueError("Invalid .sezam-key Argon2 time cost")
-    if not 8192 <= params.memory_cost <= 262144:
-        raise ValueError("Invalid .sezam-key Argon2 memory cost")
-    if not 1 <= params.parallelism <= 16 or params.hash_len != 64:
-        raise ValueError("Invalid .sezam-key Argon2 parameters")
+    refusal = sync_core.call(
+        "sezam_key_kdf_refusal", salt_len=len(salt), time_cost=params.time_cost,
+        memory_cost=params.memory_cost, parallelism=params.parallelism, hash_len=params.hash_len,
+    )
+    if refusal is not None:
+        raise ValueError(refusal)
 
 
 def export_sezam_key(

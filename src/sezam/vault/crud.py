@@ -26,7 +26,7 @@ from ..models import (
     new_ulid,
     ulid_to_bytes,
 )
-from . import oplock, outbox, pending_states
+from . import oplock, outbox, pending_states, sync_core
 from .audit import AuditLog
 from .db import IdentityChangedElsewhere, VaultDB
 from .dek import DEKManager
@@ -204,23 +204,27 @@ def server_account_kdf(meta: dict, db: Optional[VaultDB] = None) -> Argon2Params
             return Argon2Params.from_dict(local_params)
     if not meta.get("argon2_params"):
         raise RuntimeError("Server did not return the account KDF parameters")
-    params = Argon2Params.from_dict(meta["argon2_params"])
+    announced = meta["argon2_params"]
     # Review d615826: a server announcing a password change elsewhere (new
     # salt, higher key_epoch) chose the params too, and cheap ones made the
-    # auth proof this device then sends crackable offline. The web's hard
-    # floor applies, lowered only to params this vault itself was made with.
-    floor_time, floor_memory = Argon2Params.WEB_FLOOR_TIME, Argon2Params.WEB_FLOOR_MEMORY
+    # auth proof this device then sends crackable offline. The core's account
+    # bounds apply (core/src/kdf.rs), the floor lowered only to params this
+    # vault itself was made with.
     local_params = db.get_meta_json("argon2_params") if db is not None else None
-    if local_params:
-        floor_time = min(floor_time, int(local_params["time_cost"]))
-        floor_memory = min(floor_memory, int(local_params["memory_cost"]))
-    if params.time_cost < floor_time or params.memory_cost < floor_memory or params.parallelism < 1:
+    fields = ("time_cost", "memory_cost", "parallelism")
+    refusal = sync_core.call(
+        "account_kdf_refusal",
+        **{k: announced.get(k) for k in fields},
+        **({"hash_len": announced["hash_len"]} if "hash_len" in announced else {}),
+        local={k: int(local_params[k]) for k in fields} if local_params else None,
+    )
+    if refusal is not None:
         raise RuntimeError(
-            "Server returned KDF parameters below the minimum "
-            f"(time {params.time_cost}, memory {params.memory_cost} KiB); "
+            f"Server returned KDF parameters {refusal} "
+            f"(time {announced.get('time_cost')}, memory {announced.get('memory_cost')} KiB); "
             "the password is not derived with them"
         )
-    return params
+    return Argon2Params.from_dict(announced)
 
 
 def reseal_envelopes_for_rotation(

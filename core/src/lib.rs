@@ -33,6 +33,7 @@ pub mod authority;
 pub mod formats;
 pub mod gate;
 pub mod json;
+pub mod kdf;
 pub mod messages;
 pub mod order;
 pub mod pull;

@@ -53,10 +53,6 @@ class Argon2Params:
             hash_len=64,  # Always 64B for server/web compatibility
         )
 
-    # Hard floor for web clients (spec 7.2)
-    WEB_FLOOR_TIME = 2
-    WEB_FLOOR_MEMORY = 65536  # 64 MB in KiB
-
     # Mobile fallback profile
     MOBILE_PROFILE = None  # Will be set below
 

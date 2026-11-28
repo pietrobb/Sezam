@@ -29,7 +29,7 @@ from sezam.vault.crud import Vault, recover_with_password
 from sezam.vault.sync_client import SyncClient
 from server.app.models.schemas import KeypairUploadRequest
 from tests.test_integration_client_server import PASSWORD, server  # noqa: F401
-from tests.node_support import node_cmd, requires_node
+from tests.node_support import node_cmd, requires_node, with_sync_core
 
 # Not the server default (3 / 128 MiB / 4) and cheap enough for tests.
 LAPTOP = Argon2Params(time_cost=2, memory_cost=65_536, parallelism=2)
@@ -206,8 +206,6 @@ def test_web_refuses_missing_params_and_sends_the_derived_ones_to_recover():
         )
     )
     script = f"""
-const ARGON2_HARD_FLOOR = {{ time: 2, mem: 65536, parallelism: 1 }};
-const ARGON2_ACCOUNT_MAX = {{ time: 20, mem: 262144, parallelism: 8 }};
 async function deriveKEKViaWorker() {{ return new Uint8Array(64); }}
 const bytesToHex = b => Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
 const hexToBytes = h => new Uint8Array(h.match(/../g).map(x => parseInt(x, 16)));
@@ -235,7 +233,7 @@ const sodium = {{ memzero(b) {{ b.fill(0); }} }};
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
     proc = subprocess.run(
-        [node_cmd(), "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=60
+        [node_cmd(), "-e", with_sync_core(script)], capture_output=True, text=True, encoding="utf-8", timeout=60
     )
     assert proc.returncode == 0, proc.stderr
     out = json.loads(proc.stdout)

@@ -22,7 +22,7 @@ import pytest
 from sezam.crypto import kdf
 from sezam.crypto.kdf import Argon2Params, _derive_material
 from sezam.vault.crud import Vault
-from tests.node_support import node_cmd, requires_node
+from tests.node_support import node_cmd, requires_node, with_sync_core
 
 FAST = Argon2Params(time_cost=1, memory_cost=8192, parallelism=1)
 NFC = "Žltý kôň úpel ďábelské ódy"
@@ -142,8 +142,6 @@ def test_web_derives_from_nfc_and_login_retries_the_legacy_form():
         )
     )
     script = f"""
-const ARGON2_HARD_FLOOR = {{ time: 2, mem: 65536, parallelism: 1 }};
-const ARGON2_ACCOUNT_MAX = {{ time: 20, mem: 262144, parallelism: 8 }};
 const derivedFrom = [];
 // Stand-in KDF: 64 bytes that depend only on the exact password bytes.
 async function deriveKEKViaWorker(password) {{
@@ -191,7 +189,7 @@ const sodium = {{ memzero(b) {{ b.fill(0); }} }};
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
     proc = subprocess.run(
-        [node_cmd(), "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=60
+        [node_cmd(), "-e", with_sync_core(script)], capture_output=True, text=True, encoding="utf-8", timeout=60
     )
     assert proc.returncode == 0, proc.stderr
     out = json.loads(proc.stdout)
@@ -218,8 +216,6 @@ def _web_login_script(src: str, cached: bool, recover_status: int) -> str:
         )
     )
     return f"""
-const ARGON2_HARD_FLOOR = {{ time: 2, mem: 65536, parallelism: 1 }};
-const ARGON2_ACCOUNT_MAX = {{ time: 20, mem: 262144, parallelism: 8 }};
 const derivedFrom = [];
 async function deriveKEKViaWorker(password) {{
   derivedFrom.push(password);
@@ -283,7 +279,7 @@ def test_web_pre_nfc_account_opens_the_cache_without_a_wrong_recover(recover_sta
     which ended every later login. The forms are now tried on the cache first."""
     src = APP_JS.read_text(encoding="utf-8")
     proc = subprocess.run(
-        [node_cmd(), "-e", _web_login_script(src, cached=True, recover_status=recover_status)],
+        [node_cmd(), "-e", with_sync_core(_web_login_script(src, cached=True, recover_status=recover_status))],
         capture_output=True, text=True, encoding="utf-8", timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
@@ -298,7 +294,7 @@ def test_web_pre_nfc_account_opens_the_cache_without_a_wrong_recover(recover_sta
 def test_web_pre_nfc_account_without_cache_still_reaches_the_legacy_form():
     src = APP_JS.read_text(encoding="utf-8")
     proc = subprocess.run(
-        [node_cmd(), "-e", _web_login_script(src, cached=False, recover_status=401)],
+        [node_cmd(), "-e", with_sync_core(_web_login_script(src, cached=False, recover_status=401))],
         capture_output=True, text=True, encoding="utf-8", timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
@@ -311,7 +307,7 @@ def test_web_pre_nfc_account_without_cache_still_reaches_the_legacy_form():
 def test_web_locked_name_ends_the_form_loop_with_the_lock_message():
     src = APP_JS.read_text(encoding="utf-8")
     proc = subprocess.run(
-        [node_cmd(), "-e", _web_login_script(src, cached=False, recover_status=423)],
+        [node_cmd(), "-e", with_sync_core(_web_login_script(src, cached=False, recover_status=423))],
         capture_output=True, text=True, encoding="utf-8", timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
@@ -328,6 +324,6 @@ def test_web_throttled_recover_is_not_retried_with_another_form():
         + _function(src, "recoverError")
         + "\nconsole.log(JSON.stringify([401, 404, 429, 423, 500].map(s => recoverError({status: s}).wrongPassword)));"
     )
-    proc = subprocess.run([node_cmd(), "-e", script], capture_output=True, text=True, timeout=30)
+    proc = subprocess.run([node_cmd(), "-e", with_sync_core(script)], capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout) == [True, True, False, False, False]

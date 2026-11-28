@@ -114,7 +114,7 @@ void main() {
       expect(
         complete,
         contains(
-          '_validatePendingKeypairMigration(migration, maxMemoryCost: 1048576)',
+          '_validatePendingKeypairMigration(migration, stored: true)',
         ),
       );
     });
