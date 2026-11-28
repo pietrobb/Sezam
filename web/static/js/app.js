@@ -1537,15 +1537,14 @@ async function openLoginKeypairAnyForm(username, password, meta, backupFile, _so
  * policy) under the guise of a login.
  */
 function signAuthChallenge(challengeHex, signingSk, _sodium) {
-    // Must match server/app/auth.py:AUTH_SIGNATURE_CONTEXT / AUTH_CHALLENGE_LENGTH.
-    const context = new TextEncoder().encode('sezam-auth-challenge-signature-v1');
-    const challenge = hexToBytes(String(challengeHex || ''));
-    if (challenge.length !== 40 || bytesToHex(challenge) !== String(challengeHex).toLowerCase()) {
+    // The message is the core's (docs/CORE_UNIFICATION.md U6c).
+    let message;
+    try {
+        message = hexToBytes(globalThis.SezamSyncCore.call(
+            'auth_challenge_message', { challenge: String(challengeHex ?? '') }));
+    } catch (_) {
         throw new Error('Server sent a malformed login challenge');
     }
-    const message = new Uint8Array(context.length + challenge.length);
-    message.set(context, 0);
-    message.set(challenge, context.length);
     return _sodium.crypto_sign_detached(message, signingSk);
 }
 
@@ -6610,19 +6609,12 @@ async function fetchOrgRecoveryBlob(secret, _sodium) {
 }
 
 // Bytes the recovery key signs to re-store its server blob without the
-// password (review d615826; server: routers/recovery.py, desktop: key_rotation.py).
-function orgRecoveryRewrapMessage(userId, keyEpoch, threshold, totalShares, wrappedKek, _sodium) {
-    const prefix = new TextEncoder().encode('sezam-org-recovery-rewrap-v1\0');
-    const uid = new TextEncoder().encode(userId);
-    const out = new Uint8Array(prefix.length + uid.length + 8 + 2 + 32);
-    let offset = 0;
-    out.set(prefix, offset); offset += prefix.length;
-    out.set(uid, offset); offset += uid.length;
-    new DataView(out.buffer).setBigUint64(offset, BigInt(keyEpoch)); offset += 8;
-    out[offset++] = threshold;
-    out[offset++] = totalShares;
-    out.set(_sodium.crypto_hash_sha256(wrappedKek), offset);
-    return out;
+// password (review d615826); the core's (docs/CORE_UNIFICATION.md U6c).
+function orgRecoveryRewrapMessage(userId, keyEpoch, threshold, totalShares, wrappedKek) {
+    return hexToBytes(globalThis.SezamSyncCore.call('org_recovery_rewrap_message', {
+        user_id: userId, key_epoch: Number(keyEpoch), threshold, total_shares: totalShares,
+        wrapped_kek: bytesToHex(wrappedKek),
+    }));
 }
 
 // The blob carries the epoch of the KEK it wraps (review 688edcb #3b).
@@ -9199,17 +9191,14 @@ async function computeWebStateHash(syncObjects, _sodium, legacy = false) {
     return bytesToHex(_sodium.crypto_hash_sha256(concat));
 }
 
-// Must match server/app/auth.py:key_rotation_message.
+// The successor key's certificate over an archived key: the core's message
+// (docs/CORE_UNIFICATION.md U6c).
 function keyRotationMessage(userId, oldSigningPk, oldEncryptionPk, newSigningPk, newEncryptionPk) {
-    const context = new TextEncoder().encode('sezam-key-rotation-v1');
-    const userIdBytes = idBytes26(userId);
-    const message = new Uint8Array(context.length + 26 + 128);
-    let offset = 0;
-    for (const part of [context, userIdBytes, oldSigningPk, oldEncryptionPk, newSigningPk, newEncryptionPk]) {
-        message.set(part, offset);
-        offset += part.length;
-    }
-    return message;
+    return hexToBytes(globalThis.SezamSyncCore.call('key_rotation_message', {
+        user_id: userId, old_signing_pk: bytesToHex(oldSigningPk),
+        old_encryption_pk: bytesToHex(oldEncryptionPk), new_signing_pk: bytesToHex(newSigningPk),
+        new_encryption_pk: bytesToHex(newEncryptionPk),
+    }));
 }
 
 // Current key plus archived keys reachable through rotation certificates
@@ -11364,7 +11353,7 @@ async function handleOrgRecovery(threshold, totalShares) {
                 recovery_signature: bytesToHex(_sodium.crypto_sign_detached(
                     orgRecoveryRewrapMessage(
                         state.userId, state.keyEpoch + 1, threshold, totalShares,
-                        newWrappedRecovery, _sodium
+                        newWrappedRecovery
                     ),
                     recoverySigningKeypair.privateKey
                 )),

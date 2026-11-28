@@ -12,7 +12,6 @@ Endpoints:
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import time
 from typing import Optional
@@ -22,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from .. import team_log
 from ..auth import (
+    _core_message,
     challenge_hash,
     compute_auth_proof_hash,
     compute_ip_hmac,
@@ -102,12 +102,9 @@ def org_recovery_rewrap_message(
     user_id: str, key_epoch: int, threshold: int, total_shares: int, wrapped_kek: bytes,
 ) -> bytes:
     """What the recovery key signs to re-store its blob without the password."""
-    return (
-        b"sezam-org-recovery-rewrap-v1\x00"
-        + user_id.encode("ascii")
-        + int(key_epoch).to_bytes(8, "big")
-        + bytes([threshold, total_shares])
-        + hashlib.sha256(wrapped_kek).digest()
+    return _core_message(
+        "org_recovery_rewrap_message", user_id=user_id, key_epoch=int(key_epoch),
+        threshold=threshold, total_shares=total_shares, wrapped_kek=bytes(wrapped_kek).hex(),
     )
 
 

@@ -40,11 +40,15 @@ def _client(replies: list[dict]):
     return client, sent
 
 
-def test_server_context_matches_every_client():
-    assert getattr(server_auth, "AUTH_SIGNATURE_CONTEXT", None) == CONTEXT
-    assert f"'{CONTEXT.decode()}'" in APP
+def test_every_side_takes_the_message_from_the_core():
+    # docs/CORE_UNIFICATION.md U6c: one builder, the core's; the context is
+    # nowhere else. tests/test_signed_messages_vectors.py checks the bytes.
+    challenge = bytes(range(40))
+    assert server_auth.auth_challenge_message(challenge) == CONTEXT + challenge
     dart = (ROOT / "mobile" / "lib" / "services" / "crypto_service.dart").read_text(encoding="utf-8")
-    assert f"'{CONTEXT.decode()}'" in dart
+    for source in (APP, dart):
+        assert "'auth_challenge_message'" in source
+        assert CONTEXT.decode() not in source
 
 
 def test_server_accepts_the_domain_separated_login_signature():

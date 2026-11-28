@@ -10,6 +10,7 @@ import datetime
 import functools
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
@@ -21,6 +22,8 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from nacl.signing import SigningKey, VerifyKey
 from nacl.exceptions import BadSignatureError
+
+import sezam_sync_core
 
 
 JWT_ALGORITHM = "EdDSA"
@@ -85,7 +88,13 @@ def bound_challenge_is_authentic(challenge: bytes, secret: str, username: str) -
     return hmac.compare_digest(mac, _bound_challenge_mac(secret, nonce, ts_bytes, username))
 
 
-KEY_ROTATION_CONTEXT = b"sezam-key-rotation-v1"
+def _core_message(op: str, **arguments) -> bytes:
+    """A signed message from the shared core (docs/CORE_UNIFICATION.md U6c);
+    one it cannot build raises ValueError."""
+    out = json.loads(sezam_sync_core.call(op, json.dumps(arguments)))
+    if "error" in out:
+        raise ValueError(f"sync core {op}: {out['error']}")
+    return bytes.fromhex(out["ok"])
 
 
 def key_rotation_message(
@@ -96,18 +105,11 @@ def key_rotation_message(
     new_encryption_pk: bytes,
 ) -> bytes:
     """Canonical bytes the NEW signing key signs to vouch for the old key."""
-    return (
-        KEY_ROTATION_CONTEXT
-        + user_id.encode("utf-8").ljust(26, b"\x00")[:26]
-        + bytes(old_signing_pk)
-        + bytes(old_encryption_pk)
-        + bytes(new_signing_pk)
-        + bytes(new_encryption_pk)
+    return _core_message(
+        "key_rotation_message", user_id=user_id,
+        old_signing_pk=bytes(old_signing_pk).hex(), old_encryption_pk=bytes(old_encryption_pk).hex(),
+        new_signing_pk=bytes(new_signing_pk).hex(), new_encryption_pk=bytes(new_encryption_pk).hex(),
     )
-
-
-RESEED_CONTEXT = b"sezam-reseed-v1"
-REJOIN_CONTEXT = b"sezam-rejoin-v1"
 
 
 def reseed_message(
@@ -117,26 +119,17 @@ def reseed_message(
     signing_pk: bytes,
     encryption_pk: bytes,
     key_epoch: int,
-    context: bytes = RESEED_CONTEXT,
+    rejoin: bool = False,
 ) -> bytes:
     """Canonical bytes the identity key signs to bootstrap an empty server
-    with an existing account (`sezam server reseed`), or, with
-    REJOIN_CONTEXT, to bring back a member account a restore lost
-    (`sezam server rejoin`).
-
-    Domain-separated from login (AUTH_SIGNATURE_CONTEXT || challenge; older
-    clients the bare challenge), so neither signature can stand in for the other.
+    with an existing account (`sezam server reseed`), or, with ``rejoin``,
+    to bring back a member account a restore lost (`sezam server rejoin`).
+    Domain-separated from login, so neither signature can stand in for the other.
     """
-    name = username.encode("utf-8")
-    return (
-        context
-        + bytes(challenge)
-        + user_id.encode("ascii").ljust(26, b"\x00")[:26]
-        + len(name).to_bytes(2, "big")
-        + name
-        + bytes(signing_pk)
-        + bytes(encryption_pk)
-        + int(key_epoch).to_bytes(8, "big")
+    return _core_message(
+        "reseed_message", rejoin=rejoin, challenge=bytes(challenge).hex(), user_id=user_id,
+        username=username, signing_pk=bytes(signing_pk).hex(),
+        encryption_pk=bytes(encryption_pk).hex(), key_epoch=int(key_epoch),
     )
 
 
@@ -161,7 +154,11 @@ def verify_challenge_signature(
         return False
     # Clients sign AUTH_SIGNATURE_CONTEXT || challenge, so a server can never
     # make them sign its chosen bytes (a sync object, a policy) as a "login".
-    if _signature_ok(auth_challenge_message(challenge), signature, signing_pk):
+    try:
+        message = auth_challenge_message(challenge)
+    except ValueError:
+        return False
+    if _signature_ok(message, signature, signing_pk):
         return True
     # Bare signatures of clients released before that verify only until
     # legacy_bare_signature_until() (review 688edcb, low): the challenge is
@@ -173,16 +170,16 @@ def verify_challenge_signature(
     key_id = bytes(signing_pk).hex()[:16]
     if datetime.datetime.now(datetime.timezone.utc).date() >= until:
         logger.warning(
-            "Refused a bare challenge signature (no %s context) from key %s: "
+            "Refused a bare challenge signature (no signature context) from key %s: "
             "the old form ended on %s; the client must be updated.",
-            AUTH_SIGNATURE_CONTEXT.decode(), key_id, until.isoformat(),
+            key_id, until.isoformat(),
         )
         raise OutdatedClientSignature()
     logger.warning(
-        "Accepted a bare challenge signature (no %s context) from key %s; "
+        "Accepted a bare challenge signature (no signature context) from key %s; "
         "this old form is refused from %s on (SEZAM_LEGACY_BARE_SIGNATURE_UNTIL), "
         "update that client.",
-        AUTH_SIGNATURE_CONTEXT.decode(), key_id, until.isoformat(),
+        key_id, until.isoformat(),
     )
     return True
 
@@ -213,23 +210,18 @@ def legacy_bare_signature_until() -> datetime.date:
     return datetime.date.fromisoformat(raw) if raw else LEGACY_BARE_SIGNATURE_DEFAULT_END
 
 
-AUTH_SIGNATURE_CONTEXT = b"sezam-auth-challenge-signature-v1"
-AUTH_CHALLENGE_LENGTH = 40
-
-
-def auth_challenge_message(challenge: bytes) -> bytes:
-    """Bytes a client signs to answer a login challenge."""
-    return AUTH_SIGNATURE_CONTEXT + bytes(challenge)
-
-
-# Capability run 300: a login with a key the team log retired (a restore from
-# before the rotation) proves the log's current key over the same challenge.
-CURRENT_KEY_PROOF_CONTEXT = b"sezam-current-key-proof-v1"
+def auth_challenge_message(challenge: bytes, current_key: bool = False) -> bytes:
+    """Bytes a client signs to answer a login challenge; ``current_key``: the
+    proof of the team log's current key next to a retired one (capability
+    run 300)."""
+    return _core_message(
+        "auth_challenge_message", challenge=bytes(challenge).hex(), current_key=current_key
+    )
 
 
 def verify_current_key_proof(challenge: bytes, signature: bytes, signing_pk: bytes) -> bool:
     try:
-        VerifyKey(bytes(signing_pk)).verify(CURRENT_KEY_PROOF_CONTEXT + bytes(challenge), bytes(signature))
+        VerifyKey(bytes(signing_pk)).verify(auth_challenge_message(challenge, True), bytes(signature))
     except Exception:
         return False
     return True

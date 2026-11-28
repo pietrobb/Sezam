@@ -155,6 +155,19 @@ konštanty limitov sú zmazané. Vektory `tests/vectors/formats.json`
 (115 mien, 31 okrajových znakov, 22 delení) v `core/tests/formats_vectors.rs`.
 Node harnessy webu načítajú `sezam-sync-core.js` a čakajú `SezamSyncCore.ready`.
 
+Podpisované správy (U6c, `core/src/messages.rs`): prihlásenie
+(`auth_challenge_message`, aj dôkaz aktuálneho kľúča), certifikát rotácie
+kľúča, reseed/rejoin a org-recovery rewrap. Server (`auth.py`,
+`routers/recovery.py`), desktop (`sync_common`, `reseed`, `key_rotation`),
+web (`signAuthChallenge`, `keyRotationMessage`, `orgRecoveryRewrapMessage`) a
+mobil (`signAuthChallenge`, `keyRotationMessage`, `rejoinMessage`) volajú
+jadro; kontexty (`sezam-…-v1`) sú len v jadre. `reseed_message` v Pythone
+berie `rejoin=` namiesto bajtov kontextu. Id, ktoré správa presne neudrží, sa
+odmietne (server ho predtým orezal na 26 bajtov). Vektory
+`tests/vectors/signed_messages.json` (zo servera pred zmenou) v
+`core/tests/signed_messages_vectors.rs`, `tests/test_signed_messages_vectors.py`
+(desktop, server, web) a `mobile/test/signed_messages_vectors_test.dart`.
+
 Známe zlyhanie mimo vetvy U: `tests/test_review13_handover_rekey.py::
 test_the_new_admin_rekeys_what_the_former_admin_held` (409 „target_user_id is
 admin only“) padá od R17 commitu e55ddb8 (7f9a191 zelené); opraviť pred U9.

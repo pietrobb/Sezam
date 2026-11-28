@@ -114,7 +114,7 @@ def test_the_member_comes_back_under_the_id_the_log_names(restored, tmp_path):
 def test_nobody_else_can_take_the_named_id(restored, forgery):
     """Only the keys the log names for the account, proving themselves, bring it back."""
     from sezam.crypto.keys import generate_keypair
-    from sezam.vault.reseed import REJOIN_CONTEXT, RESEED_CONTEXT, reseed_message
+    from sezam.vault.reseed import reseed_message
 
     url, db, admin, client, bob, bob_client, item, head = restored
     bob_id = bob.db.get_meta("user_id")
@@ -124,7 +124,7 @@ def test_nobody_else_can_take_the_named_id(restored, forgery):
     challenge = bob_client._request("POST", "/api/auth/challenge", {"username": "bob"})["challenge"]
     message = reseed_message(
         bytes.fromhex(challenge), bob_id, "bob", shown.signing_pk, shown.encryption_pk, 0,
-        RESEED_CONTEXT if forgery == "other_context" else REJOIN_CONTEXT,
+        rejoin=forgery != "other_context",
     )
     signer = bob.keypair if forgery == "other_context" else thief
     with pytest.raises(RuntimeError, match="401"):

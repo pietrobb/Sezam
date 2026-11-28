@@ -33,7 +33,6 @@ from ..auth import (
     create_jwt,
     generate_bound_challenge,
     token_revocation_key,
-    REJOIN_CONTEXT,
     reseed_message,
     unknown_name_mac,
     unlock_code_hash,
@@ -406,7 +405,7 @@ async def rejoin(
     ) or not verify_reseed_signature(
         challenge_bytes,
         reseed_message(challenge_bytes, req.user_id, username, signing_pk,
-                       encryption_pk, req.key_epoch, REJOIN_CONTEXT),
+                       encryption_pk, req.key_epoch, rejoin=True),
         bytes.fromhex(req.signature),
         signing_pk,
     ):

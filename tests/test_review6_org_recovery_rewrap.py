@@ -21,7 +21,7 @@ def test_web_rewrap_signature_verifies_on_the_server():
     script = f"""
       const kp = sodium.crypto_sign_seed_keypair(hex('{seed.hex()}'));
       const msg = orgRecoveryRewrapMessage(
-        '{user_id}', 7, 2, 3, hex('{wrapped.hex()}'), sodium);
+        '{user_id}', 7, 2, 3, hex('{wrapped.hex()}'));
       return [bytesToHex(msg), bytesToHex(sodium.crypto_sign_detached(msg, kp.privateKey))];
     """
     message_hex, signature_hex = _run(["orgRecoveryRewrapMessage"], f"(() => {{ {script} }})()")

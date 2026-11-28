@@ -109,16 +109,13 @@ def org_recovery_rewrap_message(
     user_id: str, key_epoch: int, threshold: int, total_shares: int, wrapped_kek: bytes,
 ) -> bytes:
     """Signed by the recovery key to re-store its server blob without the
-    password (review d615826; server: routers.recovery, same bytes)."""
-    import hashlib
+    password (review d615826; the core's, docs/CORE_UNIFICATION.md U6c)."""
+    from . import sync_core
 
-    return (
-        b"sezam-org-recovery-rewrap-v1\x00"
-        + user_id.encode("ascii")
-        + int(key_epoch).to_bytes(8, "big")
-        + bytes([threshold, total_shares])
-        + hashlib.sha256(wrapped_kek).digest()
-    )
+    return bytes.fromhex(sync_core.call(
+        "org_recovery_rewrap_message", user_id=user_id, key_epoch=int(key_epoch),
+        threshold=threshold, total_shares=total_shares, wrapped_kek=bytes(wrapped_kek).hex(),
+    ))
 
 
 def make_journal(

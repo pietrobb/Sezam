@@ -12,7 +12,7 @@ from typing import Optional
 from nacl.signing import VerifyKey
 
 from ..models import ulid_to_bytes
-from . import outbox, pending_states
+from . import outbox, pending_states, sync_core
 
 # Kept under the original module name (log filters, review 6 R6-H split).
 logger = logging.getLogger("sezam.vault.sync_client")
@@ -27,10 +27,6 @@ KDF_REPORTED_META_KEY = "kdf_params_reported_salt"
 CONFIRMED_MEMBER_KEYS_META = "confirmed_member_keys"
 # The org_recovery_pk the server is known to hold (review 526419e V5).
 _AUDIT_PAYLOAD_FORMAT = "sezam-audit-v1"
-_KEY_ROTATION_CONTEXT = b"sezam-key-rotation-v1"
-# Must match server/app/auth.py:AUTH_SIGNATURE_CONTEXT.
-_AUTH_SIGNATURE_CONTEXT = b"sezam-auth-challenge-signature-v1"
-_AUTH_CHALLENGE_LENGTH = 40
 
 
 # Review d150605 #5: the server head was seen behind this device's checkpoint.
@@ -220,14 +216,16 @@ def sign_auth_challenge(signing_key, challenge_hex: str) -> str:
     the server's fixed layout, so a server cannot have it sign bytes of its
     choosing (a sync object or a policy) under the guise of a login.
     """
-    challenge = bytes.fromhex(challenge_hex)
-    if len(challenge) != _AUTH_CHALLENGE_LENGTH:
-        raise RuntimeError(f"Server sent a malformed login challenge ({len(challenge)} bytes)")
-    return signing_key.sign(_AUTH_SIGNATURE_CONTEXT + challenge).signature.hex()
+    return signing_key.sign(auth_challenge_message(challenge_hex)).signature.hex()
 
 
-# Must match server/app/auth.py:CURRENT_KEY_PROOF_CONTEXT.
-_CURRENT_KEY_PROOF_CONTEXT = b"sezam-current-key-proof-v1"
+def auth_challenge_message(challenge_hex: str, current_key: bool = False) -> bytes:
+    """The bytes a login signs (the core's, docs/CORE_UNIFICATION.md U6c)."""
+    try:
+        return bytes.fromhex(sync_core.call(
+            "auth_challenge_message", challenge=challenge_hex, current_key=current_key))
+    except ValueError as exc:
+        raise RuntimeError(f"Server sent a malformed login challenge: {exc}") from exc
 
 
 def auth_verify_body(username: str, challenge_hex: str, signing_key, current_signing_key=None) -> dict:
@@ -244,7 +242,7 @@ def auth_verify_body(username: str, challenge_hex: str, signing_key, current_sig
     }
     if current_signing_key is not None:
         body["current_key_signature"] = current_signing_key.sign(
-            _CURRENT_KEY_PROOF_CONTEXT + bytes.fromhex(challenge_hex)
+            auth_challenge_message(challenge_hex, current_key=True)
         ).signature.hex()
     return body
 
@@ -313,18 +311,13 @@ def key_rotation_message(
     new_signing_pk: bytes,
     new_encryption_pk: bytes,
 ) -> bytes:
-    """Bytes the successor signing key signs to certify an archived key.
-
-    Must match server/app/auth.py:key_rotation_message.
-    """
-    return (
-        _KEY_ROTATION_CONTEXT
-        + ulid_to_bytes(user_id)
-        + bytes(old_signing_pk)
-        + bytes(old_encryption_pk)
-        + bytes(new_signing_pk)
-        + bytes(new_encryption_pk)
-    )
+    """Bytes the successor signing key signs to certify an archived key (the
+    core's, docs/CORE_UNIFICATION.md U6c)."""
+    return bytes.fromhex(sync_core.call(
+        "key_rotation_message", user_id=user_id,
+        old_signing_pk=bytes(old_signing_pk).hex(), old_encryption_pk=bytes(old_encryption_pk).hex(),
+        new_signing_pk=bytes(new_signing_pk).hex(), new_encryption_pk=bytes(new_encryption_pk).hex(),
+    ))
 
 
 # A checkpoint's "state_v": the formula its state_hash was made with.

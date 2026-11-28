@@ -673,24 +673,24 @@ class SyncService {
     return vouched().contains(entryKey);
   }
 
-  /// Must match server/app/auth.py:key_rotation_message.
+  /// The successor key's certificate over an archived key: the core's
+  /// message (docs/CORE_UNIFICATION.md U6c).
   static Uint8List keyRotationMessage(
     String userId,
     Uint8List oldSigningPk,
     Uint8List oldEncryptionPk,
     Uint8List newSigningPk,
     Uint8List newEncryptionPk,
-  ) {
-    final userIdBytes = CryptoService.idBytes26(userId);
-    return Uint8List.fromList([
-      ...utf8.encode('sezam-key-rotation-v1'),
-      ...userIdBytes,
-      ...oldSigningPk,
-      ...oldEncryptionPk,
-      ...newSigningPk,
-      ...newEncryptionPk,
-    ]);
-  }
+  ) => hexToBytes(
+    syncCore('key_rotation_message', {
+          'user_id': userId,
+          'old_signing_pk': bytesToHex(oldSigningPk),
+          'old_encryption_pk': bytesToHex(oldEncryptionPk),
+          'new_signing_pk': bytesToHex(newSigningPk),
+          'new_encryption_pk': bytesToHex(newEncryptionPk),
+        })
+        as String,
+  );
 
   static bool _sameBytes(Uint8List left, Uint8List right) {
     if (left.length != right.length) return false;
@@ -3642,7 +3642,8 @@ class AccountLostOnServerException extends SyncException {
       );
 }
 
-/// Must equal server.app.auth.reseed_message(..., REJOIN_CONTEXT) byte for byte.
+/// What the identity key signs to bring back a member account a restore
+/// lost: the core's message (docs/CORE_UNIFICATION.md U6c).
 Uint8List rejoinMessage(
   Uint8List challenge,
   String userId,
@@ -3650,21 +3651,18 @@ Uint8List rejoinMessage(
   Uint8List signingPk,
   Uint8List encryptionPk,
   int keyEpoch,
-) {
-  final name = utf8.encode(username);
-  final id = CryptoService.idBytes26(userId);
-  final epoch = ByteData(8)..setUint64(0, keyEpoch);
-  return (BytesBuilder(copy: false)
-        ..add(utf8.encode('sezam-rejoin-v1'))
-        ..add(challenge)
-        ..add(id)
-        ..add([(name.length >> 8) & 0xff, name.length & 0xff])
-        ..add(name)
-        ..add(signingPk)
-        ..add(encryptionPk)
-        ..add(epoch.buffer.asUint8List()))
-      .toBytes();
-}
+) => hexToBytes(
+  syncCore('reseed_message', {
+        'rejoin': true,
+        'challenge': bytesToHex(challenge),
+        'user_id': userId,
+        'username': username,
+        'signing_pk': bytesToHex(signingPk),
+        'encryption_pk': bytesToHex(encryptionPk),
+        'key_epoch': keyEpoch,
+      })
+      as String,
+);
 
 class _ArchivedKeyCandidate {
   _ArchivedKeyCandidate({

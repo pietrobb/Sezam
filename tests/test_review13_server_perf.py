@@ -21,7 +21,7 @@ from nacl.signing import SigningKey
 
 from server.app import team_log
 from server.app.auth import generate_bound_challenge
-from sezam.vault.reseed import REJOIN_CONTEXT, reseed_message
+from sezam.vault.reseed import reseed_message
 from tests.test_review2_server_mariadb import mariadb  # noqa: F401  (fixture)
 from tests.test_server_spec import MockCursor, app_client, mock_db  # noqa: F401  (fixtures)
 from tests.test_team_log_server import ADMIN, BOB, FOLDER, Team, _append, _auth, _founded
@@ -160,7 +160,7 @@ async def test_a_rejoin_with_keys_the_log_does_not_hold_takes_no_lock(app_client
         signing_pk = bytes(sk.verify_key)
         encryption_pk = bytes.fromhex(team.state.members[ADMIN].encryption_pk) if keys else os.urandom(32)
         challenge, _ = generate_bound_challenge(SECRET, "bob")
-        message = reseed_message(challenge, user_id, "bob", signing_pk, encryption_pk, 0, REJOIN_CONTEXT)
+        message = reseed_message(challenge, user_id, "bob", signing_pk, encryption_pk, 0, rejoin=True)
         queries.clear()
         resp = await app_client.post("/api/auth/rejoin", json={
             "username": "bob", "user_id": user_id, "signing_pk": signing_pk.hex(),

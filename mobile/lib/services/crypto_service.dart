@@ -881,26 +881,23 @@ class CryptoService {
     );
   }
 
-  /// Must match server/app/auth.py:AUTH_SIGNATURE_CONTEXT.
-  static final Uint8List authSignatureContext = Uint8List.fromList(
-    utf8.encode('sezam-auth-challenge-signature-v1'),
-  );
-  static const int authChallengeLength = 40;
-
   /// Answer a server login challenge. The identity key signs only
   /// context || challenge, and only a challenge of the server's fixed layout,
   /// so a server cannot have it sign bytes of its choosing (a sync object, a
-  /// policy) under the guise of a login.
+  /// policy) under the guise of a login. The message is the core's
+  /// (docs/CORE_UNIFICATION.md U6c).
   Uint8List signAuthChallenge(Uint8List challenge, Uint8List signingSecretKey) {
-    if (challenge.length != authChallengeLength) {
+    final String hex;
+    try {
+      hex = syncCore('auth_challenge_message', {
+        'challenge': bytesToHex(challenge),
+      }) as String;
+    } on StateError {
       throw ArgumentError(
         'Server sent a malformed login challenge (${challenge.length} bytes)',
       );
     }
-    final message = Uint8List(authSignatureContext.length + challenge.length)
-      ..setAll(0, authSignatureContext)
-      ..setAll(authSignatureContext.length, challenge);
-    return signChallenge(message, signingSecretKey);
+    return signChallenge(_hexToBytes(hex), signingSecretKey);
   }
 
   /// Verify an Ed25519 detached signature.

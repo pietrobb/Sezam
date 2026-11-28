@@ -15,9 +15,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from ..models import ulid_to_bytes
 from ..usernames import normalize_username
-from . import ai_access, oplock, outbox, pending_states
+from . import ai_access, oplock, outbox, pending_states, sync_core
 from .onboarding import complete_bootstrap_upload
 from .snapshots import take_snapshot
 from .sync_client import (
@@ -35,8 +34,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-RESEED_CONTEXT = b"sezam-reseed-v1"
-REJOIN_CONTEXT = b"sezam-rejoin-v1"
 
 
 class ReseedError(RuntimeError):
@@ -50,20 +47,15 @@ def reseed_message(
     signing_pk: bytes,
     encryption_pk: bytes,
     key_epoch: int,
-    context: bytes = RESEED_CONTEXT,
+    rejoin: bool = False,
 ) -> bytes:
-    """Must equal server.app.auth.reseed_message byte for byte."""
-    name = username.encode("utf-8")
-    return (
-        context
-        + bytes(challenge)
-        + ulid_to_bytes(user_id)
-        + len(name).to_bytes(2, "big")
-        + name
-        + bytes(signing_pk)
-        + bytes(encryption_pk)
-        + int(key_epoch).to_bytes(8, "big")
-    )
+    """What the identity key signs for a reseed or, with ``rejoin``, a rejoin
+    (the core's, docs/CORE_UNIFICATION.md U6c; the server verifies the same)."""
+    return bytes.fromhex(sync_core.call(
+        "reseed_message", rejoin=rejoin, challenge=bytes(challenge).hex(), user_id=user_id,
+        username=username, signing_pk=bytes(signing_pk).hex(),
+        encryption_pk=bytes(encryption_pk).hex(), key_epoch=int(key_epoch),
+    ))
 
 
 @oplock.held
@@ -140,7 +132,7 @@ def rejoin_server(vault: Vault, server_url: str, password: str, username: str | 
         )["challenge"]
         message = reseed_message(
             bytes.fromhex(challenge_hex), user_id, username,
-            keypair.signing_pk, keypair.encryption_pk, key_epoch, REJOIN_CONTEXT,
+            keypair.signing_pk, keypair.encryption_pk, key_epoch, rejoin=True,
         )
         pending_states.set_reseed_state(db, f"rejoin {server_url}")
         # The sign-in and a resumed run use the vault's name: the new one
