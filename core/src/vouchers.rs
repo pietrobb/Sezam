@@ -16,6 +16,7 @@ use std::collections::BTreeSet;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+use crate::formats::id_bytes;
 use crate::teamlog::{from_hex, to_hex};
 
 const DOMAIN: &[u8] = b"sezam-key-vouchers-v2\x00";
@@ -27,19 +28,6 @@ pub const MAX_VERSION: u64 = (1 << 53) - 1;
 
 /// (object id, version, digest).
 pub type Entry = (String, u64, String);
-
-/// An id as 26 bytes: at most 26 ASCII characters without NUL, padded with NUL.
-fn id_bytes(id: &str) -> Result<[u8; 26], String> {
-    let raw = id.as_bytes();
-    if raw.len() > 26 || !id.is_ascii() || raw.contains(&0) {
-        return Err(format!(
-            "an id is at most 26 ASCII characters without NUL, not {id:?}"
-        ));
-    }
-    let mut out = [0u8; 26];
-    out[..raw.len()].copy_from_slice(raw);
-    Ok(out)
-}
 
 fn hex_of_len(text: &str, len: usize) -> Option<Vec<u8>> {
     if text.len() != len * 2 {

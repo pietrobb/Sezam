@@ -9,10 +9,7 @@ from __future__ import annotations
 
 import json
 
-MAX_PUSH_OBJECTS = 1_000
 MAX_OBJECT_PAYLOAD_BYTES = 1024 * 1024
-# 16 MiB minus room for the request's own fields (key_rotation, epoch).
-MAX_PUSH_REQUEST_BYTES = 15 * 1024 * 1024
 # server.app.models.schemas MAX_STAGED_*: one all-or-nothing unit sent in parts
 # (review d150605 #3), minus the same room for the request's own fields.
 MAX_STAGED_OBJECTS = 100_000
@@ -54,19 +51,12 @@ def require_fits_atomic_unit(count: int, total_bytes: int, what: str) -> None:
 
 
 def split_for_push(objects: list[dict]) -> list[list[dict]]:
-    """Consecutive chunks within the server's per-request limits, order kept."""
-    chunks: list[list[dict]] = []
-    chunk: list[dict] = []
-    size = 0
-    for obj in objects:
-        obj_size = object_json_bytes(obj)
-        if chunk and (
-            len(chunk) >= MAX_PUSH_OBJECTS or size + obj_size > MAX_PUSH_REQUEST_BYTES
-        ):
-            chunks.append(chunk)
-            chunk, size = [], 0
-        chunk.append(obj)
-        size += obj_size
-    if chunk:
-        chunks.append(chunk)
+    """Consecutive chunks within the server's per-request limits, order kept
+    (the core's rule, docs/CORE_UNIFICATION.md U6)."""
+    from . import sync_core
+
+    chunks, start = [], 0
+    for count in sync_core.call("split_for_push", sizes=[object_json_bytes(o) for o in objects]):
+        chunks.append(objects[start:start + count])
+        start += count
     return chunks

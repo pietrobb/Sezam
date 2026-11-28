@@ -17,7 +17,6 @@ import asyncio
 import json
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -28,7 +27,7 @@ from tests.test_server_spec import (  # noqa: F401  (fixtures)
     mock_db,
 )
 from tests.test_username_trim_review_n3 import _Cursor, _register
-from tests.node_support import node_cmd, requires_node
+from tests.node_support import requires_node
 
 ROOT = Path(__file__).resolve().parents[1]
 NFD_SIMON = "S\u030cimon"
@@ -57,14 +56,11 @@ def test_desktop_and_server_normalize_alike():
 
 @requires_node
 def test_web_normalizes_like_the_server():
-    src = (ROOT / "web" / "static" / "js" / "app.js").read_text(encoding="utf-8")
-    start = src.index("function normalizeUsername(")
-    fn = src[start:src.index("\n}\n", start) + 3]
-    script = fn + f"\nconsole.log(JSON.stringify({json.dumps(list(VECTORS))}.map(normalizeUsername)));"
-    out = subprocess.run(
-        [node_cmd(), "-e", script], check=True, capture_output=True, text=True, encoding="utf-8"
-    ).stdout
-    assert json.loads(out) == list(VECTORS.values())
+    from tests.test_review_web import _run
+
+    # Code points: the harness reads node's output in the console's encoding.
+    script = f"{json.dumps(list(VECTORS))}.map(normalizeUsername).map(s => [...s].map(c => c.codePointAt(0)))"
+    assert _run(["normalizeUsername"], script) == [list(map(ord, v)) for v in VECTORS.values()]
 
 
 def test_every_web_entry_point_normalizes():
@@ -75,8 +71,10 @@ def test_every_web_entry_point_normalizes():
 
 def test_phone_normalizes_like_the_server():
     dart = (ROOT / "mobile" / "lib" / "services" / "auth_service.dart").read_text(encoding="utf-8")
-    assert "unorm.nfc(username).replaceAll(_usernameEdge, '')" in dart
-    assert r"r'^[\s\ufeff\u200b\x1c-\x1f\x85]+|[\s\ufeff\u200b\x1c-\x1f\x85]+$'" in dart
+    # The core's rule (docs/CORE_UNIFICATION.md U6); mobile/test/username_normalize_test.dart
+    # runs it on the phone.
+    assert "syncCore('normalize_username', {'value': username})" in dart
+    assert "_usernameEdge" not in dart
 
 
 @pytest.mark.asyncio

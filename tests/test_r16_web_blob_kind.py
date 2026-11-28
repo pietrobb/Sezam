@@ -38,6 +38,8 @@ for (const path of process.argv.slice(1, 4)) {
 }
 (async () => {
   await context.sodium.ready;
+  vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]), 'sezam-sync-core.js'), 'utf8'), context);
+  await context.SezamSyncCore.ready;
   const s = context.sodium;
   const K = vm.runInContext('BLOB_KIND', context);
   const dek = context.Uint8Array.from({ length: 32 }, (_, i) => i);

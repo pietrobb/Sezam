@@ -261,6 +261,7 @@ const idbDump = () => Object.fromEntries(Object.entries(stores).map(([name, rows
 
 async function runCommand(step) {
   await context.sodium.ready;
+  await context.SezamSyncCore.ready;
   if (step.action === 'close') {
     reply({ idb: idbDump() });
     process.exit(0);

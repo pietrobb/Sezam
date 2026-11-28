@@ -38,6 +38,8 @@ vm.createContext(context);
 for (const path of process.argv.slice(1, 4)) vm.runInContext(fs.readFileSync(path, 'utf8'), context);
 (async () => {
   await context.sodium.ready;
+  vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]), 'sezam-sync-core.js'), 'utf8'), context);
+  await context.SezamSyncCore.ready;
   const result = await vm.runInContext(process.argv[4], context);
   process.stdout.write(JSON.stringify(result));
 })().catch((error) => { console.error(error); process.exit(1); });

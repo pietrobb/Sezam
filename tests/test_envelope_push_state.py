@@ -15,7 +15,7 @@ from nacl.public import PrivateKey
 
 from sezam import cli
 from sezam.models import new_ulid
-from sezam.vault import sync_limits
+from sezam.vault import sync_push
 from tests.test_integration_client_server import (  # noqa: F401  (fixture)
     PASSWORD,
     _client,
@@ -51,7 +51,7 @@ def test_a_grant_is_sent_after_the_chunk_with_it_failed(server, tmp_path, monkey
 
     # Folder and entry go in the first chunk, the folder's DEK and the
     # envelope in the second, which fails.
-    monkeypatch.setattr(sync_limits, "MAX_PUSH_OBJECTS", 2)
+    monkeypatch.setattr(sync_push, "split_for_push", lambda objs: [objs[i:i + 2] for i in range(0, len(objs), 2)])
     client = _client(laptop, url)
     real_request = client._request
     posts = []

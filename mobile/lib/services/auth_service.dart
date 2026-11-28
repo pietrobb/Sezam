@@ -22,13 +22,13 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 import '../models/vault_models.dart';
 import 'biometric_kek_store.dart';
 import 'crypto_service.dart';
 import 'database_service.dart';
 import 'key_rotation.dart';
+import 'sync_core.dart';
 import 'sync_service.dart';
 import 'team_log_client.dart';
 import 'vault_service.dart';
@@ -83,13 +83,9 @@ const accountKdfMaxMemoryCost = 262144;
 /// strips too); an older install may have stored the untrimmed name.
 /// Review 688edcb N3: trimmed of the union of what Python, JS and Dart trim
 /// (NBSP, BOM, NEL, \x1c-\x1f, zero-width space) and NFC, so one visible name
-/// is one account. Must equal server.app.models.schemas.normalize_username.
-final _usernameEdge = RegExp(
-  r'^[\s\ufeff\u200b\x1c-\x1f\x85]+|[\s\ufeff\u200b\x1c-\x1f\x85]+$',
-);
-
+/// is one account. The core's rule (docs/CORE_UNIFICATION.md U6).
 String normalizeUsername(String username) =>
-    unorm.nfc(username).replaceAll(_usernameEdge, '');
+    syncCore('normalize_username', {'value': username}) as String;
 
 /// Shortest new master password (the web's NEW_PASSWORD_MIN_LENGTH).
 const newPasswordMinLength = 14;

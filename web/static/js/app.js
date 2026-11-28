@@ -398,15 +398,10 @@ function validateCanonicalEnvelopeHeader(envelopeBytes, expectedBlobKind = null)
 }
 
 function buildAAD(blobKind, dekId, objectId, version) {
-    const aad = new Uint8Array(59);
-    aad[0] = ENVELOPE_ALG;
-    aad[1] = SCHEMA_VERSION;
-    aad[2] = blobKind;
-    aad.set(idBytes26(dekId), 3);
-    aad.set(idBytes26(objectId), 29);
-    const view = new DataView(aad.buffer);
-    view.setUint32(55, version >>> 0, false); // u32 big-endian
-    return aad;
+    // The envelope's AAD (spec 2.6) from the core (docs/CORE_UNIFICATION.md U6).
+    return hexToBytes(globalThis.SezamSyncCore.call('aad', {
+        blob_kind: blobKind, dek_id: dekId, object_id: objectId, version,
+    }));
 }
 
 // R16-Z SM3 (INV-3): a 26-byte id field holds exactly one id. A longer id
@@ -864,10 +859,7 @@ function offerSezamKeyDownload(backupBytes, username) {
  * the blob told its exact length. Python padding.padded_size, mobile: same.
  */
 function paddedSize(n) {
-    let target = 32;
-    while (target < n) target *= 2;
-    if (target - n > 0xFFFF) target = Math.ceil(n / 0x10000) * 0x10000;
-    return target;
+    return globalThis.SezamSyncCore.call('padded_size', { n });
 }
 
 /**
@@ -1691,7 +1683,7 @@ function recoverError(recoverErr) {
 // and NFC, so one visible name is one account. Must equal
 // server.app.models.schemas.normalize_username.
 function normalizeUsername(value) {
-    return value.normalize('NFC').replace(/^[\s\ufeff\u200b\x1c-\x1f\x85]+|[\s\ufeff\u200b\x1c-\x1f\x85]+$/g, '');
+    return globalThis.SezamSyncCore.call('normalize_username', { value });
 }
 
 async function handleLogin(e) {
@@ -7247,9 +7239,7 @@ function assertNotStackedOnConflict(vaultObj, conflicts = state.syncConflicts) {
 
 // Review 526419e #1: what one POST /api/sync may carry (server/app/models/
 // schemas.py). Over it the request was refused as a whole, on every retry.
-const MAX_PUSH_OBJECTS = 1000;
 const MAX_OBJECT_PAYLOAD_BYTES = 1024 * 1024;
-const MAX_PUSH_REQUEST_BYTES = 15 * 1024 * 1024;
 // Review d150605 #3: an all-or-nothing batch over one request is staged in
 // parts (POST /api/sync/stage) up to the server's MAX_STAGED_* limits.
 const MAX_STAGED_OBJECTS = 100000;
@@ -7285,22 +7275,13 @@ function assertSyncUnitFits(objects) {
 }
 
 function splitForPush(objects) {
-    const chunks = [];
-    let chunk = [];
-    let size = 0;
-    for (const obj of objects) {
-        const objSize = JSON.stringify(obj).length + 1;
-        if (chunk.length && (chunk.length >= MAX_PUSH_OBJECTS ||
-                size + objSize > MAX_PUSH_REQUEST_BYTES)) {
-            chunks.push(chunk);
-            chunk = [];
-            size = 0;
-        }
-        chunk.push(obj);
-        size += objSize;
-    }
-    if (chunk.length) chunks.push(chunk);
-    return chunks;
+    // Chunk sizes from the core (docs/CORE_UNIFICATION.md U6); the bytes each
+    // object takes in the request are this encoder's.
+    const counts = globalThis.SezamSyncCore.call('split_for_push', {
+        sizes: objects.map((obj) => JSON.stringify(obj).length + 1),
+    });
+    let start = 0;
+    return counts.map((count) => objects.slice(start, start += count));
 }
 
 // One all-or-nothing push (review d150605 #3): the parts over one request go

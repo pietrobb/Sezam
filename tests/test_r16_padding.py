@@ -68,6 +68,8 @@ context.self = context;
 context.globalThis = context;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+vm.runInContext(fs.readFileSync(process.argv[3], 'utf8'), context);
+context.SezamSyncCore.ready.then(() => {
 const out = {};
 for (const n of JSON.parse(process.argv[2])) {
   const data = new context.Uint8Array(n).fill(7);
@@ -76,13 +78,15 @@ for (const n of JSON.parse(process.argv[2])) {
   out[n] = back.length === n && back.every(b => b === 7) ? padded.length : -1;
 }
 process.stdout.write(JSON.stringify(out));
+});
 """
 
 
 def test_the_page_pads_to_the_shared_size():
     sizes = [n for n in SIZES if n <= 1_048_577]
     out = subprocess.run(
-        [node_cmd(), "-e", HARNESS, str(ROOT / "web" / "static" / "js" / "app.js"), json.dumps(sizes)],
+        [node_cmd(), "-e", HARNESS, str(ROOT / "web" / "static" / "js" / "app.js"), json.dumps(sizes),
+         str(ROOT / "web" / "static" / "js" / "vendor" / "sezam-sync-core.js")],
         capture_output=True, text=True, timeout=60,
     )
     assert out.returncode == 0, out.stderr

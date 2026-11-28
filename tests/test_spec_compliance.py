@@ -51,7 +51,7 @@ from sezam.crypto.kdf import (
     generate_salt,
 )
 from sezam.crypto.keys import KeyPair, compute_fingerprint, generate_keypair
-from sezam.crypto.padding import _next_power_of_2, pad, unpad
+from sezam.crypto.padding import pad, unpad
 from sezam.mcp.approval import ApprovalManager, ApprovalRequest
 from sezam.mcp.broker import MCPBroker, MCPError
 from sezam.models import EntryData, EntryField, EntryMeta, NodeMeta, new_ulid, ulid_to_bytes
@@ -376,15 +376,6 @@ class TestPaddingSpec:
         with pytest.raises(ValueError):
             unpad(bad)
 
-    def test_next_power_of_2_edge_cases(self):
-        assert _next_power_of_2(0) == 1
-        assert _next_power_of_2(1) == 1
-        assert _next_power_of_2(2) == 2
-        assert _next_power_of_2(3) == 4
-        assert _next_power_of_2(32) == 32
-        assert _next_power_of_2(33) == 64
-        assert _next_power_of_2(1024) == 1024
-        assert _next_power_of_2(1025) == 2048
 
 
 class TestDEKWrapSpec:

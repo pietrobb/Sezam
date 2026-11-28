@@ -36,7 +36,7 @@ from sezam.crypto.keys import (
     generate_keypair,
     import_sezam_key,
 )
-from sezam.crypto.padding import _next_power_of_2, pad, unpad
+from sezam.crypto.padding import pad, unpad
 from sezam.models import bytes_to_ulid, new_ulid, ulid_to_bytes
 from tests.node_support import node_cmd
 from sezam.vault import outbox
@@ -221,6 +221,8 @@ for (const path of process.argv.slice(1, 4)) {
 }
 (async () => {
   await context.sodium.ready;
+  vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]), 'sezam-sync-core.js'), 'utf8'), context);
+  await context.SezamSyncCore.ready;
   const api = context.SezamKeyBackup;
   const kek = context.Uint8Array.from(Buffer.from(process.argv[5], 'base64'));
   const salt = context.Uint8Array.from(Buffer.from(process.argv[6], 'base64'));
@@ -387,14 +389,6 @@ class TestPadding:
         with pytest.raises(ValueError):
             unpad(b"\xff\xff" + b"\x00")  # padding_len = 65535, but only 1 byte
 
-    def test_next_power_of_2(self):
-        assert _next_power_of_2(1) == 1
-        assert _next_power_of_2(2) == 2
-        assert _next_power_of_2(3) == 4
-        assert _next_power_of_2(5) == 8
-        assert _next_power_of_2(17) == 32
-        assert _next_power_of_2(32) == 32
-        assert _next_power_of_2(33) == 64
 
 
 # ── AEAD Encryption ──
@@ -517,6 +511,8 @@ for (const path of process.argv.slice(1, 4)) {
 }
 (async () => {
   await context.sodium.ready;
+  vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]), 'sezam-sync-core.js'), 'utf8'), context);
+  await context.SezamSyncCore.ready;
   const dek = context.Uint8Array.from({ length: 32 }, (_, i) => i);
   const dekId = '01ARZ3NDEKTSV4RRFFQ69G5FB1';
   const objectId = '01ARZ3NDEKTSV4RRFFQ69G5FB0';
@@ -2407,6 +2403,8 @@ for (const path of process.argv.slice(1, 5)) {
 }
 (async () => {
   await context.sodium.ready;
+  vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]), 'sezam-sync-core.js'), 'utf8'), context);
+  await context.SezamSyncCore.ready;
   const entry = await context.SezamShare.fetchAndDecryptShare({
     shareId: process.argv[5],
     shareKey: context.Uint8Array.from(Buffer.from(process.argv[6], 'base64')),
@@ -3081,9 +3079,12 @@ console.log(JSON.stringify(shares.map(([index, bytes]) =>
         helpers = "function buildAAD" + src.split("function buildAAD", 1)[1].split(
             "// ── Init", 1
         )[0]
+        helpers += "function hexToBytes" + src.split("function hexToBytes", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
         kek_dek_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
         dek_id = "01BX5ZZKBKACTAV9WEVGEMMVRZ"
+        core_js = self._repo_root() / "web" / "static" / "js" / "vendor" / "sezam-sync-core.js"
         script = f"""
+globalThis.SezamSyncCore = eval(require('fs').readFileSync({json.dumps(str(core_js))}, 'utf8') + ';SezamSyncCore');
 const crypto = require('node:crypto').webcrypto;
 const ENVELOPE_ALG = 1;
 const SCHEMA_VERSION = 1;
@@ -3106,6 +3107,7 @@ const sodium = {{
     return Uint8Array.from(ciphertext);
   }},
 }};
+SezamSyncCore.ready.then(() => {{
 const dek = Uint8Array.from(Array.from({{length: 32}}, (_, i) => i));
 const wrapped = wrapDEK(dek, '{dek_id}', 7, new Uint8Array(32), sodium);
 const unwrapped = unwrapDEK(wrapped, new Uint8Array(32), '{dek_id}', 7, sodium);
@@ -3116,6 +3118,7 @@ console.log(JSON.stringify({{
   paddedLength: encryptedPlaintext.length,
   unwrapped: Array.from(unwrapped),
 }}));
+}});
 """
         # stdin, not argv: Windows refuses command lines over 32 KB (WinError 206).
         result = subprocess.run(
@@ -3336,6 +3339,8 @@ for (const path of process.argv.slice(1, 3)) {
 vm.runInContext(Buffer.from(process.argv[3], 'base64').toString('utf8'), context);
 (async () => {
   await context.sodium.ready;
+  vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]), 'sezam-sync-core.js'), 'utf8'), context);
+  await context.SezamSyncCore.ready;
   const actor = '01ARZ3NDEKTSV4RRFFQ69G5FB1';
   const rootId = '01ARZ3NDEKTSV4RRFFQ69G5FB2';
   const childId = '01ARZ3NDEKTSV4RRFFQ69G5FB3';

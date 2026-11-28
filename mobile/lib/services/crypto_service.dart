@@ -26,19 +26,9 @@ import '../models/vault_models.dart';
 import 'password_forms.dart';
 import 'sync_core.dart';
 
-/// Size a padded blob of [n] bytes takes (spec 2.6): the next power of two,
-/// at least 32; where that needs more padding than the u16 prefix holds, the
-/// next multiple of 64 KiB. Review 18c300f R16-L3: padding stopped at 0xFFFF
-/// bytes there and the blob told its exact length. Python
-/// padding.padded_size and web paddedSize: the same.
-int paddedSize(int n) {
-  var target = 32;
-  while (target < n) {
-    target *= 2;
-  }
-  if (target - n > 0xFFFF) target = (n + 0xFFFF) ~/ 0x10000 * 0x10000;
-  return target;
-}
+/// Size a padded blob of [n] bytes takes (spec 2.6, review 18c300f R16-L3):
+/// the core's rule (docs/CORE_UNIFICATION.md U6).
+int paddedSize(int n) => syncCore('padded_size', {'n': n}) as int;
 
 /// A JSON text padded with trailing spaces to [paddedSize], for blobs read as
 /// JSON without the u16 prefix (share links); every JSON parser reads it.
@@ -177,19 +167,18 @@ class CryptoService {
   ///
   /// Format: alg(1) + schema(1) + kind(1) + dekId(26) + objectId(26) + version_u32be(4)
   Uint8List buildAAD(int blobKind, String dekId, String objectId, int version) {
-    final aad = Uint8List(EnvelopeConstants.aadLen);
-    aad[0] = EnvelopeConstants.algXChaCha20Poly1305;
-    aad[1] = EnvelopeConstants.schemaVersion;
-    aad[2] = blobKind;
-
-    aad.setRange(3, 29, idBytes26(dekId));
-    aad.setRange(29, 55, idBytes26(objectId));
-
-    // Version as u32 big-endian
-    final versionBytes = ByteData(4)..setUint32(0, version, Endian.big);
-    aad.setRange(55, 59, versionBytes.buffer.asUint8List());
-
-    return aad;
+    // The core's AAD (docs/CORE_UNIFICATION.md U6); a field it cannot hold
+    // exactly is refused (ArgumentError), never cut into another id.
+    try {
+      return _hexToBytes(syncCore('aad', {
+        'blob_kind': blobKind,
+        'dek_id': dekId,
+        'object_id': objectId,
+        'version': version,
+      }) as String);
+    } on StateError catch (e) {
+      throw ArgumentError(e.message);
+    }
   }
 
   /// Pad plaintext to [paddedSize] of 2 + its length.

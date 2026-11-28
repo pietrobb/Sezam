@@ -85,7 +85,7 @@ void main() {
     final result = await sync.push();
     expect(result.accepted, 1206);
     expect(requests.length, greaterThan(1));
-    expect(requests.every((r) => r.length <= maxPushObjects), isTrue);
+    expect(requests.every((r) => r.length <= 1000), isTrue);
     expect(await DatabaseService().getDirtyObjects(), isEmpty);
   });
 

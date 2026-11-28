@@ -28,6 +28,7 @@
 //! a JSON document out.
 
 pub mod authority;
+pub mod formats;
 pub mod gate;
 pub mod json;
 pub mod order;

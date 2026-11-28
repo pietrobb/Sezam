@@ -82,21 +82,28 @@ def build_aad(
     object_id: bytes,
     version: int,
 ) -> bytes:
-    """Build canonical AAD (59 bytes fixed).
-
-    AAD = alg(1B) || schema_version(1B) || blob_kind(1B) || dek_id(26B)
-          || object_id(26B) || u32be(version)(4B)
+    """Canonical AAD (59 bytes, spec 2.6) from the core (docs/CORE_UNIFICATION.md
+    U6): alg || schema_version || blob_kind || dek_id(26) || object_id(26) ||
+    u32be(version). A version the u32 does not hold exactly is refused.
     """
-    if len(dek_id) != DEK_ID_SIZE:
-        raise ValueError(f"dek_id must be {DEK_ID_SIZE} bytes, got {len(dek_id)}")
-    if len(object_id) != DEK_ID_SIZE:
-        raise ValueError(f"object_id must be {DEK_ID_SIZE} bytes, got {len(object_id)}")
-    return (
-        struct.pack("BBB", alg, schema_version, blob_kind)
-        + dek_id
-        + object_id
-        + struct.pack(">I", version)
-    )
+    from ..vault import sync_core
+
+    for name, raw in (("dek_id", dek_id), ("object_id", object_id)):
+        if len(raw) != DEK_ID_SIZE:
+            raise ValueError(f"{name} must be {DEK_ID_SIZE} bytes, got {len(raw)}")
+    return bytes.fromhex(sync_core.call(
+        "aad", alg=alg, schema_version=schema_version, blob_kind=int(blob_kind), dek_id=_id_text(dek_id),
+        object_id=_id_text(object_id), version=version,
+    ))
+
+
+def _id_text(raw: bytes) -> str:
+    """A 26-byte NUL-padded id as the core takes it; the core refuses one it
+    would not write back byte for byte (a NUL inside)."""
+    try:
+        return bytes(raw).rstrip(b"\x00").decode("ascii")
+    except UnicodeDecodeError:
+        raise ValueError("an id is ASCII") from None
 
 
 def encrypt(

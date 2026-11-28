@@ -144,6 +144,17 @@ desktop už od U5a. Pole, ktoré správa presne neudrží, sa odmietne (web
 predtým pri podpise verziu orezal `>>> 0`). Vektory
 `cross_client.json` `sync_signature` v `core/tests/cross_client_vectors.rs`.
 
+Formáty (U6b, `core/src/formats.rs`): AAD obálky (`aad`, verzia mimo u32 sa
+odmietne), `padded_size`, `split_for_push` (klient posiela veľkosti objektov
+v bajtoch svojho JSON enkódera, jadro vráti počty v dávkach) a
+`normalize_username` (NFC + orezanie zjednotenej množiny znakov). Desktop
+(`aead.build_aad`, `padding.padded_size`, `sync_limits.split_for_push`,
+`usernames`), server (`schemas.normalize_username`), web (`app.js`) a mobil
+(`crypto_service`, `sync_limits`, `auth_service`) volajú jadro, ich kópie a
+konštanty limitov sú zmazané. Vektory `tests/vectors/formats.json`
+(115 mien, 31 okrajových znakov, 22 delení) v `core/tests/formats_vectors.rs`.
+Node harnessy webu načítajú `sezam-sync-core.js` a čakajú `SezamSyncCore.ready`.
+
 Známe zlyhanie mimo vetvy U: `tests/test_review13_handover_rekey.py::
 test_the_new_admin_rekeys_what_the_former_admin_held` (409 „target_user_id is
 admin only“) padá od R17 commitu e55ddb8 (7f9a191 zelené); opraviť pred U9.

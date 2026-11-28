@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import base64
-import re
+import json
 import time
-import unicodedata
 from typing import Annotated, Any, Literal, Optional
 
+import sezam_sync_core
 from argon2 import Type, extract_parameters
 from argon2.exceptions import InvalidHashError
 from pydantic import (
@@ -36,12 +36,15 @@ MAX_USERNAME_LENGTH = 255
 # the union of what every client trims (Python str.strip, JS/Dart trim: NBSP,
 # BOM, NEL, \x1c-\x1f, zero-width space), and the name is NFC, so "Šimon"
 # typed as NFD on one device and NFC on another is one account, not two
-# identical-looking ones. Must equal sezam.usernames / app.js / Dart.
-_USERNAME_EDGE = re.compile(r"^[\s\ufeff\u200b\x1c-\x1f\x85]+|[\s\ufeff\u200b\x1c-\x1f\x85]+$")
+# identical-looking ones. The core's rule (docs/CORE_UNIFICATION.md U6), the
+# same bytes as every client and the reseed signature.
 
 
 def normalize_username(value: str) -> str:
-    return _USERNAME_EDGE.sub("", unicodedata.normalize("NFC", value))
+    out = json.loads(sezam_sync_core.call("normalize_username", json.dumps({"value": value})))
+    if "error" in out:
+        raise ValueError(out["error"])
+    return out["ok"]
 
 
 Username = Annotated[

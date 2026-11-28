@@ -60,6 +60,8 @@ for (const path of process.argv.slice(1, 3)) vm.runInContext(fs.readFileSync(pat
 vm.runInContext(Buffer.from(process.argv[3], 'base64').toString('utf8'), context);
 (async () => {
   await context.sodium.ready;
+  vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]), 'sezam-sync-core.js'), 'utf8'), context);
+  await context.SezamSyncCore.ready;
   context.state = input.state;
   const hex = value => Uint8Array.from(Buffer.from(value, 'hex'));
   let error = null;

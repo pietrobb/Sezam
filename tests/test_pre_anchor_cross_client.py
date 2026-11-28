@@ -119,7 +119,8 @@ const c = {Uint8Array, TextEncoder, TextDecoder, DataView, ArrayBuffer, WebAssem
 c.window=c; c.self=c; c.globalThis=c; vm.createContext(c);
 for(const p of process.argv.slice(1,4)) vm.runInContext(fs.readFileSync(p,'utf8'),c);
 const input=JSON.parse(fs.readFileSync(0,'utf8')); vm.runInContext(input.source,c);
-c.run(input.vectors).then(x=>process.stdout.write(JSON.stringify(x))).catch(e=>{console.error(e);process.exit(1)});
+vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]), 'sezam-sync-core.js'), 'utf8'), c);
+c.SezamSyncCore.ready.then(() => c.run(input.vectors)).then(x=>process.stdout.write(JSON.stringify(x))).catch(e=>{console.error(e);process.exit(1)});
 """
 
 

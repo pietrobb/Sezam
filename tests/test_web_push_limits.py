@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from tests.test_review_web import APP, VENDOR, _function, _run_source, pytestmark  # noqa: F401
 
-LIMITS = APP[APP.index("const MAX_PUSH_OBJECTS"):APP.index("function syncPayloadBytes")]
+LIMITS = APP[APP.index("const MAX_OBJECT_PAYLOAD_BYTES"):APP.index("function syncPayloadBytes")]
 
 
 def _run(functions: list[str], script: str):
