@@ -111,6 +111,55 @@ void main() {
     },
   );
 
+  test('a refused log shows what tests/vectors/personal_tree.json shows', () {
+    final tree =
+        jsonDecode(
+              File('../tests/vectors/personal_tree.json').readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    var checked = 0;
+    for (final c in (tree['cases'] as List).cast<Map<String, dynamic>>()) {
+      final objects = (c['objects'] as List).cast<Map<String, dynamic>>();
+      // The phone names held keys, not opened rows, and passes no team keys.
+      if (c['own_user_id'] == null ||
+          (c['team_keys'] as List).isNotEmpty ||
+          objects.any((o) => o['opened'] == false)) {
+        continue;
+      }
+      expect(
+        refusedLogPersonalTree(
+          [
+            for (final o in objects)
+              {
+                'id': o['id'],
+                'object_type': o['object_type'],
+                'parent_ref': o['parent_ref'],
+                'signer_id': o['signer'],
+              },
+          ],
+          c['own_user_id'] as String,
+          personalNodes: {
+            for (final o in objects)
+              if (o['personal'] == true) o['id'] as String,
+          },
+          dekIds: {for (final o in objects) o['id'] as String: o['dek_id']},
+          heldDekIds: {
+            for (final o in objects)
+              if (o['dek_id'] != null) o['dek_id'] as String,
+          },
+          tier2Entries: {
+            for (final o in objects)
+              if (o['tier2'] == true) o['id'] as String,
+          },
+        ).toList()..sort(),
+        (c['expect'] as Map)['shown'],
+        reason: c['name'] as String,
+      );
+      checked++;
+    }
+    expect(checked, greaterThanOrEqualTo(10));
+  });
+
   test('the log admins are the reference', () {
     for (final c in (vectors['cases'] as List).cast<Map<String, dynamic>>()) {
       final index = c['team'] as int?;

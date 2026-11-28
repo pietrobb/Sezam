@@ -117,6 +117,25 @@ Server (`_team_log_refusal`), web (`assertTeamLogAllowsWrite`), mobil
 `authority_write_refusal` / `authority_team_folder_above`; kópie
 `team_folder_above`, `item/tombstone/move_refusal` v serveri sú zmazané.
 
+Osobný strom (U5h): `authority::personal_tree` (op `authority_personal_tree`,
+vektory `tests/vectors/personal_tree.json`) dáva korene (horný priečinok
+`personal`, otvorený, kľúč mimo `team_keys`, podpísaný týmto účtom), ich kľúče
+(čo ostáva otvorené pri odmietnutom logu), `tree` (priečinky v strome, každý
+na ceste otvorený a tento účet) a `shown` (pravidlo 3 INV-7: celá cesta pod
+kľúčom koreňa, položky tohto účtu pod ním alebo pod otvoreným tier-2
+kľúčom). Web (`webInPersonalTree`, `refusedLogPersonalKeys`), mobil
+(`refusedLogPersonalTree`, strom pre `sendableWhileRefused`) a desktop
+(`in_personal_tree`, pravidlo `is_personal_root`) ho volajú. Rozhodnutia:
+koreň je len priečinok najvyššej úrovne (web bral `personal` na akejkoľvek
+úrovni); desktop a strom mobilu z otvorených uzlov neposielajú `own_user_id`
+(držia len uzly použité podľa pravidiel autority), desktop posiela ako
+`team_keys` kľúče logu a obálok. `authority_team_key_ids`: kľúče, ktoré
+záznamy lokálnej kópie logu menujú, bez replayu; berie aj nekanonické telo
+(viac tímových kľúčov = menej otvorených pri odmietnutom logu), desktop
+predtým preskočil nekanonické. `held_genesis` a `named_by_team_log` ostávajú
+na klientoch: sú to dotazy nad už replayovaným stavom alebo `record_hash`
+jadra, nie samostatné pravidlo.
+
 Známe zlyhanie mimo vetvy U: `tests/test_review13_handover_rekey.py::
 test_the_new_admin_rekeys_what_the_former_admin_held` (409 „target_user_id is
 admin only“) padá od R17 commitu e55ddb8 (7f9a191 zelené); opraviť pred U9.

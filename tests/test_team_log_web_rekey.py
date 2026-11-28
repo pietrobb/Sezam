@@ -32,7 +32,7 @@ FUNCTIONS = [
     "invitationTeamGenesis", "loadConfirmedTeamGenesis", "saveConfirmedTeamGenesis",
     "forgottenTeamGenesisAad", "loadForgottenTeamGenesis", "saveForgottenTeamGenesis", "importAccountTeamAnchor",
     "openTeamTrustModal", "closeTeamTrustModal", "handleConfirmTeamFounder",
-    "syncWebTeamLog", "catchUpWebTeamLog", "followWebTeamLogFork", "webHeldTeamKeys", "webTeamLedgerAad", "loadWebTeamLedger", "saveWebTeamLedger", "noteWebTeamRecordsSent", "noteWebTeamRecordsTaken", "noteWebTeamLogStored", "sendWebTeamRecords", "restoreWebTeamLog", "teamLogPin", "assertTeamLogAllowsWrite", "webWriteState", "webPersonalWrite", "webInPersonalTree", "pushEncryptedVaultObjectLocked", "renumberedAboveBase", "webBase", "withWebBase",
+    "syncWebTeamLog", "catchUpWebTeamLog", "followWebTeamLogFork", "webHeldTeamKeys", "webTeamLedgerAad", "loadWebTeamLedger", "saveWebTeamLedger", "noteWebTeamRecordsSent", "noteWebTeamRecordsTaken", "noteWebTeamLogStored", "sendWebTeamRecords", "restoreWebTeamLog", "teamLogPin", "assertTeamLogAllowsWrite", "webWriteState", "webPersonalWrite", "webPersonalTree", "webInPersonalTree", "pushEncryptedVaultObjectLocked", "renumberedAboveBase", "webBase", "withWebBase",
     "encryptAccountKeypair", "encodeAccountKeypair", "decodeAccountKeypair", "parsePreAnchor",
 ]
 ROOT = "01JR0000000000000000000001"

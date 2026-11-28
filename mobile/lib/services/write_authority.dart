@@ -201,8 +201,7 @@ Set<String> unauthorizedWrites(
 /// it holds, and what it signed below, under that root's key (an item also
 /// under a tier-2 key of its own it holds). No rule from before the log
 /// decides: a folder the server brings, a plaintext one and the
-/// organisation's tree do not show. Parity with the web's
-/// refusedLogPersonalKeys and webInPersonalTree.
+/// organisation's tree do not show. The core's authority_personal_tree.
 Set<String> refusedLogPersonalTree(
   List<Map<String, dynamic>> rows,
   String? ownUserId, {
@@ -211,55 +210,43 @@ Set<String> refusedLogPersonalTree(
   required Set<String> heldDekIds,
   required Set<String> tier2Entries,
 }) {
-  final byId = {for (final row in rows) row['id'] as String: row};
+  if (ownUserId == null) return {};
   // A row never pulled (no verified signer) written before this vault was
   // connected names the temporary 'local' identity.
-  bool own(Map<String, dynamic> row) => isOwnRow(row, ownUserId);
-  final rootKeys = <String, String?>{};
+  final objects = [
+    for (final row in rows)
+      if (dekIds.containsKey(row['id']) &&
+          (row['object_type'] == 'node' || row['object_type'] == 'entry'))
+        {
+          'id': row['id'],
+          'object_type': row['object_type'],
+          'parent_ref': row['parent_ref'],
+          'signer': isOwnRow(row, ownUserId) ? ownUserId : null,
+          'dek_id': dekIds[row['id']],
+          'personal': personalNodes.contains(row['id']),
+          'opened': heldDekIds.contains(dekIds[row['id']]),
+          'tier2': tier2Entries.contains(row['id']),
+        },
+  ];
+  return personalTree(objects, ownUserId)['shown']!;
+}
 
-  /// The key of the personal root above folder [id] (itself included), when
-  /// each folder on the way is this account's, under that key.
-  String? rootKey(String id) {
-    if (rootKeys.containsKey(id)) return rootKeys[id];
-    rootKeys[id] = null; // a cycle names no root
-    final row = byId[id];
-    final dekId = dekIds[id];
-    String? key;
-    if (row != null &&
-        row['object_type'] == 'node' &&
-        dekId != null &&
-        own(row)) {
-      final parent = row['parent_ref'] as String?;
-      if (parent == null) {
-        key = personalNodes.contains(id) && heldDekIds.contains(dekId)
-            ? dekId
-            : null;
-      } else {
-        final above = rootKey(parent);
-        key = above == dekId ? above : null;
-      }
-    }
-    return rootKeys[id] = key;
-  }
-
-  final shown = <String>{};
-  for (final row in rows) {
-    final id = row['id'] as String;
-    if (!dekIds.containsKey(id)) continue;
-    if (row['object_type'] == 'node') {
-      if (rootKey(id) != null) shown.add(id);
-    } else if (row['object_type'] == 'entry' && own(row)) {
-      final parent = row['parent_ref'] as String?;
-      final key = parent == null ? null : rootKey(parent);
-      final dekId = dekIds[id];
-      if (key != null &&
-          (dekId == key ||
-              (tier2Entries.contains(id) &&
-                  dekId != null &&
-                  heldDekIds.contains(dekId)))) {
-        shown.add(id);
-      }
-    }
-  }
-  return shown;
+/// The core's authority_personal_tree: `roots`, `root_keys`, `tree`, `shown`.
+/// [ownUserId] null: folders this phone holds, signers not checked again.
+Map<String, Set<String>> personalTree(
+  List<Map<String, dynamic>> objects,
+  String? ownUserId, {
+  Set<String> teamKeys = const {},
+}) {
+  final out =
+      syncCore('authority_personal_tree', {
+            'objects': objects,
+            'own_user_id': ownUserId,
+            'team_keys': teamKeys.toList()..sort(),
+          })
+          as Map;
+  return {
+    for (final e in out.entries)
+      e.key as String: {for (final id in e.value as List) id as String},
+  };
 }

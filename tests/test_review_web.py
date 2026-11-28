@@ -75,7 +75,7 @@ WEB_DIRTY_SAVE = ["webKekIsCurrent", "sealWebDirtyState", "webDirtyStateOpens", 
 HELPERS = [
     "openWebDirtyState", "withWebDirtyStateLock", "mergeWebKeyed", "mergeWebDirtyState", "replaceWebKeyed",
     "withLegacyWebBase", "webOwnEarlierPush", "rememberWebSent", "webPushOrder", "webPulledIsStale", "heldCopyKey",
-    "teamLogMismatch", "webLocalTeamLogRefusal", "webInPersonalTree", "webIsAdmin", "webPinnedTeamGenesis",
+    "teamLogMismatch", "webLocalTeamLogRefusal", "webPersonalTree", "webInPersonalTree", "webIsAdmin", "webPinnedTeamGenesis",
     "rememberWebKdfState", "orgRecoveryKeys", "fetchOrgRecoveryBlob", "paddedSize", "bytesToHex",
     "authorityObjects", "sealingDekId",
 ]

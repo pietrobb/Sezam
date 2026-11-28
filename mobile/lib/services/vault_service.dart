@@ -933,20 +933,16 @@ class VaultService {
         if (row['parent_ref'] != null) row['id'] as String,
     };
     try {
-      for (final record
-          in jsonDecode((await _db.getSetting(teamLogRecordsSetting))!)
-              as List) {
-        try {
-          final data =
-              (jsonDecode((record as Map)['body'] as String) as Map)['data']
-                  as Map;
-          for (final key in [data['dek_id'], data['prev_dek_id']]) {
-            if (key is String) ids.add(key);
-          }
-        } catch (_) {
-          // A damaged record names nothing.
-        }
-      }
+      final records =
+          jsonDecode((await _db.getSetting(teamLogRecordsSetting))!) as List;
+      final bodies = [
+        for (final record in records)
+          if (record is Map && record['body'] is String) record['body'],
+      ];
+      ids.addAll(
+        (syncCore('authority_team_key_ids', {'bodies': bodies}) as List)
+            .cast<String>(),
+      );
     } catch (_) {
       // No copy, or one that does not parse.
     }
@@ -958,32 +954,32 @@ class VaultService {
   /// keys of its own. The team's wait, named with the refusal.
   Future<bool Function(Map<String, dynamic>)> sendableWhileRefused() async {
     final teamKeys = await _teamKeyIds();
+    final tree = _personalTree();
     return (row) {
       final id = row['id'] as String;
       final parent = row['parent_ref'] as String?;
       return switch (row['object_type']) {
         'dek' => parent == null && !teamKeys.contains(id),
         'node' =>
-          parent == null
-              ? _nodes[id]?.personal == true
-              : _inPersonalTree(parent),
-        'entry' => _inPersonalTree(parent),
+          parent == null ? _nodes[id]?.personal == true : tree.contains(parent),
+        'entry' => tree.contains(parent),
         _ => false,
       };
     };
   }
 
-  /// [nodeId] is a personal folder or lies below one.
-  bool _inPersonalTree(String? nodeId) {
-    final seen = <String>{};
-    while (nodeId != null && seen.add(nodeId)) {
-      final node = _nodes[nodeId];
-      if (node == null) return false;
-      if (node.personal) return true;
-      nodeId = node.parentRef;
-    }
-    return false;
-  }
+  /// The folders that are a personal root or lie below one (the core's
+  /// authority_personal_tree over the folders this phone opened).
+  Set<String> _personalTree() => personalTree([
+    for (final node in _nodes.values)
+      {
+        'id': node.id,
+        'object_type': 'node',
+        'parent_ref': node.parentRef,
+        'dek_id': node.dekId,
+        'personal': node.personal,
+      },
+  ], null)['tree']!;
 
   Future<({String userId, String genesis, int generation})>
   reviewTeamFounder() => whileKekFixed(() async {
@@ -1098,9 +1094,9 @@ class VaultService {
     if (refusal != null) {
       // INV-7: a refused log refuses the team, never a write in the personal
       // tree (which holds no team folder), from and to.
-      bool personal(String? parent) => parent == null
-          ? _nodes[id]?.personal == true
-          : _inPersonalTree(parent);
+      final tree = _personalTree();
+      bool personal(String? parent) =>
+          parent == null ? _nodes[id]?.personal == true : tree.contains(parent);
       final held = await _db.getObject(id);
       if (personal(parentRef) &&
           (held == null || personal(held['parent_ref'] as String?))) {
@@ -2066,13 +2062,9 @@ class VaultService {
           sealedAt--
         ) {
           try {
-            meta = _crypto.decryptEnvelope(
-              payload,
-              id,
-              sealedAt,
-              {sealedWith: opening},
-              expectedBlobKind: BlobKind.nodeMeta,
-            );
+            meta = _crypto.decryptEnvelope(payload, id, sealedAt, {
+              sealedWith: opening,
+            }, expectedBlobKind: BlobKind.nodeMeta);
             break;
           } catch (_) {
             continue;

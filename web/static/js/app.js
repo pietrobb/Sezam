@@ -8499,35 +8499,28 @@ function webLocalTeamLogRefusal() {
     return null;
 }
 
+/** This account's personal trees (TL7, INV-7 rule 3): the core's
+ * authority_personal_tree over the folders this browser holds. */
+function webPersonalTree(nodes, syncObjects) {
+    const objects = Object.entries(nodes).map(([id, node]) => ({
+        id, object_type: 'node', parent_ref: node.parent_ref || null,
+        signer: syncObjects[id]?.signer ?? null, dek_id: node.dekId || null,
+        personal: !!node.personal, opened: !node._undecryptable,
+    }));
+    return globalThis.SezamSyncCore.call('authority_personal_tree', {objects, own_user_id: state.userId ?? null});
+}
+
 /** INV-7: folder `id` is this account's personal root or lies below one, each
  * folder on the way opened and signed by this account. */
 function webInPersonalTree(nodes, syncObjects, id) {
-    const seen = new Set();
-    while (id && !seen.has(id)) {
-        seen.add(id);
-        const node = nodes[id];
-        if (!node || node._undecryptable || syncObjects[id]?.signer !== state.userId) return false;
-        if (node.personal) return true;
-        id = node.parent_ref;
-    }
-    return false;
+    return webPersonalTree(nodes, syncObjects).tree.includes(id);
 }
 
 /** The keys that stay open while the team log is refused: each personal
- * root's own (top-level, opened, signed by this account). A personal tree
- * has one key, its root's (TL7; the desktop folds others into it). Review
- * e443cbc (R15-P4 rule 3): every key sealing something below a personal root
- * counted, so a server replaying a team folder's version from before it left
- * the personal tree opened the team key and the admin's edits resealed team
- * items under the personal key. */
+ * root's own. Review e443cbc (R15-P4 rule 3): not every key sealing something
+ * below a personal root. */
 function refusedLogPersonalKeys(nodes, syncObjects) {
-    const keys = new Set();
-    for (const [id, node] of Object.entries(nodes)) {
-        if (node.personal && !node.parent_ref && node.dekId && webInPersonalTree(nodes, syncObjects, id)) {
-            keys.add(node.dekId);
-        }
-    }
-    return keys;
+    return new Set(webPersonalTree(nodes, syncObjects).root_keys);
 }
 
 /**

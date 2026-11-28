@@ -12,10 +12,12 @@ key, its root's (TL7).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from tests.test_review_web import APP, _run, pytestmark  # noqa: F401
 
 ME = "01HMEMEMEMEMEMEMEMEMEMEMEM"
+ME_VECTORS = "01JME00000000000000000000A"
 
 
 def _keys(nodes: dict, signers: dict) -> list[str]:
@@ -24,7 +26,7 @@ def _keys(nodes: dict, signers: dict) -> list[str]:
       const syncObjects = Object.fromEntries(Object.entries({json.dumps(signers)}).map(([id, s]) => [id, {{ signer: s }}]));
       return [...refusedLogPersonalKeys(nodes, syncObjects)].sort();
     }})()"""
-    return _run(["webInPersonalTree", "refusedLogPersonalKeys"], script, {"userId": ME})
+    return _run(["webPersonalTree", "webInPersonalTree", "refusedLogPersonalKeys"], script, {"userId": ME})
 
 
 def test_a_replayed_team_folder_below_the_personal_root_opens_no_team_key():
@@ -49,6 +51,29 @@ def test_a_personal_root_counts_only_signed_by_this_account_and_top_level():
         "U": {"personal": True, "parent_ref": None, "dekId": "kU", "_undecryptable": True},
     }
     assert _keys(nodes, {"P": ME, "Q": "01HOTHEROTHEROTHEROTHEROTH", "N": ME, "U": ME}) == ["kP"]
+
+
+def test_the_web_gives_the_personal_tree_vectors_answers():
+    """tests/vectors/personal_tree.json (folders only; the web passes this
+    account and no team keys)."""
+    vectors = json.loads((Path(__file__).parent / "vectors" / "personal_tree.json").read_text(encoding="utf-8"))
+    cases = [c for c in vectors["cases"] if c["own_user_id"] == ME_VECTORS and not c["team_keys"]]
+    assert len(cases) >= 12
+    for case in cases:
+        folders = [o for o in case["objects"] if o["object_type"] == "node"]
+        nodes = {o["id"]: {"personal": o.get("personal", False), "parent_ref": o["parent_ref"], "dekId": o["dek_id"],
+                           **({"_undecryptable": True} if o.get("opened") is False else {})} for o in folders}
+        signers = {o["id"]: o["signer"] for o in folders}
+        script = f"""(() => {{
+          const nodes = {json.dumps(nodes)};
+          const syncObjects = Object.fromEntries(Object.entries({json.dumps(signers)}).map(([id, s]) => [id, {{ signer: s }}]));
+          return {{
+            root_keys: [...refusedLogPersonalKeys(nodes, syncObjects)].sort(),
+            tree: Object.keys(nodes).filter(id => webInPersonalTree(nodes, syncObjects, id)).sort(),
+          }};
+        }})()"""
+        got = _run(["webPersonalTree", "webInPersonalTree", "refusedLogPersonalKeys"], script, {"userId": ME_VECTORS})
+        assert got == {"root_keys": case["expect"]["root_keys"], "tree": case["expect"]["tree"]}, case["name"]
 
 
 def test_the_refused_pull_opens_only_those_keys():

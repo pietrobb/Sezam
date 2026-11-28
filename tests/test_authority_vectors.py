@@ -188,3 +188,29 @@ def test_the_server_reads_the_vectors_header_key():
             assert _sealing_dek_id(payload, entry) == case["dek_ids"][f"{o['id']}/{o['object_type']}"], case["name"]
             checked += 1
     assert checked
+
+
+def test_the_desktop_walks_the_personal_tree_vectors():
+    """tests/vectors/personal_tree.json: personal_root.in_personal_tree over
+    the desktop's folders, given the vectors' roots. The desktop holds only
+    folders it applied and opened, so cases with another signer or an
+    unopened folder are not its."""
+    from sezam.vault.personal_root import in_personal_tree
+
+    cases = json.loads((ROOT / "tests" / "vectors" / "personal_tree.json").read_text(encoding="utf-8"))["cases"]
+    checked = 0
+    for case in cases:
+        folders = [o for o in case["objects"] if o["object_type"] == "node"]
+        own = case["own_user_id"]
+        if case["team_keys"] or any(o.get("opened") is False or own not in (None, o["signer"]) for o in folders):
+            continue
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.execute("CREATE TABLE nodes (id TEXT, parent_id TEXT, dek_id TEXT)")
+        db.executemany("INSERT INTO nodes VALUES (?, ?, ?)", [(o["id"], o["parent_ref"], o["dek_id"]) for o in folders])
+        rows = type("Rows", (), {"fetchone": lambda self, sql, params: db.execute(sql, params).fetchone()})()
+        roots = set(case["expect"]["roots"])
+        tree = sorted(o["id"] for o in folders if in_personal_tree(rows, o["id"], roots))
+        assert tree == case["expect"]["tree"], case["name"]
+        checked += 1
+    assert checked >= 9

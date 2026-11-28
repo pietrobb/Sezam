@@ -12,7 +12,7 @@ from nacl.exceptions import CryptoError
 
 from ..crypto.aead import BlobKind, decrypt, encrypt, parse_envelope
 from ..models import NodeMeta, bytes_to_ulid, ulid_to_bytes
-from . import outbox
+from . import outbox, sync_core
 from .sync_common import REFUSED_DEKS_META
 
 
@@ -63,11 +63,18 @@ def is_personal_root(db, dek_mgr, node_id: str) -> bool:
         dek = dek_mgr.unlock_dek(dek_id)
         plain = decrypt(blob, dek, ulid_to_bytes(node_id), row["version"],
                         expected_blob_kind=BlobKind.NODE_META)
-        if not NodeMeta.from_json(plain).personal:
-            return False
+        personal = NodeMeta.from_json(plain).personal
     except (CryptoError, KeyError, ValueError, TypeError):
         return False
-    return not dek_mgr.opened_by_envelope(dek_id) and dek_id not in team_key_ids(db)
+    team_keys = team_key_ids(db) | ({dek_id} if dek_mgr.opened_by_envelope(dek_id) else set())
+    root = {"id": node_id, "object_type": "node", "dek_id": dek_id, "personal": bool(personal)}
+    return node_id in personal_tree([root], team_keys)["roots"]
+
+
+def personal_tree(objects: list[dict], team_keys=()) -> dict:
+    """The core's personal trees (authority_personal_tree) of folders this
+    device applied: signers are not checked again."""
+    return sync_core.call("authority_personal_tree", objects=objects, team_keys=sorted(team_keys))
 
 
 def personal_root_ids(db, dek_mgr) -> list[str]:
@@ -78,15 +85,16 @@ def personal_root_ids(db, dek_mgr) -> list[str]:
 
 def in_personal_tree(db, node_id, roots) -> bool:
     """Is ``node_id`` one of ``roots`` (personal_root_ids) or below one?"""
-    current = node_id
-    for _ in range(64):
-        if current is None:
-            return False
-        if current in roots:
-            return True
-        row = db.fetchone("SELECT parent_id FROM nodes WHERE id = ?", (current,))
-        current = row["parent_id"] if row else None
-    return False
+    objects, current, seen = [], node_id, set()
+    while current is not None and current not in seen and len(seen) <= 64:
+        row = db.fetchone("SELECT parent_id, dek_id FROM nodes WHERE id = ?", (current,))
+        if row is None:
+            break
+        seen.add(current)
+        objects.append({"id": current, "object_type": "node", "parent_ref": row["parent_id"],
+                        "dek_id": row["dek_id"], "personal": current in roots})
+        current = row["parent_id"]
+    return node_id in personal_tree(objects)["tree"]
 
 
 def dek_parent_ref(db, row, detached: dict, roots) -> str | None:

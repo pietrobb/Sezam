@@ -765,6 +765,169 @@ pub fn log_admins(bodies: &[Map<String, Value>], team: &State) -> BTreeSet<Strin
         .collect()
 }
 
+/// Every key a record of a local copy of the log names (`dek_id`,
+/// `prev_dek_id` of its data), read without replaying it: what is not here
+/// (nor in a team envelope) is personal and opens by the KEK alone, whatever
+/// the state of the log (INV-7). A body that is not JSON names nothing; one
+/// that is not canonical still names its keys (more team keys open fewer
+/// keys while the log is refused).
+pub fn team_key_ids(bodies: &[String]) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    for body in bodies {
+        let Ok(Value::Object(body)) = serde_json::from_str::<Value>(body) else {
+            continue;
+        };
+        let Some(data) = body.get("data").and_then(Value::as_object) else {
+            continue;
+        };
+        for name in ["dek_id", "prev_dek_id"] {
+            if let Some(id) = data.get(name).and_then(Value::as_str) {
+                ids.insert(id.to_string());
+            }
+        }
+    }
+    ids
+}
+
+/// A folder or item as `personal_tree` reads it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TreeObj {
+    pub id: String,
+    pub object_type: String,
+    #[serde(default)]
+    pub parent_ref: Option<String>,
+    #[serde(default)]
+    pub signer: Option<String>,
+    #[serde(default)]
+    pub dek_id: Option<String>,
+    /// The sealed meta says `personal` (a folder).
+    #[serde(default)]
+    pub personal: bool,
+    /// Its meta opened here (the key is held).
+    #[serde(default = "yes")]
+    pub opened: bool,
+    /// An item under a tier-2 key of its own.
+    #[serde(default)]
+    pub tier2: bool,
+}
+
+/// This account's personal trees (TL7, INV-7 rule 3 of docs/ROOT_CAUSE_PLAN.md).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct PersonalTree {
+    /// Top-level folders that say `personal`, opened, under a key that is not
+    /// in `team_keys`, signed by this account.
+    pub roots: BTreeSet<String>,
+    /// Their keys: the keys that stay open while the team log is refused.
+    pub root_keys: BTreeSet<String>,
+    /// Folders that are a root or below one, each folder on the way opened
+    /// and signed by this account (any key).
+    pub tree: BTreeSet<String>,
+    /// What shows while the log is refused: folders of `tree` with every
+    /// folder on the way under the root's key (a personal tree has one key),
+    /// and this account's items in them under that key or a tier-2 key of
+    /// their own that opened.
+    pub shown: BTreeSet<String>,
+}
+
+/// `own_user_id` None: the caller holds only folders it applied under the
+/// authority rules (the desktop's database) and signers are not checked.
+/// Replaced webInPersonalTree/refusedLogPersonalKeys (web), _inPersonalTree/
+/// refusedLogPersonalTree (phone) and in_personal_tree/is_personal_root's
+/// rule (desktop). Walks stop at a cycle and after MAX_DEPTH folders.
+pub fn personal_tree(
+    objects: &[TreeObj],
+    own_user_id: Option<&str>,
+    team_keys: &BTreeSet<String>,
+) -> PersonalTree {
+    let nodes: HashMap<&str, &TreeObj> = objects
+        .iter()
+        .filter(|o| o.object_type == "node")
+        .map(|o| (o.id.as_str(), o))
+        .collect();
+    let own = |o: &TreeObj| own_user_id.is_none_or(|u| o.signer.as_deref() == Some(u));
+    fn parent(o: &TreeObj) -> Option<&str> {
+        o.parent_ref.as_deref().filter(|p| !p.is_empty())
+    }
+    let is_root = |o: &TreeObj| {
+        parent(o).is_none()
+            && o.personal
+            && o.opened
+            && own(o)
+            && o.dek_id.as_ref().is_some_and(|k| !team_keys.contains(k))
+    };
+    // (in the tree, the root's key when every folder on the way has it)
+    let walk = |id: &str| -> (bool, Option<String>) {
+        let mut chain = Vec::new();
+        let mut current = Some(id);
+        while let Some(at) = current {
+            if chain.len() >= MAX_DEPTH || chain.contains(&at) {
+                return (false, None);
+            }
+            let Some(node) = nodes.get(at).copied() else {
+                return (false, None);
+            };
+            if !node.opened || !own(node) {
+                return (false, None);
+            }
+            chain.push(at);
+            if parent(node).is_none() {
+                if !is_root(node) {
+                    return (false, None);
+                }
+                let key = node.dek_id.clone();
+                let one_key = chain.iter().all(|c| nodes[c].dek_id == key);
+                return (true, key.filter(|_| one_key));
+            }
+            current = parent(node);
+        }
+        (false, None)
+    };
+    let mut out = PersonalTree::default();
+    let mut keys: HashMap<&str, Option<String>> = HashMap::new();
+    for node in nodes.values() {
+        let (in_tree, key) = walk(&node.id);
+        if in_tree {
+            out.tree.insert(node.id.clone());
+            if key.is_some() {
+                out.shown.insert(node.id.clone());
+            }
+        }
+        if is_root(node) {
+            out.roots.insert(node.id.clone());
+            out.root_keys.extend(node.dek_id.clone());
+        }
+        keys.insert(node.id.as_str(), key);
+    }
+    for item in objects.iter().filter(|o| o.object_type == "entry") {
+        let Some(key) = parent(item).and_then(|p| keys.get(p).cloned().flatten()) else {
+            continue;
+        };
+        let under = item.dek_id.as_ref() == Some(&key)
+            || (item.tier2 && item.opened && item.dek_id.is_some());
+        if own(item) && under {
+            out.shown.insert(item.id.clone());
+        }
+    }
+    out
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TreeIn {
+    objects: Vec<TreeObj>,
+    #[serde(default)]
+    own_user_id: Option<String>,
+    #[serde(default)]
+    team_keys: BTreeSet<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BodiesIn {
+    bodies: Vec<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WritesIn {
@@ -923,6 +1086,20 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
                 let i: FolderIn = serde_json::from_str(input).map_err(bad)?;
                 let team = team_of(i.team, i.team_handle)?.ok_or("team or team_handle needed")?;
                 json!(team_folder_above(&team, &i.parents, i.node_id.as_deref()))
+            }
+            "authority_personal_tree" => {
+                let i: TreeIn = serde_json::from_str(input).map_err(bad)?;
+                let t = personal_tree(&i.objects, i.own_user_id.as_deref(), &i.team_keys);
+                json!({
+                    "roots": t.roots,
+                    "root_keys": t.root_keys,
+                    "tree": t.tree,
+                    "shown": t.shown,
+                })
+            }
+            "authority_team_key_ids" => {
+                let i: BodiesIn = serde_json::from_str(input).map_err(bad)?;
+                json!(team_key_ids(&i.bodies))
             }
             "authority_sealing_dek_id" => {
                 let i: HeadIn = serde_json::from_str(input).map_err(bad)?;

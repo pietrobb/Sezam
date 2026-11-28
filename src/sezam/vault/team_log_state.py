@@ -298,14 +298,8 @@ def team_key_ids(db) -> set[str]:
 
 def _team_key_ids(db) -> set[str]:
     ids = {row["dek_id"] for row in db.fetchall("SELECT DISTINCT dek_id FROM access_envelopes")}
-    for row in db.fetchall("SELECT body FROM team_log"):
-        try:
-            data = teamlog.parse_body(row["body"])["data"]
-            named = (data.get("dek_id"), data.get("prev_dek_id"))
-        except (teamlog.TeamLogError, KeyError, TypeError, AttributeError, ValueError):
-            continue
-        ids.update(dek_id for dek_id in named if isinstance(dek_id, str))
-    return ids
+    bodies = [row["body"] for row in db.fetchall("SELECT body FROM team_log")]
+    return ids | set(sync_core.call("authority_team_key_ids", bodies=bodies))
 
 
 def team_folder_at_or_above(db, team: Optional[teamlog.TeamState], node_id: Optional[str]) -> Optional[str]:
