@@ -203,7 +203,10 @@ fn run(op: &str, input: &str) -> Result<Value, String> {
             json!(reseal::rekey_due(i.team.as_ref(), &i.keys))
         }
         _ => {
-            match crate::teamlog::ops::run(op, input).or_else(|| crate::vouchers::run(op, input)) {
+            match crate::teamlog::ops::run(op, input)
+                .or_else(|| crate::vouchers::run(op, input))
+                .or_else(|| crate::authority::run(op, input))
+            {
                 Some(out) => out?,
                 None => return Err(format!("unknown operation {op:?}")),
             }

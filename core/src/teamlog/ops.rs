@@ -87,6 +87,11 @@ fn load(state: State) -> u64 {
     handle
 }
 
+/// A state a side loaded (`team_log_load`), for the other modules' questions.
+pub fn loaded_state(handle: u64) -> Result<Arc<State>, String> {
+    get(handle)
+}
+
 fn get(handle: u64) -> Result<Arc<State>, String> {
     loaded()
         .1
