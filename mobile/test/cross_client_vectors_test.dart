@@ -73,7 +73,7 @@ void main() {
         signature: Uint8List(64),
       );
       expect(
-        bytesToHex(buildAuditCanonical(record, crypto)),
+        bytesToHex(buildAuditCanonical(record)),
         v['message_hex'],
         reason: v['action'] as String,
       );

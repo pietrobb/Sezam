@@ -168,6 +168,25 @@ odmietne (server ho predtým orezal na 26 bajtov). Vektory
 `core/tests/signed_messages_vectors.rs`, `tests/test_signed_messages_vectors.py`
 (desktop, server, web) a `mobile/test/signed_messages_vectors_test.dart`.
 
+Audit záznam (U6d, `core/src/audit.rs`): podpisované bajty (`audit_message`),
+sync payload (`audit_payload`, kanonický JSON ako Python `json.dumps` s
+`ensure_ascii`), parse stiahnutého záznamu (`audit_parse`: úplný, kanonický,
+verzia 2, nezmazaný, bez seba v rodičoch; vráti aj podpisované bajty) a DAG
+(`audit_dag`: všetci rodičia, žiadny cyklus). Desktop (`AuditLog._build_canonical`,
+`serialize_audit_row`, `_parse_audit_payload`, `_validate_audit_dag`; vlastná
+kontrola verzie v `_apply_audit` zmazaná), web (`parseCanonicalAuditRecord`,
+`buildAuditCanonical`, DAG vo `verifyAuditGraph`) a mobil (tie isté mená +
+`validateAuditDag`; vlastná kontrola zmazaného objektu zmazaná) volajú jadro.
+Overenie podpisu ostáva v libsodium platformy. Oprava: web a mobil porovnávali
+payload so svojím JSON enkóderom, ktorý necháva ne-ASCII znaky, a desktopový
+záznam s takou akciou odmietli. Sprísnenie: base64 detailov len v kanonickom
+tvare (desktop predtým prijal nenulové výplňové bity, web a mobil nie). Web
+berie podpisované bajty z parse jadra (JS číslo nad 2**53 časovú pečiatku
+presne neudrží). Vektory `tests/vectors/audit.json` (z desktopu pred zmenou:
+24 správ, 24 payloadov, 18 parse, 30 odmietnutí, 8 DAG) v
+`core/tests/audit_vectors.rs`, `tests/test_audit_vectors.py` (desktop, web) a
+`mobile/test/audit_vectors_test.dart`.
+
 Známe zlyhanie mimo vetvy U: `tests/test_review13_handover_rekey.py::
 test_the_new_admin_rekeys_what_the_former_admin_held` (409 „target_user_id is
 admin only“) padá od R17 commitu e55ddb8 (7f9a191 zelené); opraviť pred U9.

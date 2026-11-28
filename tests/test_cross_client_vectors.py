@@ -115,12 +115,11 @@ def desktop_vectors() -> dict:
         (AUDIT_ID, sorted([OBJ_ID, DEK_ID]), "read", 1_762_500_000_123, bytes(range(40))),
     ):
         parents_json = json.dumps(sorted(parents), separators=(",", ":"))
-        details_hash = hashlib.sha256(details).digest() if details else b"\x00" * 32
         vectors["audit_canonical"].append({
             "id": record_id, "actor_id": USER, "parent_ids": parents, "action": action,
             "timestamp": timestamp, "encrypted_details_hex": details.hex(),
             "message_hex": AuditLog._build_canonical(
-                record_id, USER, parents_json, action, timestamp, details_hash
+                record_id, USER, parents_json, action, timestamp, details
             ).hex(),
         })
 

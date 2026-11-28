@@ -10,9 +10,7 @@ Canonical signed data (all fields fixed-length or length-prefixed):
 
 from __future__ import annotations
 
-import hashlib
 import json
-import struct
 import time
 from typing import Optional
 
@@ -20,6 +18,7 @@ from nacl.signing import SigningKey
 
 from ..crypto.aead import BlobKind, encrypt
 from ..models import new_ulid, ulid_to_bytes
+from . import sync_core
 from .db import IdentityChangedElsewhere, VaultDB
 
 
@@ -99,14 +98,8 @@ class AuditLog:
                 blob_kind=BlobKind.AUDIT_DETAILS,
             )
 
-        # Build canonical signed data
-        details_hash = (
-            hashlib.sha256(encrypted_details).digest()
-            if encrypted_details
-            else b"\x00" * 32
-        )
         canonical = self._build_canonical(
-            record_id, actor_id, parent_ids_json, action, now_ms, details_hash
+            record_id, actor_id, parent_ids_json, action, now_ms, encrypted_details
         )
 
         # Sign
@@ -148,19 +141,13 @@ class AuditLog:
         if row is None:
             return False
 
-        details_hash = (
-            hashlib.sha256(row["encrypted_details"]).digest()
-            if row["encrypted_details"]
-            else b"\x00" * 32
-        )
-
         canonical = self._build_canonical(
             row["id"],
             row["actor_id"],
             row["parent_ids"],
             row["action"],
             row["timestamp"],
-            details_hash,
+            row["encrypted_details"],
         )
 
         try:
@@ -234,11 +221,9 @@ class AuditLog:
             (old_actor_id,),
         )
         for row in rows:
-            details = row["encrypted_details"]
-            details_hash = hashlib.sha256(details).digest() if details else b"\x00" * 32
             canonical = self._build_canonical(
                 row["id"], new_actor_id, row["parent_ids"], row["action"],
-                row["timestamp"], details_hash,
+                row["timestamp"], row["encrypted_details"],
             )
             self._db.execute(
                 "UPDATE audit_log SET actor_id = ?, signature = ? WHERE id = ?",
@@ -253,26 +238,16 @@ class AuditLog:
         parent_ids_json: str,
         action: str,
         timestamp_ms: int,
-        details_hash: bytes,
+        encrypted_details: Optional[bytes],
     ) -> bytes:
-        """Build canonical signed data for Ed25519 signature.
-
-        Format: id(26B) || actor_id(26B)
-                || u16be(len(parent_ids_json)) || parent_ids_json
-                || u16be(len(action)) || action
-                || timestamp_u64be(8B)
-                || SHA-256(encrypted_details)(32B)
-        """
-        pid_bytes = parent_ids_json.encode("utf-8")
-        action_bytes = action.encode("utf-8")
-
-        return (
-            ulid_to_bytes(record_id)  # 26B
-            + ulid_to_bytes(actor_id)  # 26B
-            + struct.pack(">H", len(pid_bytes))
-            + pid_bytes
-            + struct.pack(">H", len(action_bytes))
-            + action_bytes
-            + struct.pack(">Q", timestamp_ms)  # 8B
-            + details_hash  # 32B
-        )
+        """The bytes the actor's Ed25519 key signs: the core's audit message
+        (docs/CORE_UNIFICATION.md U6d; format in the module docstring)."""
+        return bytes.fromhex(sync_core.call(
+            "audit_message",
+            id=record_id,
+            actor_id=actor_id,
+            parent_ids=json.loads(parent_ids_json),
+            action=action,
+            timestamp=timestamp_ms,
+            encrypted_details=bytes(encrypted_details or b"").hex(),
+        ))

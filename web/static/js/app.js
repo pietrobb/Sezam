@@ -2814,88 +2814,36 @@ async function confirmWebFullResync() {
 }
 
 function parseCanonicalAuditRecord(syncObject) {
-    if (syncObject.version !== 2 || syncObject.is_deleted) {
-        throw new Error(`REJECT audit ${syncObject.id} — audit records are append-only version 2`);
-    }
-    let payloadBytes;
-    let payloadText;
-    let record;
+    let parsed;
     try {
-        payloadBytes = base64ToBytes(syncObject.payload || '');
-        payloadText = new TextDecoder('utf-8', { fatal: true }).decode(payloadBytes);
-        record = JSON.parse(payloadText);
-    } catch (_) {
-        throw new Error(`REJECT audit ${syncObject.id} — invalid audit payload`);
+        parsed = globalThis.SezamSyncCore.call('audit_parse', {
+            id: syncObject.id, version: syncObject.version, is_deleted: !!syncObject.is_deleted,
+            payload: bytesToHex(base64ToBytes(syncObject.payload || '')),
+        });
+    } catch (e) {
+        throw new Error(`REJECT audit ${syncObject.id} — ${e.message}`);
     }
-    const expectedKeys = [
-        'action', 'actor_id', 'encrypted_details', 'format',
-        'id', 'parent_ids', 'signature', 'timestamp',
-    ];
-    if (!record || Array.isArray(record) ||
-            JSON.stringify(Object.keys(record).sort()) !== JSON.stringify(expectedKeys)) {
-        throw new Error(`REJECT audit ${syncObject.id} — incomplete audit payload`);
-    }
-    const canonicalRecord = {
-        action: record.action,
-        actor_id: record.actor_id,
-        encrypted_details: record.encrypted_details,
-        format: record.format,
-        id: record.id,
-        parent_ids: record.parent_ids,
-        signature: record.signature,
-        timestamp: record.timestamp,
+    return {
+        id: syncObject.id,
+        actor_id: parsed.actor_id,
+        action: parsed.action,
+        timestamp: parsed.timestamp,
+        parent_ids: parsed.parent_ids,
+        encrypted_details_bytes: hexToBytes(parsed.encrypted_details),
+        signature_bytes: hexToBytes(parsed.signature),
+        // The signed bytes as the core read them: a JS number above 2**53
+        // would not rebuild the timestamp exactly.
+        message_bytes: hexToBytes(parsed.message),
     };
-    if (payloadText !== JSON.stringify(canonicalRecord) ||
-            record.format !== 'sezam-audit-v1' || record.id !== syncObject.id) {
-        throw new Error(`REJECT audit ${syncObject.id} — non-canonical or mismatched payload`);
-    }
-    const encoder = new TextEncoder();
-    const parents = record.parent_ids;
-    if (typeof record.actor_id !== 'string' || encoder.encode(record.actor_id).length !== 26 ||
-            typeof record.action !== 'string' || !record.action ||
-            encoder.encode(record.action).length > 65535 ||
-            !Number.isSafeInteger(record.timestamp) || record.timestamp < 0 ||
-            !Array.isArray(parents) || parents.some(parent =>
-                typeof parent !== 'string' || encoder.encode(parent).length !== 26) ||
-            JSON.stringify(parents) !== JSON.stringify([...new Set(parents)].sort()) ||
-            parents.includes(syncObject.id) ||
-            typeof record.encrypted_details !== 'string' ||
-            typeof record.signature !== 'string' ||
-            !/^[0-9a-f]{128}$/.test(record.signature)) {
-        throw new Error(`REJECT audit ${syncObject.id} — invalid audit fields`);
-    }
-    try {
-        const details = base64ToBytes(record.encrypted_details);
-        if (bytesToBase64(details) !== record.encrypted_details) throw new Error('base64');
-        record.encrypted_details_bytes = details;
-        record.signature_bytes = hexToBytes(record.signature);
-    } catch (_) {
-        throw new Error(`REJECT audit ${syncObject.id} — invalid audit encoding`);
-    }
-    return record;
 }
 
-function buildAuditCanonical(record, _sodium) {
-    const encoder = new TextEncoder();
-    const id = encoder.encode(record.id);
-    const actor = encoder.encode(record.actor_id);
-    const parents = encoder.encode(JSON.stringify(record.parent_ids));
-    const action = encoder.encode(record.action);
-    const detailsHash = record.encrypted_details_bytes.length
-        ? _sodium.crypto_hash_sha256(record.encrypted_details_bytes)
-        : new Uint8Array(32);
-    const canonical = new Uint8Array(26 + 26 + 2 + parents.length + 2 + action.length + 8 + 32);
-    let offset = 0;
-    canonical.set(id, offset); offset += 26;
-    canonical.set(actor, offset); offset += 26;
-    const view = new DataView(canonical.buffer);
-    view.setUint16(offset, parents.length, false); offset += 2;
-    canonical.set(parents, offset); offset += parents.length;
-    view.setUint16(offset, action.length, false); offset += 2;
-    canonical.set(action, offset); offset += action.length;
-    view.setBigUint64(offset, BigInt(record.timestamp), false); offset += 8;
-    canonical.set(detailsHash, offset);
-    return canonical;
+// The bytes the actor's key signs (docs/CORE_UNIFICATION.md U6d).
+function buildAuditCanonical(record) {
+    return hexToBytes(globalThis.SezamSyncCore.call('audit_message', {
+        id: record.id, actor_id: record.actor_id, parent_ids: record.parent_ids,
+        action: record.action, timestamp: record.timestamp,
+        encrypted_details: bytesToHex(record.encrypted_details_bytes),
+    }));
 }
 
 async function verifyAuditGraph(syncObjects, _sodium) {
@@ -2907,34 +2855,19 @@ async function verifyAuditGraph(syncObjects, _sodium) {
             await getUserSigningPks(record.actor_id);
         if (!signingPks || !signingPks.some(signingPk =>
             _sodium.crypto_sign_verify_detached(
-                record.signature_bytes, buildAuditCanonical(record, _sodium), signingPk
+                record.signature_bytes, record.message_bytes, signingPk
             ))) {
             throw new Error(`REJECT audit ${syncObject.id} — invalid audit signature`);
         }
         records[syncObject.id] = record;
     }
-
-    const ids = new Set(Object.keys(records));
-    const children = Object.fromEntries([...ids].map(id => [id, []]));
-    const indegree = {};
-    for (const [id, record] of Object.entries(records)) {
-        const missing = record.parent_ids.filter(parent => !ids.has(parent));
-        if (missing.length) {
-            throw new Error(`REJECT audit DAG ${id} — missing parent`);
-        }
-        indegree[id] = record.parent_ids.length;
-        for (const parent of record.parent_ids) children[parent].push(id);
+    try {
+        globalThis.SezamSyncCore.call('audit_dag', {
+            records: Object.values(records).map(r => ({ id: r.id, parent_ids: r.parent_ids })),
+        });
+    } catch (e) {
+        throw new Error(`REJECT audit DAG — ${e.message}`);
     }
-    const ready = Object.keys(indegree).filter(id => indegree[id] === 0);
-    let visited = 0;
-    while (ready.length) {
-        const parent = ready.pop();
-        visited++;
-        for (const child of children[parent]) {
-            if (--indegree[child] === 0) ready.push(child);
-        }
-    }
-    if (visited !== ids.size) throw new Error('REJECT audit DAG — cycle detected');
 }
 
 // Review 7c10379 (R7-H, web; the mobile lock of review d615826): pulls and

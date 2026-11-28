@@ -449,7 +449,7 @@ void main() {
       ),
     );
     final record = parseCanonicalAuditRecord(auditId, payload, 2);
-    final canonical = buildAuditCanonical(record, crypto);
+    final canonical = buildAuditCanonical(record);
 
     expect(canonical.sublist(0, 26), orderedEquals(ascii.encode(auditId)));
     expect(canonical.sublist(26, 52), orderedEquals(ascii.encode(actorId)));

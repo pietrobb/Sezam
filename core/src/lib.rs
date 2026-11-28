@@ -27,6 +27,7 @@
 //! flutter_rust_bridge) expose: an operation name and a JSON document in,
 //! a JSON document out.
 
+pub mod audit;
 pub mod authority;
 pub mod formats;
 pub mod gate;

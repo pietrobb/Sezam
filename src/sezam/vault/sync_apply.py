@@ -656,12 +656,7 @@ class ApplyMixin:
 
     def _apply_audit(self, obj_id: str, payload: bytes, obj: dict) -> None:
         """Verify and insert one complete, append-only audit DAG record."""
-        if obj.get("version", 1) != 2:
-            raise ValueError(
-                f"Legacy audit object {obj_id} is not independently verifiable; "
-                "migrate it from an authoritative local vault before pulling"
-            )
-        record = self._verify_audit_payload(obj_id, payload)
+        record = self._verify_audit_payload(obj_id, payload, obj.get("version", 1))
 
         existing = self._db.fetchone(
             "SELECT id, parent_ids, actor_id, action, encrypted_details, timestamp, "

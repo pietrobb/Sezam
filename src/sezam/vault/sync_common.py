@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import logging
@@ -26,7 +25,6 @@ KDF_REPORTED_META_KEY = "kdf_params_reported_salt"
 # {user_id: fingerprint} this admin confirmed out of band before sharing.
 CONFIRMED_MEMBER_KEYS_META = "confirmed_member_keys"
 # The org_recovery_pk the server is known to hold (review 526419e V5).
-_AUDIT_PAYLOAD_FORMAT = "sezam-audit-v1"
 
 
 # Review d150605 #5: the server head was seen behind this device's checkpoint.
@@ -567,18 +565,13 @@ def serialize_audit_row(row) -> bytes:
         isinstance(parent_id, str) for parent_id in parent_ids
     ):
         raise ValueError(f"Invalid audit parent list for {row['id']}")
-    record = {
-        "action": row["action"],
-        "actor_id": row["actor_id"],
-        "encrypted_details": base64.b64encode(
-            bytes(row["encrypted_details"] or b"")
-        ).decode("ascii"),
-        "format": _AUDIT_PAYLOAD_FORMAT,
-        "id": row["id"],
-        "parent_ids": sorted(parent_ids),
-        "signature": bytes(row["signature"]).hex(),
-        "timestamp": row["timestamp"],
-    }
-    return json.dumps(record, sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    return sync_core.call(
+        "audit_payload",
+        id=row["id"],
+        actor_id=row["actor_id"],
+        parent_ids=parent_ids,
+        action=row["action"],
+        timestamp=row["timestamp"],
+        encrypted_details=bytes(row["encrypted_details"] or b"").hex(),
+        signature=bytes(row["signature"]).hex(),
+    ).encode("ascii")

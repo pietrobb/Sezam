@@ -208,6 +208,7 @@ fn run(op: &str, input: &str) -> Result<Value, String> {
                 .or_else(|| crate::authority::run(op, input))
                 .or_else(|| crate::formats::run(op, input))
                 .or_else(|| crate::messages::run(op, input))
+                .or_else(|| crate::audit::run(op, input))
             {
                 Some(out) => out?,
                 None => return Err(format!("unknown operation {op:?}")),

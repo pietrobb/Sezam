@@ -5,8 +5,6 @@ Part of SyncClient (sync_client.py); split out without a change of behaviour.
 
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
 import time
 from typing import Optional
@@ -19,13 +17,11 @@ from ..crypto.aead import BlobKind, encrypt, parse_envelope
 from ..models import bytes_to_ulid, ulid_to_bytes
 from .personal_root import is_personal_root
 from . import oplock, outbox, pending_states, sync_core
-from .audit import AuditLog
 from .sealed import open_sealed
 from .sync_writers import WRITES_AUDITED_META
 
 from .sync_common import (
     server_error,
-    _AUDIT_PAYLOAD_FORMAT,
     DETACHED_DEKS_META,
     FULL_RESYNC_HINT,
     logger,
@@ -42,75 +38,23 @@ class PullMixin:
     """SyncClient methods: pull: fetch, verify, order and bind what the server sent."""
 
     @staticmethod
-    def _parse_audit_payload(obj_id: str, payload: bytes) -> dict:
-        """Parse and validate the canonical, complete audit sync payload."""
+    def _parse_audit_payload(
+        obj_id: str, payload: bytes, version: int = 2, is_deleted: bool = False
+    ) -> dict:
+        """The complete, canonical audit record a sync object carries, with
+        the bytes its signature covers (the core's audit_parse, U6d)."""
         try:
-            record = json.loads(payload.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError(f"Invalid audit payload for {obj_id}") from exc
-
-        expected_fields = {
-            "action",
-            "actor_id",
-            "encrypted_details",
-            "format",
-            "id",
-            "parent_ids",
-            "signature",
-            "timestamp",
-        }
-        if not isinstance(record, dict) or set(record) != expected_fields:
-            raise ValueError(f"Incomplete audit payload for {obj_id}")
-        canonical_payload = json.dumps(
-            record, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-        if payload != canonical_payload:
-            raise ValueError(f"Non-canonical audit payload for {obj_id}")
-        if record["format"] != _AUDIT_PAYLOAD_FORMAT or record["id"] != obj_id:
-            raise ValueError(f"Mismatched audit identity for {obj_id}")
-
-        actor_id = record["actor_id"]
-        action = record["action"]
-        parent_ids = record["parent_ids"]
-        timestamp = record["timestamp"]
-        if (
-            not isinstance(actor_id, str)
-            or len(actor_id) != 26
-            or not isinstance(action, str)
-            or not action
-            or len(action.encode("utf-8")) > 65535
-            or type(timestamp) is not int
-            or timestamp < 0
-            or not isinstance(parent_ids, list)
-            or not all(
-                isinstance(parent_id, str) and len(parent_id) == 26
-                for parent_id in parent_ids
+            record = sync_core.call(
+                "audit_parse", id=obj_id, version=version,
+                is_deleted=bool(is_deleted), payload=bytes(payload).hex(),
             )
-            or parent_ids != sorted(set(parent_ids))
-        ):
-            raise ValueError(f"Invalid audit fields for {obj_id}")
-
-        try:
-            actor_id.encode("ascii")
-            for parent_id in parent_ids:
-                parent_id.encode("ascii")
-            encrypted_details = base64.b64decode(
-                record["encrypted_details"], validate=True
-            )
-            signature = bytes.fromhex(record["signature"])
-        except (UnicodeEncodeError, ValueError, TypeError) as exc:
-            raise ValueError(f"Invalid audit encoding for {obj_id}") from exc
-        if len(signature) != 64 or record["signature"] != signature.hex():
-            raise ValueError(f"Invalid audit signature encoding for {obj_id}")
-
-        record["encrypted_details"] = encrypted_details
-        record["signature"] = signature
-        record["parent_ids_json"] = json.dumps(
-            parent_ids, separators=(",", ":")
-        )
+        except ValueError as exc:
+            raise ValueError(f"Invalid audit record {obj_id}: {exc}") from exc
+        for field in ("encrypted_details", "signature", "message"):
+            record[field] = bytes.fromhex(record[field])
         return record
 
-    def _verify_audit_payload(self, obj_id: str, payload: bytes) -> dict:
+    def _verify_audit_payload(self, obj_id: str, payload: bytes, version: int = 2) -> dict:
         """Return a parsed audit record only when its original signature verifies.
 
         Any key of the actor's ring counts here (goal #443): the sync object
@@ -118,23 +62,8 @@ class PullMixin:
         signature of that counts only for a vouched version
         (_verify_object_signature); another pusher sends again only records
         it took that way."""
-        record = self._parse_audit_payload(obj_id, payload)
-        if obj_id in record["parent_ids"]:
-            raise ValueError(f"Invalid self-referencing audit record {obj_id}")
-
-        details_hash = (
-            hashlib.sha256(record["encrypted_details"]).digest()
-            if record["encrypted_details"]
-            else b"\x00" * 32
-        )
-        canonical = AuditLog._build_canonical(
-            obj_id,
-            record["actor_id"],
-            record["parent_ids_json"],
-            record["action"],
-            record["timestamp"],
-            details_hash,
-        )
+        record = self._parse_audit_payload(obj_id, payload, version)
+        canonical = record["message"]
         signing_pks = self._get_signing_pks(record["actor_id"])
         for signing_pk in signing_pks:
             try:
@@ -159,30 +88,10 @@ class PullMixin:
                 raise ValueError(f"Invalid audit DAG parents for {row['id']}")
             parents_by_id[row["id"]] = parent_ids
 
-        known_ids = set(parents_by_id)
-        children: dict[str, list[str]] = {audit_id: [] for audit_id in known_ids}
-        indegree: dict[str, int] = {}
-        for audit_id, parent_ids in parents_by_id.items():
-            missing = set(parent_ids) - known_ids
-            if missing:
-                raise ValueError(
-                    f"Audit DAG record {audit_id} references missing parent(s)"
-                )
-            indegree[audit_id] = len(set(parent_ids))
-            for parent_id in set(parent_ids):
-                children[parent_id].append(audit_id)
-
-        ready = [audit_id for audit_id, degree in indegree.items() if degree == 0]
-        visited = 0
-        while ready:
-            parent_id = ready.pop()
-            visited += 1
-            for child_id in children[parent_id]:
-                indegree[child_id] -= 1
-                if indegree[child_id] == 0:
-                    ready.append(child_id)
-        if visited != len(known_ids):
-            raise ValueError("Audit DAG contains a cycle")
+        sync_core.call(
+            "audit_dag",
+            records=[{"id": i, "parent_ids": p} for i, p in parents_by_id.items()],
+        )
 
     # ── Pull ──
 

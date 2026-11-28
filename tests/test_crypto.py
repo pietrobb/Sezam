@@ -1276,7 +1276,7 @@ class TestDesktopAuditDagSync:
                     parent_ids_json,
                     "write",
                     2,
-                    b"\x00" * 32,
+                    b"",
                 )
                 signature = keypair.to_nacl_signing_key().sign(canonical).signature
                 payload = json.dumps({

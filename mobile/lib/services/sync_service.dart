@@ -55,192 +55,68 @@ class CanonicalAuditRecord {
   });
 }
 
-bool _isAsciiId(String value) =>
-    value.length == 26 && value.codeUnits.every((unit) => unit <= 0x7f);
-
+/// The complete, canonical audit record a pulled sync object carries: the
+/// core's parse (docs/CORE_UNIFICATION.md U6d).
 CanonicalAuditRecord parseCanonicalAuditRecord(
   String objectId,
   Uint8List payload,
-  int version,
-) {
-  if (version != 2) {
-    throw SyncIntegrityException(
-      'REJECT audit $objectId — audit records require version 2',
-    );
-  }
-  late String payloadText;
-  late Object? decoded;
+  int version, {
+  bool isDeleted = false,
+}) {
+  late Map<String, dynamic> parsed;
   try {
-    payloadText = utf8.decode(payload, allowMalformed: false);
-    decoded = jsonDecode(payloadText);
-  } catch (e) {
-    throw SyncIntegrityException(
-      'REJECT audit $objectId — invalid audit payload',
-    );
+    parsed =
+        syncCore('audit_parse', {
+              'id': objectId,
+              'version': version,
+              'is_deleted': isDeleted,
+              'payload': bytesToHex(payload),
+            })
+            as Map<String, dynamic>;
+  } on StateError catch (e) {
+    throw SyncIntegrityException('REJECT audit $objectId — ${e.message}');
   }
-  const expectedFields = {
-    'action',
-    'actor_id',
-    'encrypted_details',
-    'format',
-    'id',
-    'parent_ids',
-    'signature',
-    'timestamp',
-  };
-  if (decoded is! Map<String, dynamic> ||
-      decoded.length != expectedFields.length ||
-      !decoded.keys.every(expectedFields.contains)) {
-    throw SyncIntegrityException(
-      'REJECT audit $objectId — incomplete audit payload',
-    );
-  }
-  final record = decoded;
-  final canonical = <String, dynamic>{
-    'action': record['action'],
-    'actor_id': record['actor_id'],
-    'encrypted_details': record['encrypted_details'],
-    'format': record['format'],
-    'id': record['id'],
-    'parent_ids': record['parent_ids'],
-    'signature': record['signature'],
-    'timestamp': record['timestamp'],
-  };
-  if (payloadText != jsonEncode(canonical) ||
-      record['format'] != 'sezam-audit-v1' ||
-      record['id'] != objectId) {
-    throw SyncIntegrityException(
-      'REJECT audit $objectId — non-canonical or mismatched payload',
-    );
-  }
-
-  final actorId = record['actor_id'];
-  final action = record['action'];
-  final timestamp = record['timestamp'];
-  final rawParents = record['parent_ids'];
-  final detailsBase64 = record['encrypted_details'];
-  final signatureHex = record['signature'];
-  if (actorId is! String ||
-      !_isAsciiId(actorId) ||
-      action is! String ||
-      action.isEmpty ||
-      utf8.encode(action).length > 65535 ||
-      timestamp is! int ||
-      timestamp < 0 ||
-      timestamp > 0x7fffffffffffffff ||
-      rawParents is! List ||
-      rawParents.any((parent) => parent is! String || !_isAsciiId(parent)) ||
-      detailsBase64 is! String ||
-      signatureHex is! String ||
-      !RegExp(r'^[0-9a-f]{128}$').hasMatch(signatureHex)) {
+  final timestamp = parsed['timestamp'];
+  if (timestamp is! int) {
+    // Above 2**63 - 1, which a Dart int does not hold.
     throw SyncIntegrityException(
       'REJECT audit $objectId — invalid audit fields',
     );
   }
-  final parentIds = rawParents.cast<String>();
-  final canonicalParents = parentIds.toSet().toList()..sort();
-  if (parentIds.length != canonicalParents.length ||
-      !List.generate(
-        parentIds.length,
-        (i) => parentIds[i] == canonicalParents[i],
-      ).every((same) => same) ||
-      parentIds.contains(objectId)) {
-    throw SyncIntegrityException(
-      'REJECT audit $objectId — invalid audit parents',
-    );
-  }
-
-  late Uint8List encryptedDetails;
-  late Uint8List signature;
-  try {
-    encryptedDetails = base64Decode(detailsBase64);
-    signature = hexToBytes(signatureHex);
-    if (base64Encode(encryptedDetails) != detailsBase64 ||
-        bytesToHex(signature) != signatureHex ||
-        signature.length != 64) {
-      throw const FormatException('non-canonical encoding');
-    }
-  } catch (e) {
-    throw SyncIntegrityException(
-      'REJECT audit $objectId — invalid audit encoding',
-    );
-  }
-
   return CanonicalAuditRecord(
     id: objectId,
-    actorId: actorId,
-    parentIds: parentIds,
-    action: action,
+    actorId: parsed['actor_id'] as String,
+    parentIds: (parsed['parent_ids'] as List).cast<String>(),
+    action: parsed['action'] as String,
     timestamp: timestamp,
-    encryptedDetails: encryptedDetails,
-    signature: signature,
+    encryptedDetails: hexToBytes(parsed['encrypted_details'] as String),
+    signature: hexToBytes(parsed['signature'] as String),
   );
 }
 
-Uint8List buildAuditCanonical(
-  CanonicalAuditRecord record,
-  CryptoService crypto,
-) {
-  final id = ascii.encode(record.id);
-  final actor = ascii.encode(record.actorId);
-  final parents = utf8.encode(jsonEncode(record.parentIds));
-  final action = utf8.encode(record.action);
-  final detailsHash = record.encryptedDetails.isEmpty
-      ? Uint8List(32)
-      : crypto.sha256Bytes(record.encryptedDetails);
-  final result = Uint8List(
-    26 + 26 + 2 + parents.length + 2 + action.length + 8 + 32,
-  );
-  final view = ByteData.sublistView(result);
-  var offset = 0;
-  result.setRange(offset, offset + 26, id);
-  offset += 26;
-  result.setRange(offset, offset + 26, actor);
-  offset += 26;
-  view.setUint16(offset, parents.length, Endian.big);
-  offset += 2;
-  result.setRange(offset, offset + parents.length, parents);
-  offset += parents.length;
-  view.setUint16(offset, action.length, Endian.big);
-  offset += 2;
-  result.setRange(offset, offset + action.length, action);
-  offset += action.length;
-  view.setUint64(offset, record.timestamp, Endian.big);
-  offset += 8;
-  result.setRange(offset, offset + 32, detailsHash);
-  return result;
-}
+/// The bytes the actor's key signs (the core's audit message, U6d).
+Uint8List buildAuditCanonical(CanonicalAuditRecord record) => hexToBytes(
+  syncCore('audit_message', {
+        'id': record.id,
+        'actor_id': record.actorId,
+        'parent_ids': record.parentIds,
+        'action': record.action,
+        'timestamp': record.timestamp,
+        'encrypted_details': bytesToHex(record.encryptedDetails),
+      })
+      as String,
+);
 
+/// Every parent present and no cycle (the core's audit DAG check, U6d).
 void validateAuditDag(Iterable<CanonicalAuditRecord> records) {
-  final byId = {for (final record in records) record.id: record};
-  final children = {for (final id in byId.keys) id: <String>[]};
-  final indegree = <String, int>{};
-  for (final record in byId.values) {
-    if (record.parentIds.any((parent) => !byId.containsKey(parent))) {
-      throw SyncIntegrityException(
-        'REJECT audit DAG ${record.id} — missing parent',
-      );
-    }
-    indegree[record.id] = record.parentIds.length;
-    for (final parent in record.parentIds) {
-      children[parent]!.add(record.id);
-    }
-  }
-  final ready = indegree.entries
-      .where((entry) => entry.value == 0)
-      .map((entry) => entry.key)
-      .toList();
-  var visited = 0;
-  while (ready.isNotEmpty) {
-    final parent = ready.removeLast();
-    visited++;
-    for (final child in children[parent]!) {
-      indegree[child] = indegree[child]! - 1;
-      if (indegree[child] == 0) ready.add(child);
-    }
-  }
-  if (visited != byId.length) {
-    throw const SyncIntegrityException('REJECT audit DAG — cycle detected');
+  try {
+    syncCore('audit_dag', {
+      'records': [
+        for (final r in records) {'id': r.id, 'parent_ids': r.parentIds},
+      ],
+    });
+  } on StateError catch (e) {
+    throw SyncIntegrityException('REJECT audit DAG — ${e.message}');
   }
 }
 
@@ -2402,14 +2278,10 @@ class SyncService {
     for (final item in verified) {
       final pullObj = item['object'] as PullObject;
       if (pullObj.objectType == 'audit') {
-        if (pullObj.isDeleted != 0) {
-          throw SyncIntegrityException(
-            'REJECT audit ${pullObj.id} — audit records are append-only',
-          );
-        }
         candidateAudits[pullObj.id] = {
           'payload': item['payload'] as Uint8List,
           'version': pullObj.version,
+          'is_deleted': pullObj.isDeleted != 0,
         };
       }
     }
@@ -2420,6 +2292,7 @@ class SyncService {
         entry.key,
         entry.value['payload']! as Uint8List,
         entry.value['version']! as int,
+        isDeleted: entry.value['is_deleted'] == true,
       );
       final actorPks =
           authorKeys[record.actorId] ??
@@ -2432,7 +2305,7 @@ class SyncService {
             saveKnownKey: _db.upsertKnownKey,
           );
       authorKeys[record.actorId] = actorPks;
-      final canonical = buildAuditCanonical(record, _crypto);
+      final canonical = buildAuditCanonical(record);
       if (!actorPks.any(
         (actorPk) => _crypto.verifyDetached(
           signature: record.signature,
