@@ -12,7 +12,7 @@ from sezam.vault import sync_client
 VAULT = Path(sync_client.__file__).parent
 SPLIT = ["sync_client", "sync_common", "sync_push", "sync_rekey", "sync_pull",
          "sync_apply", "sync_resync", "sync_state", "sync_writers", "sync_vouchers",
-         "team_log_local"]
+         "team_log_local", "sync_org_recovery", "sync_held_edits"]
 MAX_LINES = 1300
 
 

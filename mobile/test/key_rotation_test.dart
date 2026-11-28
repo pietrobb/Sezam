@@ -209,7 +209,10 @@ void main() {
           'Future<void> _persistKeypairState',
         );
         expect(body, contains('_recoverWithForms('));
-        expect(body, contains('recoveredUserId != userId'));
+        expect(
+          body,
+          contains('requireCanonicalUserObjectId(recovered.resp) != userId'),
+        );
         final rekey = body.indexOf('_sync.rekeyLocalVault(');
         final persist = body.indexOf('_persistKeypairState(');
         expect(rekey, greaterThan(0));

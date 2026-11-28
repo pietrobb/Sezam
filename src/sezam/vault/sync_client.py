@@ -29,11 +29,6 @@ from .key_rotation import (
     open_auth_proof,
     open_current_auth_proof,
     open_old_keypair,
-    open_recovery_secret,
-    org_recovery_rewrap_message,
-    org_recovery_server_wrap,
-    org_recovery_signing_key,
-    org_recovery_version,
 )
 
 if TYPE_CHECKING:
@@ -70,6 +65,8 @@ from .sync_common import (
     unsent_envelope_count,
 )
 from .sync_apply import ApplyMixin
+from .sync_held_edits import HeldEditsMixin
+from .sync_org_recovery import OrgRecoveryMixin
 from .sync_pull import PullMixin
 from .sync_push import PushMixin
 from .sync_rekey import RekeyMixin
@@ -101,7 +98,7 @@ __all__ = [
 
 class SyncClient(
     PushMixin, RekeyMixin, PullMixin, ApplyMixin, ResyncMixin, SyncStateMixin, WritersMixin,
-    TeamLogMixin, VoucherMixin,
+    TeamLogMixin, VoucherMixin, OrgRecoveryMixin, HeldEditsMixin,
 ):
     """Handles sync operations with the Sezam server."""
 
@@ -838,166 +835,6 @@ class SyncClient(
             auth_proof[:] = b"\x00" * len(auth_proof)
             if current_proof is not None:
                 current_proof[:] = b"\x00" * len(current_proof)
-
-    def _recovery_proof(self, journal: dict, user_id: str) -> dict:
-        """Org recovery's reset proof (review e4cd15a #1): a fresh server
-        challenge signed by the key derived from the rebuilt recovery secret.
-        It authorizes the change without the old password or another admin;
-        empty when the journal has no secret or the server has no recovery."""
-        secret = open_recovery_secret(journal, self._dek_mgr._kek, user_id)
-        if secret is None:
-            return {}
-        try:
-            try:
-                challenge = self._request("POST", "/api/org-recovery/challenge", {})["challenge"]
-            except RuntimeError as exc:
-                logger.warning("No org recovery proof for the password change: %s", exc)
-                return {}
-            signing_key = org_recovery_signing_key(secret, self._org_recovery_version(secret))
-            signature = signing_key.sign(bytes.fromhex(challenge)).signature
-            return {"recovery_challenge": challenge, "recovery_signature": signature.hex()}
-        finally:
-            secret[:] = b"\x00" * len(secret)
-
-    def _org_recovery_version(self, secret: bytes) -> int:
-        """R16-L4: the key version of this vault's recovery (the one its Ed25519
-        key is); a recovery with no such key here is version 1."""
-        return org_recovery_version(secret, self._db.get_meta("org_recovery_signing_pk")) or 1
-
-    def _restore_org_recovery_blob(self, journal: dict, key_epoch: int) -> None:
-        """After an org recovery's change landed, wrap the new KEK into the
-        server blob under the same recovery key, so the shares keep working
-        (web too) and the server does not report the recovery stale."""
-        user_id = self._db.get_meta("user_id")
-        secret = open_recovery_secret(journal, self._dek_mgr._kek, user_id)
-        if secret is None:
-            return
-        try:
-            version = self._org_recovery_version(secret)
-            wrapped = org_recovery_server_wrap(self._dek_mgr._kek, secret, version)
-            signing_key = org_recovery_signing_key(secret, version)
-            threshold = int(self._db.get_meta("org_recovery_threshold") or "2")
-            total = int(self._db.get_meta("org_recovery_shares") or "2")
-            body = {
-                "wrapped_kek": wrapped.hex(),
-                "recovery_signing_pk": bytes(signing_key.verify_key).hex(),
-                "threshold": threshold,
-                "total_shares": total,
-                "key_epoch": key_epoch,
-                # Review d615826: without the password the server takes the
-                # same recovery key's blob only signed by that key.
-                "recovery_signature": signing_key.sign(org_recovery_rewrap_message(
-                    user_id, key_epoch, threshold, total, wrapped,
-                )).signature.hex(),
-            }
-        finally:
-            secret[:] = b"\x00" * len(secret)
-        # Capability run 316: the team log carries it too (next push).
-        self._db.set_meta_json("org_recovery_server_wrap", {k: v for k, v in body.items() if k != "recovery_signature"})
-        # Review 526419e N5: a failed re-wrap left the old KEK's blob on the server for
-        # good once the journal was gone, so the body is kept and every push retries it.
-        pending_states.set_org_recovery_rewrap(self._db, body)
-        self.retry_org_recovery_rewrap()
-
-    def retry_org_recovery_rewrap(self) -> bool:
-        """Send a server blob re-wrap that failed before. True when none waits."""
-        body = pending_states.org_recovery_rewrap(self._db)
-        if body is None:
-            return True
-        try:
-            self._request("POST", "/api/org-recovery/store", body, auth=True)
-        except RuntimeError as exc:
-            if server_error(exc, 409) or server_error(exc, 403):
-                # The account moved on (another password change or another
-                # admin's recovery): this wrap is void; unlock reports that the
-                # server lacks this vault's recovery key (review 526419e V5).
-                # 403: a body saved before review d615826 carries no recovery
-                # signature, and the server never takes it without one.
-                pending_states.clear_org_recovery_rewrap(self._db)
-            logger.warning("Could not re-wrap the server org recovery blob: %s", exc)
-            return False
-        pending_states.clear_org_recovery_rewrap(self._db)
-        return True
-
-    @classmethod
-    def register_org_recovery(
-        cls, vault: "Vault", password: str, *, replace_other_admin: bool = False,
-    ) -> bool:
-        """Register the recovery key the vault just set up on its server
-        (review e4cd15a #1). False when the vault is not connected; raises
-        ValueError for a wrong password, RuntimeError when the server refuses.
-        ``replace_other_admin`` replaces another admin's recovery (review 526419e S3)."""
-        with oplock.exclusive(vault.db.path):  # INV-6: the body sent is the one cleared
-            server_url = vault.db.get_meta("server_url")
-            user_id = vault.db.get_meta("user_id")
-            body = pending_states.org_recovery_registration(vault.db)
-            if not server_url or not user_id or body is None:
-                return False
-            if replace_other_admin:
-                body = {**body, "replace_other_admin": True}
-            proof = vault.current_auth_proof(password)
-            try:
-                client = cls(vault.db, server_url, vault.keypair, user_id)
-                client.set_dek_manager(vault.dek_mgr)
-                client.store_org_recovery(body, proof)
-            finally:
-                proof[:] = b"\x00" * len(proof)
-            pending_states.clear_org_recovery_registration(vault.db)
-            return True
-
-    @classmethod
-    def org_recovery_after_connect(cls, vault: "Vault", password: str) -> Optional[str]:
-        """Capability review run 91: an org recovery set up before 'connect'
-        is registered now. Returns what to tell the user, or None when org
-        recovery is not set up on this vault."""
-        if not vault.org_recovery_configured() or not vault.db.get_meta("server_url"):
-            return None
-        from .org_recovery_server import LOG_ADMIN_NOTE, OTHER_ADMIN_NOTE, _log_admin, server_status, superseded_note
-
-        status = server_status(vault)
-        owner = status.get("created_by") if status.get("configured") else None
-        if owner and owner != vault.db.get_meta("user_id"):
-            # Review 526419e S3: a registration (or '--replace') only gets a 409.
-            return LOG_ADMIN_NOTE if _log_admin(vault) else OTHER_ADMIN_NOTE
-        if note := superseded_note(vault.db, status):  # review c78fd19 R13-10
-            return note
-        try:
-            if cls.register_org_recovery(vault, password):
-                return ("The server knows this vault's org recovery: after 'sezam "
-                        "org-recovery' it accepts the new password without the old one.")
-        except (RuntimeError, ValueError) as exc:
-            if note := superseded_note(vault.db, exc=exc):
-                return note
-            return (f"Warning: the server did not take this vault's org recovery ({exc}). "
-                    "Run 'sezam org-recovery-setup --replace' and hand out the new shares.")
-        if owner and not status.get("stale"):
-            return None
-        return ("Warning: the server does not know this vault's org recovery (it was set "
-                "up before the vault took the server's account key). The shares would "
-                "reset this vault, but the server would refuse the new password. Run "
-                "'sezam org-recovery-setup --replace' and hand out the new shares.")
-
-    def store_org_recovery(self, body: dict, current_auth_proof: bytes) -> None:
-        """Register this vault's org recovery key on the server (review e4cd15a #1)."""
-        if not self._token:
-            self.authenticate()
-        self._request(
-            "POST", "/api/org-recovery/store",
-            {**body, "current_auth_proof": bytes(current_auth_proof).hex()}, auth=True,
-        )
-
-    def server_org_recovery_stale(self) -> bool:
-        """True when this account's org recovery on the server wraps an old KEK.
-
-        The blob is sealed under a recovery key only the share holders can
-        rebuild, so no client can re-wrap it after a password change: an
-        admin has to set org recovery up again.
-        """
-        try:
-            status = self._request("GET", "/api/org-recovery/status", auth=True) or {}
-        except RuntimeError:
-            return False
-        return bool(status.get("stale")) and status.get("created_by") == self._user_id
 
     def _signer_id(self, obj: dict) -> str:
         """The account whose key ``_verify_object_signature`` checks.

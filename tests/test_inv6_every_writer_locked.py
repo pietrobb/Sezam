@@ -361,9 +361,9 @@ LOCK_SITES = {
     ("sezam/vault/sync_client.py", "SyncClient.abandon_pending_change", "@oplock.held"),
     ("sezam/vault/sync_client.py", "SyncClient.adopt_rotated_key_material", "@oplock.held"),
     ("sezam/vault/sync_client.py", "SyncClient.finish_pending_change", "@oplock.held"),
-    ("sezam/vault/sync_client.py", "SyncClient.register_org_recovery", "oplock.exclusive"),
     # R16-M3: the one place a sync holder gives the write lock up (a request).
     ("sezam/vault/sync_client.py", "SyncClient._request", "oplock.network"),
+    ("sezam/vault/sync_org_recovery.py", "OrgRecoveryMixin.register_org_recovery", "oplock.exclusive"),
     ("sezam/vault/sync_pull.py", "PullMixin.pull", "@oplock.held"),
     ("sezam/vault/sync_push.py", "PushMixin.push", "@oplock.held"),
     ("sezam/vault/sync_rekey.py", "RekeyMixin.close_rekey_if_landed", "@oplock.held"),
@@ -372,6 +372,8 @@ LOCK_SITES = {
     # under one hold; test_review14_handover_m1.py.
     ("sezam/vault/team_migration.py", "hand_over_admin", "@oplock.held"),
     ("sezam/vault/team_log_local.py", "TeamLogMixin.append_team_log", "@oplock.held"),
+    ("sezam/vault/team_log_local.py", "TeamLogMixin._refresh_team_log", "@oplock.held"),  # R17-L 2dec4d5
+    ("sezam/vault/team_log_local.py", "TeamLogMixin._sync_team_log", "@oplock.held"),  # R17-L 2dec4d5
     ("sezam/vault/team_log_local.py", "TeamLogMixin.flush_team_log", "@oplock.held"),
     ("sezam/vault/team_log_local.py", "TeamLogMixin.queue_team_changes", "@oplock.held"),
     ("sezam/vault/trash.py", "restore_entry", "@oplock.writes"),  # R16-M1

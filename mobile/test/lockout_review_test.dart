@@ -38,9 +38,19 @@ void main() {
     });
 
     test('a backup of another account or keypair changes nothing', () {
-      expect(move, contains('!_bytesEqual(localEncryptionPk, backup.encryptionPublicKey)'));
-      expect(import, contains('_canonicalUserObjectIdPattern.hasMatch(localUserId)'));
-      expect(import, contains('? localUserId : await _secureStorage.read(key: _userObjectIdKey)'));
+      expect(
+        move,
+        contains('!_bytesEqual(localEncryptionPk, backup.encryptionPublicKey)'),
+      );
+      expect(
+        import,
+        contains('_canonicalUserObjectIdPattern.hasMatch(localUserId)'),
+      );
+      expect(import, contains('? localUserId'));
+      expect(
+        import,
+        contains(': await _secureStorage.read(key: _userObjectIdKey) ??'),
+      );
       expect(import, contains('userObjectId: userObjectId'));
       expect(
         move,
@@ -113,9 +123,7 @@ void main() {
       );
       expect(
         complete,
-        contains(
-          '_validatePendingKeypairMigration(migration, stored: true)',
-        ),
+        contains('_validatePendingKeypairMigration(migration, stored: true)'),
       );
     });
   });
@@ -157,7 +165,10 @@ void main() {
 
     test('each refusal tells the user what to do', () {
       expect(recoverFailureMessage(refused(401)), 'Wrong password');
-      expect(recoverFailureMessage(refused(429)), contains('too many failed attempts'));
+      expect(
+        recoverFailureMessage(refused(429)),
+        contains('too many failed attempts'),
+      );
       expect(recoverFailureMessage(refused(423)), contains('lift the lock'));
       expect(
         recoverFailureMessage(const SocketException('down')),
@@ -177,8 +188,9 @@ void main() {
       expect(screen, contains('result.recoveryLimited'));
       final auth = File(_auth).readAsStringSync();
       expect(
-        RegExp(r"_sync\.recover\([^;]*;[\s\S]{0,700}?catch \(_\) \{\s*return AuthResult\.failure\('Wrong password'\)")
-            .hasMatch(auth),
+        RegExp(
+          r"_sync\.recover\([^;]*;[\s\S]{0,700}?catch \(_\) \{\s*return AuthResult\.failure\('Wrong password'\)",
+        ).hasMatch(auth),
         isFalse,
       );
     });
