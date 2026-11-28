@@ -5,9 +5,10 @@
 //! Encryption itself stays with each platform's libsodium.
 
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
-use crate::teamlog::to_hex;
+use crate::teamlog::{from_hex, to_hex};
 
 /// XChaCha20-Poly1305 envelope (spec 2.6).
 pub const ENVELOPE_ALG: u8 = 0x01;
@@ -101,6 +102,89 @@ pub fn normalize_username(value: &str) -> String {
     nfc.trim_matches(username_edge).to_string()
 }
 
+const STATE_HASH_V2: &[u8] = b"sezam-state-v2";
+
+/// One sync object as the state hash sees it. `payload_hash` is SHA-256 of
+/// the payload, which each platform takes from its own bytes.
+pub struct StateObject {
+    pub id: [u8; 26],
+    pub version: u32,
+    pub payload_hash: [u8; 32],
+    pub parent_ref: Option<String>,
+    pub is_deleted: bool,
+}
+
+/// Spec 8.3 state_hash (R17-N1: the signed parent and deleted flag count):
+/// SHA-256("sezam-state-v2" || concat(sorted: id(26) || u32be(version) ||
+/// SHA-256(payload) || u8(is_deleted) || (SHA-256(parent_ref) or 32 zero
+/// bytes when it has none))). `legacy`: the formula of a checkpoint without
+/// state_v, no prefix and the first three fields only.
+pub fn state_hash(objects: &[StateObject], legacy: bool) -> [u8; 32] {
+    let mut elements: Vec<Vec<u8>> = objects
+        .iter()
+        .map(|o| {
+            let mut e = Vec::with_capacity(95);
+            e.extend_from_slice(&o.id);
+            e.extend_from_slice(&o.version.to_be_bytes());
+            e.extend_from_slice(&o.payload_hash);
+            if !legacy {
+                e.push(u8::from(o.is_deleted));
+                match o.parent_ref.as_deref() {
+                    Some(p) if !p.is_empty() => e.extend_from_slice(&Sha256::digest(p.as_bytes())),
+                    _ => e.extend_from_slice(&[0u8; 32]),
+                }
+            }
+            e
+        })
+        .collect();
+    elements.sort();
+    let mut hasher = Sha256::new();
+    if !legacy {
+        hasher.update(STATE_HASH_V2);
+    }
+    for e in &elements {
+        hasher.update(e);
+    }
+    hasher.finalize().into()
+}
+
+fn state_object(obj: &Value, legacy: bool) -> Result<StateObject, String> {
+    let map = obj.as_object().ok_or("an object is a JSON object")?;
+    let signed = ["parent_ref", "is_deleted"];
+    if let Some(k) = map.keys().find(|k| {
+        !matches!(k.as_str(), "id" | "version" | "payload_hash") && !signed.contains(&k.as_str())
+    }) {
+        return Err(format!("unknown field {k:?}"));
+    }
+    if !legacy {
+        if let Some(k) = signed.iter().find(|k| !map.contains_key(**k)) {
+            return Err(format!("{k} is missing"));
+        }
+    }
+    let payload_hash = str_arg(obj, "payload_hash")
+        .ok()
+        .and_then(from_hex)
+        .and_then(|h| <[u8; 32]>::try_from(h).ok())
+        .ok_or("payload_hash must be a hex SHA-256 digest")?;
+    let parent_ref = match obj.get("parent_ref") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(p)) => Some(p.clone()),
+        Some(_) => return Err("parent_ref must be a string or null".into()),
+    };
+    let is_deleted = match obj.get("is_deleted") {
+        None => false,
+        Some(v) => v.as_bool().ok_or("is_deleted must be true or false")?,
+    };
+    Ok(StateObject {
+        id: id_bytes(str_arg(obj, "id")?)?,
+        version: u32::try_from(u64_arg(obj, "version")?)
+            .map_err(|_| "version must fit a u32".to_string())?,
+        payload_hash,
+        parent_ref,
+        is_deleted,
+    })
+}
+
 fn u64_arg(input: &Value, name: &str) -> Result<u64, String> {
     input
         .get(name)
@@ -118,7 +202,7 @@ fn str_arg<'a>(input: &'a Value, name: &str) -> Result<&'a str, String> {
 pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
     if !matches!(
         op,
-        "aad" | "padded_size" | "split_for_push" | "normalize_username"
+        "aad" | "padded_size" | "split_for_push" | "normalize_username" | "state_hash"
     ) {
         return None;
     }
@@ -155,6 +239,20 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
                 json!(split_for_push(&sizes))
             }
             "normalize_username" => json!(normalize_username(str_arg(&input, "value")?)),
+            "state_hash" => {
+                let legacy = match input.get("legacy") {
+                    None => false,
+                    Some(v) => v.as_bool().ok_or("legacy must be true or false")?,
+                };
+                let objects = input
+                    .get("objects")
+                    .and_then(Value::as_array)
+                    .ok_or("objects must be a list")?
+                    .iter()
+                    .map(|o| state_object(o, legacy))
+                    .collect::<Result<Vec<_>, _>>()?;
+                json!(to_hex(&state_hash(&objects, legacy)))
+            }
             _ => unreachable!(),
         })
     })();

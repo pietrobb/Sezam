@@ -9056,47 +9056,21 @@ function writesNotToSeal(syncObjects, ownUserId) {
 }
 
 /**
- * W3: Compute state_hash for rollback protection (src/sezam/vault/sync_common.py
- * compute_state_hash). R17-N1: the signed parent and deleted flag count:
- * SHA-256("sezam-state-v2" || concat(sorted by id: id_bytes(26) || u32be(version) ||
- * SHA-256(payload) || u8(is_deleted) || (SHA-256(parent_ref) or 32 zero bytes))).
- * ``legacy``: the formula of a checkpoint without state_v (no prefix, the
- * first three fields only).
- * Covers every raw sync object, including tombstones and non-content objects.
+ * W3: state_hash for rollback protection: the core's formula
+ * (core/src/formats.rs state_hash, docs/CORE_UNIFICATION.md U6g). R17-N1:
+ * the signed parent and deleted flag count. ``legacy``: the formula of a
+ * checkpoint without state_v. Covers every raw sync object, including
+ * tombstones and non-content objects.
  */
 async function computeWebStateHash(syncObjects, _sodium, legacy = false) {
-    const encoder = new TextEncoder();
-    const objects = Object.values(syncObjects).sort((a, b) => {
-        const aId = String(a.id);
-        const bId = String(b.id);
-        return aId < bId ? -1 : (aId > bId ? 1 : 0);
-    });
-    const prefix = legacy ? new Uint8Array(0) : encoder.encode('sezam-state-v2');
-    const size = legacy ? 62 : 95;
-    const concat = new Uint8Array(prefix.length + objects.length * size);
-    concat.set(prefix, 0);
-
-    objects.forEach((obj, index) => {
-        const idBytes = encoder.encode(String(obj.id || ''));
-        if (idBytes.length !== 26) {
-            throw new Error(`Invalid sync object id for state hash: ${obj.id}`);
-        }
-        const version = Number(obj.version);
-        if (!Number.isSafeInteger(version) || version < 0 || version > 0xffffffff) {
-            throw new Error(`Invalid sync object version for state hash: ${obj.id}`);
-        }
-        const offset = prefix.length + index * size;
-        concat.set(idBytes, offset);
-        new DataView(concat.buffer).setUint32(offset + 26, version, false);
-        concat.set(_sodium.crypto_hash_sha256(base64ToBytes(obj.payload || '')), offset + 30);
-        if (legacy) return;
-        concat[offset + 62] = obj.is_deleted ? 1 : 0;
-        if (obj.parent_ref) {
-            concat.set(_sodium.crypto_hash_sha256(encoder.encode(String(obj.parent_ref))), offset + 63);
-        }
-    });
-
-    return bytesToHex(_sodium.crypto_hash_sha256(concat));
+    const objects = Object.values(syncObjects).map((obj) => ({
+        id: String(obj.id || ''),
+        version: Number(obj.version),
+        payload_hash: bytesToHex(_sodium.crypto_hash_sha256(base64ToBytes(obj.payload || ''))),
+        parent_ref: obj.parent_ref == null ? null : String(obj.parent_ref),
+        is_deleted: Boolean(obj.is_deleted),
+    }));
+    return globalThis.SezamSyncCore.call('state_hash', { objects, legacy });
 }
 
 // The successor key's certificate over an archived key: the core's message

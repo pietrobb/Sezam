@@ -2515,9 +2515,9 @@ class TestWebRollbackCheckpoint:
         )[0]
         assert "Object.values(syncObjects)" in body
         assert "base64ToBytes(obj.payload" in body
-        # R17-N1: 95 bytes per object (+ is_deleted, sha256(parent_ref)); 62 legacy.
-        assert "objects.length * size" in body
-        assert "legacy ? 62 : 95" in body
+        # The formula is the core's (U6g), pinned by the state_hash vectors.
+        assert "SezamSyncCore.call('state_hash'" in body
+        assert "parent_ref" in body and "is_deleted" in body
         assert "state.allNodes" not in body
         assert "state.allEntries" not in body
         assert "candidateSyncObjects[obj.id]" in src
@@ -2628,8 +2628,8 @@ class TestMobileRollbackCheckpoint:
         # (mobile/test/cross_client_vectors_test.dart).
         hashing = src.split("String computeStateHash(", 1)[1].split("\nclass ", 1)[0]
         assert "object['payload'] as Uint8List" in hashing
-        assert "crypto.sha256Bytes" in hashing
-        assert "legacy ? 62 : 95" in hashing
+        assert "crypto.sha256Hex" in hashing
+        assert "syncCore('state_hash'" in hashing
 
     def test_checkpoint_is_user_bound_aead_and_committed_atomically(self):
         sync_src = self._source("sync_service.dart")

@@ -157,6 +157,21 @@ void main() {
     );
   });
 
+  test('U6g: a version the u32 does not hold is refused, not cut', () {
+    final object = {
+      'id': '01JZZZ0000000000000000000A',
+      'payload': Uint8List(0),
+      'parent_ref': null,
+      'is_deleted': 0,
+    };
+    expect(
+      () => computeStateHash([
+        {...object, 'version': 0x100000000},
+      ], crypto),
+      throwsStateError,
+    );
+  });
+
   test('desktop keypair payload expands to the 96-byte account layout', () {
     final v = vectors['keypair_wrap'] as Map<String, dynamic>;
     final envelopes = (v['envelopes'] as List).cast<Map<String, dynamic>>();

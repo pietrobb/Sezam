@@ -1,5 +1,5 @@
 {
- "about": "Formats without secrets in the core (docs/CORE_UNIFICATION.md U6): normalize_username and split_for_push answers of the desktop's sezam.usernames / sync_limits before they moved (Unicode 14.0.0). split_for_push takes the bytes each object takes in the request. aad and padded_size: cross_client.json and padding.json.",
+ "about": "Formats without secrets in the core (docs/CORE_UNIFICATION.md U6): normalize_username and split_for_push answers of the desktop's sezam.usernames / sync_limits before they moved (Unicode 14.0.0). split_for_push takes the bytes each object takes in the request. aad and padded_size: cross_client.json and padding.json. state_hash: the desktop's compute_state_hash / legacy_state_hash answers before they moved, inputs with SHA-256 of the payload.",
  "normalize_username": [
   [
    "alice",
@@ -5523,6 +5523,345 @@
    "dek_id": "A",
    "object_id": "B",
    "version": 1
+  }
+ ],
+ "state_hash": [
+  {
+   "objects": [],
+   "state_hash": "de14f705eb5f83fd8f1bcc47cb797b55f9092653242c480830aecd305224133f",
+   "legacy": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "objects": [
+    {
+     "id": "01R8C258FDS1XZXRZCS5ZE1HTY",
+     "version": 7,
+     "payload_hash": "b1adcd1b7858f676e9628fcc5f12fb2da97877289a7819cc0ea7dd5f9fd3a72b",
+     "parent_ref": "",
+     "is_deleted": true
+    }
+   ],
+   "state_hash": "c9dc3c3c2193612bec7bab60ffd96db6470dce084ef0a1c4b2b2360b0efdcbc4",
+   "legacy": "b49aae28182f9e59e5742243fb653e75269cc6a842c59ff4a395d1b67caaf811"
+  },
+  {
+   "objects": [
+    {
+     "id": "01BK8H1WJGXJJSZW5ZWN86QXQY",
+     "version": 7,
+     "payload_hash": "d0b65f78aa0ebd37739d342a2c13e2ca778d7410af08cdd5167ceb017862831b",
+     "parent_ref": "",
+     "is_deleted": false
+    },
+    {
+     "id": "010JN7H00XSC0083NNERDZXJSV",
+     "version": 1,
+     "payload_hash": "8fbcea55ff0d8174196b570fc49f80150af063ae320aadccfeacab44e0b831b3",
+     "parent_ref": "folder-\u00e9",
+     "is_deleted": true
+    }
+   ],
+   "state_hash": "1ee64bbbc42cb31a91592e8d3a01aca9a1131fe797c08d02804b5fb8055864a7",
+   "legacy": "ecc1f6575b8e0977be429d867b0cfc49ebe8d2ea9a8fe757887234282457c222"
+  },
+  {
+   "objects": [
+    {
+     "id": "01MP977V6D2B8RBJ7M02",
+     "version": 7,
+     "payload_hash": "528a84ce6b18eb7d0e54be01379122a76dfdca14c97f02e0424aabf0220d9f51",
+     "parent_ref": null,
+     "is_deleted": false
+    },
+    {
+     "id": "014BXCQ3FFEKPFAR4PBP6SD3T4",
+     "version": 1,
+     "payload_hash": "4f362f9093bb8e7012f466224ff1237c0746d8c8f660b16699f5036ccba9c64a",
+     "parent_ref": "",
+     "is_deleted": true
+    },
+    {
+     "id": "010G9E9K441ZJYRAWMDVYQY09G",
+     "version": 0,
+     "payload_hash": "7669755ecb3d2561b4bc9c302475daa1c6d9fe0f64f67c0a8a8610480981bf49",
+     "parent_ref": "folder-\u00e9",
+     "is_deleted": true
+    },
+    {
+     "id": "01T1XQKXEH66EKB4GCVVV975F9",
+     "version": 1,
+     "payload_hash": "0bfe935e70c321c7ca3afc75ce0d0ca2f98b5422e008bb31c00c6d7f1f1c0ad6",
+     "parent_ref": "",
+     "is_deleted": true
+    },
+    {
+     "id": "01Q3K5V6JHV8PKX3JFR5Y6FZ51",
+     "version": 0,
+     "payload_hash": "fee0b9bdf0775ed8287b834154d8e318d4f78173b05aa3390dd30596bd0a3891",
+     "parent_ref": null,
+     "is_deleted": false
+    }
+   ],
+   "state_hash": "fc37edca7858f28a1b43004b8676aa8fbe421e62b08f32565ddb110f9ae34491",
+   "legacy": "d502ec0869dee0abfdbc3acf791c6520687b4302ed75b02a12fa71b7647f08f9"
+  },
+  {
+   "objects": [
+    {
+     "id": "01HZZCKJKYSK9HHGR148G2K7J7",
+     "version": 1,
+     "payload_hash": "9396e85e312d3343e39302d36da25f239d392ef2b8b208913211158642745fca",
+     "parent_ref": "0180STDMZ6A53JP29DVCEMVVCS",
+     "is_deleted": false
+    },
+    {
+     "id": "01SRS7QAB3JMKDS3EP9M5VKE",
+     "version": 1,
+     "payload_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "parent_ref": "01V4FYCEGX7RHGP4DTHE8P9426",
+     "is_deleted": false
+    },
+    {
+     "id": "01NP68RRBQARC9CJ4SEACX0EBR",
+     "version": 0,
+     "payload_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "parent_ref": "010SEE9F9ZTG5K87D5F59PKXTB",
+     "is_deleted": false
+    },
+    {
+     "id": "01FHS1NB59F2PXPXGS9V05ZDNH",
+     "version": 1,
+     "payload_hash": "c4a48a066e61bcbd637347e977983145c933866fc1d8b777b8dfa68b3ca935b5",
+     "parent_ref": "",
+     "is_deleted": false
+    },
+    {
+     "id": "01XCNGFMNCJJP1P40CSASZGE5D",
+     "version": 4294967295,
+     "payload_hash": "e4ff5e7d7a7f08e9800a3e25cb774533cb20040df30b6ba10f956f9acd0eb3f7",
+     "parent_ref": "01YNRCB116XQ8RJNZE31TZRZXH",
+     "is_deleted": false
+    },
+    {
+     "id": "01BRVNZ84V6YB6S1PG1EWG9JXP",
+     "version": 1,
+     "payload_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "parent_ref": "folder-\u00e9",
+     "is_deleted": true
+    },
+    {
+     "id": "01X7K2WAPME1AGB1RF6",
+     "version": 0,
+     "payload_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "parent_ref": "01AM0Z3RGH25SNRH2KVA6AEJGR",
+     "is_deleted": false
+    },
+    {
+     "id": "01QBBK6JDD7W14XC9GNXKMWKK9",
+     "version": 7,
+     "payload_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "parent_ref": "folder-\u00e9",
+     "is_deleted": false
+    },
+    {
+     "id": "01YR3KFQFE0T8YN86XQB0PCZ7B",
+     "version": 0,
+     "payload_hash": "6ca02721f54bb7d7ce7d1ff89877cf6ceedefa7e813ff5ef72f1bd9d86eed4e0",
+     "parent_ref": null,
+     "is_deleted": true
+    },
+    {
+     "id": "01TCE7GECA9CS80RB0KF1780P7",
+     "version": 1,
+     "payload_hash": "fd9528b920d6d3956e9e16114523e1889c751e8c1e040182116d4c906b43f558",
+     "parent_ref": null,
+     "is_deleted": true
+    },
+    {
+     "id": "0145DCMJY95QGHFZMAJHPNC85P",
+     "version": 1,
+     "payload_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "parent_ref": null,
+     "is_deleted": false
+    },
+    {
+     "id": "01A1N8W",
+     "version": 1,
+     "payload_hash": "d3e597257d17ec62d45a1ff3d73aab6583cd895a98a845881f2f6e9c5bd7f34c",
+     "parent_ref": null,
+     "is_deleted": false
+    },
+    {
+     "id": "01JSM8WK8M8272DHW8J",
+     "version": 7,
+     "payload_hash": "ffb98f281e391f38c1b4221a3b26767d57e0ccdc13b25368885cacea72938df2",
+     "parent_ref": "",
+     "is_deleted": false
+    },
+    {
+     "id": "015W71",
+     "version": 4294967295,
+     "payload_hash": "38818d90736c4d6744a8ac428862c42af68b83c1337aee9405b8ce397a68648a",
+     "parent_ref": "",
+     "is_deleted": true
+    },
+    {
+     "id": "0180930V9WDYSZ3GSJTQXB4KDG",
+     "version": 7,
+     "payload_hash": "6625efbcb0178a9b5abf531d8878aa2ba1274116c8b907455a50cbe11775a9fc",
+     "parent_ref": "",
+     "is_deleted": false
+    },
+    {
+     "id": "01628BWYM4G68E5BS9E33H3AQP",
+     "version": 4294967295,
+     "payload_hash": "88ffe9453dfb14b8ad4fd13bcba4b2752f08aab707e24466b2d1eb7cb838d43c",
+     "parent_ref": "",
+     "is_deleted": true
+    },
+    {
+     "id": "01F9YDVME8KKHFKBJ08X1HS9GT",
+     "version": 7,
+     "payload_hash": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3",
+     "parent_ref": "01PNC9T7DZ6AF8SJ2N3ZFNJHER",
+     "is_deleted": false
+    }
+   ],
+   "state_hash": "c23d5830362c29f38f9a90fe66abf73cc1aa90c8102ca798f00f3a8bef824961",
+   "legacy": "3a47436c5e9e39b9301f7938ac6e606a2db5acc9ef545034dbbaf1e5d1c33f0d"
+  }
+ ],
+ "state_hash_refused": [
+  {
+   "objects": [
+    {
+     "id": "01JZZZ0000000000000000000A",
+     "version": 4294967296,
+     "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "parent_ref": null,
+     "is_deleted": false
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "01JZZZ0000000000000000000A",
+     "version": -1,
+     "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "parent_ref": null,
+     "is_deleted": false
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "AAAAAAAAAAAAAAAAAAAAAAAAAAA",
+     "version": 1,
+     "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "parent_ref": null,
+     "is_deleted": false
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "A\u0000",
+     "version": 1,
+     "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "parent_ref": null,
+     "is_deleted": false
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "\u00e9",
+     "version": 1,
+     "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "parent_ref": null,
+     "is_deleted": false
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "01JZZZ0000000000000000000A",
+     "version": 1,
+     "payload_hash": "00000000000000000000000000000000000000000000000000000000000000",
+     "parent_ref": null,
+     "is_deleted": false
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "01JZZZ0000000000000000000A",
+     "version": 1,
+     "payload_hash": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+     "parent_ref": null,
+     "is_deleted": false
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "01JZZZ0000000000000000000A",
+     "version": 1,
+     "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "parent_ref": null,
+     "is_deleted": 1
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "01JZZZ0000000000000000000A",
+     "version": 1,
+     "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "parent_ref": 5,
+     "is_deleted": false
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "01JZZZ0000000000000000000A",
+     "version": 1,
+     "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "parent_ref": null,
+     "is_deleted": false,
+     "extra": 1
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "01JZZZ0000000000000000000A",
+     "version": 1,
+     "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "is_deleted": false
+    }
+   ]
+  },
+  {
+   "objects": [
+    {
+     "id": "01JZZZ0000000000000000000A",
+     "version": 1,
+     "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "parent_ref": null
+    }
+   ]
   }
  ]
 }

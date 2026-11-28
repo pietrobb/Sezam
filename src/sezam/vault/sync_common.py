@@ -5,12 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import struct
 from typing import Optional
 
 from nacl.signing import VerifyKey
 
-from ..models import ulid_to_bytes
 from . import outbox, pending_states, sync_core
 
 # Kept under the original module name (log filters, review 6 R6-H split).
@@ -320,38 +318,27 @@ def key_rotation_message(
 
 # A checkpoint's "state_v": the formula its state_hash was made with.
 STATE_HASH_VERSION = 2
-_STATE_HASH_V2 = b"sezam-state-v2"
+
+
+def _state_hash(objects, legacy: bool) -> str:
+    return sync_core.call("state_hash", legacy=legacy, objects=[
+        {"id": object_id, "version": version, "payload_hash": hashlib.sha256(payload).hexdigest(),
+         "parent_ref": signed[0] if signed else None, "is_deleted": bool(signed[1]) if signed else False}
+        for object_id, version, payload, *signed in objects
+    ])
 
 
 def compute_state_hash(objects) -> str:
     """Spec 8.3 state_hash over (object_id, version, payload, parent_ref,
-    is_deleted) of every sync object.
-
-    R17-N1: the parent and the deleted flag are signed and count, so a held
-    version served again moved or deleted is another state.
-    SHA-256("sezam-state-v2" || concat(sorted by object_id: id(26) ||
-    u32be(version) || SHA-256(payload) || u8(is_deleted) ||
-    (SHA-256(parent_ref) or 32 zero bytes when it has none))).
-    Web and mobile compute the same over the raw server objects
-    (tests/vectors/cross_client.json state_hash_v2).
-    """
-    elements = sorted(
-        ulid_to_bytes(object_id) + struct.pack(">I", version) + hashlib.sha256(payload).digest()
-        + (b"\x01" if is_deleted else b"\x00")
-        + (hashlib.sha256(parent_ref.encode()).digest() if parent_ref else bytes(32))
-        for object_id, version, payload, parent_ref, is_deleted in objects
-    )
-    return hashlib.sha256(_STATE_HASH_V2 + b"".join(elements)).hexdigest()
+    is_deleted) of every sync object: the core's formula
+    (core/src/formats.rs state_hash, docs/CORE_UNIFICATION.md U6g).
+    R17-N1: the parent and the deleted flag are signed and count."""
+    return _state_hash(objects, False)
 
 
 def legacy_state_hash(objects) -> str:
-    """The state_hash of a checkpoint without "state_v" (before R17-N1):
-    SHA-256(concat(sorted by object_id: id(26) || u32be(version) || SHA-256(payload)))."""
-    elements = sorted(
-        ulid_to_bytes(object_id) + struct.pack(">I", version) + hashlib.sha256(payload).digest()
-        for object_id, version, payload, *_signed in objects
-    )
-    return hashlib.sha256(b"".join(elements)).hexdigest()
+    """The state_hash of a checkpoint without "state_v" (before R17-N1)."""
+    return _state_hash(objects, True)
 
 
 def pull_warnings(result: dict) -> list[str]:

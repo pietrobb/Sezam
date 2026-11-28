@@ -187,53 +187,29 @@ String verifiedOwnerId(PullObject obj) =>
 const stateHashVersion = 2;
 
 /// Spec 8.3 state_hash over raw sync objects ({id, version, payload,
-/// parent_ref, is_deleted}), as src/sezam/vault/sync_common.py
-/// compute_state_hash. R17-N1: the signed parent and deleted flag count:
-/// SHA-256("sezam-state-v2" || concat(sorted by id: id(26) || u32be(version)
-/// || SHA-256(payload) || u8(is_deleted) || (SHA-256(parent_ref) or 32 zero
-/// bytes))). [legacy]: a checkpoint without state_v (no prefix, the first
-/// three fields only). Desktop and web compute the same
-/// (tests/vectors/cross_client.json).
+/// parent_ref, is_deleted}): the core's formula (core/src/formats.rs
+/// state_hash, docs/CORE_UNIFICATION.md U6g). R17-N1: the signed parent and
+/// deleted flag count. [legacy]: a checkpoint without state_v.
 String computeStateHash(
   Iterable<Map<String, dynamic>> objects,
   CryptoService crypto, {
   bool legacy = false,
 }) {
-  final size = legacy ? 62 : 95;
-  final elements = <Uint8List>[];
-  for (final object in objects) {
-    final id = object['id'] as String;
-    final idBytes = CryptoService.idBytes26(id);
-    final versionBytes = ByteData(4)
-      ..setUint32(0, object['version'] as int, Endian.big);
-    final payloadHash = crypto.sha256Bytes(object['payload'] as Uint8List);
-    final element = Uint8List(size)
-      ..setRange(0, 26, idBytes)
-      ..setRange(26, 30, versionBytes.buffer.asUint8List())
-      ..setRange(30, 62, payloadHash);
-    if (!legacy) {
-      final deleted = object['is_deleted'];
-      element[62] = deleted == true || (deleted is int && deleted != 0) ? 1 : 0;
-      final parent = object['parent_ref'];
-      if (parent is String && parent.isNotEmpty) {
-        element.setRange(63, 95, crypto.sha256Bytes(utf8.encode(parent)));
-      }
-    }
-    elements.add(element);
-  }
-  elements.sort((left, right) {
-    for (var i = 0; i < 26; i++) {
-      final comparison = left[i].compareTo(right[i]);
-      if (comparison != 0) return comparison;
-    }
-    return 0;
-  });
-  final canonical = BytesBuilder(copy: false);
-  if (!legacy) canonical.add(utf8.encode('sezam-state-v2'));
-  for (final element in elements) {
-    canonical.add(element);
-  }
-  return crypto.sha256Hex(canonical.toBytes());
+  bool deleted(Object? d) => d == true || (d is int && d != 0);
+  return syncCore('state_hash', {
+        'legacy': legacy,
+        'objects': [
+          for (final object in objects)
+            {
+              'id': object['id'] as String,
+              'version': object['version'] as int,
+              'payload_hash': crypto.sha256Hex(object['payload'] as Uint8List),
+              'parent_ref': object['parent_ref'],
+              'is_deleted': deleted(object['is_deleted']),
+            },
+        ],
+      })
+      as String;
 }
 
 /// The state hash fields of a vault_objects row or a server copy.

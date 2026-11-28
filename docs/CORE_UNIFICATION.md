@@ -218,11 +218,22 @@ chránila len schéma). Vektory v `tests/vectors/signed_messages.json`
 (`ai_policy` 30 + 7 odmietnutí, `ai_anchor` 16 + 7, `team_log_sig` 3 + 1, z
 desktopu pred zmenou a rovné serverovej kópii).
 
+State hash (U6g, `core/src/formats.rs state_hash`): vzorec v2 aj legacy
+(prefix `sezam-state-v2`, element 95/62 B, triedenie, SHA-256 rodiča, prázdny
+rodič = 32 nulových bajtov). Platforma posiela `payload_hash` (SHA-256 svojich
+bajtov payloadu, ako pri voucheroch), id, verziu, `parent_ref` a `is_deleted`
+(bool; vo v2 povinné). Desktop (`sync_common.compute_state_hash`,
+`legacy_state_hash`), web (`computeWebStateHash`) a mobil (`computeStateHash`)
+sú tenké obaly. Oprava: mobil verziu nad u32 ticho orezal (`setUint32`), takže
+verzia 2**32 dala hash verzie 0; jadro ju odmietne ako desktop. Zjednotené: web
+pripúšťal len id presne 26 bajtov, teraz ako desktop a mobil kratšie doplnené
+NUL. Vektory: `cross_client.json` (`state_hash`, `state_hash_v2`) na všetkých
+stranách a `formats.json` (`state_hash` 5 prípadov + `state_hash_refused` 12, z
+desktopu pred zmenou) v `core/tests/formats_vectors.rs`.
+
 Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
-`web/static/js`, `mobile/lib`, po U6f): v jadre treba ešte `sezam-state-v2`
-(`state_hash`, tri kópie: `sync_common.compute_state_hash`/`legacy_state_hash`,
-app.js, `sync_service.dart computeStateHash`) a `sezam-rekey-archive/removed`
-(`removal_archive_id`). Zámerne mimo jadra, s tajomstvom (pravidlo 3):
+`web/static/js`, `mobile/lib`, po U6g): v jadre treba ešte
+`sezam-rekey-archive/removed` (`removal_archive_id`). Zámerne mimo jadra, s tajomstvom (pravidlo 3):
 `sezam-pre-anchor-kek-v1` (SHA-256 nad KEK), `sezam-org-recovery-v1/v2` (HKDF
 soľ a AAD nad tajomstvom obnovy). Len na serveri, jedna kópia (nie duplikát
 medzi stranami): `sezam-auth-challenge-v1` a `sezam-recovery-unlock-v1` (HMAC
@@ -233,6 +244,9 @@ súborov a vlákien.
 Známe zlyhanie mimo vetvy U: `tests/test_review13_handover_rekey.py::
 test_the_new_admin_rekeys_what_the_former_admin_held` (409 „target_user_id is
 admin only“) padá od R17 commitu e55ddb8 (7f9a191 zelené); opraviť pred U9.
+Tiež `tests/test_review6_sync_client_split.py::test_no_sync_module_grows_back_past_the_limit`:
+`sync_client.py` má 1319 riadkov (limit 1300) od R17 commitu 35626b4; pred U9
+zmenšiť (jadro z neho môže ubrať pri U7).
 
 Rozpracovaný stav #480 je odložený v `git stash` na `r17-l`
 („R17 #480 WIP before unification pause“) a v `%TEMP%\r17_480_wip.patch`.
