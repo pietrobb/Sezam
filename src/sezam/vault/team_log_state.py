@@ -13,7 +13,7 @@ import logging
 import re
 from typing import Iterator, Optional
 from .. import teamlog
-from . import outbox
+from . import outbox, sync_core
 from ..crypto.keys import compute_fingerprint
 from .sync_common import CONFIRMED_MEMBER_KEYS_META, TEAM_LOG_REFUSED, server_error
 
@@ -558,16 +558,10 @@ def import_account_anchor(db, keypair) -> None:
 def log_admins(db, state: teamlog.TeamState) -> set[str]:
     """Accounts the log ever made admin that are still active members: what
     they wrote outside team folders while admin stays valid after a handover
-    (review 1141a20); an account the server calls admin is not one."""
-    ever: set[str] = set()
-    for row in db.fetchall("SELECT body FROM team_log ORDER BY seq"):
-        body = teamlog.parse_body(row["body"])
-        data = body["data"]
-        if body["type"] == "genesis":
-            ever.add(data["user_id"])
-        elif body["type"] in ("member.add", "member.role") and data.get("role") == "admin":
-            ever.add(data["user_id"])
-    return {uid for uid in ever if uid in state.members and state.members[uid].active}
+    (review 1141a20); an account the server calls admin is not one. The
+    core's rule (core/src/authority.rs log_admins)."""
+    bodies = [row["body"] for row in db.fetchall("SELECT body FROM team_log ORDER BY seq")]
+    return set(sync_core.call("authority_log_admins", bodies=bodies, **teamlog.core_argument(state)))
 
 
 def founder_key_lineage(db) -> tuple[str, set[tuple[str, str]]]:

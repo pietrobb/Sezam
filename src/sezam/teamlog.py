@@ -184,6 +184,15 @@ def _ask(state: TeamState, name: str, *args: Any) -> Any:
     return _ask_many(state, [(name, list(args))])[0]
 
 
+def core_argument(state: TeamState) -> dict:
+    """The team as another core operation takes it: by handle when the core
+    gave the state, whole otherwise (as _ask_many)."""
+    if "_core" not in state.__dict__:
+        return {"team": state.to_core()}
+    _ask_many(state, [])
+    return {"team_handle": state.__dict__["_handle"]}
+
+
 # ── Records ───────────────────────────────────────────────────────────
 
 def canonical(value, seq: Optional[int] = None) -> str:

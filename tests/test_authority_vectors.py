@@ -57,3 +57,46 @@ def test_the_web_gives_the_vectors_answers():
         assert got["by_team_log"] == case["by_team_log"], case["name"]
         assert got["team_admins"] == case["team_admins"], case["name"]
     assert len(result) == len(VECTORS["cases"])
+
+
+class _LogRows:
+    def __init__(self, records: list[dict]):
+        self.rows = [{"body": r["body"]} for r in records]
+
+    def fetchall(self, _sql, _params=()):
+        return self.rows
+
+
+def test_the_desktop_names_the_vectors_log_admins():
+    from sezam import teamlog
+    from sezam.vault.team_log_state import log_admins
+
+    records = _records()
+    checked = 0
+    for case in VECTORS["cases"]:
+        if case["team"] is None or case["team_admins"] is None:
+            continue
+        team = teamlog.TeamState.from_core(VECTORS["teams"][case["team"]])
+        assert sorted(log_admins(_LogRows(records[case["team"]]), team)) == case["team_admins"], case["name"]
+        checked += 1
+    assert checked
+
+
+def test_the_server_reads_the_vectors_header_key():
+    from server.app.routers.sync import _sealing_dek_id
+
+    checked = 0
+    for case in VECTORS["cases"]:
+        for o in case["objects"]:
+            head = bytes.fromhex(o["head"])
+            if o["object_type"] == "node":
+                payload, entry = head + bytes(16), False
+            elif o["object_type"] == "entry" and head[:2] != b"\x01\x01":
+                # The server only takes an item as u32be(len(meta)) + meta.
+                meta = head[4:] + bytes(16)
+                payload, entry = len(meta).to_bytes(4, "big") + meta, True
+            else:
+                continue
+            assert _sealing_dek_id(payload, entry) == case["dek_ids"][f"{o['id']}/{o['object_type']}"], case["name"]
+            checked += 1
+    assert checked

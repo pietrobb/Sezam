@@ -20,6 +20,7 @@ import weakref
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
 
+import sezam_sync_core
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..auth import (
@@ -1853,9 +1854,11 @@ async def _commit_token(cur, seq: int) -> Optional[str]:
 
 
 def _sealing_dek_id(payload: bytes, entry: bool = False) -> Optional[str]:
-    """The DEK id in a sealed blob's header (alg, schema, kind, 26-byte id, nonce).
+    """The DEK id in a sealed blob's header, by the clients' rule
+    (core/src/authority.rs sealing_dek_id; docs/CORE_UNIFICATION.md U5).
 
     An entry's payload is u32be(len(meta)) + meta + data: its meta's header.
+    A blob too short to carry its MAC names no key.
     """
     if entry:
         if len(payload) < 4:
@@ -1863,10 +1866,10 @@ def _sealing_dek_id(payload: bytes, entry: bool = False) -> Optional[str]:
         payload = payload[4:4 + int.from_bytes(payload[:4], "big")]
     if len(payload) < 53 + 16:
         return None
-    try:
-        return payload[3:29].decode("ascii")
-    except UnicodeDecodeError:
-        return None
+    out = json.loads(sezam_sync_core.call(
+        "authority_sealing_dek_id", json.dumps({"object_type": "node", "head": payload[:53].hex()})
+    ))
+    return out.get("ok")
 
 
 async def _team_log_refusal(
