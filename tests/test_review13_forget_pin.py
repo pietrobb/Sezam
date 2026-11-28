@@ -134,7 +134,7 @@ def test_after_forgetting_a_server_without_log_is_a_mismatch_until_the_admin_fou
         with pytest.raises(TeamLogMismatch, match="forget-pin"):
             device.pull()
         forget_team_log_pin(vault, old, device)
-        with pytest.raises(TeamLogMismatch, match="left an earlier one"):
+        with pytest.raises(TeamLogMismatch, match="left an earlier team log"):
             device.pull()
 
     team_migration.found_team_log(admin, client, confirm_fingerprint=lambda _u, _fp: True)

@@ -9,8 +9,9 @@ holds (nothing, a left log, a log, a log and its confirmed genesis, only a
 confirmed genesis) and what the server serves (nothing, the same, more, less, a
 fork, another genesis, short of its head, a forged record, two admins), with the
 answer of an oracle that knows no client code (tests/team_log_mismatch_vectors.py).
-Each client follows the server's log through its own code and must give every
-answer: the desktop (TeamLogMixin._sync_team_log) and the page (syncWebTeamLog)
+Each client follows the server's log through the core's follow steps (U7b,
+core/src/teamlog/follow.rs; cargo test --test team_log_follow_vectors) and must
+give every answer: the desktop (TeamLogMixin._sync_team_log) and the page (syncWebTeamLog)
 here, the phone (syncTeamLog) in mobile/test/team_log_mismatch_vectors_test.dart.
 
 What a user sees decides "offered": the desktop's message names 'sezam team-log
@@ -160,25 +161,18 @@ def test_the_page_offers_to_forget_exactly_where_the_log_is_lost():
     assert {n: _seen(g) for n, g in got.items()} == {c["name"]: _answer(c) for c in CASES}
 
 
-def _js_table() -> dict:
-    body = _function("teamLogMismatch")
-    literal = body[body.index("Object.freeze({") + len("Object.freeze({"):body.index("})")]
-    return {k: v == "true" for k, v in re.findall(r"(\w+):\s*(true|false)", literal)}
-
-
-def _dart_table() -> dict:
-    source = (ROOT / "mobile/lib/services/team_log_client.dart").read_text(encoding="utf-8")
-    literal = source[source.index("const teamLogMismatchForget = <String, bool>{"):]
-    literal = literal[:literal.index("};")]
-    return {k: v == "true" for k, v in re.findall(r"'(\w+)':\s*(true|false)", literal)}
-
-
-def test_every_client_carries_the_one_list():
+def test_every_client_takes_the_one_list_from_the_core():
+    """U7b (docs/CORE_UNIFICATION.md): the list is the core's
+    (team_log_mismatch_causes); no client spells it out again."""
     from sezam.vault.team_log_local import MISMATCH_CAUSES
 
     assert MISMATCH_CAUSES == VECTORS["causes"]
-    assert _js_table() == VECTORS["causes"]
-    assert _dart_table() == VECTORS["causes"]
+    for path, uses in (("web/static/js/app.js", "call('team_log_mismatch_causes'"),
+                       ("mobile/lib/services/team_log_client.dart", "syncCore('team_log_mismatch_causes'"),
+                       ("src/sezam/vault/team_log_state.py", 'sync_core.call("team_log_mismatch_causes")')):
+        source = (ROOT / path).read_text(encoding="utf-8")
+        assert uses in source, path
+        assert not re.search(r"\bleft_earlier_log'?\s*:\s*(true|false|False|True)", source), path
     # The offer follows from the cause, as the oracle names it.
     for case in CASES:
         expect = case["expect"]

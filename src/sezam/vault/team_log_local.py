@@ -17,7 +17,7 @@ import logging
 from typing import Optional
 
 from .. import teamlog
-from . import oplock, outbox, pending_states, team_log_fork, team_log_withdrawn
+from . import oplock, outbox, pending_states, sync_core, team_log_fork, team_log_withdrawn
 from ..models import new_ulid
 from .sync_common import (
     ATOMIC_BATCH_CONFLICT,
@@ -388,32 +388,20 @@ class TeamLogMixin:
             restored = self._restore_server_team_log(local, server_head)
             if restored is not False:
                 server_head = restored
-        if confirmed is not None and (server_head is None or server_head.get("genesis_hash") != confirmed):
-            self._refuse_as_served(server_head, confirmed, TeamLogMismatch(
-                "The server's team log differs from the independently confirmed genesis.", "confirmed_genesis"
-            ))
-        if server_head is None:
-            if local is not None or held is not None or pinned:
-                self._refuse_as_served(None, pinned or (local.genesis_hash if local is not None else None),
-                                       TeamLogMismatch(
-                    "The server no longer has the team log this device holds "
-                    "(restored from a backup, or another server).", "log_gone"
-                ))
-            if forgotten_genesis(self._db) and not self._founding_team_log:
-                # Review 8bc70f7 M2: a device that left a log does not fall
-                # back to the rules from before any log because a server sends none.
-                raise TeamLogMismatch(
-                    "The server has no team log, and this device left an earlier one: it waits for "
-                    "the team's new log ('sezam team-log found' on the admin's device) and its confirmed founder.",
-                    "left_earlier_log",
-                )
+        pins = [{"seq": held[0], "hashes": sorted(held[1])}] if held is not None else []
+        plan = sync_core.call(
+            "team_log_follow_plan", head=server_head, local=_tip(local), pins=pins, pinned_genesis=pinned,
+            confirmed_genesis=confirmed, left_earlier_log=bool(forgotten_genesis(self._db)) and not self._founding_team_log,
+        )
+        if "check_served" in plan:
+            self._refuse_as_served(server_head, plan["check_served"])
+        if "none" in plan:
             return None
-        if pinned and server_head.get("genesis_hash") != pinned:
-            self._refuse_as_served(server_head, pinned, TeamLogMismatch(
-                "The server's team log starts with another genesis than this device pinned.", "other_genesis"
-            ))
         try:
-            return self._catch_up_team_log(local, held, pinned, server_head)
+            _raise_refused(plan)  # went back, or differs at a head seen: maybe a fork to follow
+            if "same" in plan:
+                return local
+            return self._catch_up_team_log(local, pins, server_head, plan["fetch"])
         except TeamLogMismatch as exc:
             if local is None or exc.cause not in ("went_back", "differs", "does_not_replay"):
                 raise
@@ -425,25 +413,19 @@ class TeamLogMixin:
                 raise
             return adopted
 
-    def _catch_up_team_log(self, local, held, pinned, server_head: dict) -> teamlog.TeamState:
-        local_seq = local.head_seq if local is not None else held[0] if held is not None else -1
-        if server_head.get("seq", -1) < local_seq:
-            raise TeamLogMismatch(
-                f"The server's team log went back (head {server_head.get('seq')} < {local_seq} seen here).", "went_back"
-            )
-        if server_head.get("seq") == local_seq:
-            if server_head.get("hash") not in ({local.head_hash} if local is not None else held[1]):
-                raise TeamLogMismatch(f"The server's team log differs at record {local_seq}.", "differs")
-            if local is not None:
-                return local
+    def _catch_up_team_log(self, local, pins: list, server_head: dict, fetch: dict) -> teamlog.TeamState:
+        """Fetch the records the core's plan names and store them once the
+        core accepts what they reach (core/src/teamlog/follow.rs)."""
+        local_seq, upto = fetch["since"], fetch["upto"]
         state = local
         fetched: list[dict] = []
+        error = None
         for _ in range(FETCH_PAGES):
             since = state.head_seq if state is not None else -1
             resp = self._request("GET", f"/api/team-log?since={since}", auth=True)
             # Appended after this pull's head: the next pull takes it (as the
             # page and the phone do, goal #440).
-            records = (resp.get("records") or [])[:max(server_head["seq"] - since, 0)]
+            records = (resp.get("records") or [])[:max(upto - since, 0)]
             if not records:
                 break
             try:
@@ -451,67 +433,45 @@ class TeamLogMixin:
                 # at an earlier seq is refused here.
                 state = teamlog.replay(records, state)
             except teamlog.TeamLogError as exc:
-                raise TeamLogMismatch(f"The server's team log does not replay: {exc}", "does_not_replay") from exc
-            fetched.extend(records)
-            if state.head_seq >= server_head["seq"]:
+                error = str(exc)
                 break
-        if held is not None and len(fetched) > held[0] and teamlog.record_hash(fetched[held[0]]) not in held[1]:
-            raise TeamLogMismatch(f"The server's team log differs at record {held[0]}.", "differs")
-        gone = team_log_withdrawn.withdrawn(self._db)
-        for record in fetched:
-            if teamlog.record_hash(record) in gone:
-                # R16-H1: the server kept a record it refused, or one this
-                # device went on without; it is not this account's will.
-                raise TeamLogMismatch(
-                    f"The server's team log holds record {teamlog.parse_body(record['body'])['seq']}, "
-                    "which this device withdrew (the server refused it, or this device went on without it).",
-                    "differs",
-                )
-        if state is None or state.head_seq != server_head["seq"] or state.head_hash != server_head.get("hash"):
-            raise TeamLogMismatch("The server's team log does not reach the head it announced.", "short_of_head")
-        if pinned is None and state.genesis_hash != server_head.get("genesis_hash"):
-            raise TeamLogMismatch("The server's team log genesis differs from the head it announced.", "head_genesis")
-        refusal = teamlog.admin_policy_refusal(state)
-        if refusal:
-            # TL7: the server refuses such an append; a head with it is not followed.
-            raise TeamLogMismatch(f"The server's team log is refused at its head: {refusal}.", "refused_at_head")
+            fetched.extend(records)
+            if state.head_seq >= upto:
+                break
+        _raise_refused(sync_core.call(
+            "team_log_follow_caught_up", head=server_head, since=local_seq, pins=pins,
+            fetched=[teamlog.record_hash(r) for r in fetched], replay_error=error,
+            state=_tip(state) or {"seq": -1, "hash": None, "genesis_hash": None},
+            withdrawn=sorted(team_log_withdrawn.withdrawn(self._db)),
+            admin_refusal=teamlog.admin_policy_refusal(state) if state is not None else None,
+        ))
         with self._db.transaction(immediate=True):
             # Another process of this vault may have stored part of it meanwhile.
-            raced = self._local_head_seq() != local_seq
+            stored = local.head_seq if local is not None else pins[0]["seq"] if pins else -1
+            raced = self._local_head_seq() != stored
             if not raced:
-                if held is not None:
+                if pins:
                     self._db.execute("DELETE FROM team_log")  # the damaged copy, fetched again above
                 self._store_team_log(fetched, state)
-                if local is not None and held is None:  # ``fetched``: what was made after this copy
+                if local is not None and not pins:  # ``fetched``: what was made after this copy
                     self._drop_access_removed_since(fetched)
         if raced:
             return self._sync_team_log(server_head)
         return state
 
-    def _refuse_as_served(self, server_head: Optional[dict], genesis: Optional[str], lost: TeamLogMismatch):
-        """Raise ``lost`` (a cause that offers to forget the pin) only as far as
-        the records the server serves bear it out, never on its unsigned head
-        alone (goal #440): no record while the head says none is the log gone;
-        a first record that is ``genesis`` makes the head a lie (head_genesis);
-        another genesis is ``lost``, or other_genesis for a log called gone."""
+    def _refuse_as_served(self, server_head: Optional[dict], check: dict):
+        """The core's ``check_served`` (a cause that offers to forget the pin)
+        held to the first record the server serves, never to its unsigned head
+        alone (goal #440)."""
         records = self._request("GET", "/api/team-log?since=-1", auth=True).get("records") or []
-        if not records:
-            if server_head is None:
-                raise lost
-            raise TeamLogMismatch("The server's team log does not reach the head it announced.", "short_of_head")
-        try:
-            served = teamlog.replay(records[:1]).genesis_hash
-        except teamlog.TeamLogError as exc:
-            raise TeamLogMismatch(f"The server's team log does not replay: {exc}", "does_not_replay") from exc
-        if served == genesis:
-            raise TeamLogMismatch(
-                "The server's team log head names another genesis than the records it serves.", "head_genesis"
-            )
-        if lost.cause == "log_gone":
-            raise TeamLogMismatch(
-                "The server's team log starts with another genesis than this device pinned.", "other_genesis"
-            )
-        raise lost
+        first = None
+        if records:
+            try:
+                first = {"genesis": teamlog.replay(records[:1]).genesis_hash}
+            except teamlog.TeamLogError as exc:
+                first = {"error": str(exc)}
+        _raise_refused(sync_core.call(
+            "team_log_follow_served", check=check, head_shown=server_head is not None, first=first))
 
     def _put_back_lost_team_log(self, server_head: Optional[dict]) -> None:
         """A server restored from a backup gets the log records it lost now.
@@ -1371,3 +1331,20 @@ class TeamLogMixin:
             "signing_pk": bytes(self._keypair.signing_pk).hex(),
             "encryption_pk": bytes(self._keypair.encryption_pk).hex(),
         })])
+
+
+def _tip(state: Optional[teamlog.TeamState]) -> Optional[dict]:
+    if state is None:
+        return None
+    return {"seq": state.head_seq, "hash": state.head_hash, "genesis_hash": state.genesis_hash}
+
+
+def _raise_refused(answer: dict) -> None:
+    """A core follow answer that refuses the server's log, as TeamLogMismatch."""
+    refused = answer.get("refused")
+    if refused is None:
+        return
+    detail = refused["detail"]
+    if refused["cause"] == "left_earlier_log":
+        detail += " ('sezam team-log found' on the admin's device)"
+    raise TeamLogMismatch(f"The server's team log {detail}.", refused["cause"])

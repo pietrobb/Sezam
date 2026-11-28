@@ -55,28 +55,11 @@ TEAM_LOG_APPEND_MAX = 1000  # records per append the server takes (TeamLogAppend
 
 # INV-7 (docs/ROOT_CAUSE_PLAN.md): the one list of why a device refuses the
 # server's team log, and for which of them "forget the pinned team log" is
-# offered: only where the log this device holds is missing or a new log
-# starts (another server, a reseed). A fork, a log going back or one that does
-# not replay is a server that lies, never forgotten. INV-8: a server can drop
-# its log or serve a new genesis on its own, and no device tells that from a
-# reseed, so every offer carries RISK_MARKER (no cause is offered plainly). The web page
-# (TEAM_LOG_MISMATCH_FORGET in app.js) and the phone (teamLogMismatchForget in
-# team_log_client.dart) carry the same list; tests/vectors/team_log_mismatch.json
-# is it, and every client must give its cases' answers.
-MISMATCH_CAUSES = {
-    "confirmed_genesis": True,   # not the genesis confirmed out of band
-    "log_gone": True,            # the server has no log, this device holds or pins one
-    "other_genesis": True,       # the server's log starts with another genesis
-    "left_earlier_log": False,   # no log, and this device left one: it waits for the new one
-    "went_back": False,          # the server's head is behind what this device saw
-    "differs": False,            # another record at a seq this device saw (a fork)
-    "does_not_replay": False,
-    "short_of_head": False,      # the records served do not reach the announced head
-    "head_genesis": False,       # the records start with another genesis than the head names
-    "refused_at_head": False,    # TL7: a head the server must refuse
-    "local_damaged": False,      # this device's own copy does not replay or fails its stored hashes
-    "anchor_conflict": True,     # the account keys name another log than this device holds or pins
-}
+# offered (only where the log is missing or a new one starts; INV-8: every
+# offer carries RISK_MARKER). It is the core's (core/src/teamlog/follow.rs,
+# docs/CORE_UNIFICATION.md U7b), as the page and the phone take it;
+# tests/vectors/team_log_mismatch.json holds it and every client's answers.
+MISMATCH_CAUSES: dict = sync_core.call("team_log_mismatch_causes")
 # INV-7 (capability run 397): no cause keeps the vault locked. The log is
 # checked where the team is used (local_team_state), never in the unlock; a
 # damaged copy is fetched again under its pins at the next pull

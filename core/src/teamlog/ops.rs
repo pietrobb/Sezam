@@ -454,6 +454,10 @@ pub fn run(op: &str, input: &str) -> Option<Result<Value, String>> {
                 }
                 json!(super::to_hex(&replay::sig_message(&i.body)))
             }
+            "team_log_follow_plan" => super::follow::plan(parse(input)?),
+            "team_log_follow_served" => super::follow::served(parse(input)?),
+            "team_log_follow_caught_up" => super::follow::caught_up(parse(input)?),
+            "team_log_mismatch_causes" => super::follow::causes(),
             "team_log_empty_state" => json!(State::default()),
             _ => return Err(format!("unknown operation {op:?}")),
         })

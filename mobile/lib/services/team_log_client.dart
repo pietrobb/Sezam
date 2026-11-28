@@ -11,6 +11,7 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'sync_core.dart';
 import 'write_authority.dart';
 import 'team_log.dart';
 
@@ -289,21 +290,11 @@ void requireConfirmedGenesis(String? confirmed, String? actual) {
 // log, and for which causes "Zabudnúť pripnutý tímový denník" is offered: only
 // where the log is missing or a new one starts (another server, a reseed); a
 // fork, a log going back or one that does not replay is a lying server, never
-// forgotten. The same list as MISMATCH_CAUSES in team_log_local.py and
-// TEAM_LOG_MISMATCH_FORGET in app.js (tests/vectors/team_log_mismatch.json).
-const teamLogMismatchForget = <String, bool>{
-  'confirmed_genesis': true,
-  'log_gone': true,
-  'other_genesis': true,
-  'left_earlier_log': false,
-  'went_back': false,
-  'differs': false,
-  'does_not_replay': false,
-  'short_of_head': false,
-  'head_genesis': false,
-  'refused_at_head': false,
-  'local_damaged': false,
-  'anchor_conflict': true,
+// forgotten. The core's list (core/src/teamlog/follow.rs, U7b), as the
+// desktop and the page take it (tests/vectors/team_log_mismatch.json).
+final Map<String, bool> teamLogMismatchForget = {
+  for (final e in (syncCore('team_log_mismatch_causes', {}) as Map).entries)
+    e.key as String: e.value as bool,
 };
 
 class TeamLogMismatch implements Exception {
@@ -498,39 +489,14 @@ Future<LocalTeamLog?> syncTeamLog({
   Set<String> withdrawn = const {},
   Future<void> Function(List<String> hashes)? withdraw,
 }) async {
-  Never fail(String detail, String cause) =>
-      throw TeamLogMismatch(detail, cause);
-  // Goal #440: a cause that offers to forget the pin only as far as the
-  // records served bear it out, never on the unsigned head alone. No record
-  // while the head says none is the log gone; a first record that is
-  // [genesis] makes the head a lie; another genesis is the loss named.
-  Future<Never> failAsServed(
-    Map<String, dynamic>? shownHead,
-    String? genesis,
-    String detail,
-    String cause,
-  ) async {
-    final served = await fetchPage(-1);
-    if (served.isEmpty) {
-      if (shownHead == null) fail(detail, cause);
-      fail('does not reach the head it announced', 'short_of_head');
-    }
-    final String first;
-    try {
-      first = log.replay(served.take(1).toList()).genesisHash;
-    } catch (e) {
-      fail('does not replay: $e', 'does_not_replay');
-    }
-    if (first == genesis) {
-      fail(
-        'head names another genesis than the records it serves',
-        'head_genesis',
+  void refuse(Object? answer) {
+    final refused = (answer as Map)['refused'] as Map?;
+    if (refused != null) {
+      throw TeamLogMismatch(
+        refused['detail'] as String,
+        refused['cause'] as String,
       );
     }
-    if (cause == 'log_gone') {
-      fail('starts with another genesis than this device saw', 'other_genesis');
-    }
-    fail(detail, cause);
   }
 
   if (restore != null && local != null) {
@@ -540,45 +506,67 @@ Future<LocalTeamLog?> syncTeamLog({
     // mismatch below.
     head = await _restoreTeamLog(head, local, pin, restore);
   }
-  if (confirmedGenesis != null && confirmedGenesis != head?['genesis_hash']) {
-    await failAsServed(
-      head,
-      confirmedGenesis,
-      'does not match the confirmed genesis',
-      'confirmed_genesis',
+  // U7b (core/src/teamlog/follow.rs): what the core makes of the head.
+  final pins = [
+    if (pin != null && pin['seq'] is int)
+      {
+        'seq': pin['seq'],
+        'hashes': [pin['hash']],
+      },
+  ];
+  final plan =
+      syncCore('team_log_follow_plan', {
+            'head': head,
+            'local': local == null
+                ? null
+                : {
+                    'seq': local.team.headSeq,
+                    'hash': local.team.headHash,
+                    'genesis_hash': local.team.genesisHash,
+                  },
+            'pins': pins,
+            'pinned_genesis': pin?['genesis_hash'],
+            'confirmed_genesis': confirmedGenesis,
+            'left_earlier_log': leftEarlierLog,
+            'who': 'this phone',
+          })
+          as Map;
+  if (plan['check_served'] != null) {
+    // Goal #440: a cause that offers to forget the pin only as far as the
+    // records served bear it out, never on the unsigned head alone.
+    final served = await fetchPage(-1);
+    Map<String, Object?>? first;
+    if (served.isNotEmpty) {
+      try {
+        first = {'genesis': log.replay(served.take(1).toList()).genesisHash};
+      } catch (e) {
+        first = {'error': '$e'};
+      }
+    }
+    refuse(
+      syncCore('team_log_follow_served', {
+        'check': plan['check_served'],
+        'head_shown': head != null,
+        'first': first,
+      }),
     );
   }
-  if (head == null) {
-    if (local != null || pin != null) {
-      await failAsServed(
-        null,
-        local?.team.genesisHash ?? pin?['genesis_hash'] as String?,
-        'is gone (a server restored from a backup, or another server)',
-        'log_gone',
-      );
-    }
-    // Review 8bc70f7 M2: a phone that left a log does not fall back to the
-    // rules from before any log because a server sends none.
-    if (leftEarlierLog) {
-      fail(
-        "is missing, and this phone left an earlier team log: it waits for the team's "
-            'new log (the admin founds it) and its confirmed founder',
-        'left_earlier_log',
-      );
-    }
-    return null;
-  }
-  final pinned = local?.team.genesisHash ?? pin?['genesis_hash'] as String?;
-  if (pinned != null && head['genesis_hash'] != pinned) {
-    await failAsServed(
-      head,
-      pinned,
-      'starts with another genesis than this device saw',
-      'other_genesis',
-    );
-  }
+  if (plan['none'] == true) return null;
   try {
-    return await _catchUpTeamLog(log, head, local, pin, fetchPage, withdrawn);
+    refuse(
+      plan,
+    ); // went back, or differs at a head seen: maybe a fork to follow
+    if (plan['same'] == true) return local;
+    return await _catchUpTeamLog(
+      log,
+      head!,
+      local,
+      pins,
+      plan['fetch'] as Map,
+      fetchPage,
+      withdrawn,
+      refuse,
+    );
   } on TeamLogMismatch catch (e) {
     if (local == null ||
         ownUserId == null ||
@@ -589,7 +577,7 @@ Future<LocalTeamLog?> syncTeamLog({
     try {
       followed = await _followFork(
         log,
-        head,
+        head!,
         local,
         pin,
         ownUserId,
@@ -777,69 +765,49 @@ Future<LocalTeamLog> _catchUpTeamLog(
   TeamLog log,
   Map<String, dynamic> head,
   LocalTeamLog? local,
-  Map<String, dynamic>? pin,
+  List<Map<String, Object?>> pins,
+  Map fetch,
   Future<List<Map<String, dynamic>>> Function(int since) fetchPage,
   Set<String> withdrawn,
+  void Function(Object? answer) refuse,
 ) async {
-  Never fail(String detail, String cause) =>
-      throw TeamLogMismatch(detail, cause);
-  final localSeq = local?.team.headSeq ?? -1;
-  final pinSeq = pin?['seq'] as int? ?? -1;
-  final seen = localSeq > pinSeq ? localSeq : pinSeq;
-  final headSeq = head['seq'];
-  if (headSeq is! int || headSeq < seen) {
-    fail('went back (head $headSeq < $seen)', 'went_back');
-  }
-  if (local != null && headSeq == localSeq) {
-    if (head['hash'] != local.team.headHash) {
-      fail('differs at record $localSeq', 'differs');
-    }
-    return local;
-  }
+  final upto = fetch['upto'] as int;
   var team = local?.team ?? TeamState();
   final records = [...?local?.records];
-  for (var page = 0; page < teamLogPages && team.headSeq < headSeq; page++) {
+  final fetched = <String>[];
+  String? error;
+  for (var page = 0; page < teamLogPages && team.headSeq < upto; page++) {
     final got = await fetchPage(team.headSeq);
     if (got.isEmpty) break;
     // Appended after this pull's head: the next pull takes it.
-    final batch = got.take(headSeq - team.headSeq).toList();
+    final batch = got.take(upto - team.headSeq).toList();
     try {
       team = log.replay(batch, team); // prev of the first = this phone's head
     } catch (e) {
-      fail('does not replay: $e', 'does_not_replay');
-    }
-    final start = team.headSeq - batch.length + 1;
-    if (pin != null &&
-        pinSeq >= start &&
-        pinSeq <= team.headSeq &&
-        TeamLog.recordHash(batch[pinSeq - start]) != pin['hash']) {
-      fail('differs at record $pinSeq', 'differs');
+      error = '$e';
+      break;
     }
     records.addAll(batch);
+    fetched.addAll(batch.map(TeamLog.recordHash));
   }
-  if (team.headSeq != headSeq || team.headHash != head['hash']) {
-    fail('does not reach the head it announced', 'short_of_head');
-  }
-  if (team.genesisHash != head['genesis_hash']) {
-    fail('genesis differs from the head it announced', 'head_genesis');
-  }
-  for (
-    var seq = localSeq + 1;
-    withdrawn.isNotEmpty && seq < records.length;
-    seq++
-  ) {
-    // R16-M5 (R16-H1 for what the phone now sends): the server kept a record it refused.
-    if (withdrawn.contains(TeamLog.recordHash(records[seq]))) {
-      fail(
-        'holds record $seq, which this phone withdrew (the server refused it)',
-        'differs',
-      );
-    }
-  }
-  // TL7: the server refuses such an append; a head with it is not followed.
-  final refusal = TeamLog.adminPolicyRefusal(team);
-  if (refusal != null)
-    fail('is refused at its head: $refusal', 'refused_at_head');
+  final reached = team.headSeq >= 0;
+  refuse(
+    syncCore('team_log_follow_caught_up', {
+      'head': head,
+      'since': fetch['since'],
+      'pins': pins,
+      'fetched': fetched,
+      'replay_error': error,
+      'state': {
+        'seq': team.headSeq,
+        'hash': reached ? team.headHash : null,
+        'genesis_hash': reached ? team.genesisHash : null,
+      },
+      'withdrawn': [...withdrawn],
+      'admin_refusal': reached ? TeamLog.adminPolicyRefusal(team) : null,
+      'who': 'this phone',
+    }),
+  );
   return LocalTeamLog(records, team);
 }
 

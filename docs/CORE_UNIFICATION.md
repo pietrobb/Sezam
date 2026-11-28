@@ -295,6 +295,30 @@ desktopu pred zmenou) v `core/tests/resolve_change_vectors.rs` a
 `tests/test_resolve_change_vectors.py`; web a mobil cez
 `tests/test_r16_fork_following.py` a `mobile/test/r16_fork_following_test.dart`.
 
+Verdikt nad logom servera (U7b, `core/src/teamlog/follow.rs`): tri kroky
+`team_log_follow_plan` (z toho, čo zariadenie drží: kópia, piny, pripnutá a
+potvrdená genesis, opustený log; a hlavy z pullu → `none` / `same` /
+`fetch {since, upto}` / `check_served` / `refused`), `team_log_follow_served`
+(`check_served` podľa prvého záznamu, ktorý server dá; goal #440) a
+`team_log_follow_caught_up` (po stiahnutí a replayi: piny, chyba replayu,
+dosiahnutá hlava, genesis hlavy, stiahnuté záznamy, ktoré zariadenie stiahlo
+späť, TL7 → `accept` / `refused`). Odmietnutie nesie `cause`, `detail` a
+`forget`; zoznam príčin je `team_log_mismatch_causes` (desktop
+`MISMATCH_CAUSES`, web `teamLogMismatch`, mobil `teamLogMismatchForget` ho
+berú z jadra, ich tabuľky sú zmazané). Klienti len sťahujú, overujú podpisy
+(libsodium), ukladajú a pri `went_back`/`differs`/`does_not_replay` skúšajú
+nasledovať fork (U7d). Desktop `_sync_team_log`/`_catch_up_team_log`/
+`_refuse_as_served`, web `syncWebTeamLog`/`catchUpWebTeamLog` a mobil
+`syncTeamLog`/`_catchUpTeamLog` sú tenké obaly. Piny: webový a mobilný pin
+checkpointu aj desktopová hlava poškodenej kópie sú `pins: [{seq, hashes}]`.
+Zjednotené (desktop ako web a mobil): genesis hlavy sa porovná aj pri
+pripnutej genesis; keď server drží stiahnutý záznam a zároveň nedosiahne
+hlavu, príčina je `short_of_head` (desktop dal `differs`); pin rozdielny v
+stiahnutých záznamoch má prednosť pred chybou replayu ďalšej strany. Vektory
+`tests/vectors/team_log_mismatch.json` (65 prípadov orákula) v
+`core/tests/team_log_follow_vectors.rs`, `tests/test_inv7_forget_offer.py`
+(desktop, web) a `mobile/test/team_log_mismatch_vectors_test.dart`.
+
 Inventár kontextov `sezam-*` mimo `core/` (git grep v `src`, `server/app`,
 `web/static/js`, `mobile/lib`, po U6i): všetky podpisované a hashované formáty
 bez tajomstva sú v jadre. Zámerne mimo jadra, s tajomstvom (pravidlo 3):

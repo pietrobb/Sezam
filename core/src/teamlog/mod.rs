@@ -15,6 +15,7 @@
 //! record's `bad_signature` (or `bad_new_key_signature`), as before.
 
 pub mod canonical;
+pub mod follow;
 pub mod fork;
 pub mod ops;
 pub mod replay;

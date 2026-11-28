@@ -23,7 +23,8 @@ answer an oracle gives that knows nothing of any client's code:
   past the announced head were appended after the pull: followed up to it.
 
 "causes" is the one list of why a device refuses, and whether forgetting is
-offered for it; the desktop (MISMATCH_CAUSES), the page and the phone carry it.
+offered for it; the core holds it (team_log_mismatch_causes, core/src/teamlog/follow.rs)
+and every client takes it from there (docs/CORE_UNIFICATION.md U7b).
 Run ``python -m tests.team_log_mismatch_vectors`` to write the file;
 tests/test_inv7_forget_offer.py checks the builder still gives it byte for byte.
 """
